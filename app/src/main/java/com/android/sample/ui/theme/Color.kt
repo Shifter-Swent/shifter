@@ -1,4 +1,4 @@
-package com.android.sample.ui.theme
+package com.swent.shifter.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

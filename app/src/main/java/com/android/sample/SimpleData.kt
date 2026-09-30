@@ -1,4 +1,4 @@
-package com.android.sample
+package com.swent.shifter
 
 import kotlin.math.sqrt
 

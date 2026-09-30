@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "482506989555",
+    "project_id": "shifter-6f86b",
+    "storage_bucket": "shifter-6f86b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:482506989555:android:e3d350a3d0c2ba23d0fc86",
+        "android_client_info": {
+          "package_name": "com.swent.shifter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnFa4fuSf2kRn64y7ChRpl0rfcJ2beHuk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
