@@ -71,3 +71,4 @@ Volunteers can access:
 Managers can continue scanning volunteer QR codes while offline. Check-in data is stored locally on the device and automatically synchronized with Firebase when the Internet connection becomes available again.
 
 ## Figma
+SHifter Figma's model : https://www.figma.com/make/a5LSzNh9e0em1xIsjy1nIF/Shifter
