@@ -89,6 +89,7 @@ sonar {
     property("sonar.projectName", "Android-Sample")
     property("sonar.organization", "shifter-swent")
     property("sonar.host.url", "https://sonarcloud.io")
+    property("sonar.gradle.skipCompile", "true")
     // Comma-separated paths to the various directories containing the *.xml JUnit report files.
     // Each path may be absolute or relative to the project base directory.
     property(
