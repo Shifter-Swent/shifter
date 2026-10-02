@@ -1,74 +1,83 @@
 # Shifter
 
 ## Pitch
-Many organizations struggle to recruit enough volunteers and coordinate them efficiently before and during an event. Managing applications, requirements, availability, schedules, teams, documents, and check-ins often requires several different tools and a large amount of manual work.
 
-Shifter is a volunteer recruitment and workforce management app designed to centralize this entire process. Organizations can publish volunteer missions with specific requirements, receive and manage applications, build teams, assign roles and tasks, and automatically generate schedules based on volunteer availability.
+Organizations struggle to find volunteers, and on event day they struggle to keep every post covered when people cancel, arrive late or get lost on site.
 
-Volunteers can discover nearby missions, review their requirements, apply through a dedicated form, upload required documents or training certificates, manage their availability, and access all information related to their assigned missions.
+Shifter matches volunteers to needs by location, like Uber matches drivers to riders. Organizers post open positions, and nearby available volunteers accept them in one tap. On event day, Shifter guides each volunteer to their exact post, checks them in automatically on arrival, and warns managers early when someone will be late. When a post is left empty, Shifter sends the request to the closest available volunteer.
 
-During an event, managers can coordinate their teams, communicate updates, access briefings and documents, and scan volunteer QR codes for check-in. Essential information and QR check-in functionality remain available offline and synchronize automatically once an Internet connection is restored.
+Existing tools rely on static listings and fixed schedules. Shifter reacts to where people are right now, so positions fill faster and stay filled.
 
-The result is a simpler way for organizations to recruit, organize, and coordinate volunteers from application to event completion.
+Why people install it: coordinators install it so they no longer lose control of their event on the day. Volunteers install it to first find events to volunteer in, and because it tells them exactly where to go and what to do, without a single phone call.
 
-## Features
-- Discover nearby volunteer missions based on location
-- Create and publish volunteer missions with specific requirements
-- Application forms with required questions and document uploads
-- Simple application workflow: Applied → Accepted / Rejected → Completed
-- Volunteer profile with basic personal information and uploaded documents
-- Volunteer availability calendar
-- Personal calendar synchronization
-- Automatic schedule generation based on availability, roles, and event requirements
-- Team and role management
-- Assignment of locations, positions, tasks, and shifts
-- Checklists for teams and volunteers
-- Event briefings and important instructions
-- Document sharing
-- Emergency contact information
-- Direct messaging between organizers, managers, and volunteers
-- Team chats for each event
-- Announcements and schedule-change notifications
-- Organizer dashboard for managing multiple events, teams, open positions, and schedules
-- QR-code-based volunteer check-in
-- Volunteer and organizer ratings after completed missions
+## Features 
+Core (GPS)
+- Nearby missions, with last-minute positions sent to the closest available volunteers for one-tap acceptance
+- Automatic GPS check-in at the volunteer's post (QR fallback) and early lateness alerts
+- Live team map, with empty posts filled by the nearest available volunteer
 
-## Split-App model
-- Volunteer profiles, missions, applications, teams, roles, schedules, availability, documents, messages, ratings, and event management data are stored in Firebase.
-- Essential information is also stored locally for offline access, including the volunteer's personal schedule, event address, assigned role, essential briefing information, and QR code.
-- Managers can scan volunteer QR codes even without an Internet connection. Offline check-ins are stored locally and automatically synchronized with Firebase once connectivity is restored.
-- Calendar availability can also be synchronized with the user's personal calendar when a connection is available.
+Recruitment & planning
+- Missions with requirements, application forms and document uploads (Applied → Accepted / Rejected → Completed)
+- Volunteer profile, availability calendar and personal calendar sync
+- Automatic scheduling, teams, roles, positions and shifts
+- Organizer dashboard
+
+Event support
+- Briefings, documents, checklists and emergency contacts
+- Direct messages, team chats and announcements
+- Ratings after each mission
+
+## Split-app model
+
+Events, posts and their zones, shifts, assignments, applications, check-ins, live on-shift locations and announcements are stored in Firebase, which synchronizes positions and coverage status in real time between volunteers, managers and organizers.
+
+The device keeps a local copy of the user's own data: their schedule, post locations and zones, the event map, the briefing and emergency contacts. GPS processing happens on the device, which detects arrival in a post's zone, so check-in does not depend on the server. Check-ins and location updates are stored locally and synchronized with Firebase whenever a connection is available.
 
 ## Multi-user support
-Shifter supports three main user roles:
 
-### Organizer
-Organizers create and manage events and volunteer missions. They define requirements, review applications, accept or reject volunteers, create teams, assign managers, manage roles and tasks, generate schedules, upload documents, send announcements, and oversee the entire event.
+Organizer
 
-### Manager
-Managers are assigned by organizers to supervise specific teams or parts of an event. They can access their assigned volunteers, schedules, tasks, checklists, briefings, and documents. They can communicate with their team and scan volunteer QR codes for check-in, without having full control over the entire event.
+Creates the event, places posts on the map and defines their check-in zones, publishes missions, accepts volunteers, assigns them to posts and shifts, appoints managers, and has a live overview of coverage across the whole event.
 
-### Volunteer
-Volunteers can discover nearby missions, view mission details and requirements, submit applications, upload requested documents or certificates, manage their availability, synchronize their personal calendar, communicate with organizers and managers, and access their assigned schedules, tasks, documents, and QR code.
+Manager
 
-## Authentication
-Users create and access their account using Google Sign-In.
+A per-event role an organizer gives to an experienced volunteer. A manager is responsible for one sector of the event. They see their team's locations and post coverage on a live map, receive lateness and gap alerts, and confirm reassignments suggested by the app.
+
+Volunteer
+
+Applies to missions, sees their assigned post and shift, is guided to the post, is checked in automatically, and receives reassignments and announcements.
+
+All users sign in with the same account. They start as volunteers, can be appointed manager for a given event, and can switch to Organizer mode from their profile to run their own events.°
+
+Authentication:
+- Users create and access their account using Google Sign-In.
 
 ## Sensor use
-- **GPS** is used to display volunteer missions near the user's location and help volunteers discover relevant opportunities.
-- **Camera access** is used by managers to scan volunteer QR codes during event check-in.
+
+GPS is the core of Shifter. It drives four behaviours that the app cannot offer without it:
+
+Arrival detection. Each post has a geographic zone. When a volunteer's position enters their post's zone within the check-in window, they are checked in automatically. No action is needed from them or from a manager.
+Lateness prediction. Before a shift starts, Shifter compares each volunteer's current position and estimated travel time with the shift's start time. A volunteer who is too far away is flagged as at risk, and their manager is alerted before the post goes uncovered.
+Live coverage. Managers see on-shift volunteers and each post's status (covered, at risk, empty) on a map. A volunteer who leaves their zone during a shift turns the post to "at risk".
+Nearest-volunteer reassignment. When a gap appears, Shifter ranks available volunteers by distance to the empty post. The manager reassigns one with a single tap, and that volunteer is guided there.
+
+Privacy and battery. Location is shared only during a volunteer's active shift, plus a short window before it starts. It is visible only to that volunteer's own manager and to the event's organizers. Volunteers can always see when sharing is on. Outside shifts, the app does not track location.
+
+Camera. A QR code scanned by the manager serves as a fallback check-in where GPS is unreliable, such as indoors or in very dense crowds.
 
 ## Offline mode
-Essential mission information remains accessible without an Internet connection.
 
-Volunteers can access:
-- Their personal schedule
-- Event address
-- Assigned role and position
-- Essential briefing information
-- Their QR code
+Mobile networks are often saturated at large events, so the volunteer side of the core flow keeps working without a connection.
 
-Managers can continue scanning volunteer QR codes while offline. Check-in data is stored locally on the device and automatically synchronized with Firebase when the Internet connection becomes available again.
+Offline, volunteers keep access to:
+
+Their schedule and assigned post
+The event map with their post's location
+The briefing and emergency contacts
+Automatic check-in: GPS works without Internet, and arrival in the zone is detected on the device and stored locally
+Their QR code, as a fallback
+
+Check-ins and location updates are queued on the device and synchronized with Firebase automatically when the connection returns. Managers keep their last known view of the team map. Posts whose data is out of date are marked as such, so a manager can tell a confirmed gap from missing information. Lateness alerts and reassignments resume as soon as the manager or the volunteer is back online.
 
 ## Figma
-SHifter Figma's model : https://www.figma.com/make/a5LSzNh9e0em1xIsjy1nIF/Shifter
+Shifter Figma's model : https://www.figma.com/make/a5LSzNh9e0em1xIsjy1nIF/Shifter
