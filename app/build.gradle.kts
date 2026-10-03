@@ -86,7 +86,7 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 sonar {
   properties {
     property("sonar.projectKey", "shifter-swent")
-    property("sonar.projectName", "Android-Sample")
+    property("sonar.projectName", "Shifter")
     property("sonar.organization", "shifter-swent")
     property("sonar.host.url", "https://sonarcloud.io")
     property("sonar.gradle.skipCompile", "true")
