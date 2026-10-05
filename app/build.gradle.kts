@@ -162,6 +162,8 @@ dependencies {
   globalTestImplementation(libs.kotlinx.coroutines.test)
 }
 
+configurations.configureEach { exclude(group = "com.google.protobuf", module = "protobuf-lite") }
+
 tasks.withType<Test> {
   // Configure Jacoco for each tests
   configure<JacocoTaskExtension> {
