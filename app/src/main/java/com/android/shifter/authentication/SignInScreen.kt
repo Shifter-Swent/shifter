@@ -1,4 +1,4 @@
-package com.android.shifter.authentication
+package com.swent.shifter.authentication
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background

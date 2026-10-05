@@ -1,4 +1,4 @@
-package com.android.shifter.authentication
+package com.swent.shifter.authentication
 
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
