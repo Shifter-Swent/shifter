@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -26,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.ShifterTheme
 
@@ -37,9 +41,11 @@ object SignInScreenTestTags {
 
 @Composable
 fun SignInScreen(
+    authViewModel: SignInViewModel = viewModel(),
     onSignedIn: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
+  val uiState by authViewModel.uiState.collectAsState()
 
   Column(
       modifier = Modifier.fillMaxSize().background(colors.background).padding(horizontal = 43.dp),
@@ -56,29 +62,13 @@ fun SignInScreen(
 
     Spacer(modifier = Modifier.height(32.dp))
 
-    Button(
-        onClick = onSignedIn,
-        modifier = Modifier.size(334.dp, 58.dp).testTag(SignInScreenTestTags.LOGIN_BUTTON),
-        shape = RoundedCornerShape(18.dp),
-        colors =
-            ButtonDefaults.buttonColors(
-                containerColor = colors.primary,
-                contentColor = colors.onPrimary,
-            ),
-    ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Image(
-            painter = painterResource(R.drawable.google_icon),
-            contentDescription = "Google",
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = "Continue with Google",
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-      }
+    if (uiState.isLoading) {
+      CircularProgressIndicator(
+          modifier = Modifier.size(48.dp),
+          color = colors.primary,
+      )
+    } else {
+      GoogleSignInButton(onSignIn = { authViewModel.updateUiState(uiState.copy(isLoading = true)) })
     }
 
     Spacer(modifier = Modifier.height(18.dp))
@@ -91,6 +81,35 @@ fun SignInScreen(
         textAlign = TextAlign.Center,
         modifier = Modifier.testTag(SignInScreenTestTags.LOGIN_TITLE),
     )
+  }
+}
+
+@Composable
+fun GoogleSignInButton(onSignIn: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
+  Button(
+      onClick = onSignIn,
+      modifier = Modifier.size(334.dp, 58.dp).testTag(SignInScreenTestTags.LOGIN_BUTTON),
+      shape = RoundedCornerShape(18.dp),
+      colors =
+          ButtonDefaults.buttonColors(
+              containerColor = colors.primary,
+              contentColor = colors.onPrimary,
+          ),
+  ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Image(
+          painter = painterResource(R.drawable.google_icon),
+          contentDescription = "Google",
+          modifier = Modifier.size(20.dp),
+      )
+      Spacer(modifier = Modifier.width(12.dp))
+      Text(
+          text = "Continue with Google",
+          fontSize = 16.sp,
+          fontWeight = FontWeight.SemiBold,
+      )
+    }
   }
 }
 
