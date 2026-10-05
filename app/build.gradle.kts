@@ -5,6 +5,7 @@ plugins {
   alias(libs.plugins.kotlinCompose)
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
+  alias(libs.plugins.kotlinSerialization)
   id("com.google.gms.google-services")
   id("jacoco")
 }
@@ -27,6 +28,7 @@ android {
   buildTypes {
     release {
       isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",
@@ -123,9 +125,13 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
+  implementation(libs.compose.navigation)
+  implementation(libs.compose.icons.core)
+  implementation(libs.compose.icons.extended)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
+  testImplementation(libs.mockk)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
@@ -184,7 +190,9 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
       )
 
   val debugTree =
-      fileTree("${project.layout.buildDirectory.get()}/tmp/kotlin-classes/debug") {
+      fileTree(
+          "${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes"
+      ) {
         exclude(fileFilter)
       }
 
