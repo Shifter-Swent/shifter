@@ -1,4 +1,4 @@
-package com.android.shifter.ui.navigation
+package com.swent.shifter.ui.navigation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
