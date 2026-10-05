@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.shifter.ui.navigation
 
 import androidx.compose.material.icons.Icons
@@ -312,6 +313,7 @@ open class NavigationActions(private val navController: NavHostController) {
 
   /** Opens an event on top of its events list, replacing any event already open. */
   open fun enterEvent(event: EventMode) {
+    event.tabs.all.forEach { navController.clearBackStack(it) }
     navController.navigate(event) {
       popUpTo(event.list)
       launchSingleTop = true

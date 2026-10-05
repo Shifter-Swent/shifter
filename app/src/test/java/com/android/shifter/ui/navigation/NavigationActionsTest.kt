@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.android.shifter.ui.navigation
 
 import androidx.lifecycle.Lifecycle
@@ -144,6 +145,13 @@ class NavigationActionsTest {
     nav.goBack()
 
     verify(exactly = 0) { navController.popBackStack() }
+  }
+
+  @Test
+  fun enterEvent_clearsSavedTabStatesFromPreviousEvents() {
+    nav.enterEvent(VolunteerEvent("b"))
+
+    VolunteerTabs.all.forEach { tab -> verify { navController.clearBackStack(tab) } }
   }
 
   @Test
