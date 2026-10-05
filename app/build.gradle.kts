@@ -118,6 +118,14 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
   testImplementation(dep)
 }
 
+// Kaspresso pulls in espresso-contrib -> accessibility-test-framework, which still depends on the
+// long-deprecated protobuf-lite 3.0.1. Its GeneratedMessageLite shadows the protobuf runtime that
+// firebase-firestore needs, so any instrumented test writing a document would fail with
+// NoSuchMethodError. Firestore ships its own protobuf runtime, so dropping the stale one is enough.
+configurations.named("androidTestImplementation") {
+  exclude(mapOf("group" to "com.google.protobuf", "module" to "protobuf-lite"))
+}
+
 dependencies {
   implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
   implementation("com.google.firebase:firebase-auth")

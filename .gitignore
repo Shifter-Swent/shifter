@@ -7,3 +7,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Firebase emulator artifacts
+/.firebase/
+firebase-debug.log
+firestore-debug.log

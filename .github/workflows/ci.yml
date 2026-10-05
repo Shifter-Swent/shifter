@@ -91,7 +91,16 @@ jobs:
           # To run the CI with debug information, add --info
           ./gradlew check --parallel --build-cache
 
-      # Run connected tests on the emulator
+      # The instrumented repository tests talk to the Firestore emulator instead of the
+      # production backend, so the Firebase CLI has to be available on the runner.
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@15
+
+      # Run connected tests on the emulator.
+      #
+      # `firebase emulators:exec` starts the Firestore emulator on the runner (the host), runs the
+      # given command, and shuts the emulator down afterwards - also when the tests fail. The
+      # Android emulator reaches the host loopback interface through 10.0.2.2 (see FirestoreEmulator).
       - name: run tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -101,7 +110,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew connectedCheck --parallel --build-cache
+          script: firebase emulators:exec --only firestore "./gradlew connectedCheck --parallel --build-cache"
 
       # This step generates the coverage report which will be uploaded to sonar
       - name: Generate Coverage Report
