@@ -1,11 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.android.shifter.model.user
+package com.swent.shifter.model.user
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
 import org.junit.After

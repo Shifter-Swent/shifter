@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.android.shifter.model.user
+package com.swent.shifter.model.user
 
 /**
  * Access to user profiles. ViewModels depend on this interface, never on an implementation.

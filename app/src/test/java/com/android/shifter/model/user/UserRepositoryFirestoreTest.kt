@@ -1,10 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.android.shifter.model.user
+package com.swent.shifter.model.user
 
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.EMAIL
-import com.android.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -15,6 +11,10 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Transaction
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.EMAIL
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify

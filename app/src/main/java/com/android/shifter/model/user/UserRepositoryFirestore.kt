@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.android.shifter.model.user
+package com.swent.shifter.model.user
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
