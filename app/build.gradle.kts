@@ -26,7 +26,7 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",
@@ -85,8 +85,8 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 sonar {
   properties {
-    property("sonar.projectKey", "shifter-swent")
-    property("sonar.projectName", "Android-Sample")
+    property("sonar.projectKey", "Shifter-Swent_shifter")
+    property("sonar.projectName", "shifter")
     property("sonar.organization", "shifter-swent")
     property("sonar.host.url", "https://sonarcloud.io")
     property("sonar.gradle.skipCompile", "true")
@@ -94,7 +94,7 @@ sonar {
     // Each path may be absolute or relative to the project base directory.
     property(
         "sonar.junit.reportPaths",
-        "${project.layout.buildDirectory.get()}/test-results/testDebugunitTest/",
+        "${project.layout.buildDirectory.get()}/test-results/testDebugUnitTest/",
     )
     // Paths to xml files with Android Lint issues. If the main flavor is changed, this file will
     // have to be changed too.
