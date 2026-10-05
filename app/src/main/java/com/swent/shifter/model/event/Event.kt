@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
-package com.android.shifter.model.event
+package com.swent.shifter.model.event
 
 import java.time.Instant
 

@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
-package com.android.shifter.model.event
+package com.swent.shifter.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.Source
@@ -250,22 +250,5 @@ class FirestoreEventRepositoryTest {
      */
     const val JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
     const val JOIN_CODE_LENGTH = 6
-
-    /** Exactly the fields [FirestoreEventRepository] writes: no `id` among them. */
-    val EXPECTED_DOCUMENT_FIELDS =
-        setOf(
-            EventSchema.ORGANIZER_ID,
-            EventSchema.TITLE,
-            EventSchema.DESCRIPTION,
-            EventSchema.TYPE,
-            EventSchema.IMAGE_URL,
-            EventSchema.START_AT,
-            EventSchema.END_AT,
-            EventSchema.LOCATION,
-            EventSchema.EMERGENCY_CONTACTS,
-            EventSchema.JOIN_CODE,
-            EventSchema.STATUS,
-            EventSchema.CREATED_AT,
-        )
   }
 }

@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
-package com.android.shifter.model.event
+package com.swent.shifter.model.event
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
@@ -152,5 +152,3 @@ private fun DocumentSnapshot.invalid(field: String): Nothing =
 
 /** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
 private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)
-
-private fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanoseconds.toLong())
