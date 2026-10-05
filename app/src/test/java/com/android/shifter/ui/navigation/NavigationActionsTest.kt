@@ -153,6 +153,30 @@ class NavigationActionsTest {
     verify { navController.popBackStack(Volunteer.Events, false) }
   }
 
+  @Test
+  fun goBack_withoutCurrentScreen_doesNothing() {
+    every { navController.currentBackStackEntry } returns null
+
+    nav.goBack()
+
+    verify(exactly = 0) { navController.popBackStack() }
+  }
+
+  @Test
+  fun switchTab_fromAnotherTab_navigates() {
+    val destination = mockk<NavDestination>(relaxed = true)
+    every { destination.parent } returns null
+    every { navController.currentDestination } returns destination
+    mockkObject(NavDestination.Companion)
+    every {
+      with(NavDestination.Companion) { destination.hasRoute(VolunteerTabs.Map::class) }
+    } returns false
+
+    nav.switchTab(VolunteerTabs.Map)
+
+    verify { navController.navigate(VolunteerTabs.Map, any<NavOptionsBuilder.() -> Unit>()) }
+  }
+
   private fun stubCurrentState(state: Lifecycle.State) {
     val entry = mockk<NavBackStackEntry>()
     every { entry.lifecycle.currentState } returns state
