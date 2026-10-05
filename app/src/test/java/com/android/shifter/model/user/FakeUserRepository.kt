@@ -3,20 +3,24 @@ package com.android.shifter.model.user
 
 import java.util.Date
 
-/** In-memory [com.android.shifter.model.user.UserRepository] for ViewModel unit tests. */
+/**
+ * In-memory [UserRepository] for ViewModel unit tests. Set [failure] to make every call throw it.
+ */
 class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepository {
 
   val users: MutableMap<String, User> = initialUsers.associateBy { it.uid }.toMutableMap()
 
-  override suspend fun getUser(uid: String): User? = users[uid]
+  var failure: UserRepositoryException? = null
 
-  override suspend fun createUserIfAbsent(
-      uid: String,
-      displayName: String,
-      email: String,
-  ): Boolean {
-    if (uid in users) return false
-    users[uid] = User(uid = uid, displayName = displayName, email = email, createdAt = Date())
-    return true
+  override suspend fun getUser(uid: String): User? {
+    failure?.let { throw it }
+    return users[uid]
+  }
+
+  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User {
+    failure?.let { throw it }
+    return users.getOrPut(uid) {
+      User(uid = uid, displayName = displayName, email = email, createdAt = Date())
+    }
   }
 }

@@ -13,6 +13,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Transaction
 import io.mockk.every
 import io.mockk.mockk
@@ -20,7 +21,6 @@ import io.mockk.verify
 import java.util.Date
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -42,38 +42,56 @@ class UserRepositoryFirestoreTest {
     every { ref.get() } returns Tasks.forResult(snapshot)
     every { transaction.get(ref) } returns snapshot
     // Runs the transaction body synchronously against the mocked transaction.
-    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } answers
+    every { db.runTransaction(any<Transaction.Function<User>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<Boolean>>().apply(transaction))
+          Tasks.forResult(firstArg<Transaction.Function<User>>().apply(transaction))
         }
   }
 
   @Test
-  fun createUserIfAbsent_createsProfileWhenAbsent() = runTest {
-    every { snapshot.exists() } returns false
+  fun getOrCreateUser_createsProfileWhenAbsent() = runTest {
+    every { snapshot.data } returns null
 
-    assertTrue(repository.createUserIfAbsent(UID, "Ada", "ada@example.com"))
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com")
 
+    assertEquals(User(UID, "Ada", "ada@example.com"), user)
     verify { transaction.set(ref, UserRepositoryFirestore.newUserFields("Ada", "ada@example.com")) }
   }
 
   @Test
-  fun createUserIfAbsent_neverOverwritesExistingProfile() = runTest {
-    every { snapshot.exists() } returns true
+  fun getOrCreateUser_returnsExistingProfileWithoutOverwritingIt() = runTest {
+    every { snapshot.data } returns
+        mapOf(
+            DISPLAY_NAME to "Ada L.",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to true,
+        )
 
-    assertFalse(repository.createUserIfAbsent(UID, "Ada", "ada@example.com"))
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com")
 
+    assertEquals(User(UID, "Ada L.", "ada@example.com", true), user)
     verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test
-  fun createUserIfAbsent_propagatesFirestoreErrors() = runTest {
-    val error = FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
-    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns
-        Tasks.forException(error)
+  fun getOrCreateUser_translatesFirestoreErrors() = runTest {
+    val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
+    every { db.runTransaction(any<Transaction.Function<User>>()) } returns Tasks.forException(error)
 
-    val thrown = runCatching { repository.createUserIfAbsent(UID, "Ada", "a@b.c") }
-    assertEquals(error, thrown.exceptionOrNull())
+    val thrown = runCatching { repository.getOrCreateUser(UID, "Ada", "a@b.c") }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unavailable)
+    assertEquals(error, thrown!!.cause)
+  }
+
+  @Test
+  fun getUser_translatesFirestoreErrors() = runTest {
+    val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
+    every { ref.get() } returns Tasks.forException(error)
+
+    val thrown = runCatching { repository.getUser(UID) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
   @Test
@@ -123,6 +141,18 @@ class UserRepositoryFirestoreTest {
         UserRepositoryFirestore.userFromFirestore(UID, mapOf(LOCATION_SHARING_ENABLED to "yes"))
 
     assertEquals(User(UID, "", "", false, null), user)
+  }
+
+  @Test
+  fun toRepositoryException_mapsFirestoreCodes() {
+    fun map(code: Code) =
+        UserRepositoryFirestore.toRepositoryException(FirebaseFirestoreException("", code))
+
+    assertTrue(map(Code.PERMISSION_DENIED) is UserRepositoryException.PermissionDenied)
+    assertTrue(map(Code.UNAUTHENTICATED) is UserRepositoryException.PermissionDenied)
+    assertTrue(map(Code.UNAVAILABLE) is UserRepositoryException.Unavailable)
+    assertTrue(map(Code.DEADLINE_EXCEEDED) is UserRepositoryException.Unavailable)
+    assertTrue(map(Code.INTERNAL) is UserRepositoryException.Unknown)
   }
 
   private companion object {

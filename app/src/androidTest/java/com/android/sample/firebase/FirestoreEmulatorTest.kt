@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.firebase
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -6,39 +7,38 @@ import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.Source
 import java.util.concurrent.TimeUnit
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Infrastructure smoke test: proves that an instrumented test can read and write through the
- * Firestore emulator. It fails if the emulator is not running, which is exactly what we want: no
+ * Infrastructure smoke test: proves that an instrumented test can sign in and read through the
+ * Firebase emulators. It fails if the emulators are not running, which is exactly what we want: no
  * test is allowed to silently fall back to the production backend.
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreEmulatorTest {
 
   @Test
-  fun writesAndReadsBackADocumentFromTheEmulator() {
-    val document = FirestoreEmulator.firestore.collection(COLLECTION).document()
+  fun signsInAndReadsFromTheEmulator() {
+    val uid = await(FirestoreEmulator.auth.signInAnonymously()).user!!.uid
 
     try {
-      await(document.set(mapOf(FIELD to VALUE)))
-      // Source.SERVER bypasses the local cache, so the read really goes through the emulator.
-      val snapshot = await(document.get(Source.SERVER))
+      // `firestore.rules` only lets a user read their own profile. Source.SERVER bypasses the local
+      // cache, so the read really goes through the emulator.
+      val snapshot =
+          await(FirestoreEmulator.firestore.collection(USERS).document(uid).get(Source.SERVER))
 
-      assertEquals(VALUE, snapshot.getString(FIELD))
+      assertFalse(snapshot.exists())
     } finally {
-      await(document.delete())
+      FirestoreEmulator.auth.signOut()
     }
   }
 
   private fun <T> await(task: Task<T>): T = Tasks.await(task, TIMEOUT_SECONDS, TimeUnit.SECONDS)
 
   private companion object {
-    const val COLLECTION = "emulator-smoke-test"
-    const val FIELD = "value"
-    const val VALUE = "ok"
+    const val USERS = "users"
     const val TIMEOUT_SECONDS = 15L
   }
 }

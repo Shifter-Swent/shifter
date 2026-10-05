@@ -4,37 +4,32 @@ package com.android.shifter.model.user
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import kotlinx.coroutines.tasks.await
 
 const val USERS_COLLECTION = "users"
 
-/**
- * [com.android.sample.model.user.UserRepository] backed by the Firestore collection `users/{uid}`.
- */
+/** [UserRepository] backed by the Firestore collection `users/{uid}`. */
 class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepository {
 
-  override suspend fun getUser(uid: String): User? {
+  override suspend fun getUser(uid: String): User? = translatingErrors {
     val snapshot = db.collection(USERS_COLLECTION).document(uid).get().await()
-    return snapshot.data?.let { userFromFirestore(uid, it) }
+    snapshot.data?.let { userFromFirestore(uid, it) }
   }
 
-  override suspend fun createUserIfAbsent(
-      uid: String,
-      displayName: String,
-      email: String,
-  ): Boolean {
-    val ref = db.collection(USERS_COLLECTION).document(uid)
-    // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
-    return db.runTransaction { transaction ->
-          if (transaction.get(ref).exists()) {
-            false
-          } else {
-            transaction.set(ref, newUserFields(displayName, email))
-            true
-          }
-        }
-        .await()
-  }
+  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
+      translatingErrors {
+        val ref = db.collection(USERS_COLLECTION).document(uid)
+        // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
+        db.runTransaction { transaction ->
+              transaction.get(ref).data?.let { userFromFirestore(uid, it) }
+                  ?: User(uid = uid, displayName = displayName, email = email).also {
+                    transaction.set(ref, newUserFields(displayName, email))
+                  }
+            }
+            .await()
+      }
 
   companion object {
     const val DISPLAY_NAME = "displayName"
@@ -60,5 +55,22 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             locationSharingEnabled = data[LOCATION_SHARING_ENABLED] as? Boolean ?: false,
             createdAt = (data[CREATED_AT] as? Timestamp)?.toDate(),
         )
+
+    /** Translates a Firestore error into the [UserRepositoryException] callers handle. */
+    fun toRepositoryException(e: FirebaseFirestoreException): UserRepositoryException =
+        when (e.code) {
+          Code.PERMISSION_DENIED,
+          Code.UNAUTHENTICATED -> UserRepositoryException.PermissionDenied(e)
+          Code.UNAVAILABLE,
+          Code.DEADLINE_EXCEEDED -> UserRepositoryException.Unavailable(e)
+          else -> UserRepositoryException.Unknown(e)
+        }
+
+    private inline fun <T> translatingErrors(block: () -> T): T =
+        try {
+          block()
+        } catch (e: FirebaseFirestoreException) {
+          throw toRepositoryException(e)
+        }
   }
 }
