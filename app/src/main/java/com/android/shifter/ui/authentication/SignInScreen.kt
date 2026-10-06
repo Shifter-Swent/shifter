@@ -1,5 +1,6 @@
-package com.swent.shifter.authentication
+package com.swent.shifter.ui.authentication
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,10 +19,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -29,9 +32,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.ShifterTheme
+
+// Based on Bootcamp authentication material.
 
 object SignInScreenTestTags {
   const val APP_NAME = "APP_NAME"
@@ -42,10 +48,28 @@ object SignInScreenTestTags {
 @Composable
 fun SignInScreen(
     authViewModel: SignInViewModel = viewModel(),
+    credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignedIn: () -> Unit = {},
 ) {
+  val context = LocalContext.current
   val colors = MaterialTheme.colorScheme
   val uiState by authViewModel.uiState.collectAsState()
+
+  // Show error message if login fails
+  LaunchedEffect(uiState.errorMsg) {
+    uiState.errorMsg?.let {
+      Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+      authViewModel.clearErrorMsg()
+    }
+  }
+
+  // Navigate to MyEvents screen on successful login
+  LaunchedEffect(uiState.user) {
+     uiState.user?.let {
+         Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+         onSignedIn()
+     }
+  }
 
   Column(
       modifier = Modifier.fillMaxSize().background(colors.background).padding(horizontal = 43.dp),
@@ -68,7 +92,7 @@ fun SignInScreen(
           color = colors.primary,
       )
     } else {
-      GoogleSignInButton(onSignIn = { authViewModel.updateUiState(uiState.copy(isLoading = true)) })
+      GoogleSignInButton(onSignIn = {  authViewModel.signIn(context, credentialManager) })
     }
 
     Spacer(modifier = Modifier.height(18.dp))
