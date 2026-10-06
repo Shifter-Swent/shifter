@@ -1,4 +1,4 @@
-package com.swent.shifter.authentication
+package com.swent.shifter.ui.authentication
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
