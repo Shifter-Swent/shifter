@@ -54,15 +54,14 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
         val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
         val credential = credentialManager.getCredential(context, request).credential
 
-        repository.signInWithGoogle(credential).fold(
-            onSuccess = { user ->
-              _uiState.value =
-                  AuthUIState(isLoading = false, user = user, signedOut = false)
-            },
-            onFailure = { error ->
-              showError(error.localizedMessage ?: "Sign-in failed")
-            },
-        )
+        repository
+            .signInWithGoogle(credential)
+            .fold(
+                onSuccess = { user ->
+                  _uiState.value = AuthUIState(isLoading = false, user = user, signedOut = false)
+                },
+                onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
+            )
       } catch (e: GetCredentialCancellationException) {
         showError("Sign-in cancelled")
       } catch (e: GetCredentialException) {
@@ -75,14 +74,12 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
 
   /** Signs out the current user through the authentication repository. */
   fun signOut() {
-    repository.signOut().fold(
-        onSuccess = {
-          _uiState.value = AuthUIState(signedOut = true)
-        },
-        onFailure = { error ->
-          showError(error.localizedMessage ?: "Sign-out failed")
-        },
-    )
+    repository
+        .signOut()
+        .fold(
+            onSuccess = { _uiState.value = AuthUIState(signedOut = true) },
+            onFailure = { error -> showError(error.localizedMessage ?: "Sign-out failed") },
+        )
   }
 
   private fun showError(message: String) {

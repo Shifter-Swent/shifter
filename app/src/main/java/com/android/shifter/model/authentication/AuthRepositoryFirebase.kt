@@ -12,9 +12,7 @@ import kotlinx.coroutines.tasks.await
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 // Based on Bootcamp authentication material.
 
-/**
- * AuthRepository implementation backed by Firebase Authentication.
- */
+/** AuthRepository implementation backed by Firebase Authentication. */
 class AuthRepositoryFirebase(
     private val auth: FirebaseAuth = Firebase.auth,
     private val helper: GoogleSignInHelper = DefaultGoogleSignInHelper(),
@@ -22,8 +20,7 @@ class AuthRepositoryFirebase(
 
   /** Validates the Google credential and signs the user in with Firebase Authentication. */
   override suspend fun signInWithGoogle(credential: Credential): Result<FirebaseUser> {
-    if (credential !is CustomCredential ||
-        credential.type != TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+    if (credential !is CustomCredential || credential.type != TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
       return Result.failure(IllegalArgumentException("Unsupported Google credential"))
     }
 
@@ -38,8 +35,6 @@ class AuthRepositoryFirebase(
 
   /** Clears the current Firebase Authentication session. */
   override fun signOut(): Result<Unit> {
-    return runCatching {
-      auth.signOut()
-    }
+    return runCatching { auth.signOut() }
   }
 }

@@ -65,10 +65,10 @@ fun SignInScreen(
 
   // Navigate to MyEvents screen on successful login
   LaunchedEffect(uiState.user) {
-     uiState.user?.let {
-         Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
-         onSignedIn()
-     }
+    uiState.user?.let {
+      Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+      onSignedIn()
+    }
   }
 
   Column(
@@ -92,7 +92,7 @@ fun SignInScreen(
           color = colors.primary,
       )
     } else {
-      GoogleSignInButton(onSignIn = {  authViewModel.signIn(context, credentialManager) })
+      GoogleSignInButton(onSignIn = { authViewModel.signIn(context, credentialManager) })
     }
 
     Spacer(modifier = Modifier.height(18.dp))

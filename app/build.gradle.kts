@@ -151,7 +151,6 @@ dependencies {
   implementation(libs.credentials.play.services.auth)
   implementation(libs.googleid)
 
-
   // ------------- Jetpack Compose ------------------
   val composeBom = platform(libs.compose.bom)
   implementation(composeBom)
