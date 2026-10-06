@@ -23,4 +23,7 @@ interface EventRepository {
 
   /** Returns every event owned by [organizerId], or an empty list when there is none. */
   suspend fun getEventsByOrganizer(organizerId: String): List<Event>
+
+  /** Returns every event [userId] joined, or an empty list when there is none. */
+  suspend fun getEventsByMember(userId: String): List<Event>
 }

@@ -25,6 +25,7 @@ internal object EventSchema {
   const val END_AT = "endAt"
   const val LOCATION = "location"
   const val EMERGENCY_CONTACTS = "emergencyContacts"
+  const val MEMBER_IDS = "memberIds"
   const val JOIN_CODE = "joinCode"
   const val STATUS = "status"
   const val CREATED_AT = "createdAt"
@@ -60,6 +61,7 @@ internal fun Event.toFirestoreMap(): Map<String, Any?> =
         EventSchema.END_AT to endAt.toFirestoreTimestamp(),
         EventSchema.LOCATION to location.toFirestoreMap(),
         EventSchema.EMERGENCY_CONTACTS to emergencyContacts.map { it.toFirestoreMap() },
+        EventSchema.MEMBER_IDS to memberIds,
         EventSchema.JOIN_CODE to joinCode,
         EventSchema.STATUS to status.name,
         EventSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
@@ -70,6 +72,9 @@ internal fun Event.toFirestoreMap(): Map<String, Any?> =
  *
  * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
  * document that cannot be mapped is a schema problem, which must not be mistaken for "no event".
+ * Every field is read through [DocumentSnapshot.get] rather than through the typed `getString` and
+ * `getTimestamp` accessors, which raise a bare Firebase `RuntimeException` on a type mismatch and
+ * would therefore break that contract.
  */
 internal fun DocumentSnapshot.toEvent(): Event =
     Event(
@@ -77,18 +82,15 @@ internal fun DocumentSnapshot.toEvent(): Event =
         organizerId = requireString(EventSchema.ORGANIZER_ID),
         title = requireString(EventSchema.TITLE),
         description = requireString(EventSchema.DESCRIPTION),
-        type =
-            EventType.entries.firstOrNull { it.name == requireString(EventSchema.TYPE) }
-                ?: invalid(EventSchema.TYPE),
-        imageUrl = getString(EventSchema.IMAGE_URL),
+        type = requireEventType(),
+        imageUrl = optionalString(EventSchema.IMAGE_URL),
         startAt = requireInstant(EventSchema.START_AT),
         endAt = requireInstant(EventSchema.END_AT),
         location = requireLocation(),
         emergencyContacts = requireEmergencyContacts(),
+        memberIds = requireMemberIds(),
         joinCode = requireString(EventSchema.JOIN_CODE),
-        status =
-            EventStatus.entries.firstOrNull { it.name == requireString(EventSchema.STATUS) }
-                ?: invalid(EventSchema.STATUS),
+        status = requireEventStatus(),
         createdAt = requireInstant(EventSchema.CREATED_AT),
     )
 
@@ -106,19 +108,52 @@ private fun EmergencyContact.toFirestoreMap(): Map<String, Any?> =
         EventSchema.ContactFields.ROLE to role,
     )
 
+/**
+ * An unknown name maps to [EventType.OTHER]: the type only labels and filters an event, so a type
+ * added by a newer build must not stop an older build from reading the same Firestore. A missing or
+ * non-string field stays a schema problem.
+ */
+private fun DocumentSnapshot.requireEventType(): EventType {
+  val name = requireString(EventSchema.TYPE)
+  return EventType.entries.firstOrNull { it.name == name } ?: EventType.OTHER
+}
+
+/**
+ * Unlike [requireEventType], an unknown name is rejected: the status decides what the app allows on
+ * an event and [EventStatus] has no catch-all member, so guessing one would either resurrect an
+ * archived event or archive a live one.
+ */
+private fun DocumentSnapshot.requireEventStatus(): EventStatus {
+  val name = requireString(EventSchema.STATUS)
+  return EventStatus.entries.firstOrNull { it.name == name } ?: invalid(EventSchema.STATUS)
+}
+
 private fun DocumentSnapshot.requireLocation(): EventLocation {
   val location = get(EventSchema.LOCATION) as? Map<*, *> ?: invalid(EventSchema.LOCATION)
+  val latitude = requireCoordinate(location, EventSchema.LocationFields.LATITUDE)
+  val longitude = requireCoordinate(location, EventSchema.LocationFields.LONGITUDE)
+  // A map pin needs both coordinates, so half a pair is a malformed document rather than an event
+  // waiting to be geocoded.
+  if ((latitude == null) != (longitude == null)) invalid(EventSchema.LOCATION)
   return EventLocation(
       address =
           location[EventSchema.LocationFields.ADDRESS] as? String ?: invalid(EventSchema.LOCATION),
-      latitude =
-          (location[EventSchema.LocationFields.LATITUDE] as? Number)?.toDouble()
-              ?: invalid(EventSchema.LOCATION),
-      longitude =
-          (location[EventSchema.LocationFields.LONGITUDE] as? Number)?.toDouble()
-              ?: invalid(EventSchema.LOCATION),
+      latitude = latitude,
+      longitude = longitude,
   )
 }
+
+/**
+ * An absent or null coordinate means the event has not been geocoded yet; a present one of another
+ * type is rejected. Any [Number] is accepted, because a whole-degree coordinate written by hand
+ * comes back from Firestore as a Long rather than as a Double.
+ */
+private fun DocumentSnapshot.requireCoordinate(location: Map<*, *>, field: String): Double? =
+    when (val value = location[field]) {
+      null -> null
+      is Number -> value.toDouble()
+      else -> invalid(EventSchema.LOCATION)
+    }
 
 /**
  * An absent field means the event has no emergency contact. A present but malformed entry is
@@ -141,11 +176,33 @@ private fun DocumentSnapshot.requireEmergencyContacts(): List<EmergencyContact> 
   }
 }
 
+/**
+ * An absent field means nobody joined the event yet. A malformed entry is rejected rather than
+ * skipped: dropping a member would hide the event from the volunteer who joined it.
+ */
+private fun DocumentSnapshot.requireMemberIds(): List<String> {
+  val field = get(EventSchema.MEMBER_IDS) ?: return emptyList()
+  val entries = field as? List<*> ?: invalid(EventSchema.MEMBER_IDS)
+  return entries.map { it as? String ?: invalid(EventSchema.MEMBER_IDS) }
+}
+
 private fun DocumentSnapshot.requireString(field: String): String =
-    getString(field) ?: invalid(field)
+    get(field) as? String ?: invalid(field)
 
 private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    getTimestamp(field)?.toInstant() ?: invalid(field)
+    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
+
+/**
+ * An absent or null field means the event has no value for it, which is why both map to null. A
+ * present value of another type is rejected like a wrongly typed required field: mapping it to null
+ * would turn a schema problem into "this event has nothing here".
+ */
+private fun DocumentSnapshot.optionalString(field: String): String? =
+    when (val value = get(field)) {
+      null -> null
+      is String -> value
+      else -> invalid(field)
+    }
 
 private fun DocumentSnapshot.invalid(field: String): Nothing =
     throw IllegalStateException("Event document '$id' has a missing or invalid '$field' field")

@@ -63,7 +63,8 @@ class FirestoreEventRepositoryTest {
 
   @Test
   fun getEvent_returnsTheStoredEventWithEveryDomainField() = emulatorTest {
-    val created = create(richEvent(uniqueOrganizerId()))
+    val organizerId = uniqueOrganizerId()
+    val created = create(richEvent(organizerId))
 
     val found = repository.getEvent(created.id)
 
@@ -80,8 +81,9 @@ class FirestoreEventRepositoryTest {
     assertEquals(Instant.parse("2026-07-21T16:00:00Z"), found.startAt)
     assertEquals(Instant.parse("2026-07-26T02:30:00Z"), found.endAt)
     assertEquals("Route de Saint-Cergue 318, 1260 Nyon", found.location.address)
-    assertEquals(46.3869, found.location.latitude, COORDINATE_TOLERANCE)
-    assertEquals(6.2228, found.location.longitude, COORDINATE_TOLERANCE)
+    // checkNotNull rather than !!: a geocoded event must come back with both coordinates set.
+    assertEquals(46.3869, checkNotNull(found.location.latitude), COORDINATE_TOLERANCE)
+    assertEquals(6.2228, checkNotNull(found.location.longitude), COORDINATE_TOLERANCE)
     assertEquals(2, found.emergencyContacts.size)
     assertEquals(
         EmergencyContact("Site medic", "+41220000001", "Medical"),
@@ -91,15 +93,18 @@ class FirestoreEventRepositoryTest {
     assertNull("an unset role must stay null", found.emergencyContacts[1].role)
     assertEquals(EventStatus.ONGOING, found.status)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), found.createdAt)
+    // Order matters: the volunteer list is rendered in the order the members joined.
+    assertEquals(membersOf(organizerId), found.memberIds)
   }
 
   @Test
-  fun getEvent_roundTripsAnEventWithoutAnImageOrEmergencyContacts() = emulatorTest {
-    // The two optional fields of the model. A null image must come back as a null rather than as
-    // an empty string, and an empty contact list must not come back as a missing field.
+  fun getEvent_roundTripsAnEventWithoutAnImageContactsOrMembers() = emulatorTest {
+    // The optional collections and the optional image. A null image must come back as a null
+    // rather than as an empty string, and an empty list must not come back as a missing field.
     val created =
         create(
-            richEvent(uniqueOrganizerId()).copy(imageUrl = null, emergencyContacts = emptyList())
+            richEvent(uniqueOrganizerId())
+                .copy(imageUrl = null, emergencyContacts = emptyList(), memberIds = emptyList())
         )
 
     val found = repository.getEvent(created.id)
@@ -108,6 +113,25 @@ class FirestoreEventRepositoryTest {
     checkNotNull(found)
     assertNull("a null image must stay null", found.imageUrl)
     assertTrue("an empty contact list must stay empty", found.emergencyContacts.isEmpty())
+    assertTrue("an empty member list must stay empty", found.memberIds.isEmpty())
+  }
+
+  @Test
+  fun getEvent_roundTripsAnEventWithoutCoordinates() = emulatorTest {
+    // What the creation screen produces until geocoding exists: an address and no map pin.
+    val created =
+        create(
+            richEvent(uniqueOrganizerId())
+                .copy(location = EventLocation("Route de Saint-Cergue 318, 1260 Nyon"))
+        )
+
+    val found = repository.getEvent(created.id)
+
+    assertEquals(created, found)
+    checkNotNull(found)
+    assertEquals("Route de Saint-Cergue 318, 1260 Nyon", found.location.address)
+    assertNull("an ungeocoded latitude must stay null", found.location.latitude)
+    assertNull("an ungeocoded longitude must stay null", found.location.longitude)
   }
 
   @Test
@@ -144,24 +168,77 @@ class FirestoreEventRepositoryTest {
 
   @Test
   fun getEvent_failsLoudlyOnADocumentMissingARequiredField() = emulatorTest {
-    // Written straight to Firestore, bypassing the repository: no repository call can write this
-    // document, but a schema change or a hand edit in the console can.
-    val document = firestore.collection(EventSchema.COLLECTION).document()
-    createdEventIds += document.id
-    document.set(richEvent(uniqueOrganizerId()).toFirestoreMap() - EventSchema.TITLE).await()
-
-    val failure = runCatching { repository.getEvent(document.id) }.exceptionOrNull()
+    val eventId = writeRawEvent { it - EventSchema.TITLE }
 
     // A document that cannot be mapped is a schema problem, not "no event": returning null, or an
     // Event with a blank title, would hide it.
-    assertTrue(
-        "a malformed document must fail with IllegalStateException, but was: $failure",
-        failure is IllegalStateException,
-    )
-    assertTrue(
-        "the failure must name the offending field, but said: ${failure?.message}",
-        failure?.message?.contains(EventSchema.TITLE) == true,
-    )
+    assertFailsOnField(eventId, EventSchema.TITLE)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnARequiredFieldWithAWrongType() = emulatorTest {
+    // getString would raise a bare Firebase RuntimeException here, which toEvent does not promise
+    // and which callers would not recognise as a schema problem.
+    val eventId = writeRawEvent { it + (EventSchema.TITLE to 42) }
+
+    assertFailsOnField(eventId, EventSchema.TITLE)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnARequiredTimestampWithAWrongType() = emulatorTest {
+    // An instant stored as the string an older tool might have written, rather than as a Timestamp.
+    val eventId = writeRawEvent { it + (EventSchema.START_AT to "2026-07-21T16:00:00Z") }
+
+    assertFailsOnField(eventId, EventSchema.START_AT)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnAnImageUrlWithAWrongType() = emulatorTest {
+    // imageUrl is optional, so absent and null are both legitimate. A value of another type is
+    // not: mapping it to null would silently drop the event's cover picture.
+    val eventId = writeRawEvent { it + (EventSchema.IMAGE_URL to 7) }
+
+    assertFailsOnField(eventId, EventSchema.IMAGE_URL)
+  }
+
+  @Test
+  fun getEvent_mapsAnUnknownTypeToOther() = emulatorTest {
+    // A type added by a newer build must not stop this build from reading the event.
+    val eventId = writeRawEvent { it + (EventSchema.TYPE to "SPACE_OPERA") }
+
+    assertEquals(EventType.OTHER, repository.getEvent(eventId)?.type)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnAnUnknownStatus() = emulatorTest {
+    // Deliberately stricter than the type: EventStatus has no catch-all, and guessing one would
+    // either resurrect an archived event or archive a live one.
+    val eventId = writeRawEvent { it + (EventSchema.STATUS to "ZOMBIE") }
+
+    assertFailsOnField(eventId, EventSchema.STATUS)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnMalformedMemberIds() = emulatorTest {
+    val eventId = writeRawEvent { it + (EventSchema.MEMBER_IDS to listOf(1, 2)) }
+
+    assertFailsOnField(eventId, EventSchema.MEMBER_IDS)
+  }
+
+  @Test
+  fun getEvent_failsLoudlyOnHalfSetCoordinates() = emulatorTest {
+    // A pin at (46.5, nowhere) is not an event waiting to be geocoded, it is a broken document.
+    val eventId = writeRawEvent {
+      it +
+          (EventSchema.LOCATION to
+              mapOf(
+                  EventSchema.LocationFields.ADDRESS to "Route de Saint-Cergue 318, 1260 Nyon",
+                  EventSchema.LocationFields.LATITUDE to 46.5,
+                  EventSchema.LocationFields.LONGITUDE to null,
+              ))
+    }
+
+    assertFailsOnField(eventId, EventSchema.LOCATION)
   }
 
   @Test
@@ -197,16 +274,84 @@ class FirestoreEventRepositoryTest {
     assertTrue(found.all { it.organizerId == organizerId })
   }
 
+  @Test
+  fun getEventsByOrganizer_returnsAnEmptyListForAnOrganizerWithoutEvents() = emulatorTest {
+    // A fresh id no event was ever created under, so "no events" cannot be confused with "the
+    // other tests' events were cleaned up".
+    assertEquals(emptyList<Event>(), repository.getEventsByOrganizer(uniqueOrganizerId()))
+  }
+
+  @Test
+  fun getEventsByMember_returnsOnlyTheEventsTheUserJoined() = emulatorTest {
+    val userId = uniqueMemberId()
+    val mine =
+        listOf(
+            create(richEvent(uniqueOrganizerId()).copy(memberIds = listOf(userId))),
+            // Not the first member of the array, so the query cannot be passing by accident.
+            create(
+                richEvent(uniqueOrganizerId()).copy(memberIds = listOf(uniqueMemberId(), userId))
+            ),
+        )
+    val theirs = create(richEvent(uniqueOrganizerId()))
+
+    val found = repository.getEventsByMember(userId)
+
+    assertEquals(mine.map { it.id }.toSet(), found.map { it.id }.toSet())
+    assertTrue("an event the user never joined leaked in", found.none { it.id == theirs.id })
+    assertTrue(found.all { userId in it.memberIds })
+  }
+
+  @Test
+  fun getEventsByMember_returnsAnEmptyListForAUserWhoJoinedNothing() = emulatorTest {
+    assertEquals(emptyList<Event>(), repository.getEventsByMember(uniqueMemberId()))
+  }
+
   /** Creates [event] through the repository and remembers it for cleanup. */
   private suspend fun create(event: Event): Event = track(repository.createEvent(event))
 
   private fun track(event: Event): Event = event.also { createdEventIds += it.id }
 
+  /**
+   * Writes an event document straight to Firestore, bypassing the repository, and returns its id.
+   *
+   * No repository call can write a malformed document, but a schema change or a hand edit in the
+   * console can, so the mapping tests derive theirs from [richEvent]'s valid document body.
+   */
+  private suspend fun writeRawEvent(body: (Map<String, Any?>) -> Map<String, Any?>): String {
+    val document = firestore.collection(EventSchema.COLLECTION).document()
+    createdEventIds += document.id
+    document.set(body(richEvent(uniqueOrganizerId()).toFirestoreMap())).await()
+    return document.id
+  }
+
+  /** Asserts that reading [eventId] fails loudly and that the failure names [field]. */
+  private suspend fun assertFailsOnField(eventId: String, field: String) {
+    val failure = runCatching { repository.getEvent(eventId) }.exceptionOrNull()
+
+    assertTrue(
+        "a malformed document must fail with IllegalStateException, but was: $failure",
+        failure is IllegalStateException,
+    )
+    assertTrue(
+        "the failure must name the offending field, but said: ${failure?.message}",
+        failure?.message?.contains(field) == true,
+    )
+  }
+
   private fun uniqueOrganizerId(): String = "organizer-" + UUID.randomUUID()
+
+  private fun uniqueMemberId(): String = "member-" + UUID.randomUUID()
+
+  /**
+   * The two members of [richEvent], derived from [organizerId] so that they are unique to the test
+   * that created the event and cannot be matched by another test's member query.
+   */
+  private fun membersOf(organizerId: String): List<String> =
+      listOf("$organizerId-volunteer-1", "$organizerId-volunteer-2")
 
   /**
    * An event exercising every non-trivial mapping: a nested location, two emergency contacts (one
-   * without a role), a non-null image, a non-default status, and three instants.
+   * without a role), two members, a non-null image, a non-default status, and three instants.
    *
    * The instants are whole seconds on purpose: Firestore keeps microseconds, so a sub-microsecond
    * [Instant] would not survive the round trip.
@@ -226,6 +371,7 @@ class FirestoreEventRepositoryTest {
                   EmergencyContact("Site medic", "+41220000001", "Medical"),
                   EmergencyContact("Night lead", "+41220000002"),
               ),
+          memberIds = membersOf(organizerId),
           status = EventStatus.ONGOING,
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
