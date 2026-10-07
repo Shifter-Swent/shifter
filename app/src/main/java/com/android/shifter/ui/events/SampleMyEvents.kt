@@ -88,6 +88,10 @@ object SampleMyEvents {
           ),
       )
 
+  /** Temporary loaders showing the mock-ups, until loaders built on the repositories exist. */
+  val staffLoader = MyEventsLoader { staff }
+  val organizerLoader = MyEventsLoader { organizer }
+
   private fun organized(
       id: String,
       title: String,

@@ -10,6 +10,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,10 +26,31 @@ import com.swent.shifter.ui.events.EventBadge
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.MyEventsViewModel
 import com.swent.shifter.ui.events.SampleMyEvents
 import com.swent.shifter.ui.events.components.EventCardAction
 import com.swent.shifter.ui.events.components.MyEventsLayout
 import com.swent.shifter.ui.theme.ShifterTheme
+
+/** [OrgaEventsContent] driven by [viewModel], which owns the cards and the selected tab. */
+@Composable
+fun OrgaEventsScreen(
+    viewModel: MyEventsViewModel,
+    avatarInitial: String,
+    onManageEvent: (eventId: String) -> Unit = {},
+    onCreateEventClick: () -> Unit = {},
+    onAvatarClick: () -> Unit = {},
+) {
+  val state by viewModel.uiState.collectAsState()
+  OrgaEventsContent(
+      state = state,
+      avatarInitial = avatarInitial,
+      onTabSelected = viewModel::selectTab,
+      onManageEvent = onManageEvent,
+      onCreateEventClick = onCreateEventClick,
+      onAvatarClick = onAvatarClick,
+  )
+}
 
 /** The events the user organizes (Figma "My Events Organizer", OR-00). Stateless. */
 @Composable
