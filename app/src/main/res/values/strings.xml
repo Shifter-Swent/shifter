@@ -2,4 +2,31 @@
     <string name="app_name">Shifter</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
+    <!-- Event creation -->
+    <string name="create_event_title">Create an event</string>
+    <string name="create_event_back">Back</string>
+    <string name="create_event_field_title">Title</string>
+    <string name="create_event_field_description">Description</string>
+    <string name="create_event_field_type">Type</string>
+    <string name="create_event_field_address">Address</string>
+    <string name="create_event_field_start">Start</string>
+    <string name="create_event_field_end">End</string>
+    <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
+    <string name="create_event_submit">Create event</string>
+    <string name="create_event_error_title_empty">Enter a title</string>
+    <string name="create_event_error_description_empty">Enter a description</string>
+    <string name="create_event_error_type_missing">Choose a type</string>
+    <string name="create_event_error_address_empty">Enter an address</string>
+    <string name="create_event_error_date_invalid">Use the format DD/MM/YYYY HH:MM</string>
+    <string name="create_event_error_start_in_past">The event must start in the future</string>
+    <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
+    <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="event_type_music">Music</string>
+    <string name="event_type_market">Market</string>
+    <string name="event_type_nature">Nature</string>
+    <string name="event_type_food">Food</string>
+    <string name="event_type_sport">Sport</string>
+    <string name="event_type_party">Party</string>
+    <string name="event_type_other">Other</string>
 </resources>
