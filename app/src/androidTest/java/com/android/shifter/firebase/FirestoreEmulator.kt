@@ -1,4 +1,4 @@
-package com.android.shifter.firebase
+package com.swent.shifter.firebase
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore

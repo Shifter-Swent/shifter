@@ -1,4 +1,4 @@
-package com.android.shifter.firebase
+package com.swent.shifter.firebase
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.Task
