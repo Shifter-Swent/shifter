@@ -1,15 +1,13 @@
-// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.swent.shifter.firebase
+package com.android.shifter.firebase
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.Source
-import java.util.concurrent.TimeUnit
-import org.junit.Assert.assertFalse
+import org.junit.Assert
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.TimeUnit
 
 /**
  * Infrastructure smoke test: proves that an instrumented test can sign in and read through the
@@ -29,7 +27,7 @@ class FirestoreEmulatorTest {
       val snapshot =
           await(FirestoreEmulator.firestore.collection(USERS).document(uid).get(Source.SERVER))
 
-      assertFalse(snapshot.exists())
+        Assert.assertFalse(snapshot.exists())
     } finally {
       FirestoreEmulator.auth.signOut()
     }

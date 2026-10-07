@@ -1,6 +1,4 @@
-// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.swent.shifter.firebase
+package com.android.shifter.firebase
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
