@@ -3,6 +3,7 @@
 package com.swent.shifter.ui.event
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -78,13 +79,17 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
-    typeCodeAndFind(EVENT.joinCode)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.CHANGE_CODE_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertDoesNotExist()
-
     typeCodeAndFind(EVENT.joinCode.lowercase())
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals("Lakeside")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ERROR_MESSAGE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.VENUE).assertTextEquals("Lausanne")
+
+    // Back returns to the code step with the code kept, and the event can be found again.
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .assertTextContains(EVENT.joinCode.lowercase())
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()

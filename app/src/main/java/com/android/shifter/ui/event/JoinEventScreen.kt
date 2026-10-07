@@ -1,10 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,7 +51,6 @@ object JoinEventScreenTestTags {
   const val FIND_BUTTON = "JoinEventFindButton"
   const val EVENT_TITLE = "JoinEventTitle"
   const val APPLY_BUTTON = "JoinEventApplyButton"
-  const val CHANGE_CODE_BUTTON = "JoinEventChangeCodeButton"
   const val APPLIED_MESSAGE = "JoinEventAppliedMessage"
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
 }
@@ -64,31 +63,48 @@ fun JoinEventScreen(viewModel: JoinEventViewModel) {
       uiState = uiState,
       onJoinCodeChange = viewModel::onJoinCodeChange,
       onFindEvent = viewModel::findEvent,
+      onBack = viewModel::changeCode,
       onApply = viewModel::applyToEvent,
-      onChangeCode = viewModel::changeCode,
   )
 }
 
 /**
- * Joining in two steps: the volunteer types the event's join code, then sees the event it found and
- * applies to it.
+ * Joining in two steps: the volunteer types the event's join code, then sees the details of the
+ * event it found and applies to it. Back, on screen or on the device, returns to the code.
  */
 @Composable
 fun JoinEventContent(
     uiState: JoinEventUiState,
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
+    onBack: () -> Unit,
     onApply: () -> Unit,
-    onChangeCode: () -> Unit,
 ) {
-  val colors = MaterialTheme.colorScheme
   val event = uiState.event
-  Column(
+  Box(
       modifier =
           Modifier.fillMaxSize()
-              .background(colors.background)
+              .background(MaterialTheme.colorScheme.background)
               .safeDrawingPadding()
-              .padding(horizontal = 24.dp),
+  ) {
+    if (event == null) {
+      JoinCodeStep(uiState, onJoinCodeChange, onFindEvent)
+    } else {
+      BackHandler(onBack = onBack)
+      EventDetailsContent(event, uiState, onBack, onApply)
+    }
+  }
+}
+
+@Composable
+private fun JoinCodeStep(
+    uiState: JoinEventUiState,
+    onJoinCodeChange: (String) -> Unit,
+    onFindEvent: () -> Unit,
+) {
+  val colors = MaterialTheme.colorScheme
+  Column(
+      modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
   ) {
@@ -98,50 +114,23 @@ fun JoinEventContent(
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
     )
-    if (event == null) {
-      Text(
-          text = stringResource(R.string.join_event_intro),
-          color = shifter_mutedText,
-          fontSize = 14.sp,
-      )
-      JoinCodeField(uiState.joinCode, onJoinCodeChange)
+    Text(
+        text = stringResource(R.string.join_event_intro),
+        color = shifter_mutedText,
+        fontSize = 14.sp,
+    )
+    JoinCodeField(uiState.joinCode, onJoinCodeChange)
+    if (uiState.isLoading) {
+      CircularProgressIndicator(color = colors.primary)
     } else {
-      EventSummary(event)
-    }
-    val requestStatus = uiState.requestStatus
-    when {
-      uiState.isLoading -> CircularProgressIndicator(color = colors.primary)
-      requestStatus != null -> StatusBadge(requestStatus)
-      event == null ->
-          PrimaryButton(
-              stringResource(R.string.join_event_find),
-              onFindEvent,
-              JoinEventScreenTestTags.FIND_BUTTON,
-              uiState.joinCode.isNotBlank(),
-          )
-      else ->
-          PrimaryButton(
-              stringResource(R.string.join_event_apply),
-              onApply,
-              JoinEventScreenTestTags.APPLY_BUTTON,
-          )
-    }
-    if (event != null && !uiState.isLoading) {
-      TextButton(
-          onClick = onChangeCode,
-          modifier = Modifier.testTag(JoinEventScreenTestTags.CHANGE_CODE_BUTTON),
-      ) {
-        Text(stringResource(R.string.join_event_change_code), color = colors.primary)
-      }
-    }
-    uiState.error?.let {
-      Text(
-          text = stringResource(it.messageRes()),
-          color = colors.error,
-          fontSize = 14.sp,
-          modifier = Modifier.testTag(JoinEventScreenTestTags.ERROR_MESSAGE),
+      PrimaryButton(
+          stringResource(R.string.join_event_find),
+          onFindEvent,
+          JoinEventScreenTestTags.FIND_BUTTON,
+          uiState.joinCode.isNotBlank(),
       )
     }
+    uiState.error?.let { ErrorText(it) }
   }
 }
 
@@ -165,34 +154,19 @@ private fun JoinCodeField(joinCode: String, onJoinCodeChange: (String) -> Unit) 
   )
 }
 
-/** The event found by its code, drawn like the cards of My Events. */
 @Composable
-private fun EventSummary(event: Event) {
-  val colors = MaterialTheme.colorScheme
-  val shape = RoundedCornerShape(16.dp)
-  Column(
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-      modifier =
-          Modifier.fillMaxWidth()
-              .clip(shape)
-              .background(colors.surfaceVariant)
-              .border(1.dp, colors.outlineVariant, shape)
-              .padding(16.dp),
-  ) {
-    Text(
-        text = event.title,
-        color = colors.onSurface,
-        fontSize = 18.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.testTag(JoinEventScreenTestTags.EVENT_TITLE),
-    )
-    Text(text = event.location.address, color = colors.onSurfaceVariant, fontSize = 13.sp)
-  }
+internal fun ErrorText(error: JoinEventError) {
+  Text(
+      text = stringResource(error.messageRes()),
+      color = MaterialTheme.colorScheme.error,
+      fontSize = 14.sp,
+      modifier = Modifier.testTag(JoinEventScreenTestTags.ERROR_MESSAGE),
+  )
 }
 
 /** Where the request stands, in the colors of the matching status of My Events. */
 @Composable
-private fun StatusBadge(status: MembershipRequestStatus) {
+internal fun StatusBadge(status: MembershipRequestStatus) {
   val (text, color, container) =
       when (status) {
         MembershipRequestStatus.PENDING ->
@@ -231,7 +205,7 @@ private fun JoinEventError.messageRes(): Int =
 
 /** Full-width button styled like the sign-in button. */
 @Composable
-private fun PrimaryButton(
+internal fun PrimaryButton(
     text: String,
     onClick: () -> Unit,
     testTag: String,
@@ -259,7 +233,7 @@ private fun JoinEventCodePreview() {
   ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}, {}) }
 }
 
-@Preview(name = "Step 2: event and Apply")
+@Preview(name = "Step 2: event details and Apply")
 @Composable
 private fun JoinEventApplyPreview() {
   ShifterTheme { JoinEventContent(JoinEventUiState(event = PREVIEW_EVENT), {}, {}, {}, {}) }
@@ -282,11 +256,13 @@ private fun JoinEventAppliedPreview() {
 private val PREVIEW_EVENT =
     Event(
         organizerId = "organizer",
-        title = "Lakeside Festival",
-        description = "",
-        type = EventType.MUSIC,
-        startAt = Instant.EPOCH,
-        endAt = Instant.EPOCH,
-        location = EventLocation("Quai d'Ouchy, Lausanne"),
+        title = "Solidarity collection",
+        description =
+            "Support a community collection. Help welcome donors, receive donations and sort " +
+                "collected items with the volunteer team.",
+        type = EventType.OTHER,
+        startAt = Instant.parse("2026-06-22T07:30:00Z"),
+        endAt = Instant.parse("2026-06-22T15:00:00Z"),
+        location = EventLocation("Associations House"),
         createdAt = Instant.EPOCH,
     )

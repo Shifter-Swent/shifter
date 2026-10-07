@@ -68,7 +68,6 @@
     <string name="join_event_code_label">Join code</string>
     <string name="join_event_find">Find event</string>
     <string name="join_event_apply">Apply</string>
-    <string name="join_event_change_code">Change code</string>
     <string name="join_event_status_pending">● Request sent, pending approval</string>
     <string name="join_event_status_accepted">● You are part of this event</string>
     <string name="join_event_status_rejected">● Your request was declined</string>
@@ -77,6 +76,13 @@
     <string name="join_event_error_offline">You are offline, try again later</string>
     <string name="join_event_error_permission_denied">You cannot apply to this event</string>
     <string name="join_event_error_unexpected">Something went wrong, try again</string>
+    <string name="event_details_title">Event details</string>
+    <string name="event_details_opened_from_code">Opened from your join code</string>
+    <string name="event_details_date_time">Date &amp; time</string>
+    <string name="event_details_venue">Venue</string>
+    <string name="event_details_about">About this event</string>
+    <string name="event_details_approval_notice">Participation requires the organizer\'s approval. Your join code is not a confirmed place.</string>
+    <string name="event_details_apply_hint">Send a participation request for organizer review.</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>

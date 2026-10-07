@@ -81,7 +81,10 @@ class JoinEventViewModel(
     }
   }
 
-  /** Leaves the event found, so the volunteer can fix a mistyped code. */
+  /**
+   * Leaves the event details and goes back to typing a code, keeping the code typed so far. Ignored
+   * while a request is being sent, so its result cannot land on the code step.
+   */
   fun changeCode() {
     if (_uiState.value.isLoading) return
     _uiState.update { it.copy(event = null, requestStatus = null, error = null) }

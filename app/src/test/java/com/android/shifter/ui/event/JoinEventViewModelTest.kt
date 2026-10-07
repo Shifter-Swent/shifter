@@ -145,6 +145,14 @@ class JoinEventViewModelTest {
   }
 
   @Test
+  fun formatEventDate_showsDayDateAndTime() {
+    assertEquals(
+        "Mon 22 Jun · 09:30",
+        formatEventDate(Instant.parse("2026-06-22T09:30:00Z"), java.time.ZoneOffset.UTC),
+    )
+  }
+
+  @Test
   fun apply_requiresASignedInUser() {
     loadEvent()
     userId = null
