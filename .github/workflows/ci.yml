@@ -98,7 +98,7 @@ jobs:
 
       # Run connected tests on the emulator.
       #
-      # `firebase emulators:exec` starts the Firestore and Auth emulators on the runner (the host), runs the
+      # `firebase emulators:exec` starts the Auth and Firestore emulators on the runner (the host), runs the
       # given command, and shuts the emulator down afterwards - also when the tests fail. The
       # Android emulator reaches the host loopback interface through 10.0.2.2 (see FirestoreEmulator).
       - name: run tests
@@ -110,7 +110,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: firebase emulators:exec --only firestore,auth "./gradlew connectedCheck --parallel --build-cache"
+          script: firebase emulators:exec --only auth,firestore "./gradlew connectedCheck --parallel --build-cache"
 
       # This step generates the coverage report which will be uploaded to sonar
       - name: Generate Coverage Report
