@@ -1,0 +1,73 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.swent.shifter.model.membership
+
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.swent.shifter.model.event.EventSchema
+import kotlinx.coroutines.tasks.await
+
+/**
+ * [MembershipRequestRepository] backed by `events/{eventId}/membershipRequests/{userId}`.
+ *
+ * The document id is the volunteer's user id, so a volunteer cannot send two requests to the same
+ * event and the security rules can check they only write their own.
+ */
+class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
+    MembershipRequestRepository {
+
+  override suspend fun getRequest(eventId: String, userId: String): MembershipRequest? =
+      translatingErrors {
+        requests(eventId)
+            .document(userId)
+            .get()
+            .await()
+            .takeIf { it.exists() }
+            ?.toMembershipRequest()
+      }
+
+  override suspend fun requestToJoin(
+      eventId: String,
+      request: MembershipRequest,
+  ): MembershipRequest = translatingErrors {
+    val ref = requests(eventId).document(request.userId)
+    val pending = request.copy(id = request.userId, status = MembershipRequestStatus.PENDING)
+    // A transaction makes check-then-create atomic, so a double tap cannot overwrite a decision.
+    db.runTransaction { transaction ->
+          val existing = transaction.get(ref)
+          if (existing.exists()) existing.toMembershipRequest()
+          else pending.also { transaction.set(ref, it.toFirestoreMap()) }
+        }
+        .await()
+  }
+
+  private fun requests(eventId: String): CollectionReference =
+      db.collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(MembershipRequestSchema.COLLECTION)
+
+  companion object {
+    /**
+     * Translates a Firestore error into the [MembershipRequestRepositoryException] callers handle.
+     */
+    fun toRepositoryException(e: FirebaseFirestoreException): MembershipRequestRepositoryException =
+        when (e.code) {
+          Code.PERMISSION_DENIED,
+          Code.UNAUTHENTICATED -> MembershipRequestRepositoryException.PermissionDenied(e)
+          Code.UNAVAILABLE,
+          Code.DEADLINE_EXCEEDED -> MembershipRequestRepositoryException.Unavailable(e)
+          else -> MembershipRequestRepositoryException.Unknown(e)
+        }
+
+    private inline fun <T> translatingErrors(block: () -> T): T =
+        try {
+          block()
+        } catch (e: FirebaseFirestoreException) {
+          throw toRepositoryException(e)
+        } catch (e: IllegalStateException) {
+          // The mapper throws it for a stored document that does not match the schema.
+          throw MembershipRequestRepositoryException.Unknown(e)
+        }
+  }
+}
