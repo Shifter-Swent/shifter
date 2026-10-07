@@ -15,6 +15,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -28,6 +29,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ShiftFirestoreMapperTest {
 
+  private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
 
   /** The parent event of every document this test writes. Never created: only its path is used. */
@@ -43,10 +45,14 @@ class ShiftFirestoreMapperTest {
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdShiftIds = mutableListOf<String>()
 
+  /** `firestore.rules` only lets signed-in users touch the shifts of an event. */
+  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+
   @After
   fun tearDown() = emulatorTest {
     createdShiftIds.forEach { shifts.document(it).delete().await() }
     createdShiftIds.clear()
+    auth.signOut()
   }
 
   @Test
