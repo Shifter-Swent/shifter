@@ -36,3 +36,8 @@ Writing them down also helps the human team agree on how we build.
 - Stage only the files you changed; never `git add .` or `git add -A` (it can pull in local config like `local.properties`).
 - Commit with an imperative subject of at most 50 characters, capitalized (e.g. `Add user authentication`). Add a body wrapped at 72 characters when the subject is not enough.
 - **Acknowledge your contributors** at the top of the file: credit the AI that wrote it with a `Co-authored-by` line. 
+
+## Packages names
+
+- Only add files in android.shifter, do no create a new package swent.shifter, do not modify existing files about packages names.
+- At the top of the file for the package name, use swent.shifter, not android.shifter
