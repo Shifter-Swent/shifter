@@ -313,6 +313,34 @@ class MembershipRequestFirestoreMapperTest {
   }
 
   @Test
+  fun toMembershipRequest_failsWithNoSuchElementWhenTheDocumentDoesNotExist() = emulatorTest {
+    // Nothing is written: reading a document that was never created still yields a real snapshot,
+    // one whose exists() is false and whose every field is absent.
+    val missingId = SCRATCH_ID_PREFIX + UUID.randomUUID()
+    val snapshot = read(missingId)
+    assertFalse("the document must not exist for this test to mean anything", snapshot.exists())
+
+    val failure = runCatching { snapshot.toMembershipRequest() }.exceptionOrNull()
+
+    assertTrue(
+        "an absent document must fail with NoSuchElementException, but was: $failure",
+        failure is NoSuchElementException,
+    )
+    assertFalse(
+        "an absent document must not be reported as a malformed one",
+        failure is IllegalStateException,
+    )
+    assertTrue(
+        "the failure must say the document does not exist, but said: ${failure?.message}",
+        failure?.message?.contains("does not exist") == true,
+    )
+    assertTrue(
+        "the failure must name the document, but said: ${failure?.message}",
+        failure?.message?.contains(missingId) == true,
+    )
+  }
+
+  @Test
   fun toMembershipRequest_takesTheIdFromTheDocumentAndNeverFromAField() = emulatorTest {
     val requestId = writeRawRequest(richRequest().toFirestoreMap())
 
