@@ -1,4 +1,4 @@
-package com.android.shifter.ui.navigation
+package com.swent.shifter.ui.navigation
 
 object NavigationTestTags {
   const val TOP_BAR_TITLE = "TopBarTitle"
