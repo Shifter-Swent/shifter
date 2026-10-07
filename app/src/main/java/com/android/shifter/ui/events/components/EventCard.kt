@@ -2,7 +2,7 @@
 package com.swent.shifter.ui.events.components
 
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,15 +13,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.events.EventBadge
+import com.swent.shifter.ui.events.EventCardFooter
 import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -39,8 +41,14 @@ import com.swent.shifter.ui.theme.shifter_successContainer
 import com.swent.shifter.ui.theme.shifter_warning
 import com.swent.shifter.ui.theme.shifter_warningContainer
 
-/** The action link at the bottom right of an event card, e.g. "Withdraw" or "Manage event". */
-data class EventCardAction(val label: String, val color: Color, val onClick: () -> Unit)
+/** The kinds of action link an event card can show at the bottom right. */
+enum class EventCardActionType {
+  WITHDRAW,
+  MANAGE_EVENT,
+}
+
+/** The action link of an event card. Its label and color follow from [type]. */
+data class EventCardAction(val type: EventCardActionType, val onClick: () -> Unit)
 
 /** One event of a My Events list. The [action] link is hidden when it is null. */
 @Composable
@@ -89,11 +97,19 @@ fun EventCard(card: EventCardUi, action: EventCardAction?, modifier: Modifier = 
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth(),
     ) {
-      Text(text = card.footerLabel, color = shifter_mutedText, fontSize = 12.sp)
+      Text(
+          text = stringResource(card.footer.labelRes),
+          color = shifter_mutedText,
+          fontSize = 12.sp,
+      )
       if (action != null) {
         Text(
-            text = action.label,
-            color = action.color,
+            text = stringResource(action.type.labelRes),
+            color =
+                when (action.type) {
+                  EventCardActionType.WITHDRAW -> colors.error
+                  EventCardActionType.MANAGE_EVENT -> colors.primary
+                },
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             modifier =
@@ -118,7 +134,7 @@ fun StatusPill(badge: EventBadge, modifier: Modifier = Modifier) {
         EventBadge.ENDED -> colors.onSurfaceVariant to shifter_divider
       }
   Text(
-      text = "● ${badge.label}",
+      text = stringResource(R.string.my_events_status_pill, stringResource(badge.labelRes)),
       color = content,
       fontSize = 11.sp,
       fontWeight = FontWeight.SemiBold,
@@ -130,23 +146,58 @@ fun StatusPill(badge: EventBadge, modifier: Modifier = Modifier) {
   )
 }
 
+/** An icon and its text. The icon is tinted like the text, so both follow the theme. */
 @Composable
 private fun EventMeta(@DrawableRes icon: Int, text: String, modifier: Modifier = Modifier) {
+  val color = MaterialTheme.colorScheme.onSurfaceVariant
   Row(
       horizontalArrangement = Arrangement.spacedBy(4.dp),
       verticalAlignment = Alignment.CenterVertically,
       modifier = modifier,
   ) {
-    Image(painter = painterResource(icon), contentDescription = null, Modifier.size(14.dp))
+    Icon(
+        painter = painterResource(icon),
+        contentDescription = null,
+        tint = color,
+        modifier = Modifier.size(14.dp),
+    )
     Text(
         text = text,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = color,
         fontSize = 12.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
   }
 }
+
+@get:StringRes
+private val EventBadge.labelRes: Int
+  get() =
+      when (this) {
+        EventBadge.CONFIRMED -> R.string.my_events_badge_confirmed
+        EventBadge.PENDING_APPROVAL -> R.string.my_events_badge_pending_approval
+        EventBadge.IN_PREPARATION -> R.string.my_events_badge_in_preparation
+        EventBadge.ONGOING -> R.string.my_events_badge_ongoing
+        EventBadge.ENDED -> R.string.my_events_badge_ended
+      }
+
+@get:StringRes
+private val EventCardFooter.labelRes: Int
+  get() =
+      when (this) {
+        EventCardFooter.VOLUNTEER -> R.string.my_events_footer_volunteer
+        EventCardFooter.ORGANIZER -> R.string.my_events_footer_organizer
+        EventCardFooter.AWAITING_APPROVAL -> R.string.my_events_footer_awaiting_approval
+      }
+
+@get:StringRes
+private val EventCardActionType.labelRes: Int
+  get() =
+      when (this) {
+        EventCardActionType.WITHDRAW -> R.string.my_events_action_withdraw
+        EventCardActionType.MANAGE_EVENT -> R.string.my_events_action_manage_event
+      }
 
 @Preview
 @Composable
@@ -161,9 +212,9 @@ private fun EventCardPreview() {
                 locationLabel = "Lyon, Place Bellecour",
                 timeLabel = "08:00 – 14:00",
                 badge = EventBadge.CONFIRMED,
-                footerLabel = "Role: Volunteer",
+                footer = EventCardFooter.VOLUNTEER,
             ),
-        action = EventCardAction("Withdraw", MaterialTheme.colorScheme.error) {},
+        action = EventCardAction(EventCardActionType.WITHDRAW) {},
     )
   }
 }
