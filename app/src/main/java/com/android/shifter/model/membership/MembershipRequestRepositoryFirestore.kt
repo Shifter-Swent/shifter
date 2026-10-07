@@ -2,6 +2,7 @@
 package com.swent.shifter.model.membership
 
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
@@ -19,12 +20,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun getRequest(eventId: String, userId: String): MembershipRequest? =
       translatingErrors {
-        requests(eventId)
-            .document(userId)
-            .get()
-            .await()
-            .takeIf { it.exists() }
-            ?.toMembershipRequest()
+        requests(eventId).document(userId).get().await().takeIf { it.exists() }?.toRequestOrThrow()
       }
 
   override suspend fun requestToJoin(
@@ -34,12 +30,14 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     val ref = requests(eventId).document(request.userId)
     val pending = request.copy(id = request.userId, status = MembershipRequestStatus.PENDING)
     // A transaction makes check-then-create atomic, so a double tap cannot overwrite a decision.
-    db.runTransaction { transaction ->
-          val existing = transaction.get(ref)
-          if (existing.exists()) existing.toMembershipRequest()
-          else pending.also { transaction.set(ref, it.toFirestoreMap()) }
-        }
-        .await()
+    // It returns the existing document, or null once it has written the pending request.
+    val existing =
+        db.runTransaction { transaction ->
+              transaction.get(ref).takeIf { it.exists() }
+                  ?: null.also { transaction.set(ref, pending.toFirestoreMap()) }
+            }
+            .await()
+    existing?.toRequestOrThrow() ?: pending
   }
 
   private fun requests(eventId: String): CollectionReference =
@@ -65,8 +63,18 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           block()
         } catch (e: FirebaseFirestoreException) {
           throw toRepositoryException(e)
+        }
+
+    /**
+     * Maps a stored document, reporting one that does not match the schema as
+     * [MembershipRequestRepositoryException.Unknown]. The mapper signals it with an
+     * [IllegalStateException], which is only caught around this pure call: catching it around an
+     * `await()` would also swallow coroutine cancellation, a subclass of it.
+     */
+    private fun DocumentSnapshot.toRequestOrThrow(): MembershipRequest =
+        try {
+          toMembershipRequest()
         } catch (e: IllegalStateException) {
-          // The mapper throws it for a stored document that does not match the schema.
           throw MembershipRequestRepositoryException.Unknown(e)
         }
   }

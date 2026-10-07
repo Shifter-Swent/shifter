@@ -12,6 +12,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -36,10 +37,19 @@ class MembershipRequestRepositoryFirestoreTest {
     every { transaction.get(ref) } returns snapshot
     every { snapshot.id } returns UID
     // Runs the transaction body synchronously against the mocked transaction.
-    every { db.runTransaction(any<Transaction.Function<MembershipRequest>>()) } answers
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<MembershipRequest>>().apply(transaction))
+          Tasks.forResult(firstArg<Transaction.Function<DocumentSnapshot?>>().apply(transaction))
         }
+  }
+
+  @Test
+  fun cancellationIsNotReportedAsARepositoryError() = runTest {
+    every { ref.get() } returns Tasks.forCanceled()
+
+    val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
+
+    assertTrue(thrown is CancellationException)
   }
 
   @Test
