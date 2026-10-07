@@ -71,9 +71,14 @@ class TeamFirestoreMapperTest {
 
   @Test
   fun toTeam_mapsAnAbsentManagerIdToNull() = emulatorTest {
-    val teamId = writeRawTeam(richTeam().copy(managerId = null).toFirestoreMap())
+    // The key is removed rather than written as null, which is what a document saved before the
+    // field existed looks like.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.MANAGER_ID)
 
-    assertNull("a team without a manager must stay without one", read(teamId).toTeam().managerId)
+    val snapshot = read(teamId)
+
+    assertFalse("the field must really be absent", snapshot.contains(TeamSchema.MANAGER_ID))
+    assertNull("a team without a manager must stay without one", snapshot.toTeam().managerId)
   }
 
   @Test
@@ -86,9 +91,31 @@ class TeamFirestoreMapperTest {
 
   @Test
   fun toTeam_mapsAnAbsentCheckInZoneToNull() = emulatorTest {
-    val teamId = writeRawTeam(richTeam().copy(checkInZone = null).toFirestoreMap())
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.CHECK_IN_ZONE)
 
-    assertNull("a team without a zone must stay without one", read(teamId).toTeam().checkInZone)
+    val snapshot = read(teamId)
+
+    assertFalse("the field must really be absent", snapshot.contains(TeamSchema.CHECK_IN_ZONE))
+    assertNull("a team without a zone must stay without one", snapshot.toTeam().checkInZone)
+  }
+
+  @Test
+  fun toTeam_roundTripsATeamWithoutAManagerOrAZone() = emulatorTest {
+    // The other half of the optional contract: toFirestoreMap stores both as explicit nulls, which
+    // must read back as null just like an absent field.
+    val stored = richTeam().copy(managerId = null, checkInZone = null)
+    val teamId = writeRawTeam(stored.toFirestoreMap())
+
+    val snapshot = read(teamId)
+    val mapped = snapshot.toTeam()
+
+    assertTrue(
+        "both fields must be stored as explicit nulls rather than omitted",
+        snapshot.contains(TeamSchema.MANAGER_ID) && snapshot.contains(TeamSchema.CHECK_IN_ZONE),
+    )
+    assertNull("an explicit null manager must stay null", mapped.managerId)
+    assertNull("an explicit null zone must stay null", mapped.checkInZone)
+    assertEquals(stored.copy(id = teamId), mapped)
   }
 
   @Test
@@ -162,6 +189,18 @@ class TeamFirestoreMapperTest {
     val teamId = writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.VOLUNTEERS_NEEDED to 3.5))
 
     assertFailsOnField(teamId, TeamSchema.VOLUNTEERS_NEEDED)
+  }
+
+  @Test
+  fun toTeam_failsLoudlyOnANonFiniteVolunteersNeeded() = emulatorTest {
+    // Firestore stores doubles, so these are all storable, and none of them narrows to a count:
+    // NaN compares unequal to itself and the infinities saturate rather than convert.
+    listOf(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY).forEach { value ->
+      val teamId =
+          writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.VOLUNTEERS_NEEDED to value))
+
+      assertFailsOnField(teamId, TeamSchema.VOLUNTEERS_NEEDED)
+    }
   }
 
   @Test
