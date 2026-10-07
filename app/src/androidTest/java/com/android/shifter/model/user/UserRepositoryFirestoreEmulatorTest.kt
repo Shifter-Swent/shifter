@@ -2,8 +2,8 @@
 package com.swent.shifter.model.user
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.android.shifter.firebase.FirestoreEmulator
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import kotlinx.coroutines.tasks.await
