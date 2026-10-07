@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FirestoreEventRepository
 import java.time.Instant
@@ -43,29 +44,35 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   @After fun signOut() = auth.signOut()
 
   @Test
-  fun requestToJoin_storesPendingRequestForEventFoundByJoinCode() = runTest {
+  fun apply_storesPendingRequestForEventFoundByJoinCode() = runTest {
     val found = events.getEventByJoinCode(event.joinCode)!!
 
-    val sent = repository.requestToJoin(found.id, request(volunteerId))
+    val sent = repository.apply(found.id, request(volunteerId))
 
     assertEquals(MembershipRequestStatus.PENDING, sent.status)
-    assertEquals(sent, repository.getRequest(found.id, volunteerId))
+    val stored =
+        db.collection(EventSchema.COLLECTION)
+            .document(found.id)
+            .collection(MembershipRequestSchema.COLLECTION)
+            .document(volunteerId)
+            .get()
+            .await()
+    assertEquals(sent, stored.toMembershipRequest())
   }
 
   @Test
-  fun requestToJoin_returnsExistingRequestWithoutOverwritingIt() = runTest {
-    val first = repository.requestToJoin(event.id, request(volunteerId))
+  fun apply_returnsExistingRequestWithoutOverwritingIt() = runTest {
+    val first = repository.apply(event.id, request(volunteerId))
 
-    val second =
-        repository.requestToJoin(event.id, request(volunteerId).copy(preferredTeamIds = listOf()))
+    val second = repository.apply(event.id, request(volunteerId).copy(preferredTeamIds = listOf()))
 
     assertEquals(first, second)
   }
 
   @Test
   fun rules_forbidRequestingForAnotherUserOrAMissingEvent() = runTest {
-    val forOther = runCatching { repository.requestToJoin(event.id, request("someone-else")) }
-    val toMissing = runCatching { repository.requestToJoin("no-event", request(volunteerId)) }
+    val forOther = runCatching { repository.apply(event.id, request("someone-else")) }
+    val toMissing = runCatching { repository.apply("no-event", request(volunteerId)) }
 
     assertTrue(forOther.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)
     assertTrue(toMissing.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)

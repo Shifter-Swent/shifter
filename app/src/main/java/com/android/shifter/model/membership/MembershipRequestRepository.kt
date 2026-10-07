@@ -11,15 +11,12 @@ package com.swent.shifter.model.membership
  */
 interface MembershipRequestRepository {
 
-  /** Returns the request [userId] sent to [eventId], or `null` if they have not sent one. */
-  suspend fun getRequest(eventId: String, userId: String): MembershipRequest?
-
   /**
-   * Sends [request] to [eventId] as a [MembershipRequestStatus.PENDING] request, and returns it
-   * with its id set to [MembershipRequest.userId].
+   * Applies to [eventId]: sends [request] as a [MembershipRequestStatus.PENDING] request, and
+   * returns it with its id set to [MembershipRequest.userId].
    *
-   * If the volunteer already sent a request to this event, that one is returned unchanged: a second
+   * If the volunteer already applied to this event, that request is returned unchanged: a second
    * tap never resets an accepted or rejected request to pending.
    */
-  suspend fun requestToJoin(eventId: String, request: MembershipRequest): MembershipRequest
+  suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest
 }

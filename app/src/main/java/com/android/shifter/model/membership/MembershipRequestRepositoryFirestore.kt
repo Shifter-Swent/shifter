@@ -18,27 +18,20 @@ import kotlinx.coroutines.tasks.await
 class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     MembershipRequestRepository {
 
-  override suspend fun getRequest(eventId: String, userId: String): MembershipRequest? =
+  override suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest =
       translatingErrors {
-        requests(eventId).document(userId).get().await().takeIf { it.exists() }?.toRequestOrThrow()
+        val ref = requests(eventId).document(request.userId)
+        val pending = request.copy(id = request.userId, status = MembershipRequestStatus.PENDING)
+        // A transaction makes check-then-create atomic, so a double tap cannot overwrite a
+        // decision. It returns the existing document, or null once it wrote the pending request.
+        val existing =
+            db.runTransaction { transaction ->
+                  transaction.get(ref).takeIf { it.exists() }
+                      ?: null.also { transaction.set(ref, pending.toFirestoreMap()) }
+                }
+                .await()
+        existing?.toRequestOrThrow() ?: pending
       }
-
-  override suspend fun requestToJoin(
-      eventId: String,
-      request: MembershipRequest,
-  ): MembershipRequest = translatingErrors {
-    val ref = requests(eventId).document(request.userId)
-    val pending = request.copy(id = request.userId, status = MembershipRequestStatus.PENDING)
-    // A transaction makes check-then-create atomic, so a double tap cannot overwrite a decision.
-    // It returns the existing document, or null once it has written the pending request.
-    val existing =
-        db.runTransaction { transaction ->
-              transaction.get(ref).takeIf { it.exists() }
-                  ?: null.also { transaction.set(ref, pending.toFirestoreMap()) }
-            }
-            .await()
-    existing?.toRequestOrThrow() ?: pending
-  }
 
   private fun requests(eventId: String): CollectionReference =
       db.collection(EventSchema.COLLECTION)

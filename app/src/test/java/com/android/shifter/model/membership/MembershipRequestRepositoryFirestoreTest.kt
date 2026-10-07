@@ -33,7 +33,6 @@ class MembershipRequestRepositoryFirestoreTest {
     every {
       db.collection("events").document(EVENT_ID).collection("membershipRequests").document(UID)
     } returns ref
-    every { ref.get() } returns Tasks.forResult(snapshot)
     every { transaction.get(ref) } returns snapshot
     every { snapshot.id } returns UID
     // Runs the transaction body synchronously against the mocked transaction.
@@ -45,44 +44,43 @@ class MembershipRequestRepositoryFirestoreTest {
 
   @Test
   fun cancellationIsNotReportedAsARepositoryError() = runTest {
-    every { ref.get() } returns Tasks.forCanceled()
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forCanceled()
 
-    val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
+    val thrown = runCatching { repository.apply(EVENT_ID, REQUEST) }.exceptionOrNull()
 
     assertTrue(thrown is CancellationException)
   }
 
   @Test
-  fun requestToJoin_storesPendingRequestUnderUserIdWhenAbsent() = runTest {
+  fun apply_storesPendingRequestUnderUserIdWhenAbsent() = runTest {
     every { snapshot.exists() } returns false
 
-    val sent =
-        repository.requestToJoin(EVENT_ID, REQUEST.copy(status = MembershipRequestStatus.ACCEPTED))
+    val sent = repository.apply(EVENT_ID, REQUEST.copy(status = MembershipRequestStatus.ACCEPTED))
 
     assertEquals(REQUEST.copy(id = UID), sent)
     verify { transaction.set(ref, REQUEST.copy(id = UID).toFirestoreMap()) }
   }
 
   @Test
-  fun requestToJoin_returnsExistingRequestWithoutOverwritingIt() = runTest {
+  fun apply_returnsExistingRequestWithoutOverwritingIt() = runTest {
     val accepted = REQUEST.copy(id = UID, status = MembershipRequestStatus.ACCEPTED)
     val data = accepted.toFirestoreMap()
     every { snapshot.exists() } returns true
     every { snapshot.contains(any<String>()) } answers { firstArg<String>() in data }
     every { snapshot.get(any<String>()) } answers { data[firstArg()] }
 
-    assertEquals(accepted, repository.requestToJoin(EVENT_ID, REQUEST))
+    assertEquals(accepted, repository.apply(EVENT_ID, REQUEST))
     verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test
-  fun getRequest_reportsMissingAndMalformedDocuments() = runTest {
-    every { snapshot.exists() } returns false
-    assertEquals(null, repository.getRequest(EVENT_ID, UID))
-
+  fun apply_reportsMalformedExistingDocumentAsUnknown() = runTest {
     every { snapshot.exists() } returns true
     every { snapshot.get(any<String>()) } returns null
-    val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
+
+    val thrown = runCatching { repository.apply(EVENT_ID, REQUEST) }.exceptionOrNull()
+
     assertTrue(thrown is MembershipRequestRepositoryException.Unknown)
   }
 
@@ -99,8 +97,9 @@ class MembershipRequestRepositoryFirestoreTest {
     assertTrue(map(Code.INTERNAL) is MembershipRequestRepositoryException.Unknown)
 
     val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
-    every { ref.get() } returns Tasks.forException(error)
-    val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
+    val thrown = runCatching { repository.apply(EVENT_ID, REQUEST) }.exceptionOrNull()
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
   }
