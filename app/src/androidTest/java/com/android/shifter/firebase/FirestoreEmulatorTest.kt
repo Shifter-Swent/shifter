@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.Source
+import com.swent.shifter.firebase.FirestoreEmulator
 import java.util.concurrent.TimeUnit
 import org.junit.Assert
 import org.junit.Test

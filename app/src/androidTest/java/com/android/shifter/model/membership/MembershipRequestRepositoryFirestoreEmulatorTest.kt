@@ -2,7 +2,7 @@
 package com.swent.shifter.model.membership
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
