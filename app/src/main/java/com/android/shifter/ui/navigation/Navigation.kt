@@ -313,7 +313,8 @@ open class NavigationActions(private val navController: NavHostController) {
 
   /** Opens an event on top of its events list, replacing any event already open. */
   open fun enterEvent(event: EventMode) {
-    event.tabs.all.forEach { navController.clearBackStack(it) }
+    // Clear by route class so tabs absent from the current graph are harmless.
+    event.tabs.all.forEach { navController.clearBackStack(it::class) }
     navController.navigate(event) {
       popUpTo(event.list)
       launchSingleTop = true

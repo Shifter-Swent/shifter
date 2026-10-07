@@ -68,7 +68,12 @@ fun SignInScreen(
           color = colors.primary,
       )
     } else {
-      GoogleSignInButton(onSignIn = { authViewModel.updateUiState(uiState.copy(isLoading = true)) })
+      GoogleSignInButton(
+          onSignIn = {
+            onSignedIn()
+            authViewModel.updateUiState(uiState.copy(isLoading = true))
+          }
+      )
     }
 
     Spacer(modifier = Modifier.height(18.dp))
