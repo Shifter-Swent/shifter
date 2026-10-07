@@ -26,6 +26,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 @RunWith(RobolectricTestRunner::class)
 class SignInViewModelTest {
@@ -171,6 +172,79 @@ class SignInViewModelTest {
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
+  @Test
+  fun signIn_unexpectedException_setsUnexpectedErrorAndClearsLoading() {
+    coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
+        IllegalStateException("Play services missing")
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals("Unexpected error: Play services missing", viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.user)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signIn_repositoryFailureWithoutMessage_usesGenericSignInError() {
+    repository.result = Result.failure(IllegalStateException())
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals("Sign-in failed", viewModel.uiState.value.errorMsg)
+  }
+
+  @Test
+  fun signIn_whileAlreadySigningIn_doesNotRequestASecondCredential() {
+    val credentialResponse = CompletableDeferred<GetCredentialResponse>()
+    coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } coAnswers
+        {
+          credentialResponse.await()
+        }
+
+    // A double tap on the button must not open the account picker twice.
+    viewModel.signIn(context, credentialManager)
+    viewModel.signIn(context, credentialManager)
+    credentialResponse.complete(mockk(relaxed = true))
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    coVerify(exactly = 1) { credentialManager.getCredential(context, any<GetCredentialRequest>()) }
+  }
+
+  @Test
+  fun signOut_afterSignIn_clearsUserAndMarksSignedOut() {
+    repository.result = Result.success(mockk<FirebaseUser>())
+    stubCredentialManager(mockk<Credential>())
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    viewModel.signOut()
+
+    assertEquals(1, repository.signOutCalls)
+    assertEquals(AuthUIState(signedOut = true), viewModel.uiState.value)
+  }
+
+  @Test
+  fun signOut_repositoryFailure_reportsTheError() {
+    repository.signOutResult = Result.failure(IllegalStateException("Session store locked"))
+
+    viewModel.signOut()
+
+    assertEquals("Session store locked", viewModel.uiState.value.errorMsg)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signOut_repositoryFailureWithoutMessage_usesGenericSignOutError() {
+    repository.signOutResult = Result.failure(IllegalStateException())
+
+    viewModel.signOut()
+
+    assertEquals("Sign-out failed", viewModel.uiState.value.errorMsg)
+  }
+
   // Helper method to stub the CredentialManager to return a specific credential
   private fun stubCredentialManager(credential: Credential) {
     // Create a mock GetCredentialResponse that returns the provided credential
@@ -186,12 +260,17 @@ class SignInViewModelTest {
   private class RecordingAuthRepository : com.swent.shifter.model.authentication.AuthRepository {
     var receivedCredential: Credential? = null
     var result: Result<FirebaseUser> = Result.failure(IllegalStateException("No result configured"))
+    var signOutResult: Result<Unit> = Result.success(Unit)
+    var signOutCalls = 0
 
     override suspend fun signInWithGoogle(credential: Credential): Result<FirebaseUser> {
       receivedCredential = credential
       return result
     }
 
-    override fun signOut(): Result<Unit> = Result.success(Unit)
+    override fun signOut(): Result<Unit> {
+      signOutCalls++
+      return signOutResult
+    }
   }
 }

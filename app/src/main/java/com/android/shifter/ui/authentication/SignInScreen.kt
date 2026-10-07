@@ -43,6 +43,7 @@ object SignInScreenTestTags {
   const val APP_NAME = "APP_NAME"
   const val LOGIN_BUTTON = "LOGIN_BUTTON"
   const val LOGIN_TITLE = "LOGIN_TITLE"
+  const val LOADING_INDICATOR = "LOADING_INDICATOR"
 }
 
 @Composable
@@ -88,7 +89,7 @@ fun SignInScreen(
 
     if (uiState.isLoading) {
       CircularProgressIndicator(
-          modifier = Modifier.size(48.dp),
+          modifier = Modifier.size(48.dp).testTag(SignInScreenTestTags.LOADING_INDICATOR),
           color = colors.primary,
       )
     } else {
