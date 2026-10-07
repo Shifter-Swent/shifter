@@ -5,15 +5,20 @@
 
     <!-- Event creation -->
     <string name="create_event_title">Create an event</string>
-    <string name="create_event_back">Back</string>
-    <string name="create_event_field_title">Title</string>
-    <string name="create_event_field_description">Description</string>
-    <string name="create_event_field_type">Type</string>
+    <string name="create_event_back">My Events</string>
+    <string name="create_event_intro">Fill in your event. All fields are required.</string>
+    <string name="create_event_field_title">Event title</string>
+    <string name="create_event_field_description">Event description</string>
+    <string name="create_event_description_hint">Present the goal and activities to volunteers.</string>
+    <string name="create_event_field_type">Event type</string>
+    <string name="create_event_field_type_selected">Event type · %1$s selected</string>
     <string name="create_event_field_address">Address</string>
+    <string name="create_event_period_title">Activity period</string>
+    <string name="create_event_period_instructions">Enter the start date, then the end date.</string>
     <string name="create_event_field_start">Start</string>
     <string name="create_event_field_end">End</string>
     <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
-    <string name="create_event_submit">Create event</string>
+    <string name="create_event_submit">Create my event</string>
     <string name="create_event_error_title_empty">Enter a title</string>
     <string name="create_event_error_description_empty">Enter a description</string>
     <string name="create_event_error_type_missing">Choose a type</string>
