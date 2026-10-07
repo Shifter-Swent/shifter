@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.model.membership
 
 /**
@@ -19,4 +20,23 @@ interface MembershipRequestRepository {
    * tap never resets an accepted or rejected request to pending.
    */
   suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest
+
+  /**
+   * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.ACCEPTED] and adds
+   * the user to the event participants without duplicates, atomically. Fails if the request does
+   * not exist.
+   */
+  suspend fun accept(eventId: String, userId: String)
+
+  /**
+   * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED]. Fails if
+   * the request does not exist.
+   */
+  suspend fun reject(eventId: String, userId: String)
+
+  /** Returns all requests for [eventId], or an empty list if there are none. */
+  suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest>
+
+  /** Returns all requests from [userId] across events, or an empty list if there are none. */
+  suspend fun getMembershipRequestsByUId(userId: String): List<MembershipRequest>
 }

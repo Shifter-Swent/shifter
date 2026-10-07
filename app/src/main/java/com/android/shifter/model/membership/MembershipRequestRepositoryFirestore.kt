@@ -1,11 +1,14 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.membership
 
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.SetOptions
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.tasks.await
 
@@ -32,6 +35,53 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                 .await()
         existing?.toRequestOrThrow() ?: pending
       }
+
+  override suspend fun accept(eventId: String, userId: String) {
+    translatingErrors {
+      // Both writes commit atomically: a failed write prevents the other from being applied.
+      val batch = db.batch()
+      batch.update(
+          requests(eventId).document(userId),
+          MembershipRequestSchema.STATUS,
+          MembershipRequestStatus.ACCEPTED.name,
+      )
+      batch.set(
+          db.collection("eventParticipants").document(eventId),
+          mapOf("participantIds" to FieldValue.arrayUnion(userId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
+    }
+  }
+
+  override suspend fun reject(eventId: String, userId: String) {
+    updateStatus(eventId, userId, MembershipRequestStatus.REJECTED)
+  }
+
+  override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
+      translatingErrors {
+        requests(eventId).get().await().documents.map { it.toRequestOrThrow() }
+      }
+
+  override suspend fun getMembershipRequestsByUId(userId: String): List<MembershipRequest> =
+      translatingErrors {
+        db.collectionGroup(MembershipRequestSchema.COLLECTION)
+            .whereEqualTo(MembershipRequestSchema.USER_ID, userId)
+            .get()
+            .await()
+            .documents
+            .map { it.toRequestOrThrow() }
+      }
+
+  private suspend fun updateStatus(
+      eventId: String,
+      userId: String,
+      status: MembershipRequestStatus,
+  ) {
+    translatingErrors {
+      requests(eventId).document(userId).update(MembershipRequestSchema.STATUS, status.name).await()
+    }
+  }
 
   private fun requests(eventId: String): CollectionReference =
       db.collection(EventSchema.COLLECTION)

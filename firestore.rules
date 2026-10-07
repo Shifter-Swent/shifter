@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 rules_version = '2';
 
@@ -30,25 +31,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // events/{eventId}: signed-in users only, until per-role rules are defined.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOrganizer(eventId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/events/$(eventId)).data.organizerId
+           == request.auth.uid;
+    }
+
     match /events/{eventId} {
-      allow read, write: if request.auth != null;
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
+      allow update: if signedIn() && resource.data.organizerId == request.auth.uid
+        && request.resource.data.organizerId == resource.data.organizerId;
+      allow delete: if signedIn() && resource.data.organizerId == request.auth.uid;
 
-      function isOrganizer() {
-        return request.auth != null
-          && get(/databases/$(database)/documents/events/$(eventId)).data.organizerId
-             == request.auth.uid;
-      }
-
-      // membershipRequests/{uid}: a volunteer's request to join, pending until the organizer
-      // decides. Accepting and rejecting come later, so nobody can update or delete one yet.
       match /membershipRequests/{uid} {
         function isRequester() {
-          return request.auth != null && request.auth.uid == uid;
+          return signedIn() && request.auth.uid == uid;
         }
 
-        allow read: if isRequester() || isOrganizer();
-
+        allow read: if isRequester() || isOrganizer(eventId);
         allow create: if isRequester()
           && exists(/databases/$(database)/documents/events/$(eventId))
           && request.resource.data.keys().hasOnly(
@@ -60,8 +65,49 @@ service cloud.firestore {
           && request.resource.data.availability.size() > 0
           && request.resource.data.createdAt is timestamp;
 
-        allow update, delete: if false;
+        // Acceptance must leave the volunteer in the participants document in the same commit.
+        allow update: if isOrganizer(eventId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          && request.resource.data.status in ['ACCEPTED', 'REJECTED']
+          && (request.resource.data.status == 'REJECTED'
+              || uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
+                   .data.participantIds);
+        allow delete: if false;
       }
+    }
+
+    // Enables a volunteer's collection-group query filtered by userId, without granting writes.
+    match /{path=**}/membershipRequests/{uid} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /eventParticipants/{eventId} {
+      function accepted(uid) {
+        return uid is string
+          && getAfter(/databases/$(database)/documents/events/$(eventId)/membershipRequests/$(uid))
+               .data.status == 'ACCEPTED';
+      }
+
+      function validAddition() {
+        let previous = resource.data.participantIds;
+        let next = request.resource.data.participantIds;
+        let added = next.removeAll(previous);
+        return next.hasAll(previous)
+          && next.size() == next.toSet().size()
+          && (added.size() == 0 || (added.size() == 1 && accepted(added[0])));
+      }
+
+      allow read: if signedIn();
+      allow create: if isOrganizer(eventId)
+        && request.resource.data.keys().hasOnly(['participantIds'])
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() == 1
+        && accepted(request.resource.data.participantIds[0]);
+      allow update: if isOrganizer(eventId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds'])
+        && request.resource.data.participantIds is list
+        && validAddition();
+      allow delete: if false;
     }
   }
 }

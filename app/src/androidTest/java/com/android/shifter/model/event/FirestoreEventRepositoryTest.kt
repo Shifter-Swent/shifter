@@ -1,9 +1,13 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.auth.AuthCredential
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import java.time.Instant
 import java.util.UUID
 import kotlin.random.Random
@@ -37,6 +41,7 @@ class FirestoreEventRepositoryTest {
 
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdEventIds = mutableListOf<String>()
+  private val organizerCredentials = mutableMapOf<String, AuthCredential>()
 
   /** `firestore.rules` only lets signed-in users touch events. */
   @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
@@ -44,7 +49,7 @@ class FirestoreEventRepositoryTest {
   @After
   fun tearDown() = emulatorTest {
     createdEventIds.forEach { id ->
-      firestore.collection(EventSchema.COLLECTION).document(id).delete().await()
+      FirestoreEmulatorAdmin.deleteDocument("${EventSchema.COLLECTION}/$id")
     }
     createdEventIds.clear()
     auth.signOut()
@@ -313,7 +318,10 @@ class FirestoreEventRepositoryTest {
   }
 
   /** Creates [event] through the repository and remembers it for cleanup. */
-  private suspend fun create(event: Event): Event = track(repository.createEvent(event))
+  private suspend fun create(event: Event): Event {
+    auth.signInWithCredential(organizerCredentials.getValue(event.organizerId)).await()
+    return track(repository.createEvent(event))
+  }
 
   private fun track(event: Event): Event = event.also { createdEventIds += it.id }
 
@@ -344,7 +352,13 @@ class FirestoreEventRepositoryTest {
     )
   }
 
-  private fun uniqueOrganizerId(): String = "organizer-" + UUID.randomUUID()
+  private fun uniqueOrganizerId(): String = runBlocking {
+    val email = "organizer-${UUID.randomUUID()}@example.test"
+    val password = "test-password-123"
+    val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
+    organizerCredentials[user.uid] = EmailAuthProvider.getCredential(email, password)
+    user.uid
+  }
 
   private fun uniqueMemberId(): String = "member-" + UUID.randomUUID()
 
