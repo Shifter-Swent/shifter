@@ -1,9 +1,15 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
-import java.time.Instant
+import com.swent.shifter.model.firestore.invalidField
+import com.swent.shifter.model.firestore.optionalString
+import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "Team"
 
 /**
  * Names of the teams subcollection and of every field of a team document.
@@ -59,12 +65,12 @@ internal fun Team.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toTeam(): Team =
     Team(
         id = id,
-        name = requireString(TeamSchema.NAME),
-        icon = requireString(TeamSchema.ICON),
-        managerId = optionalString(TeamSchema.MANAGER_ID),
+        name = requireString(ENTITY, TeamSchema.NAME),
+        icon = requireString(ENTITY, TeamSchema.ICON),
+        managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),
         volunteersNeeded = requireInt(TeamSchema.VOLUNTEERS_NEEDED),
         checkInZone = optionalCheckInZone(),
-        createdAt = requireInstant(TeamSchema.CREATED_AT),
+        createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
     )
 
 private fun CheckInZone.toFirestoreMap(): Map<String, Any?> =
@@ -84,7 +90,7 @@ private fun CheckInZone.toFirestoreMap(): Map<String, Any?> =
  */
 private fun DocumentSnapshot.optionalCheckInZone(): CheckInZone? {
   val value = get(TeamSchema.CHECK_IN_ZONE) ?: return null
-  val zone = value as? Map<*, *> ?: invalid(TeamSchema.CHECK_IN_ZONE)
+  val zone = value as? Map<*, *> ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)
   return CheckInZone(
       latitude = requireZoneValue(zone, TeamSchema.CheckInZoneFields.LATITUDE),
       longitude = requireZoneValue(zone, TeamSchema.CheckInZoneFields.LONGITUDE),
@@ -93,7 +99,7 @@ private fun DocumentSnapshot.optionalCheckInZone(): CheckInZone? {
 }
 
 private fun DocumentSnapshot.requireZoneValue(zone: Map<*, *>, field: String): Double =
-    (zone[field] as? Number)?.toDouble() ?: invalid(TeamSchema.CHECK_IN_ZONE)
+    (zone[field] as? Number)?.toDouble() ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)
 
 /**
  * Firestore stores whole numbers as Longs and fractional ones as Doubles, both wider than [Int], so
@@ -102,32 +108,10 @@ private fun DocumentSnapshot.requireZoneValue(zone: Map<*, *>, field: String): D
  * to a negative one, would staff the team with a number nobody wrote.
  */
 private fun DocumentSnapshot.requireInt(field: String): Int {
-  val value = get(field) as? Number ?: invalid(field)
+  val value = get(field) as? Number ?: invalidField(ENTITY, field)
   val whole = value.toLong()
   // Rejects a fractional, infinite or NaN value, then one that does not fit in an Int.
-  if (whole.toDouble() != value.toDouble() || whole != whole.toInt().toLong()) invalid(field)
+  if (whole.toDouble() != value.toDouble() || whole != whole.toInt().toLong())
+      invalidField(ENTITY, field)
   return whole.toInt()
 }
-
-private fun DocumentSnapshot.requireString(field: String): String =
-    get(field) as? String ?: invalid(field)
-
-private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
-
-/**
- * Absent and null both mean the team has no manager. A present value of another type is rejected
- * instead: mapping it to null would turn a schema problem into "this team has no manager".
- */
-private fun DocumentSnapshot.optionalString(field: String): String? =
-    when (val value = get(field)) {
-      null -> null
-      is String -> value
-      else -> invalid(field)
-    }
-
-private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException("Team document '$id' has a missing or invalid '$field' field")
-
-/** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
-private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)
