@@ -111,6 +111,20 @@ class SignInViewModelTest {
   }
 
   @Test
+  fun clearErrorMsg_clearsCredentialManagerError() {
+    coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
+        GetCredentialUnknownException("Credential provider unavailable")
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+    assertTrue(viewModel.uiState.value.errorMsg != null)
+
+    viewModel.clearErrorMsg()
+
+    assertNull(viewModel.uiState.value.errorMsg)
+  }
+
+  @Test
   fun signIn_userCancellation_setsCancellationErrorAndClearsLoading() {
     coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
         GetCredentialCancellationException()
