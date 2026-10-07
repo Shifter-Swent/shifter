@@ -17,38 +17,42 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
  * Mapping tests for [toMembershipRequest] and [toFirestoreMap], run against the Firestore emulator.
  *
- * There is no membership request repository yet, so each test writes a raw document and reads it
- * back: a [DocumentSnapshot] cannot be constructed outside Firebase. Every instance works under a
- * freshly generated event id, so tests cannot observe each other whatever order they run in.
+ * Each test writes a raw document and reads it back, because a [DocumentSnapshot] cannot be
+ * constructed outside Firebase. The mapper only ever reads a document's id and its fields, never
+ * the path it sits at, so these documents are written as scratch documents in the top-level events
+ * collection rather than under an event's `membershipRequests`. That production path is guarded by
+ * rules which reject the malformed bodies these tests write on purpose, and the mapper behaves the
+ * same wherever the document lives. Every document gets a freshly generated id, so tests cannot
+ * observe each other whatever order they run in.
  */
 @RunWith(AndroidJUnit4::class)
 class MembershipRequestFirestoreMapperTest {
 
+  private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
 
-  /** The parent event of every document this test writes. Never created: only its path is used. */
-  private val eventId = "event-" + UUID.randomUUID()
-
-  private val requests
-    get() =
-        firestore
-            .collection(EventSchema.COLLECTION)
-            .document(eventId)
-            .collection(MembershipRequestSchema.COLLECTION)
+  /** Where the raw documents of these tests are written. See the note on the class. */
+  private val scratch
+    get() = firestore.collection(EventSchema.COLLECTION)
 
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdRequestIds = mutableListOf<String>()
 
+  /** `firestore.rules` only lets signed-in users touch the events collection. */
+  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+
   @After
   fun tearDown() = emulatorTest {
-    createdRequestIds.forEach { requests.document(it).delete().await() }
+    createdRequestIds.forEach { scratch.document(it).delete().await() }
     createdRequestIds.clear()
+    auth.signOut()
   }
 
   @Test
@@ -324,7 +328,8 @@ class MembershipRequestFirestoreMapperTest {
 
   @Test
   fun toMembershipRequest_doesNotPersistTheEventOrTheVolunteerProfile() = emulatorTest {
-    // The parent event is the path, and a copied display name would go stale.
+    // In production the event a request belongs to is its parent document, never a field of its
+    // own, and a copied display name would go stale.
     val snapshot = read(writeRawRequest(richRequest().toFirestoreMap()))
 
     assertFalse("the event id must not be a field", snapshot.contains("eventId"))
@@ -350,9 +355,14 @@ class MembershipRequestFirestoreMapperTest {
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 
-  /** Writes [body] into the event's requests subcollection and remembers it for cleanup. */
+  /**
+   * Writes [body] into a fresh scratch document and remembers it for cleanup.
+   *
+   * The id is prefixed rather than auto-generated: these documents share the events collection, so
+   * one left behind by a crashed run is recognisable as test scratch rather than a real event.
+   */
   private suspend fun writeRawRequest(body: Map<String, Any?>): String {
-    val document = requests.document()
+    val document = scratch.document(SCRATCH_ID_PREFIX + UUID.randomUUID())
     createdRequestIds += document.id
     document.set(body).await()
     return document.id
@@ -360,7 +370,7 @@ class MembershipRequestFirestoreMapperTest {
 
   /** [Source.SERVER] bypasses the local cache, so the read really goes through the emulator. */
   private suspend fun read(requestId: String): DocumentSnapshot =
-      requests.document(requestId).get(Source.SERVER).await()
+      scratch.document(requestId).get(Source.SERVER).await()
 
   /** Asserts that mapping [requestId] fails loudly and that the failure names [field]. */
   private suspend fun assertFailsOnField(requestId: String, field: String) {
@@ -384,6 +394,9 @@ class MembershipRequestFirestoreMapperTest {
 
   private companion object {
     const val TIMEOUT_MILLIS = 20_000L
+
+    /** Marks the scratch documents these tests write into the events collection. */
+    const val SCRATCH_ID_PREFIX = "membership-mapper-scratch-"
 
     const val USER_ID = "user-volunteer-1"
 
