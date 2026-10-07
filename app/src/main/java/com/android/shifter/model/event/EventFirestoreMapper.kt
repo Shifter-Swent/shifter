@@ -1,9 +1,13 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
-import java.time.Instant
+import com.swent.shifter.model.firestore.invalid
+import com.swent.shifter.model.firestore.optionalString
+import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.requireStringList
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
 
 /**
  * Names of the events collection and of every field of an event document.
@@ -88,7 +92,9 @@ internal fun DocumentSnapshot.toEvent(): Event =
         endAt = requireInstant(EventSchema.END_AT),
         location = requireLocation(),
         emergencyContacts = requireEmergencyContacts(),
-        memberIds = requireMemberIds(),
+        // Absent means nobody joined yet; a malformed entry fails rather than hiding the event from
+        // the volunteer who joined it.
+        memberIds = requireStringList(EventSchema.MEMBER_IDS),
         joinCode = requireString(EventSchema.JOIN_CODE),
         status = requireEventStatus(),
         createdAt = requireInstant(EventSchema.CREATED_AT),
@@ -175,37 +181,3 @@ private fun DocumentSnapshot.requireEmergencyContacts(): List<EmergencyContact> 
     )
   }
 }
-
-/**
- * An absent field means nobody joined the event yet. A malformed entry is rejected rather than
- * skipped: dropping a member would hide the event from the volunteer who joined it.
- */
-private fun DocumentSnapshot.requireMemberIds(): List<String> {
-  val field = get(EventSchema.MEMBER_IDS) ?: return emptyList()
-  val entries = field as? List<*> ?: invalid(EventSchema.MEMBER_IDS)
-  return entries.map { it as? String ?: invalid(EventSchema.MEMBER_IDS) }
-}
-
-private fun DocumentSnapshot.requireString(field: String): String =
-    get(field) as? String ?: invalid(field)
-
-private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
-
-/**
- * An absent or null field means the event has no value for it, which is why both map to null. A
- * present value of another type is rejected like a wrongly typed required field: mapping it to null
- * would turn a schema problem into "this event has nothing here".
- */
-private fun DocumentSnapshot.optionalString(field: String): String? =
-    when (val value = get(field)) {
-      null -> null
-      is String -> value
-      else -> invalid(field)
-    }
-
-private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException("Event document '$id' has a missing or invalid '$field' field")
-
-/** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
-private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)

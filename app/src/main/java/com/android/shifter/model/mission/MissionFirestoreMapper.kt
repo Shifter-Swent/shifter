@@ -1,9 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
-import java.time.Instant
+import com.swent.shifter.model.firestore.invalid
+import com.swent.shifter.model.firestore.optionalString
+import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.requireStringList
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
 
 /**
  * Names of the missions subcollection and of every field of a mission document.
@@ -50,9 +54,7 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
  *
  * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
  * document that cannot be mapped is a schema problem, which must not be mistaken for "no mission".
- * Every field is read through [DocumentSnapshot.get] rather than through the typed accessors, which
- * raise a bare Firebase `RuntimeException` on a type mismatch and would therefore break that
- * contract.
+ * A sector of the wrong type is rejected too, rather than silently moving the mission to "General".
  */
 internal fun DocumentSnapshot.toMission(): Mission =
     Mission(
@@ -64,7 +66,9 @@ internal fun DocumentSnapshot.toMission(): Mission =
         staffNeeded = requireStaffNeeded(),
         startAt = requireInstant(MissionSchema.START_AT),
         endAt = requireInstant(MissionSchema.END_AT),
-        assigneeIds = requireAssigneeIds(),
+        // Absent means nobody is assigned yet; a malformed entry fails rather than hiding the
+        // mission from the person assigned to it.
+        assigneeIds = requireStringList(MissionSchema.ASSIGNEE_IDS),
         createdAt = requireInstant(MissionSchema.CREATED_AT),
     )
 
@@ -83,37 +87,3 @@ private fun DocumentSnapshot.requireStaffNeeded(): Int {
   if (value !in Int.MIN_VALUE..Int.MAX_VALUE) invalid(MissionSchema.STAFF_NEEDED)
   return value.toInt()
 }
-
-/**
- * An absent field means nobody is assigned yet. A malformed entry is rejected rather than skipped:
- * dropping an assignee would hide the mission from the person assigned to it.
- */
-private fun DocumentSnapshot.requireAssigneeIds(): List<String> {
-  val field = get(MissionSchema.ASSIGNEE_IDS) ?: return emptyList()
-  val entries = field as? List<*> ?: invalid(MissionSchema.ASSIGNEE_IDS)
-  return entries.map { it as? String ?: invalid(MissionSchema.ASSIGNEE_IDS) }
-}
-
-private fun DocumentSnapshot.requireString(field: String): String =
-    get(field) as? String ?: invalid(field)
-
-private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
-
-/**
- * An absent or null field means the mission has no value for it, which is why both map to null. A
- * present value of another type is rejected: mapping it to null would silently move the mission to
- * "General".
- */
-private fun DocumentSnapshot.optionalString(field: String): String? =
-    when (val value = get(field)) {
-      null -> null
-      is String -> value
-      else -> invalid(field)
-    }
-
-private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException("Mission document '$id' has a missing or invalid '$field' field")
-
-/** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
-private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)
