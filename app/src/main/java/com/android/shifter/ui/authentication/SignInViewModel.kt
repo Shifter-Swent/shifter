@@ -5,6 +5,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -64,6 +65,8 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
             )
       } catch (e: GetCredentialCancellationException) {
         showError("Sign-in cancelled")
+      } catch (e: NoCredentialException) {
+        showError("No Google credential is available for sign-in")
       } catch (e: GetCredentialException) {
         showError("Failed to get credentials: ${e.localizedMessage ?: "Unknown error"}")
       } catch (e: Exception) {

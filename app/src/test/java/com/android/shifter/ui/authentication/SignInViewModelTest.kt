@@ -7,6 +7,7 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.firebase.auth.FirebaseUser
 import com.swent.shifter.R
@@ -118,6 +119,19 @@ class SignInViewModelTest {
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
     assertEquals("Sign-in cancelled", viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.user)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signIn_noCredential_setsNoAccountErrorAndClearsLoading() {
+    coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
+        NoCredentialException()
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals("No Google credential is available for sign-in", viewModel.uiState.value.errorMsg)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
