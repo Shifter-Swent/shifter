@@ -63,17 +63,12 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rules_forbidRequestingOnBehalfOfAnotherUser() = runTest {
-    val thrown = runCatching { repository.requestToJoin(event.id, request("someone-else")) }
+  fun rules_forbidRequestingForAnotherUserOrAMissingEvent() = runTest {
+    val forOther = runCatching { repository.requestToJoin(event.id, request("someone-else")) }
+    val toMissing = runCatching { repository.requestToJoin("no-event", request(volunteerId)) }
 
-    assertTrue(thrown.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)
-  }
-
-  @Test
-  fun rules_forbidRequestingToJoinMissingEvent() = runTest {
-    val thrown = runCatching { repository.requestToJoin("no-such-event", request(volunteerId)) }
-
-    assertTrue(thrown.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)
+    assertTrue(forOther.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)
+    assertTrue(toMissing.exceptionOrNull() is MembershipRequestRepositoryException.PermissionDenied)
   }
 
   private fun newEvent(organizerId: String) =

@@ -2,7 +2,6 @@
 package com.swent.shifter.model.membership
 
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -15,11 +14,11 @@ import io.mockk.verify
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+/** Repository logic with Firestore mocked; the emulator test covers the real SDK and the rules. */
 class MembershipRequestRepositoryFirestoreTest {
 
   private val db = mockk<FirebaseFirestore>()
@@ -30,10 +29,9 @@ class MembershipRequestRepositoryFirestoreTest {
 
   @Before
   fun setUp() {
-    val requests = mockk<CollectionReference>()
-    every { db.collection("events").document(EVENT_ID).collection("membershipRequests") } returns
-        requests
-    every { requests.document(UID) } returns ref
+    every {
+      db.collection("events").document(EVENT_ID).collection("membershipRequests").document(UID)
+    } returns ref
     every { ref.get() } returns Tasks.forResult(snapshot)
     every { transaction.get(ref) } returns snapshot
     every { snapshot.id } returns UID
@@ -48,84 +46,58 @@ class MembershipRequestRepositoryFirestoreTest {
   fun requestToJoin_storesPendingRequestUnderUserIdWhenAbsent() = runTest {
     every { snapshot.exists() } returns false
 
-    val sent = repository.requestToJoin(EVENT_ID, REQUEST.copy(status = ACCEPTED))
+    val sent =
+        repository.requestToJoin(EVENT_ID, REQUEST.copy(status = MembershipRequestStatus.ACCEPTED))
 
-    val expected = REQUEST.copy(id = UID)
-    assertEquals(expected, sent)
-    verify { transaction.set(ref, expected.toFirestoreMap()) }
+    assertEquals(REQUEST.copy(id = UID), sent)
+    verify { transaction.set(ref, REQUEST.copy(id = UID).toFirestoreMap()) }
   }
 
   @Test
   fun requestToJoin_returnsExistingRequestWithoutOverwritingIt() = runTest {
-    val accepted = REQUEST.copy(id = UID, status = ACCEPTED)
-    storeInSnapshot(accepted)
+    val accepted = REQUEST.copy(id = UID, status = MembershipRequestStatus.ACCEPTED)
+    val data = accepted.toFirestoreMap()
+    every { snapshot.exists() } returns true
+    every { snapshot.contains(any<String>()) } answers { firstArg<String>() in data }
+    every { snapshot.get(any<String>()) } answers { data[firstArg()] }
 
     assertEquals(accepted, repository.requestToJoin(EVENT_ID, REQUEST))
     verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test
-  fun requestToJoin_translatesFirestoreErrors() = runTest {
-    val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
-    every { db.runTransaction(any<Transaction.Function<MembershipRequest>>()) } returns
-        Tasks.forException(error)
-
-    val thrown = runCatching { repository.requestToJoin(EVENT_ID, REQUEST) }.exceptionOrNull()
-
-    assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
-    assertEquals(error, thrown!!.cause)
-  }
-
-  @Test
-  fun getRequest_returnsNullWhenAbsent() = runTest {
+  fun getRequest_reportsMissingAndMalformedDocuments() = runTest {
     every { snapshot.exists() } returns false
+    assertEquals(null, repository.getRequest(EVENT_ID, UID))
 
-    assertNull(repository.getRequest(EVENT_ID, UID))
-  }
-
-  @Test
-  fun getRequest_returnsStoredRequest() = runTest {
-    storeInSnapshot(REQUEST.copy(id = UID))
-
-    assertEquals(REQUEST.copy(id = UID), repository.getRequest(EVENT_ID, UID))
-  }
-
-  @Test
-  fun getRequest_reportsMalformedDocumentAsUnknown() = runTest {
     every { snapshot.exists() } returns true
     every { snapshot.get(any<String>()) } returns null
-
     val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
-
     assertTrue(thrown is MembershipRequestRepositoryException.Unknown)
   }
 
   @Test
-  fun toRepositoryException_mapsFirestoreCodes() {
+  fun firestoreErrorsAreTranslated() = runTest {
     fun map(code: Code) =
         MembershipRequestRepositoryFirestore.toRepositoryException(
             FirebaseFirestoreException("", code)
         )
-
     assertTrue(map(Code.PERMISSION_DENIED) is MembershipRequestRepositoryException.PermissionDenied)
     assertTrue(map(Code.UNAUTHENTICATED) is MembershipRequestRepositoryException.PermissionDenied)
     assertTrue(map(Code.UNAVAILABLE) is MembershipRequestRepositoryException.Unavailable)
     assertTrue(map(Code.DEADLINE_EXCEEDED) is MembershipRequestRepositoryException.Unavailable)
     assertTrue(map(Code.INTERNAL) is MembershipRequestRepositoryException.Unknown)
-  }
 
-  /** Makes the mocked snapshot hold [request] as Firestore would store it. */
-  private fun storeInSnapshot(request: MembershipRequest) {
-    val data = request.toFirestoreMap()
-    every { snapshot.exists() } returns true
-    every { snapshot.contains(any<String>()) } answers { firstArg<String>() in data }
-    every { snapshot.get(any<String>()) } answers { data[firstArg()] }
+    val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
+    every { ref.get() } returns Tasks.forException(error)
+    val thrown = runCatching { repository.getRequest(EVENT_ID, UID) }.exceptionOrNull()
+    assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
+    assertEquals(error, thrown!!.cause)
   }
 
   private companion object {
     const val EVENT_ID = "event-1"
     const val UID = "uid-1"
-    val ACCEPTED = MembershipRequestStatus.ACCEPTED
     val REQUEST =
         MembershipRequest(
             userId = UID,
