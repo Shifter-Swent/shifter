@@ -44,20 +44,28 @@ internal fun MembershipRequest.toFirestoreMap(): Map<String, Any?> =
  * Rebuilds the [MembershipRequest] stored in this document, taking [MembershipRequest.id] from the
  * document id.
  *
- * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
- * document that cannot be mapped is a schema problem, which must not be mistaken for "no request".
- * Hence [DocumentSnapshot.get] everywhere rather than `getString`/`getTimestamp`, which raise a
- * bare Firebase `RuntimeException` on a type mismatch.
+ * Throws [NoSuchElementException] when the document does not exist, so that "there is no such
+ * request" is never reported as a malformed one: without the check, an absent document reads as a
+ * document whose every field is missing, and the caller would be told its `userId` is invalid.
+ *
+ * Throws [IllegalStateException] when the document exists but a required field is missing or has an
+ * unexpected type: a document that cannot be mapped is a schema problem, which must not be mistaken
+ * for "no request". Hence [DocumentSnapshot.get] everywhere rather than `getString`/`getTimestamp`,
+ * which raise a bare Firebase `RuntimeException` on a type mismatch.
  */
-internal fun DocumentSnapshot.toMembershipRequest(): MembershipRequest =
-    MembershipRequest(
-        id = id,
-        userId = requireString(MembershipRequestSchema.USER_ID),
-        preferredTeamIds = requirePreferredTeamIds(),
-        availability = requireAvailability(),
-        status = requireStatus(),
-        createdAt = requireInstant(MembershipRequestSchema.CREATED_AT),
-    )
+internal fun DocumentSnapshot.toMembershipRequest(): MembershipRequest {
+  if (!exists()) {
+    throw NoSuchElementException("Membership request document '$id' does not exist")
+  }
+  return MembershipRequest(
+      id = id,
+      userId = requireString(MembershipRequestSchema.USER_ID),
+      preferredTeamIds = requirePreferredTeamIds(),
+      availability = requireAvailability(),
+      status = requireStatus(),
+      createdAt = requireInstant(MembershipRequestSchema.CREATED_AT),
+  )
+}
 
 private fun AvailabilitySlot.toFirestoreMap(): Map<String, Any?> =
     mapOf(
