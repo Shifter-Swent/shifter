@@ -130,6 +130,7 @@ dependencies {
   implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
   implementation("com.google.firebase:firebase-auth")
   implementation("com.google.firebase:firebase-firestore")
+  implementation(libs.kotlinx.coroutines.play.services)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
@@ -169,6 +170,10 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.mockk)
+
+  // ----------       Coroutines      ------------
+  globalTestImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.withType<Test> {

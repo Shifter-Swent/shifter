@@ -16,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -30,11 +31,15 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FirestoreEventRepositoryTest {
 
+  private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
   private val repository = FirestoreEventRepository(firestore)
 
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdEventIds = mutableListOf<String>()
+
+  /** `firestore.rules` only lets signed-in users touch events. */
+  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
 
   @After
   fun tearDown() = emulatorTest {
@@ -42,6 +47,7 @@ class FirestoreEventRepositoryTest {
       firestore.collection(EventSchema.COLLECTION).document(id).delete().await()
     }
     createdEventIds.clear()
+    auth.signOut()
   }
 
   @Test
