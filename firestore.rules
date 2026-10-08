@@ -33,6 +33,41 @@ service cloud.firestore {
     // events/{eventId}: signed-in users only, until per-role rules are defined.
     match /events/{eventId} {
       allow read, write: if request.auth != null;
+
+      function isOrganizer() {
+        return request.auth != null
+          && get(/databases/$(database)/documents/events/$(eventId)).data.organizerId
+             == request.auth.uid;
+      }
+
+      // membershipRequests/{uid}: a volunteer's request to join, pending until the organizer
+      // decides. Accepting and rejecting come later, so nobody can update or delete one yet.
+      match /membershipRequests/{uid} {
+        function isRequester() {
+          return request.auth != null && request.auth.uid == uid;
+        }
+
+        allow read: if isRequester() || isOrganizer();
+
+        allow create: if isRequester()
+          && exists(/databases/$(database)/documents/events/$(eventId))
+          && request.resource.data.keys().hasOnly(
+               ['userId', 'preferredTeamIds', 'availability', 'status', 'createdAt'])
+          && request.resource.data.userId == uid
+          && request.resource.data.status == 'PENDING'
+          && request.resource.data.preferredTeamIds is list
+          && request.resource.data.availability is list
+          && request.resource.data.availability.size() > 0
+          && request.resource.data.createdAt is timestamp;
+
+        allow update, delete: if false;
+      }
+    }
+
+    // events/{eventId}/teams/{teamId}: rules do not cascade into subcollections, so the event
+    // rule above does not cover them. Signed-in users only, until per-role rules are defined.
+    match /events/{eventId}/teams/{teamId} {
+      allow read, write: if request.auth != null;
     }
   }
 }
