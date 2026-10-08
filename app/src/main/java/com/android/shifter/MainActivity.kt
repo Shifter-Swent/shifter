@@ -29,8 +29,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
-import com.swent.shifter.authentication.SignInScreen
 import com.swent.shifter.resources.C
+import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.navigation.NavigationActions
 import com.swent.shifter.ui.navigation.Organizer
 import com.swent.shifter.ui.navigation.OrganizerEvent

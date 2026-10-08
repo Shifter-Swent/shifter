@@ -2,4 +2,64 @@
     <string name="app_name">Shifter</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
+    <!-- Event creation -->
+    <string name="create_event_title">Create an event</string>
+    <string name="create_event_back">My Events</string>
+    <string name="create_event_intro">Fill in your event. All fields are required.</string>
+    <string name="create_event_field_title">Event title</string>
+    <string name="create_event_field_description">Event description</string>
+    <string name="create_event_description_hint">Present the goal and activities to volunteers.</string>
+    <string name="create_event_field_type">Event type</string>
+    <string name="create_event_field_type_selected">Event type · %1$s selected</string>
+    <string name="create_event_field_address">Address</string>
+    <string name="create_event_period_title">Activity period</string>
+    <string name="create_event_period_instructions">Enter the start date, then the end date.</string>
+    <string name="create_event_field_start">Start</string>
+    <string name="create_event_field_end">End</string>
+    <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
+    <string name="create_event_submit">Create my event</string>
+    <string name="create_event_error_title_empty">Enter a title</string>
+    <string name="create_event_error_title_too_long">The title is too long</string>
+    <string name="create_event_error_description_empty">Enter a description</string>
+    <string name="create_event_error_description_too_long">The description is too long</string>
+    <string name="create_event_error_type_missing">Choose a type</string>
+    <string name="create_event_error_address_empty">Enter an address</string>
+    <string name="create_event_error_date_invalid">Use the format DD/MM/YYYY HH:MM</string>
+    <string name="create_event_error_start_in_past">The event must start in the future</string>
+    <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
+    <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="event_type_music">Music</string>
+    <string name="event_type_market">Market</string>
+    <string name="event_type_nature">Nature</string>
+    <string name="event_type_food">Food</string>
+    <string name="event_type_sport">Sport</string>
+    <string name="event_type_party">Party</string>
+    <string name="event_type_other">Other</string>
+
+    <!-- My Events -->
+    <string name="my_events_title">My Events</string>
+    <string name="my_events_open_profile">Open profile</string>
+    <string name="my_events_tab_upcoming">Upcoming</string>
+    <string name="my_events_tab_past">Past</string>
+    <string name="my_events_empty_upcoming">No upcoming events</string>
+    <string name="my_events_empty_past">No past events</string>
+    <string name="my_events_status_pill">● %1$s</string>
+    <string name="my_events_badge_confirmed">Confirmed</string>
+    <string name="my_events_badge_pending_approval">Pending approval</string>
+    <string name="my_events_badge_in_preparation">In preparation</string>
+    <string name="my_events_badge_ongoing">Ongoing</string>
+    <string name="my_events_badge_ended">Ended</string>
+    <string name="my_events_footer_volunteer">Role: Volunteer</string>
+    <string name="my_events_footer_organizer">Role: Organizer</string>
+    <string name="my_events_footer_awaiting_approval">Awaiting organizer approval</string>
+    <string name="my_events_action_withdraw">Withdraw</string>
+    <string name="my_events_action_manage_event">Manage event</string>
+    <string name="my_events_organizer_view">Organizer View</string>
+    <string name="my_events_scan_invitation">Scan an event invitation</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="content_description_back">Back</string>
 </resources>
