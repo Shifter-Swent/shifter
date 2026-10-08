@@ -1,9 +1,15 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
-import java.time.Instant
+import com.swent.shifter.model.firestore.invalidField
+import com.swent.shifter.model.firestore.optionalString
+import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "Event"
 
 /**
  * Names of the events collection and of every field of an event document.
@@ -79,19 +85,19 @@ internal fun Event.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toEvent(): Event =
     Event(
         id = id,
-        organizerId = requireString(EventSchema.ORGANIZER_ID),
-        title = requireString(EventSchema.TITLE),
-        description = requireString(EventSchema.DESCRIPTION),
+        organizerId = requireString(ENTITY, EventSchema.ORGANIZER_ID),
+        title = requireString(ENTITY, EventSchema.TITLE),
+        description = requireString(ENTITY, EventSchema.DESCRIPTION),
         type = requireEventType(),
-        imageUrl = optionalString(EventSchema.IMAGE_URL),
-        startAt = requireInstant(EventSchema.START_AT),
-        endAt = requireInstant(EventSchema.END_AT),
+        imageUrl = optionalString(ENTITY, EventSchema.IMAGE_URL),
+        startAt = requireInstant(ENTITY, EventSchema.START_AT),
+        endAt = requireInstant(ENTITY, EventSchema.END_AT),
         location = requireLocation(),
         emergencyContacts = requireEmergencyContacts(),
         memberIds = requireMemberIds(),
-        joinCode = requireString(EventSchema.JOIN_CODE),
+        joinCode = requireString(ENTITY, EventSchema.JOIN_CODE),
         status = requireEventStatus(),
-        createdAt = requireInstant(EventSchema.CREATED_AT),
+        createdAt = requireInstant(ENTITY, EventSchema.CREATED_AT),
     )
 
 private fun EventLocation.toFirestoreMap(): Map<String, Any?> =
@@ -114,7 +120,7 @@ private fun EmergencyContact.toFirestoreMap(): Map<String, Any?> =
  * non-string field stays a schema problem.
  */
 private fun DocumentSnapshot.requireEventType(): EventType {
-  val name = requireString(EventSchema.TYPE)
+  val name = requireString(ENTITY, EventSchema.TYPE)
   return EventType.entries.firstOrNull { it.name == name } ?: EventType.OTHER
 }
 
@@ -124,20 +130,23 @@ private fun DocumentSnapshot.requireEventType(): EventType {
  * archived event or archive a live one.
  */
 private fun DocumentSnapshot.requireEventStatus(): EventStatus {
-  val name = requireString(EventSchema.STATUS)
-  return EventStatus.entries.firstOrNull { it.name == name } ?: invalid(EventSchema.STATUS)
+  val name = requireString(ENTITY, EventSchema.STATUS)
+  return EventStatus.entries.firstOrNull { it.name == name }
+      ?: invalidField(ENTITY, EventSchema.STATUS)
 }
 
 private fun DocumentSnapshot.requireLocation(): EventLocation {
-  val location = get(EventSchema.LOCATION) as? Map<*, *> ?: invalid(EventSchema.LOCATION)
+  val location =
+      get(EventSchema.LOCATION) as? Map<*, *> ?: invalidField(ENTITY, EventSchema.LOCATION)
   val latitude = requireCoordinate(location, EventSchema.LocationFields.LATITUDE)
   val longitude = requireCoordinate(location, EventSchema.LocationFields.LONGITUDE)
   // A map pin needs both coordinates, so half a pair is a malformed document rather than an event
   // waiting to be geocoded.
-  if ((latitude == null) != (longitude == null)) invalid(EventSchema.LOCATION)
+  if ((latitude == null) != (longitude == null)) invalidField(ENTITY, EventSchema.LOCATION)
   return EventLocation(
       address =
-          location[EventSchema.LocationFields.ADDRESS] as? String ?: invalid(EventSchema.LOCATION),
+          location[EventSchema.LocationFields.ADDRESS] as? String
+              ?: invalidField(ENTITY, EventSchema.LOCATION),
       latitude = latitude,
       longitude = longitude,
   )
@@ -152,7 +161,7 @@ private fun DocumentSnapshot.requireCoordinate(location: Map<*, *>, field: Strin
     when (val value = location[field]) {
       null -> null
       is Number -> value.toDouble()
-      else -> invalid(EventSchema.LOCATION)
+      else -> invalidField(ENTITY, EventSchema.LOCATION)
     }
 
 /**
@@ -161,16 +170,16 @@ private fun DocumentSnapshot.requireCoordinate(location: Map<*, *>, field: Strin
  */
 private fun DocumentSnapshot.requireEmergencyContacts(): List<EmergencyContact> {
   val field = get(EventSchema.EMERGENCY_CONTACTS) ?: return emptyList()
-  val entries = field as? List<*> ?: invalid(EventSchema.EMERGENCY_CONTACTS)
+  val entries = field as? List<*> ?: invalidField(ENTITY, EventSchema.EMERGENCY_CONTACTS)
   return entries.map { entry ->
-    val contact = entry as? Map<*, *> ?: invalid(EventSchema.EMERGENCY_CONTACTS)
+    val contact = entry as? Map<*, *> ?: invalidField(ENTITY, EventSchema.EMERGENCY_CONTACTS)
     EmergencyContact(
         name =
             contact[EventSchema.ContactFields.NAME] as? String
-                ?: invalid(EventSchema.EMERGENCY_CONTACTS),
+                ?: invalidField(ENTITY, EventSchema.EMERGENCY_CONTACTS),
         phoneNumber =
             contact[EventSchema.ContactFields.PHONE_NUMBER] as? String
-                ?: invalid(EventSchema.EMERGENCY_CONTACTS),
+                ?: invalidField(ENTITY, EventSchema.EMERGENCY_CONTACTS),
         role = contact[EventSchema.ContactFields.ROLE] as? String,
     )
   }
@@ -182,30 +191,6 @@ private fun DocumentSnapshot.requireEmergencyContacts(): List<EmergencyContact> 
  */
 private fun DocumentSnapshot.requireMemberIds(): List<String> {
   val field = get(EventSchema.MEMBER_IDS) ?: return emptyList()
-  val entries = field as? List<*> ?: invalid(EventSchema.MEMBER_IDS)
-  return entries.map { it as? String ?: invalid(EventSchema.MEMBER_IDS) }
+  val entries = field as? List<*> ?: invalidField(ENTITY, EventSchema.MEMBER_IDS)
+  return entries.map { it as? String ?: invalidField(ENTITY, EventSchema.MEMBER_IDS) }
 }
-
-private fun DocumentSnapshot.requireString(field: String): String =
-    get(field) as? String ?: invalid(field)
-
-private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
-
-/**
- * An absent or null field means the event has no value for it, which is why both map to null. A
- * present value of another type is rejected like a wrongly typed required field: mapping it to null
- * would turn a schema problem into "this event has nothing here".
- */
-private fun DocumentSnapshot.optionalString(field: String): String? =
-    when (val value = get(field)) {
-      null -> null
-      is String -> value
-      else -> invalid(field)
-    }
-
-private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException("Event document '$id' has a missing or invalid '$field' field")
-
-/** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
-private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)
