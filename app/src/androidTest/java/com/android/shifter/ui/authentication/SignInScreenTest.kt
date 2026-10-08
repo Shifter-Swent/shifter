@@ -1,8 +1,12 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.authentication
 
 import android.content.Context
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -28,9 +32,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-
 /**
  * UI tests for [SignInScreen].
  *
@@ -46,7 +47,7 @@ class SignInScreenTest {
   private val viewModel =
       SignInViewModel(AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper()))
 
-  private var signedIn = false
+  private var signedInCalls = 0
 
   @Before
   fun setUp() {
@@ -91,7 +92,7 @@ class SignInScreenTest {
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOADING_INDICATOR).assertDoesNotExist()
     assertNull(viewModel.uiState.value.errorMsg)
-    assertFalse(signedIn)
+    assertEquals(0, signedInCalls)
     assertNull(AuthEmulator.auth.currentUser)
   }
 
@@ -105,24 +106,37 @@ class SignInScreenTest {
                 AuthEmulator.fakeGoogleIdToken("google-${UUID.randomUUID()}", email, DISPLAY_NAME)
             )
             .build()
-    setSignInContent(FakeCredentialManager { GetCredentialResponse(credential) })
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      SignInContent(FakeCredentialManager { GetCredentialResponse(credential) })
+    }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedIn }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedInCalls > 0 }
 
     assertEquals(email, AuthEmulator.auth.currentUser?.email)
     assertEquals(email, viewModel.uiState.value.user?.email)
+
+    // Recreating the screen, as on a rotation, must not navigate a second time.
+    restorationTester.emulateSavedInstanceStateRestore()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, signedInCalls)
+    assertFalse(viewModel.uiState.value.signedIn)
   }
 
   private fun setSignInContent(credentialManager: CredentialManager) {
-    composeTestRule.setContent {
-      ShifterTheme {
-        SignInScreen(
-            authViewModel = viewModel,
-            credentialManager = credentialManager,
-            onSignedIn = { signedIn = true },
-        )
-      }
+    composeTestRule.setContent { SignInContent(credentialManager) }
+  }
+
+  @Composable
+  private fun SignInContent(credentialManager: CredentialManager) {
+    ShifterTheme {
+      SignInScreen(
+          authViewModel = viewModel,
+          credentialManager = credentialManager,
+          onSignedIn = { signedInCalls++ },
+      )
     }
   }
 

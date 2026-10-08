@@ -1,3 +1,7 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Based on Bootcamp authentication material.
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+
 package com.swent.shifter.ui.authentication
 
 import android.content.Context
@@ -19,14 +23,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Based on Bootcamp authentication material.
-
 data class AuthUIState(
     val isLoading: Boolean = false,
     val user: FirebaseUser? = null,
     val errorMsg: String? = null,
-    val signedOut: Boolean = false,
+    /** One-shot event: set on a successful sign-in, reset once the screen has navigated. */
+    val signedIn: Boolean = false,
 )
 
 class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFirebase()) :
@@ -37,6 +39,11 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
   /** Clears the current authentication error. */
   fun clearErrorMsg() {
     _uiState.update { it.copy(errorMsg = null) }
+  }
+
+  /** Marks the sign-in event as handled, so the screen does not navigate again. */
+  fun onSignedInHandled() {
+    _uiState.update { it.copy(signedIn = false) }
   }
 
   /** Starts Google sign-in and updates the state with the result. */
@@ -59,7 +66,12 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
             .signInWithGoogle(credential)
             .fold(
                 onSuccess = { user ->
-                  _uiState.value = AuthUIState(isLoading = false, user = user, signedOut = false)
+                  _uiState.value =
+                      AuthUIState(
+                          isLoading = false,
+                          user = user,
+                          signedIn = true,
+                      )
                 },
                 onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
             )
@@ -75,19 +87,7 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFir
     }
   }
 
-  /** Signs out the current user through the authentication repository. */
-  fun signOut() {
-    repository
-        .signOut()
-        .fold(
-            onSuccess = { _uiState.value = AuthUIState(signedOut = true) },
-            onFailure = { error -> showError(error.localizedMessage ?: "Sign-out failed") },
-        )
-  }
-
   private fun showError(message: String) {
-    _uiState.update {
-      it.copy(isLoading = false, errorMsg = message, user = null, signedOut = true)
-    }
+    _uiState.update { it.copy(isLoading = false, errorMsg = message, user = null) }
   }
 }

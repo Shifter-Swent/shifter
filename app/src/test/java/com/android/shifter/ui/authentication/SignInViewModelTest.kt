@@ -1,3 +1,6 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+
 package com.swent.shifter.ui.authentication
 
 import android.content.Context
@@ -24,9 +27,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 @RunWith(RobolectricTestRunner::class)
 class SignInViewModelTest {
@@ -81,6 +81,34 @@ class SignInViewModelTest {
   }
 
   @Test
+  fun signIn_success_raisesSignedInEventUntilHandled() {
+    val user = mockk<FirebaseUser>()
+    repository.result = Result.success(user)
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+    assertTrue(viewModel.uiState.value.signedIn)
+
+    viewModel.onSignedInHandled()
+
+    // The event is consumed, but the user stays signed in.
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertEquals(user, viewModel.uiState.value.user)
+  }
+
+  @Test
+  fun signIn_failure_doesNotRaiseSignedInEvent() {
+    repository.result = Result.failure(IllegalStateException("Repository unavailable"))
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
   fun signIn_repositoryFailure_setsErrorAndClearsUser() {
     val credential = mockk<Credential>()
     repository.result = Result.failure(IllegalStateException("Repository unavailable"))
@@ -92,7 +120,6 @@ class SignInViewModelTest {
     assertEquals("Repository unavailable", viewModel.uiState.value.errorMsg)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
-    assertTrue(viewModel.uiState.value.signedOut)
   }
 
   @Test
@@ -213,38 +240,6 @@ class SignInViewModelTest {
     coVerify(exactly = 1) { credentialManager.getCredential(context, any<GetCredentialRequest>()) }
   }
 
-  @Test
-  fun signOut_afterSignIn_clearsUserAndMarksSignedOut() {
-    repository.result = Result.success(mockk<FirebaseUser>())
-    stubCredentialManager(mockk<Credential>())
-    viewModel.signIn(context, credentialManager)
-    shadowOf(android.os.Looper.getMainLooper()).idle()
-
-    viewModel.signOut()
-
-    assertEquals(1, repository.signOutCalls)
-    assertEquals(AuthUIState(signedOut = true), viewModel.uiState.value)
-  }
-
-  @Test
-  fun signOut_repositoryFailure_reportsTheError() {
-    repository.signOutResult = Result.failure(IllegalStateException("Session store locked"))
-
-    viewModel.signOut()
-
-    assertEquals("Session store locked", viewModel.uiState.value.errorMsg)
-    assertFalse(viewModel.uiState.value.isLoading)
-  }
-
-  @Test
-  fun signOut_repositoryFailureWithoutMessage_usesGenericSignOutError() {
-    repository.signOutResult = Result.failure(IllegalStateException())
-
-    viewModel.signOut()
-
-    assertEquals("Sign-out failed", viewModel.uiState.value.errorMsg)
-  }
-
   // Helper method to stub the CredentialManager to return a specific credential
   private fun stubCredentialManager(credential: Credential) {
     // Create a mock GetCredentialResponse that returns the provided credential
@@ -260,17 +255,12 @@ class SignInViewModelTest {
   private class RecordingAuthRepository : com.swent.shifter.model.authentication.AuthRepository {
     var receivedCredential: Credential? = null
     var result: Result<FirebaseUser> = Result.failure(IllegalStateException("No result configured"))
-    var signOutResult: Result<Unit> = Result.success(Unit)
-    var signOutCalls = 0
 
     override suspend fun signInWithGoogle(credential: Credential): Result<FirebaseUser> {
       receivedCredential = credential
       return result
     }
 
-    override fun signOut(): Result<Unit> {
-      signOutCalls++
-      return signOutResult
-    }
+    override fun signOut(): Result<Unit> = Result.success(Unit)
   }
 }

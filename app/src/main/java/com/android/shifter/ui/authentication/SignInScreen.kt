@@ -1,3 +1,7 @@
+// Based on Bootcamp authentication material.
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+
 package com.swent.shifter.ui.authentication
 
 import android.widget.Toast
@@ -37,8 +41,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.ShifterTheme
 
-// Based on Bootcamp authentication material.
-
 object SignInScreenTestTags {
   const val APP_NAME = "APP_NAME"
   const val LOGIN_BUTTON = "LOGIN_BUTTON"
@@ -65,10 +67,11 @@ fun SignInScreen(
   }
 
   // Navigate to MyEvents screen on successful login
-  LaunchedEffect(uiState.user) {
-    uiState.user?.let {
+  LaunchedEffect(uiState.signedIn) {
+    if (uiState.signedIn) {
       Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
       onSignedIn()
+      authViewModel.onSignedInHandled()
     }
   }
 
