@@ -77,7 +77,7 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryPro
                 onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
             )
       } catch (e: GetCredentialCancellationException) {
-        showError("Sign-in cancelled")
+        _uiState.update { it.copy(isLoading = false) }
       } catch (e: NoCredentialException) {
         showError("No Google credential is available for sign-in")
       } catch (e: GetCredentialException) {

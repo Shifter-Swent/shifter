@@ -88,7 +88,7 @@ class SignInScreenTest {
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
     composeTestRule.waitForIdle()
 
-    // The user can retry, and the error has been consumed by the screen's toast.
+    // The user can retry, and no error is shown.
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOADING_INDICATOR).assertDoesNotExist()
     assertNull(viewModel.uiState.value.errorMsg)

@@ -155,14 +155,14 @@ class SignInViewModelTest {
   }
 
   @Test
-  fun signIn_userCancellation_setsCancellationErrorAndClearsLoading() {
+  fun signIn_userCancellation_clearsLoadingWithoutError() {
     coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
         GetCredentialCancellationException()
 
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertEquals("Sign-in cancelled", viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.errorMsg)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
