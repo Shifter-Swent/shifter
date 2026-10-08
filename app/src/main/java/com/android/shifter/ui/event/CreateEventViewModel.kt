@@ -2,7 +2,10 @@
 package com.swent.shifter.ui.event
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
@@ -33,7 +36,9 @@ enum class EventFormField {
 /** Why a field of the event creation form is invalid. Each error belongs to exactly one [field]. */
 enum class EventFormError(val field: EventFormField) {
   TITLE_EMPTY(EventFormField.TITLE),
+  TITLE_TOO_LONG(EventFormField.TITLE),
   DESCRIPTION_EMPTY(EventFormField.DESCRIPTION),
+  DESCRIPTION_TOO_LONG(EventFormField.DESCRIPTION),
   TYPE_MISSING(EventFormField.TYPE),
   ADDRESS_EMPTY(EventFormField.ADDRESS),
   START_INVALID(EventFormField.START),
@@ -99,10 +104,13 @@ class CreateEventViewModel(
 
   fun onEndAtChange(endAt: String) = edit { it.copy(endAt = endAt) }
 
-  /** Validates the form and, when it is valid, creates the event. Ignored while saving. */
+  /**
+   * Validates the form and, when it is valid, creates the event. Ignored while saving and once the
+   * event has been created, so a second tap cannot create it twice.
+   */
   fun createEvent() {
     val form = _uiState.value
-    if (form.isSaving) return
+    if (form.isSaving || form.createdEvent != null) return
     submitAttempted = true
     val errors = validate(form)
     if (errors.isNotEmpty()) {
@@ -115,9 +123,9 @@ class CreateEventViewModel(
             organizerId = organizerId,
             title = form.title.trim(),
             description = form.description.trim(),
-            type = form.type ?: return,
-            startAt = parseDateTime(form.startAt) ?: return,
-            endAt = parseDateTime(form.endAt) ?: return,
+            type = checkNotNull(form.type),
+            startAt = checkNotNull(parseDateTime(form.startAt)),
+            endAt = checkNotNull(parseDateTime(form.endAt)),
             location = EventLocation(address = form.address.trim()),
             createdAt = clock.instant(),
         )
@@ -142,8 +150,15 @@ class CreateEventViewModel(
   }
 
   private fun validate(form: CreateEventUiState): Set<EventFormError> = buildSet {
-    if (form.title.isBlank()) add(EventFormError.TITLE_EMPTY)
-    if (form.description.isBlank()) add(EventFormError.DESCRIPTION_EMPTY)
+    when {
+      form.title.isBlank() -> add(EventFormError.TITLE_EMPTY)
+      form.title.trim().length > TITLE_MAX_LENGTH -> add(EventFormError.TITLE_TOO_LONG)
+    }
+    when {
+      form.description.isBlank() -> add(EventFormError.DESCRIPTION_EMPTY)
+      form.description.trim().length > DESCRIPTION_MAX_LENGTH ->
+          add(EventFormError.DESCRIPTION_TOO_LONG)
+    }
     if (form.type == null) add(EventFormError.TYPE_MISSING)
     if (form.address.isBlank()) add(EventFormError.ADDRESS_EMPTY)
 
@@ -167,12 +182,30 @@ class CreateEventViewModel(
         null
       }
 
-  private companion object {
+  companion object {
+    /** Longest title accepted, so it fits on event cards and in lists. */
+    const val TITLE_MAX_LENGTH = 80
+
+    /** Longest description accepted. */
+    const val DESCRIPTION_MAX_LENGTH = 2000
+
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(
+        repository: EventRepository,
+        organizerId: String,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer { CreateEventViewModel(repository, organizerId, clock) }
+    }
+
     /**
      * How the organizer types a date and time, e.g. `24/12/2027 18:30`. Strict, so impossible dates
      * such as 31/02 are rejected instead of being adjusted.
      */
-    val DATE_TIME_FORMATTER: DateTimeFormatter =
+    private val DATE_TIME_FORMATTER: DateTimeFormatter =
         DateTimeFormatter.ofPattern("dd/MM/uuuu HH:mm").withResolverStyle(ResolverStyle.STRICT)
   }
 }

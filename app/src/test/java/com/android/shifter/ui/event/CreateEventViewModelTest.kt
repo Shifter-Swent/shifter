@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventStatus
 import com.swent.shifter.model.event.EventType
@@ -227,6 +228,71 @@ class CreateEventViewModelTest {
     dispatcher.scheduler.advanceUntilIdle()
 
     assertEquals(1, repository.events.size)
+  }
+
+  @Test
+  fun secondSubmitAfterSuccess_createsNothing() = runTest {
+    fillValidForm()
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+    val created = state.createdEvent
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(1, repository.events.size)
+    assertEquals(created, state.createdEvent)
+    assertFalse(state.isSaving)
+  }
+
+  @Test
+  fun createEvent_acceptsTitleAndDescriptionAtMaxLength() = runTest {
+    fillValidForm()
+    viewModel.onTitleChange("a".repeat(CreateEventViewModel.TITLE_MAX_LENGTH))
+    viewModel.onDescriptionChange("b".repeat(CreateEventViewModel.DESCRIPTION_MAX_LENGTH))
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(state.errors.isEmpty())
+    assertEquals(1, repository.events.size)
+  }
+
+  @Test
+  fun createEvent_rejectsTitleAndDescriptionOverMaxLength() {
+    fillValidForm()
+    viewModel.onTitleChange("a".repeat(CreateEventViewModel.TITLE_MAX_LENGTH + 1))
+    viewModel.onDescriptionChange("b".repeat(CreateEventViewModel.DESCRIPTION_MAX_LENGTH + 1))
+
+    viewModel.createEvent()
+
+    assertEquals(
+        setOf(EventFormError.TITLE_TOO_LONG, EventFormError.DESCRIPTION_TOO_LONG),
+        state.errors,
+    )
+    assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun maxLength_ignoresSurroundingWhitespace() {
+    fillValidForm()
+    viewModel.onTitleChange("  " + "a".repeat(CreateEventViewModel.TITLE_MAX_LENGTH) + "  ")
+
+    viewModel.createEvent()
+
+    assertNull(state.errorFor(EventFormField.TITLE))
+  }
+
+  @Test
+  fun factory_createsViewModelWithGivenDependencies() = runTest {
+    val factory = CreateEventViewModel.factory(repository, organizerId = "organizer-2", clock)
+    viewModel = factory.create(CreateEventViewModel::class.java, CreationExtras.Empty)
+
+    fillValidForm()
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals("organizer-2", repository.events.single().organizerId)
   }
 
   @Test
