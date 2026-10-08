@@ -2,6 +2,7 @@
 package com.swent.shifter.model.shift
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
@@ -42,16 +43,19 @@ class ShiftFirestoreMapperTest {
             .document(eventId)
             .collection(ShiftSchema.COLLECTION)
 
-  /** Ids of the documents this test created, deleted in [tearDown]. */
-  private val createdShiftIds = mutableListOf<String>()
+  /**
+   * The documents this test created, deleted in [tearDown]. References rather than ids, because
+   * [toShift_derivesTheEventIdFromTheParentDocumentPath] writes under a second event.
+   */
+  private val createdDocuments = mutableListOf<DocumentReference>()
 
   /** `firestore.rules` only lets signed-in users touch the shifts of an event. */
   @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
 
   @After
   fun tearDown() = emulatorTest {
-    createdShiftIds.forEach { shifts.document(it).delete().await() }
-    createdShiftIds.clear()
+    createdDocuments.forEach { it.delete().await() }
+    createdDocuments.clear()
     auth.signOut()
   }
 
@@ -63,6 +67,7 @@ class ShiftFirestoreMapperTest {
     val mapped = read(shiftId).toShift()
 
     assertEquals(shiftId, mapped.id)
+    assertEquals(eventId, mapped.eventId)
     assertEquals(TEAM_ID, mapped.teamId)
     assertEquals(ASSIGNEES, mapped.assigneeIds)
     assertEquals(Instant.parse("2026-07-21T16:00:00Z"), mapped.startAt)
@@ -88,7 +93,23 @@ class ShiftFirestoreMapperTest {
     // The parent event is the path: a field could contradict it.
     val shiftId = writeRawShift(richShift().toFirestoreMap())
 
-    assertFalse("the event id must not be a field", read(shiftId).contains("eventId"))
+    val snapshot = read(shiftId)
+
+    assertFalse("the event id must not be a field", snapshot.contains("eventId"))
+    // Absent from the document, yet present on the model: it can only come from the path.
+    assertEquals("the event id must still be mapped", eventId, snapshot.toShift().eventId)
+  }
+
+  @Test
+  fun toShift_derivesTheEventIdFromTheParentDocumentPath() = emulatorTest {
+    // A second event, so the mapped id has to follow the document it was read from rather than
+    // anything this test class holds: a volunteer's schedule spans several events.
+    val otherEventId = "event-" + UUID.randomUUID()
+    val document = writeRawShiftUnder(otherEventId, richShift().toFirestoreMap())
+
+    val mapped = document.get(Source.SERVER).await().toShift()
+
+    assertEquals("the event id must be the parent event document id", otherEventId, mapped.eventId)
   }
 
   @Test
@@ -204,6 +225,7 @@ class ShiftFirestoreMapperTest {
   /** Whole-second instants on purpose: Firestore keeps microseconds, not nanoseconds. */
   private fun richShift() =
       Shift(
+          eventId = eventId,
           teamId = TEAM_ID,
           assigneeIds = ASSIGNEES,
           startAt = Instant.parse("2026-07-21T16:00:00Z"),
@@ -212,11 +234,25 @@ class ShiftFirestoreMapperTest {
       )
 
   /** Writes [body] into the event's shifts subcollection and remembers it for cleanup. */
-  private suspend fun writeRawShift(body: Map<String, Any?>): String {
-    val document = shifts.document()
-    createdShiftIds += document.id
+  private suspend fun writeRawShift(body: Map<String, Any?>): String =
+      writeRawShiftUnder(eventId, body).id
+
+  /**
+   * Writes [body] into the shifts subcollection of [parentEventId] and remembers it for cleanup.
+   */
+  private suspend fun writeRawShiftUnder(
+      parentEventId: String,
+      body: Map<String, Any?>,
+  ): DocumentReference {
+    val document =
+        firestore
+            .collection(EventSchema.COLLECTION)
+            .document(parentEventId)
+            .collection(ShiftSchema.COLLECTION)
+            .document()
+    createdDocuments += document
     document.set(body).await()
-    return document.id
+    return document
   }
 
   /** [Source.SERVER] bypasses the local cache, so the read really goes through the emulator. */

@@ -13,9 +13,9 @@ private const val ENTITY = "Shift"
 /**
  * Names of the shifts subcollection and of every field of a shift document.
  *
- * [Shift.id] and the event id are deliberately absent: the first is the document id, the second the
- * id of the parent document, so the path already carries both and storing them would be a second
- * source of truth.
+ * [Shift.id] and [Shift.eventId] are deliberately absent: they are carried by the document path
+ * `/events/{eventId}/shifts/{shiftId}`, never by fields, so the path stays the single source of
+ * truth for both.
  */
 internal object ShiftSchema {
 
@@ -40,7 +40,8 @@ internal fun Shift.toFirestoreMap(): Map<String, Any?> =
     )
 
 /**
- * Rebuilds the [Shift] stored in this document, taking [Shift.id] from the document id.
+ * Rebuilds the [Shift] stored in this document, taking [Shift.id] from the document id and
+ * [Shift.eventId] from the id of the event document it is nested under.
  *
  * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
  * document that cannot be mapped is a schema problem, which must not be mistaken for "no shift".
@@ -50,6 +51,7 @@ internal fun Shift.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toShift(): Shift =
     Shift(
         id = id,
+        eventId = requireEventId(),
         teamId = requireString(ENTITY, ShiftSchema.TEAM_ID),
         // Absent means nobody is scheduled yet; a malformed entry fails rather than quietly
         // taking a volunteer off a shift they are due to work.
@@ -58,3 +60,8 @@ internal fun DocumentSnapshot.toShift(): Shift =
         endAt = requireInstant(ENTITY, ShiftSchema.END_AT),
         createdAt = requireInstant(ENTITY, ShiftSchema.CREATED_AT),
     )
+
+/** A shift document only exists under an event document, whose id is the shift's event id. */
+private fun DocumentSnapshot.requireEventId(): String =
+    reference.parent.parent?.id
+        ?: throw IllegalStateException("Shift document '$id' is not nested under an event")
