@@ -26,9 +26,6 @@ firebaseBom = "34.19.0"
 credentials = "1.6.0"
 googleid = "1.2.0"
 
-#Google Service
-playServicesAuth = "21.6.0"
-
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -61,7 +58,6 @@ googleid = { module = "com.google.android.libraries.identity.googleid:googleid",
 
 kaspresso = { group = "com.kaspersky.android-components", name = "kaspresso", version.ref = "kaspresso" }
 kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspresso-compose-support", version.ref = "kaspresso" }
-play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "playServicesAuth" }
 
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 

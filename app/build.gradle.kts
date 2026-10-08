@@ -144,9 +144,6 @@ dependencies {
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
-  // Google Service
-  implementation(libs.play.services.auth)
-
   // Credential Manager (for Google Sign-In)
   implementation(libs.credentials)
   implementation(libs.credentials.play.services.auth)
