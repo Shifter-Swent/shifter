@@ -15,9 +15,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,6 +29,7 @@ import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.SampleMyEvents
 import com.swent.shifter.ui.events.components.EventCardAction
+import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
 import com.swent.shifter.ui.theme.ShifterTheme
 
@@ -48,7 +49,6 @@ fun StaffEventsContent(
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
-  val withdrawColor = MaterialTheme.colorScheme.error
   MyEventsLayout(
       state = state,
       avatarInitial = avatarInitial,
@@ -57,7 +57,7 @@ fun StaffEventsContent(
       // An event that is over can no longer be left.
       cardAction = { card ->
         if (card.badge == EventBadge.ENDED) null
-        else EventCardAction("Withdraw", withdrawColor) { onWithdraw(card.id) }
+        else EventCardAction(EventCardActionType.WITHDRAW) { onWithdraw(card.id) }
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
   ) {
@@ -80,7 +80,7 @@ private fun BoxScope.OrganizerViewButton(onClick: () -> Unit) {
               .testTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON),
   ) {
     Text(
-        text = "Organizer View",
+        text = stringResource(R.string.my_events_organizer_view),
         color = colors.onSurface,
         fontSize = 13.sp,
         fontWeight = FontWeight.SemiBold,
@@ -103,8 +103,7 @@ private fun BoxScope.ScanQrButton(onClick: () -> Unit) {
   ) {
     Icon(
         painter = painterResource(R.drawable.ic_plus),
-        contentDescription = "Scan an event invitation",
-        tint = Color.Unspecified,
+        contentDescription = stringResource(R.string.my_events_scan_invitation),
     )
   }
 }
