@@ -55,6 +55,8 @@
     <string name="my_events_footer_awaiting_approval">Awaiting organizer approval</string>
     <string name="my_events_action_withdraw">Withdraw</string>
     <string name="my_events_action_manage_event">Manage event</string>
+    <string name="my_events_organizer_view">Organizer View</string>
+    <string name="my_events_scan_invitation">Scan an event invitation</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
