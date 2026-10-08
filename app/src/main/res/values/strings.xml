@@ -58,6 +58,22 @@
     <string name="my_events_organizer_view">Organizer View</string>
     <string name="my_events_scan_invitation">Scan an event invitation</string>
 
+    <!-- Join an event -->
+    <string name="join_event_title">Join an event</string>
+    <string name="join_event_intro">Enter the code the organizer shared with you.</string>
+    <string name="join_event_code_label">Join code</string>
+    <string name="join_event_find">Find event</string>
+    <string name="join_event_apply">Apply</string>
+    <string name="join_event_change_code">Change code</string>
+    <string name="join_event_status_pending">● Request sent, pending approval</string>
+    <string name="join_event_status_accepted">● You are part of this event</string>
+    <string name="join_event_status_rejected">● Your request was declined</string>
+    <string name="join_event_error_unknown_code">No event uses this code</string>
+    <string name="join_event_error_not_signed_in">You must be signed in to apply</string>
+    <string name="join_event_error_offline">You are offline, try again later</string>
+    <string name="join_event_error_permission_denied">You cannot apply to this event</string>
+    <string name="join_event_error_unexpected">Something went wrong, try again</string>
+
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_sign_out">Sign out</string>
