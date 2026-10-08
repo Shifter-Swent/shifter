@@ -196,6 +196,29 @@ class FirestoreMissionRepositoryTest {
   }
 
   @Test
+  fun getMissionFailsLoudlyOnExplicitlyNullAssigneeIds() = emulatorTest {
+    // Absent means nobody is assigned yet, but the mapper never writes a null: one is malformed.
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.ASSIGNEE_IDS to null) }
+
+    assertFailsOnField(eventId, missionId, MissionSchema.ASSIGNEE_IDS)
+  }
+
+  @Test
+  fun getMissionMapsAbsentAssigneeIdsToAnEmptyList() = emulatorTest {
+    val (eventId, missionId) = writeRawMission { it - MissionSchema.ASSIGNEE_IDS }
+
+    assertEquals(emptyList<String>(), repository.getMission(eventId, missionId)?.assigneeIds)
+  }
+
+  @Test
+  fun getMissionMapsAVolunteerCountWrittenAsAWholeDouble() = emulatorTest {
+    // A whole number written by another client as 3.0 is still exactly three people.
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.VOLUNTEERS_NEEDED to 3.0) }
+
+    assertEquals(3, repository.getMission(eventId, missionId)?.volunteersNeeded)
+  }
+
+  @Test
   fun getMissionsByEvent_returnsOnlyTheMissionsOfThatEvent() = emulatorTest {
     val eventId = uniqueEventId()
     val mine =

@@ -2,12 +2,15 @@
 package com.swent.shifter.model.mission
 
 import com.google.firebase.firestore.DocumentSnapshot
-import com.swent.shifter.model.firestore.invalid
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireInt
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "Mission"
 
 /**
  * Names of the missions subcollection and of every field of a mission document.
@@ -61,31 +64,19 @@ internal fun DocumentSnapshot.toMission(): Mission =
     Mission(
         id = id,
         eventId = requireEventId(),
-        title = requireString(MissionSchema.TITLE),
-        description = requireString(MissionSchema.DESCRIPTION),
-        teamId = optionalString(MissionSchema.TEAM_ID),
-        volunteersNeeded = requireVolunteersNeeded(),
-        startAt = requireInstant(MissionSchema.START_AT),
-        endAt = requireInstant(MissionSchema.END_AT),
+        title = requireString(ENTITY, MissionSchema.TITLE),
+        description = requireString(ENTITY, MissionSchema.DESCRIPTION),
+        teamId = optionalString(ENTITY, MissionSchema.TEAM_ID),
+        volunteersNeeded = requireInt(ENTITY, MissionSchema.VOLUNTEERS_NEEDED),
+        startAt = requireInstant(ENTITY, MissionSchema.START_AT),
+        endAt = requireInstant(ENTITY, MissionSchema.END_AT),
         // Absent means nobody is assigned yet; a malformed entry fails rather than hiding the
         // mission from the person assigned to it.
-        assigneeIds = requireStringList(MissionSchema.ASSIGNEE_IDS),
-        createdAt = requireInstant(MissionSchema.CREATED_AT),
+        assigneeIds = requireStringList(ENTITY, MissionSchema.ASSIGNEE_IDS),
+        createdAt = requireInstant(ENTITY, MissionSchema.CREATED_AT),
     )
 
 /** A mission document only exists under an event document, whose id is the mission's event id. */
 private fun DocumentSnapshot.requireEventId(): String =
     reference.parent.parent?.id
         ?: throw IllegalStateException("Mission document '$id' is not nested under an event")
-
-/**
- * Firestore stores every integer as a 64-bit Long, so the count comes back as a Long. A fractional
- * or out-of-range value is rejected rather than rounded: a wrong volunteer count would be shown to
- * the organizer as if it were the one they entered.
- */
-private fun DocumentSnapshot.requireVolunteersNeeded(): Int {
-  val value =
-      get(MissionSchema.VOLUNTEERS_NEEDED) as? Long ?: invalid(MissionSchema.VOLUNTEERS_NEEDED)
-  if (value !in Int.MIN_VALUE..Int.MAX_VALUE) invalid(MissionSchema.VOLUNTEERS_NEEDED)
-  return value.toInt()
-}
