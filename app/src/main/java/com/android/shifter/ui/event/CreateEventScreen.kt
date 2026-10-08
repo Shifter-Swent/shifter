@@ -556,7 +556,7 @@ private val EventFormError.message: Int
       }
 
 @get:StringRes
-private val EventType.label: Int
+internal val EventType.label: Int
   get() =
       when (this) {
         EventType.MUSIC -> R.string.event_type_music

@@ -47,23 +47,34 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheEventNameAndAppliesOrChangesTheCodeOnClick() {
+  fun showsTheEventNameAndAppliesOnClick() {
     var applyClicks = 0
-    var changeCodeClicks = 0
     composeTestRule.setContent {
-      content(
-          uiState = JoinEventUiState(event = EVENT),
-          onApply = { applyClicks++ },
-          onChangeCode = { changeCodeClicks++ },
-      )
+      content(uiState = JoinEventUiState(event = EVENT), onApply = { applyClicks++ })
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals("Lakeside")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.CHANGE_CODE_BUTTON).performClick()
 
     assertEquals(1, applyClicks)
-    assertEquals(1, changeCodeClicks)
+  }
+
+  @Test
+  fun showsTheEventDetailsAndGoesBack() {
+    var backClicks = 0
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(event = EVENT), onBack = { backClicks++ })
+    }
+
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.CATEGORY).assertTextEquals("Music")
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.VENUE).assertTextEquals("Lausanne")
+    composeTestRule
+        .onNodeWithTag(EventDetailsTestTags.DESCRIPTION)
+        .assertTextEquals("A festival by the lake.")
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.DATE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+
+    assertEquals(1, backClicks)
   }
 
   @Test
@@ -109,9 +120,9 @@ class JoinEventScreenTest {
       uiState: JoinEventUiState,
       onJoinCodeChange: (String) -> Unit = {},
       onFindEvent: () -> Unit = {},
+      onBack: () -> Unit = {},
       onApply: () -> Unit = {},
-      onChangeCode: () -> Unit = {},
-  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onApply, onChangeCode)
+  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onApply)
 
   private companion object {
     val EVENT =
