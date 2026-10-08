@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -23,8 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -70,49 +69,39 @@ fun SettingsScreen(
 @Composable
 private fun SettingsHeader(onBack: () -> Unit) {
   val colors = MaterialTheme.colorScheme
-  Row(
-      modifier =
-          Modifier.fillMaxWidth()
-              .height(72.dp)
-              .background(colors.surfaceContainer)
-              .drawBehind {
-                val y = size.height - 0.5.dp.toPx()
-                drawLine(
-                    color = colors.outlineVariant,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1.dp.toPx(),
-                )
-              }
-              .padding(horizontal = 18.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    IconButton(
-        onClick = onBack,
-        modifier = Modifier.size(38.dp).testTag(NavigationTestTags.GO_BACK_BUTTON),
-        shape = CircleShape,
-        colors =
-            IconButtonDefaults.iconButtonColors(
-                containerColor = colors.secondaryContainer,
-                contentColor = colors.onSecondaryContainer,
-            ),
+  Column(modifier = Modifier.fillMaxWidth().background(colors.surfaceContainer)) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-      Icon(
-          painter = painterResource(R.drawable.ic_chevron_left),
-          contentDescription = stringResource(R.string.content_description_back),
-          modifier = Modifier.size(18.dp),
+      IconButton(
+          onClick = onBack,
+          modifier = Modifier.size(38.dp).testTag(NavigationTestTags.GO_BACK_BUTTON),
+          shape = CircleShape,
+          colors =
+              IconButtonDefaults.iconButtonColors(
+                  containerColor = colors.secondaryContainer,
+                  contentColor = colors.onSecondaryContainer,
+              ),
+      ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron_left),
+            contentDescription = stringResource(R.string.content_description_back),
+            modifier = Modifier.size(18.dp),
+        )
+      }
+      Text(
+          text = stringResource(R.string.settings_title),
+          modifier = Modifier.weight(1f).testTag(NavigationTestTags.TOP_BAR_TITLE),
+          color = colors.onSurface,
+          fontSize = 16.sp,
+          fontWeight = FontWeight.Bold,
+          textAlign = TextAlign.Center,
       )
+      // Keeps the title centered against the back button.
+      Spacer(modifier = Modifier.size(38.dp))
     }
-    Text(
-        text = stringResource(R.string.settings_title),
-        modifier = Modifier.weight(1f).testTag(NavigationTestTags.TOP_BAR_TITLE),
-        color = colors.onSurface,
-        fontSize = 16.sp,
-        fontWeight = FontWeight.Bold,
-        textAlign = TextAlign.Center,
-    )
-    // Keeps the title centered against the back button.
-    Spacer(modifier = Modifier.size(38.dp))
+    HorizontalDivider(color = colors.outlineVariant)
   }
 }
 
