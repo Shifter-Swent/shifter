@@ -11,6 +11,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
 /** AuthRepository implementation backed by Firebase Authentication. */
@@ -25,12 +26,16 @@ class AuthRepositoryFirebase(
       return Result.failure(IllegalArgumentException("Unsupported Google credential"))
     }
 
-    return runCatching {
+    return try {
       val idToken = helper.extractIdTokenCredential(credential.data).idToken
       val firebaseUser =
           auth.signInWithCredential(helper.toFirebaseCredential(idToken)).await().user
               ?: error("Firebase returned no authenticated user")
-      firebaseUser.toAuthUser()
+      Result.success(firebaseUser.toAuthUser())
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      Result.failure(e)
     }
   }
 

@@ -19,6 +19,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -211,6 +212,18 @@ class SignInViewModelTest {
     assertEquals("Unexpected error: Play services missing", viewModel.uiState.value.errorMsg)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signIn_coroutineCancellation_doesNotShowError() {
+    coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
+        CancellationException("ViewModel cleared")
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // Coroutine cancellation is not a sign-in error
+    assertNull(viewModel.uiState.value.errorMsg)
   }
 
   @Test

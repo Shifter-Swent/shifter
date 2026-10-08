@@ -17,6 +17,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import com.swent.shifter.model.authentication.AuthUser
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -81,6 +82,8 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryPro
         showError("No Google credential is available for sign-in")
       } catch (e: GetCredentialException) {
         showError("Failed to get credentials: ${e.localizedMessage ?: "Unknown error"}")
+      } catch (e: CancellationException) {
+        throw e
       } catch (e: Exception) {
         showError("Unexpected error: ${e.localizedMessage ?: "Unknown error"}")
       }

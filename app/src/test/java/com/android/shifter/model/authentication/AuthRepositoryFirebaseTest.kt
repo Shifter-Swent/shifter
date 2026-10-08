@@ -18,9 +18,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -77,9 +79,22 @@ class AuthRepositoryFirebaseTest {
 
     val result = repository.signInWithGoogle(credential)
 
-    // Test that the repository catches the exception (runCatching) and returns a failure result
+    // Test that the repository catches the exception and returns a failure result
     assertTrue(result.isFailure)
     assertEquals(failure, result.exceptionOrNull())
+  }
+
+  @Test
+  fun signInWithGoogle_rethrowsCancellation() {
+    val cancellation = CancellationException("Sign-in cancelled")
+    every { helper.extractIdTokenCredential(any()) } throws cancellation
+
+    // Cancellation must propagate instead of being wrapped in a failure result
+    val thrown =
+        assertThrows(CancellationException::class.java) {
+          runBlocking { repository.signInWithGoogle(googleCredential()) }
+        }
+    assertEquals(cancellation, thrown)
   }
 
   @Test
