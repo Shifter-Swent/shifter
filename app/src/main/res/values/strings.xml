@@ -36,7 +36,7 @@
     <string name="event_type_sport">Sport</string>
     <string name="event_type_party">Party</string>
     <string name="event_type_other">Other</string>
-</resources>
+
     <!-- My Events -->
     <string name="my_events_title">My Events</string>
     <string name="my_events_open_profile">Open profile</string>
