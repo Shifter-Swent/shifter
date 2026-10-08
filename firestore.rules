@@ -65,13 +65,16 @@ service cloud.firestore {
           && request.resource.data.availability.size() > 0
           && request.resource.data.createdAt is timestamp;
 
-        // Acceptance must leave the volunteer in the participants document in the same commit.
+        // Decisions must agree with participation after the same commit.
         allow update: if isOrganizer(eventId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
           && request.resource.data.status in ['ACCEPTED', 'REJECTED']
-          && (request.resource.data.status == 'REJECTED'
-              || uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
-                   .data.participantIds);
+          && ((request.resource.data.status == 'ACCEPTED'
+                && uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
+                     .data.participantIds)
+              || (request.resource.data.status == 'REJECTED'
+                && !(uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
+                       .data.participantIds)));
         allow delete: if false;
       }
 
@@ -100,31 +103,34 @@ service cloud.firestore {
     }
 
     match /eventParticipants/{eventId} {
-      function accepted(uid) {
+      function hasStatus(uid, status) {
         return uid is string
           && getAfter(/databases/$(database)/documents/events/$(eventId)/membershipRequests/$(uid))
-               .data.status == 'ACCEPTED';
+               .data.status == status;
       }
 
-      function validAddition() {
+      function validChange() {
         let previous = resource.data.participantIds;
         let next = request.resource.data.participantIds;
         let added = next.removeAll(previous);
-        return next.hasAll(previous)
-          && next.size() == next.toSet().size()
-          && (added.size() == 0 || (added.size() == 1 && accepted(added[0])));
+        let removed = previous.removeAll(next);
+        return next.size() == next.toSet().size()
+          && added.size() + removed.size() <= 1
+          && (added.size() == 0 || hasStatus(added[0], 'ACCEPTED'))
+          && (removed.size() == 0 || hasStatus(removed[0], 'REJECTED'));
       }
 
       allow read: if signedIn();
       allow create: if isOrganizer(eventId)
         && request.resource.data.keys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list
-        && request.resource.data.participantIds.size() == 1
-        && accepted(request.resource.data.participantIds[0]);
+        && (request.resource.data.participantIds.size() == 0
+            || (request.resource.data.participantIds.size() == 1
+                && hasStatus(request.resource.data.participantIds[0], 'ACCEPTED')));
       allow update: if isOrganizer(eventId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list
-        && validAddition();
+        && validChange();
       allow delete: if false;
     }
   }

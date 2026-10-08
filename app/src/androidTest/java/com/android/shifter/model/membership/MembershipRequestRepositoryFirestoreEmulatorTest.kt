@@ -72,26 +72,61 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rejectKeepsRequestAndExistingParticipants() = emulatorTest {
+  fun decisionsCanBeReversedWithoutLosingRequestsOrOtherParticipants() = emulatorTest {
+    val eventId = event()
+    val pending = apply(eventId, volunteer)
+    val other = account()
+    apply(eventId, other)
+    signIn(organizer)
+    repository.accept(eventId, other.uid)
+    repository.accept(eventId, volunteer.uid)
+    repository.reject(eventId, volunteer.uid)
+    repository.reject(eventId, volunteer.uid)
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.REJECTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+    assertEquals(listOf(other.uid), participantIds(eventId))
+    repository.accept(eventId, volunteer.uid)
+    repository.accept(eventId, volunteer.uid)
+    assertEquals(listOf(other.uid, volunteer.uid), participantIds(eventId))
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.ACCEPTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+  }
+
+  @Test
+  fun rejectPendingCreatesEmptyParticipantsAndPreservesRejectedRequest() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
-    repository.accept(eventId, volunteer.uid)
     repository.reject(eventId, volunteer.uid)
+    repository.reject(eventId, volunteer.uid)
+    assertEquals(emptyList<String>(), participantIds(eventId))
     assertEquals(
-        listOf(pending.copy(status = MembershipRequestStatus.REJECTED)),
-        repository.getMembershipRequestsByEId(eventId),
+        pending.copy(status = MembershipRequestStatus.REJECTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
     )
+    repository.accept(eventId, volunteer.uid)
     assertEquals(listOf(volunteer.uid), participantIds(eventId))
   }
 
   @Test
-  fun rejectPendingDoesNotCreateParticipants() = emulatorTest {
+  fun rejectionRequiresConsistentStatusAndParticipantRemoval() = emulatorTest {
     val eventId = event()
-    apply(eventId, volunteer)
+    val pending = apply(eventId, volunteer)
     signIn(organizer)
-    repository.reject(eventId, volunteer.uid)
-    assertFalse(participants(eventId).get(Source.SERVER).await().exists())
+    repository.accept(eventId, volunteer.uid)
+    assertDenied { requestRef(eventId, volunteer).update("status", "REJECTED").await() }
+    assertDenied {
+      participants(eventId).update("participantIds", FieldValue.arrayRemove(volunteer.uid)).await()
+    }
+    assertEquals(listOf(volunteer.uid), participantIds(eventId))
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.ACCEPTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
   }
 
   @Test
@@ -99,6 +134,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     val eventId = event()
     signIn(organizer)
     assertDenied { repository.accept(eventId, volunteer.uid) }
+    assertDenied { repository.reject(eventId, volunteer.uid) }
     assertFalse(participants(eventId).get(Source.SERVER).await().exists())
   }
 
@@ -112,7 +148,10 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     val other = account()
     apply(unrelated, other)
     signIn(volunteer)
-    assertEquals(setOf(one, two), repository.getMembershipRequestsByUId(volunteer.uid).toSet())
+    assertEquals(
+        mapOf(first to one, second to two),
+        repository.getMembershipRequestsByUId(volunteer.uid),
+    )
     assertDenied { repository.getMembershipRequestsByUId(other.uid) }
     assertDenied { repository.getMembershipRequestsByEId(unrelated) }
     signIn(organizer)
