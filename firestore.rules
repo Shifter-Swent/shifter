@@ -1,0 +1,67 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // users/{uid}: a user's own profile. Created once on first sign-in.
+    match /users/{uid} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      allow read: if isOwner();
+
+      // Location sharing is opt-in, so a profile always starts with it disabled.
+      allow create: if isOwner()
+        && request.resource.data.keys().hasOnly(
+             ['displayName', 'email', 'locationSharingEnabled', 'createdAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.email is string
+        && request.resource.data.locationSharingEnabled == false
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if isOwner()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['displayName', 'locationSharingEnabled'])
+        && request.resource.data.displayName is string
+        && request.resource.data.locationSharingEnabled is bool;
+
+      allow delete: if false;
+    }
+
+    // events/{eventId}: signed-in users only, until per-role rules are defined.
+    match /events/{eventId} {
+      allow read, write: if request.auth != null;
+
+      function isOrganizer() {
+        return request.auth != null
+          && get(/databases/$(database)/documents/events/$(eventId)).data.organizerId
+             == request.auth.uid;
+      }
+
+      // membershipRequests/{uid}: a volunteer's request to join, pending until the organizer
+      // decides. Accepting and rejecting come later, so nobody can update or delete one yet.
+      match /membershipRequests/{uid} {
+        function isRequester() {
+          return request.auth != null && request.auth.uid == uid;
+        }
+
+        allow read: if isRequester() || isOrganizer();
+
+        allow create: if isRequester()
+          && exists(/databases/$(database)/documents/events/$(eventId))
+          && request.resource.data.keys().hasOnly(
+               ['userId', 'preferredTeamIds', 'availability', 'status', 'createdAt'])
+          && request.resource.data.userId == uid
+          && request.resource.data.status == 'PENDING'
+          && request.resource.data.preferredTeamIds is list
+          && request.resource.data.availability is list
+          && request.resource.data.availability.size() > 0
+          && request.resource.data.createdAt is timestamp;
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}
