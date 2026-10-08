@@ -91,7 +91,14 @@ fun JoinEventContent(
       JoinCodeStep(uiState, onJoinCodeChange, onFindEvent)
     } else {
       BackHandler(onBack = onBack)
-      EventDetailsContent(event, uiState, onBack, onApply)
+      EventDetailsContent(
+          event = event,
+          isLoading = uiState.isLoading,
+          requestStatus = uiState.requestStatus,
+          error = uiState.error,
+          onBack = onBack,
+          onApply = onApply,
+      )
     }
   }
 }

@@ -42,8 +42,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -62,11 +64,15 @@ object EventDetailsTestTags {
  *
  * Places and "Organized by" are not shown yet: the event has no capacity field, and organizer
  * profiles cannot be read by other users.
+ *
+ * @param requestStatus the status of the volunteer's request once sent, shown in place of Apply.
  */
 @Composable
 fun EventDetailsContent(
     event: Event,
-    uiState: JoinEventUiState,
+    isLoading: Boolean,
+    requestStatus: MembershipRequestStatus?,
+    error: JoinEventError?,
     onBack: () -> Unit,
     onApply: () -> Unit,
 ) {
@@ -124,7 +130,7 @@ fun EventDetailsContent(
           colors.onSurfaceVariant,
       )
     }
-    ApplyBar(uiState, onApply)
+    ApplyBar(isLoading, requestStatus, error, onApply)
   }
 }
 
@@ -175,7 +181,7 @@ private fun WhenAndWhereCard(event: Event) {
     InfoRow(
         Icons.Outlined.CalendarMonth,
         stringResource(R.string.event_details_date_time),
-        formatEventDate(event.startAt),
+        formatEventPeriod(event.startAt, event.endAt),
         EventDetailsTestTags.DATE,
     )
     HorizontalDivider(color = colors.outlineVariant)
@@ -223,7 +229,12 @@ private fun IconLabel(icon: ImageVector, text: String, color: Color) {
 
 /** Apply pinned to the bottom, replaced by the request's status once it is sent. */
 @Composable
-private fun ApplyBar(uiState: JoinEventUiState, onApply: () -> Unit) {
+private fun ApplyBar(
+    isLoading: Boolean,
+    requestStatus: MembershipRequestStatus?,
+    error: JoinEventError?,
+    onApply: () -> Unit,
+) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxWidth()) {
     HorizontalDivider(color = colors.outlineVariant)
@@ -232,11 +243,10 @@ private fun ApplyBar(uiState: JoinEventUiState, onApply: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
     ) {
-      uiState.error?.let { ErrorText(it) }
-      val requestStatus = uiState.requestStatus
+      error?.let { ErrorText(it) }
       Box(contentAlignment = Alignment.Center, modifier = Modifier.height(58.dp)) {
         when {
-          uiState.isLoading -> CircularProgressIndicator(color = colors.primary)
+          isLoading -> CircularProgressIndicator(color = colors.primary)
           requestStatus != null -> StatusBadge(requestStatus)
           else ->
               PrimaryButton(
@@ -256,8 +266,26 @@ private fun ApplyBar(uiState: JoinEventUiState, onApply: () -> Unit) {
   }
 }
 
-private val EVENT_DATE_FORMAT = DateTimeFormatter.ofPattern("EEE d MMM · HH:mm", Locale.ENGLISH)
+/**
+ * When the event runs, so the volunteer sees the whole period they apply for: "Mon 22 Jun · 09:30 –
+ * 17:00" within a day, "21 Jul 12:00 – 26 Jul 21:30" across days. The year is added when the event
+ * is not in [today]'s year. Uses the device's time zone unless [zone] says otherwise.
+ */
+internal fun formatEventPeriod(
+    startAt: Instant,
+    endAt: Instant,
+    zone: ZoneId = ZoneId.systemDefault(),
+    today: LocalDate = LocalDate.now(zone),
+): String {
+  val start = startAt.atZone(zone)
+  val end = endAt.atZone(zone)
+  val year = if (start.year == today.year && end.year == today.year) "" else " uuuu"
+  return if (start.toLocalDate() == end.toLocalDate()) {
+    "${start.format(datePattern("EEE d MMM$year · HH:mm"))} – ${end.format(datePattern("HH:mm"))}"
+  } else {
+    val dayAndTime = datePattern("d MMM$year HH:mm")
+    "${start.format(dayAndTime)} – ${end.format(dayAndTime)}"
+  }
+}
 
-/** "Sat 22 Jun · 09:30", in the device's time zone unless [zone] says otherwise. */
-internal fun formatEventDate(instant: Instant, zone: ZoneId = ZoneId.systemDefault()): String =
-    EVENT_DATE_FORMAT.format(instant.atZone(zone))
+private fun datePattern(pattern: String) = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)
