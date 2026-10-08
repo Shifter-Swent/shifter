@@ -31,8 +31,10 @@ interface MembershipRequestRepository {
   suspend fun accept(eventId: String, userId: String)
 
   /**
-   * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED]. Fails if
-   * the request does not exist: a backend NOT_FOUND error is translated to
+   * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED] and removes
+   * the user from the event participants atomically, without deleting the request. Other
+   * participants are preserved; if the participants document is absent, an empty list is created.
+   * Fails if the request does not exist: a backend NOT_FOUND error is translated to
    * [MembershipRequestRepositoryException.Unknown]. Security rules may instead deny the operation
    * with [MembershipRequestRepositoryException.PermissionDenied].
    */

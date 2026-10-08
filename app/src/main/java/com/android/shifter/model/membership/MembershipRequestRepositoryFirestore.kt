@@ -55,7 +55,21 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   }
 
   override suspend fun reject(eventId: String, userId: String) {
-    updateStatus(eventId, userId, MembershipRequestStatus.REJECTED)
+    translatingErrors {
+      val batch = db.batch()
+      batch.update(
+          requests(eventId).document(userId),
+          MembershipRequestSchema.STATUS,
+          MembershipRequestStatus.REJECTED.name,
+      )
+      // Merge also handles rejection before a participants document exists.
+      batch.set(
+          db.collection("eventParticipants").document(eventId),
+          mapOf("participantIds" to FieldValue.arrayRemove(userId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
+    }
   }
 
   override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
@@ -81,16 +95,6 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
               eventId to document.toRequestOrThrow()
             }
       }
-
-  private suspend fun updateStatus(
-      eventId: String,
-      userId: String,
-      status: MembershipRequestStatus,
-  ) {
-    translatingErrors {
-      requests(eventId).document(userId).update(MembershipRequestSchema.STATUS, status.name).await()
-    }
-  }
 
   private fun requests(eventId: String): CollectionReference =
       db.collection(EventSchema.COLLECTION)

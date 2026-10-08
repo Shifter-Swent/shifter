@@ -124,12 +124,27 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
-  fun rejectOnlyUpdatesStatusWithoutDeletingRequestOrChangingParticipants() = runTest {
-    repository.reject("event", request.userId)
-    verify(exactly = 1) { ref.update("status", "REJECTED") }
-    verify(exactly = 0) { ref.delete() }
-    verify(exactly = 0) { db.batch() }
-    verify(exactly = 0) { db.collection("eventParticipants") }
+  fun rejectAtomicallyUpdatesStatusAndRemovesOnlyApplicantWithoutDeletingRequest() = runTest {
+    val removal = FieldValue.arrayRemove(request.userId)
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.userId) } returns removal
+      repository.reject("event", request.userId)
+      repository.reject("event", request.userId)
+      verify(exactly = 2) { batch.update(ref, "status", "REJECTED") }
+      verify(exactly = 2) {
+        batch.set(
+            participants,
+            match<Map<String, Any>> {
+              it.keys == setOf("participantIds") && it["participantIds"] === removal
+            },
+            SetOptions.merge(),
+        )
+      }
+      verify(exactly = 2) { batch.commit() }
+      verify(exactly = 2) { FieldValue.arrayRemove(request.userId) }
+      verify(exactly = 0) { ref.delete() }
+      verify(exactly = 0) { ref.update(any<String>(), any()) }
+    }
   }
 
   @Test
