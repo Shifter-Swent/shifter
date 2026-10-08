@@ -35,6 +35,7 @@ private val DarkColorScheme =
         onSurface = md_theme_dark_onSurface,
         surfaceVariant = md_theme_dark_surfaceVariant,
         onSurfaceVariant = md_theme_dark_onSurfaceVariant,
+        surfaceContainer = md_theme_dark_surfaceContainer,
         inverseSurface = md_theme_dark_inverseSurface,
         inverseOnSurface = md_theme_dark_inverseOnSurface,
         inversePrimary = md_theme_dark_inversePrimary,

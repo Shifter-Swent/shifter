@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -36,7 +37,6 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_signoutOutline
-import com.swent.shifter.ui.theme.shifter_headerBackground
 
 object SettingsScreenTestTags {
   const val SCREEN = "SettingsScreen"
@@ -44,8 +44,8 @@ object SettingsScreenTestTags {
 }
 
 /**
- * Profile & Settings screen (Figma "Shifter · Settings"). For now it only holds the header and
- * the Sign out action; the preference sections come later.
+ * Profile & Settings screen (Figma "Shifter · Settings"). For now it only holds the header and the
+ * Sign out action; the preference sections come later.
  *
  * Stateless: the caller signs the user out and navigates (e.g. `enterApp(SignedOut)`).
  */
@@ -74,7 +74,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
       modifier =
           Modifier.fillMaxWidth()
               .height(72.dp)
-              .background(shifter_headerBackground)
+              .background(colors.surfaceContainer)
               .drawBehind {
                 val y = size.height - 0.5.dp.toPx()
                 drawLine(
@@ -99,12 +99,12 @@ private fun SettingsHeader(onBack: () -> Unit) {
     ) {
       Icon(
           painter = painterResource(R.drawable.ic_chevron_left),
-          contentDescription = "Back",
+          contentDescription = stringResource(R.string.content_description_back),
           modifier = Modifier.size(18.dp),
       )
     }
     Text(
-        text = "Settings",
+        text = stringResource(R.string.settings_title),
         modifier = Modifier.weight(1f).testTag(NavigationTestTags.TOP_BAR_TITLE),
         color = colors.onSurface,
         fontSize = 16.sp,
@@ -131,7 +131,11 @@ private fun SignOutButton(onClick: () -> Unit) {
               contentColor = colors.onErrorContainer,
           ),
   ) {
-    Text(text = "Sign out", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    Text(
+        text = stringResource(R.string.settings_sign_out),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
   }
 }
 

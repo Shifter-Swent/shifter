@@ -2,4 +2,9 @@
     <string name="app_name">Shifter</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_sign_out">Sign out</string>
+    <string name="content_description_back">Back</string>
 </resources>
