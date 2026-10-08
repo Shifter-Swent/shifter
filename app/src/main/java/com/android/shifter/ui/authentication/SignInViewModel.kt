@@ -88,6 +88,6 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryPro
   }
 
   private fun showError(message: String) {
-    _uiState.update { it.copy(isLoading = false, errorMsg = message, user = null) }
+    _uiState.update { it.copy(isLoading = false, errorMsg = message) }
   }
 }
