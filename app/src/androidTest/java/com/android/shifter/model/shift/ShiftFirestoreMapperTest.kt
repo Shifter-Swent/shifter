@@ -64,6 +64,7 @@ class ShiftFirestoreMapperTest {
 
     assertEquals(shiftId, mapped.id)
     assertEquals(TEAM_ID, mapped.teamId)
+    assertEquals(ASSIGNEES, mapped.assigneeIds)
     assertEquals(Instant.parse("2026-07-21T16:00:00Z"), mapped.startAt)
     assertEquals(Instant.parse("2026-07-22T02:00:00Z"), mapped.endAt)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
@@ -119,10 +120,92 @@ class ShiftFirestoreMapperTest {
     assertFailsOnField(shiftId, ShiftSchema.END_AT)
   }
 
+  @Test
+  fun toShift_roundTripsSeveralAssigneeIdsInOrder() = emulatorTest {
+    // Belonging to the team and working a given slot are separate: these are only the volunteers
+    // scheduled for this shift.
+    val assignees = listOf("user-c", "user-a", "user-b")
+    val stored = richShift().copy(assigneeIds = assignees)
+    val shiftId = writeRawShift(stored.toFirestoreMap())
+
+    val snapshot = read(shiftId)
+    val mapped = snapshot.toShift()
+
+    assertEquals(
+        "the field must be stored as a Firestore list of strings, in order",
+        assignees,
+        snapshot.get(ShiftSchema.ASSIGNEE_IDS),
+    )
+    assertEquals("the stored order must be preserved", assignees, mapped.assigneeIds)
+    assertEquals(stored.copy(id = shiftId), mapped)
+  }
+
+  @Test
+  fun toShift_roundTripsAnUnstaffedShift() = emulatorTest {
+    // A shift exists before anybody is scheduled for it, so an empty list is valid.
+    val stored = richShift().copy(assigneeIds = emptyList())
+    val shiftId = writeRawShift(stored.toFirestoreMap())
+
+    val snapshot = read(shiftId)
+    val mapped = snapshot.toShift()
+
+    assertTrue(
+        "an empty list must be stored rather than omitted",
+        snapshot.contains(ShiftSchema.ASSIGNEE_IDS),
+    )
+    assertEquals(emptyList<String>(), mapped.assigneeIds)
+    assertEquals(stored.copy(id = shiftId), mapped)
+  }
+
+  @Test
+  fun toShift_mapsAnAbsentAssigneeIdsToAnEmptyList() = emulatorTest {
+    // The key is removed rather than written as null, which is what a shift document saved before
+    // the field existed looks like. "Nobody scheduled yet" cannot be told apart from a shift that
+    // is legitimately unstaffed, so it maps to an empty list rather than failing.
+    val shiftId = writeRawShift(richShift().toFirestoreMap() - ShiftSchema.ASSIGNEE_IDS)
+
+    val snapshot = read(shiftId)
+
+    assertFalse("the field must really be absent", snapshot.contains(ShiftSchema.ASSIGNEE_IDS))
+    assertEquals(emptyList<String>(), snapshot.toShift().assigneeIds)
+  }
+
+  @Test
+  fun toShift_failsLoudlyOnAnExplicitlyNullAssigneeIds() = emulatorTest {
+    // A non-nullable list never serializes to null, so a null is a schema problem rather than an
+    // unstaffed shift.
+    val shiftId = writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.ASSIGNEE_IDS to null))
+
+    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
+  }
+
+  @Test
+  fun toShift_failsLoudlyOnAnAssigneeIdsThatIsNotAList() = emulatorTest {
+    val shiftId =
+        writeRawShift(
+            richShift().toFirestoreMap() + (ShiftSchema.ASSIGNEE_IDS to "user-volunteer-1")
+        )
+
+    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
+  }
+
+  @Test
+  fun toShift_failsLoudlyOnAnAssigneeIdsEntryThatIsNotAString() = emulatorTest {
+    // Skipping the malformed entry would quietly take a volunteer off a shift they are due to work.
+    val shiftId =
+        writeRawShift(
+            richShift().toFirestoreMap() +
+                (ShiftSchema.ASSIGNEE_IDS to listOf("user-volunteer-1", 7))
+        )
+
+    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
+  }
+
   /** Whole-second instants on purpose: Firestore keeps microseconds, not nanoseconds. */
   private fun richShift() =
       Shift(
           teamId = TEAM_ID,
+          assigneeIds = ASSIGNEES,
           startAt = Instant.parse("2026-07-21T16:00:00Z"),
           endAt = Instant.parse("2026-07-22T02:00:00Z"),
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
@@ -164,5 +247,7 @@ class ShiftFirestoreMapperTest {
     const val TIMEOUT_MILLIS = 20_000L
 
     const val TEAM_ID = "team-logistics"
+
+    val ASSIGNEES = listOf("user-volunteer-1", "user-volunteer-2")
   }
 }

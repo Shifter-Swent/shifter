@@ -18,6 +18,7 @@ internal object ShiftSchema {
   const val COLLECTION = "shifts"
 
   const val TEAM_ID = "teamId"
+  const val ASSIGNEE_IDS = "assigneeIds"
   const val START_AT = "startAt"
   const val END_AT = "endAt"
   const val CREATED_AT = "createdAt"
@@ -27,6 +28,7 @@ internal object ShiftSchema {
 internal fun Shift.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         ShiftSchema.TEAM_ID to teamId,
+        ShiftSchema.ASSIGNEE_IDS to assigneeIds,
         ShiftSchema.START_AT to startAt.toFirestoreTimestamp(),
         ShiftSchema.END_AT to endAt.toFirestoreTimestamp(),
         ShiftSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
@@ -44,10 +46,25 @@ internal fun DocumentSnapshot.toShift(): Shift =
     Shift(
         id = id,
         teamId = requireString(ShiftSchema.TEAM_ID),
+        assigneeIds = requireAssigneeIds(),
         startAt = requireInstant(ShiftSchema.START_AT),
         endAt = requireInstant(ShiftSchema.END_AT),
         createdAt = requireInstant(ShiftSchema.CREATED_AT),
     )
+
+/**
+ * An absent field means the shift has no assignees yet and maps to an empty list.
+ *
+ * An explicit null is rejected: a non-nullable list never serializes to null, so null is a schema
+ * problem rather than an empty shift.
+ *
+ * Order is preserved as stored, and malformed entries are rejected rather than skipped.
+ */
+private fun DocumentSnapshot.requireAssigneeIds(): List<String> {
+  if (!contains(ShiftSchema.ASSIGNEE_IDS)) return emptyList()
+  val entries = get(ShiftSchema.ASSIGNEE_IDS) as? List<*> ?: invalid(ShiftSchema.ASSIGNEE_IDS)
+  return entries.map { it as? String ?: invalid(ShiftSchema.ASSIGNEE_IDS) }
+}
 
 private fun DocumentSnapshot.requireString(field: String): String =
     get(field) as? String ?: invalid(field)
