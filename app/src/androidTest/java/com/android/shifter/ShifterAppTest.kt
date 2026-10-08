@@ -2,12 +2,16 @@
 package com.swent.shifter
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.navigation.NavigationTestTags
+import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Before
 import org.junit.Rule
@@ -37,8 +41,27 @@ class ShifterAppTest {
   fun signedIn_skipsSignInAndStartsOnVolunteerEvents() {
     composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
 
-    composeTestRule.onNodeWithText("My events").assertIsDisplayed()
-    composeTestRule.onNodeWithText("Switch to Organizer").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun staffEvents_avatarOpensSettingsAndBackReturns() {
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun staffEvents_switchesToThePastTab() {
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).assertIsSelected()
   }
 }

@@ -19,7 +19,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -33,6 +37,9 @@ import androidx.navigation.compose.rememberNavController
 import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.authentication.SignInScreen
+import com.swent.shifter.ui.events.EventTab
+import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.staff.StaffEventsContent
 import com.swent.shifter.ui.navigation.NavigationActions
 import com.swent.shifter.ui.navigation.Organizer
 import com.swent.shifter.ui.navigation.OrganizerEvent
@@ -46,6 +53,7 @@ import com.swent.shifter.ui.navigation.VolunteerEventScreen
 import com.swent.shifter.ui.navigation.VolunteerTabs
 import com.swent.shifter.ui.navigation.rememberNavigationActions
 import com.swent.shifter.ui.navigation.startApp
+import com.swent.shifter.ui.settings.SettingsScreen
 import com.swent.shifter.ui.theme.ShifterTheme
 
 class MainActivity : ComponentActivity() {
@@ -88,10 +96,21 @@ fun ShifterApp(
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
       composable<Volunteer.Events> {
-        Page("My events") {
-          Button(onClick = { nav.enterEvent(VolunteerEvent("demo")) }) { Text("Open event") }
-          Button(onClick = { nav.enterApp(Organizer) }) { Text("Switch to Organizer") }
-        }
+        // No events ViewModel yet: only the selected tab is held here.
+        var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
+        StaffEventsContent(
+            state = MyEventsUiState(selectedTab = selectedTab),
+            avatarInitial = "A",
+            onTabSelected = { selectedTab = it },
+            onWithdraw = { /* TODO */ },
+            onOrganizerViewClick = { nav.enterApp(Organizer) },
+            onScanQrClick = { /* TODO */ },
+            onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
+        )
+      }
+      composable<Volunteer.ProfileSettings> {
+        // Sign-out is wired once the settings ViewModel (#109) is on main.
+        SettingsScreen(onBack = { nav.goBack() }, onSignOut = { /* TODO */ })
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.Overview) {
         navigation<VolunteerTabs.Overview>(startDestination = VolunteerEventScreen.Overview) {
