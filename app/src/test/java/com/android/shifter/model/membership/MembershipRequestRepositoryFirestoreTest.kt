@@ -17,6 +17,7 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.WriteBatch
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.verify
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
@@ -27,6 +28,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+/** Repository logic with Firestore mocked; the emulator test covers the real SDK and the rules. */
 class MembershipRequestRepositoryFirestoreTest {
   private val db = mockk<FirebaseFirestore>()
   private val requests = mockk<CollectionReference>()
@@ -99,20 +101,26 @@ class MembershipRequestRepositoryFirestoreTest {
 
   @Test
   fun acceptAtomicallyUpdatesStatusAndUnionsParticipantsWithoutReplacingDocument() = runTest {
-    repository.accept("event", request.userId)
-    repository.accept("event", request.userId)
-    verify(exactly = 2) { batch.update(ref, "status", "ACCEPTED") }
-    verify(exactly = 2) {
-      batch.set(
-          participants,
-          match<Map<String, Any>> {
-            it.keys == setOf("participantIds") && it["participantIds"] is FieldValue
-          },
-          SetOptions.merge(),
-      )
+    // Firestore FieldValue uses identity equality, so verify the factory call and its result.
+    val union = FieldValue.arrayUnion(request.userId)
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayUnion(request.userId) } returns union
+      repository.accept("event", request.userId)
+      repository.accept("event", request.userId)
+      verify(exactly = 2) { batch.update(ref, "status", "ACCEPTED") }
+      verify(exactly = 2) {
+        batch.set(
+            participants,
+            match<Map<String, Any>> {
+              it.keys == setOf("participantIds") && it["participantIds"] === union
+            },
+            SetOptions.merge(),
+        )
+      }
+      verify(exactly = 2) { batch.commit() }
+      verify(exactly = 0) { ref.update(any<String>(), any()) }
+      verify(exactly = 2) { FieldValue.arrayUnion(request.userId) }
     }
-    verify(exactly = 2) { batch.commit() }
-    verify(exactly = 0) { ref.update(any<String>(), any()) }
   }
 
   @Test
@@ -141,18 +149,48 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
-  fun queriesMapAllFieldsAndHandleEmptyResults() = runTest {
+  fun eventQueryMapsAllFieldsAndHandlesEmptyResults() = runTest {
     val stored =
         listOf(
             request.copy(id = request.userId),
-            request.copy(id = "second", status = MembershipRequestStatus.REJECTED),
+            request.copy(
+                id = "second",
+                userId = "second",
+                status = MembershipRequestStatus.REJECTED,
+            ),
         )
     every { result.documents } returns stored.map { snapshot(it) }
     assertEquals(stored, repository.getMembershipRequestsByEId("event"))
-    assertEquals(stored, repository.getMembershipRequestsByUId(request.userId))
     every { result.documents } returns emptyList()
     assertTrue(repository.getMembershipRequestsByEId("event").isEmpty())
+  }
+
+  @Test
+  fun userQueryKeepsRequestsWithTheSameUidDistinctAcrossEvents() = runTest {
+    val pending = request.copy(id = request.userId)
+    val rejected = pending.copy(status = MembershipRequestStatus.REJECTED)
+    every { result.documents } returns
+        listOf(snapshot(pending, "event-a"), snapshot(rejected, "event-b"))
+
+    assertEquals(
+        mapOf("event-a" to pending, "event-b" to rejected),
+        repository.getMembershipRequestsByUId(request.userId),
+    )
+    verify { db.collectionGroup("membershipRequests") }
+    verify { query.get() }
+    every { result.documents } returns emptyList()
     assertTrue(repository.getMembershipRequestsByUId(request.userId).isEmpty())
+  }
+
+  @Test
+  fun userQueryReportsMissingParentEventAsUnknown() = runTest {
+    every { result.documents } returns listOf(snapshot(request, null))
+    val failure = runCatching {
+      repository.getMembershipRequestsByUId(request.userId)
+    }
+        .exceptionOrNull()
+    assertTrue(failure is MembershipRequestRepositoryException.Unknown)
+    assertTrue(failure?.cause is IllegalStateException)
   }
 
   @Test
@@ -198,9 +236,14 @@ class MembershipRequestRepositoryFirestoreTest {
   fun queryPreservesCancellation() = runTest {
     val cancellation = CancellationException("cancelled")
     every { requests.get() } throws cancellation
+    every { query.get() } throws cancellation
     assertSame(
         cancellation,
         runCatching { repository.getMembershipRequestsByEId("event") }.exceptionOrNull(),
+    )
+    assertSame(
+        cancellation,
+        runCatching { repository.getMembershipRequestsByUId(request.userId) }.exceptionOrNull(),
     )
   }
 
@@ -241,8 +284,16 @@ class MembershipRequestRepositoryFirestoreTest {
     assertEquals(error, thrown!!.cause)
   }
 
-  private fun snapshot(value: MembershipRequest): DocumentSnapshot {
+  private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
     val snapshot = mockk<DocumentSnapshot>()
+    val document = mockk<DocumentReference>()
+    val collection = mockk<CollectionReference>()
+    val event = eventId?.let { id ->
+      mockk<DocumentReference>().also { every { it.id } returns id }
+    }
+    every { snapshot.reference } returns document
+    every { document.parent } returns collection
+    every { collection.parent } returns event
     val fields = value.toFirestoreMap()
     every { snapshot.id } returns value.id
     every { snapshot.exists() } returns true

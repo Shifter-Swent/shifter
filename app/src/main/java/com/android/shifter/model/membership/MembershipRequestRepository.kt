@@ -23,20 +23,36 @@ interface MembershipRequestRepository {
 
   /**
    * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.ACCEPTED] and adds
-   * the user to the event participants without duplicates, atomically. Fails if the request does
-   * not exist.
+   * the user to the event participants without duplicates, atomically. If the request does not
+   * exist, a backend NOT_FOUND error is translated to
+   * [MembershipRequestRepositoryException.Unknown]. Security rules may instead deny the operation
+   * with [MembershipRequestRepositoryException.PermissionDenied].
    */
   suspend fun accept(eventId: String, userId: String)
 
   /**
    * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED]. Fails if
-   * the request does not exist.
+   * the request does not exist: a backend NOT_FOUND error is translated to
+   * [MembershipRequestRepositoryException.Unknown]. Security rules may instead deny the operation
+   * with [MembershipRequestRepositoryException.PermissionDenied].
    */
   suspend fun reject(eventId: String, userId: String)
 
-  /** Returns all requests for [eventId], or an empty list if there are none. */
+  /**
+   * Returns all requests for [eventId], or an empty list if there are none.
+   *
+   * With Firestore's default persistent cache, an offline query may return cached data, including
+   * an empty or stale list, rather than throwing
+   * [MembershipRequestRepositoryException.Unavailable].
+   */
   suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest>
 
-  /** Returns all requests from [userId] across events, or an empty list if there are none. */
-  suspend fun getMembershipRequestsByUId(userId: String): List<MembershipRequest>
+  /**
+   * Returns all requests from [userId] across events, keyed by the parent event ID, or an empty map
+   * if there are none. Each request's document ID remains the user ID.
+   *
+   * With Firestore's default persistent cache, an offline query may return cached data, including
+   * an empty or stale map, rather than throwing [MembershipRequestRepositoryException.Unavailable].
+   */
+  suspend fun getMembershipRequestsByUId(userId: String): Map<String, MembershipRequest>
 }

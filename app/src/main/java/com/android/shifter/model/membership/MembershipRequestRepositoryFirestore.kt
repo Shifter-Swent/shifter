@@ -63,14 +63,23 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
         requests(eventId).get().await().documents.map { it.toRequestOrThrow() }
       }
 
-  override suspend fun getMembershipRequestsByUId(userId: String): List<MembershipRequest> =
+  override suspend fun getMembershipRequestsByUId(userId: String): Map<String, MembershipRequest> =
       translatingErrors {
         db.collectionGroup(MembershipRequestSchema.COLLECTION)
             .whereEqualTo(MembershipRequestSchema.USER_ID, userId)
             .get()
             .await()
             .documents
-            .map { it.toRequestOrThrow() }
+            .associate { document ->
+              val eventId =
+                  document.reference.parent.parent?.id
+                      ?: throw MembershipRequestRepositoryException.Unknown(
+                          IllegalStateException(
+                              "Membership request '${document.id}' has no parent event"
+                          )
+                      )
+              eventId to document.toRequestOrThrow()
+            }
       }
 
   private suspend fun updateStatus(
