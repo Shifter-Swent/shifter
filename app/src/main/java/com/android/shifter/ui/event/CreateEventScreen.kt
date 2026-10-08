@@ -523,7 +523,9 @@ private val EventFormError.message: Int
   get() =
       when (this) {
         EventFormError.TITLE_EMPTY -> R.string.create_event_error_title_empty
+        EventFormError.TITLE_TOO_LONG -> R.string.create_event_error_title_too_long
         EventFormError.DESCRIPTION_EMPTY -> R.string.create_event_error_description_empty
+        EventFormError.DESCRIPTION_TOO_LONG -> R.string.create_event_error_description_too_long
         EventFormError.TYPE_MISSING -> R.string.create_event_error_type_missing
         EventFormError.ADDRESS_EMPTY -> R.string.create_event_error_address_empty
         EventFormError.START_INVALID,

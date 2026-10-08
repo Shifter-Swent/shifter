@@ -20,7 +20,9 @@
     <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
     <string name="create_event_submit">Create my event</string>
     <string name="create_event_error_title_empty">Enter a title</string>
+    <string name="create_event_error_title_too_long">The title is too long</string>
     <string name="create_event_error_description_empty">Enter a description</string>
+    <string name="create_event_error_description_too_long">The description is too long</string>
     <string name="create_event_error_type_missing">Choose a type</string>
     <string name="create_event_error_address_empty">Enter an address</string>
     <string name="create_event_error_date_invalid">Use the format DD/MM/YYYY HH:MM</string>

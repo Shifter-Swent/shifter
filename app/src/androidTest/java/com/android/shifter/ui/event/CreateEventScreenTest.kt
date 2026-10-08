@@ -184,6 +184,25 @@ class CreateEventScreenTest {
   }
 
   @Test
+  fun tooLongTitle_showsItsMessageAndCreatesNothing() {
+    val repository = RecordingRepository()
+    setScreen(repository)
+    fillValidForm()
+    node(CreateEventScreenTestTags.TITLE_FIELD)
+        .performScrollTo()
+        .performTextReplacement("a".repeat(CreateEventViewModel.TITLE_MAX_LENGTH + 1))
+
+    node(CreateEventScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
+
+    val message =
+        InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getString(R.string.create_event_error_title_too_long)
+    errorNode(EventFormField.TITLE).assertTextEquals(message)
+    assertTrue(repository.created.isEmpty())
+  }
+
+  @Test
   fun startInThePast_showsItsMessageUnderStart() {
     setScreen(RecordingRepository())
     fillValidForm()
