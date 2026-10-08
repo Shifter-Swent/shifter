@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
-import com.swent.shifter.ui.theme.shifter_errorOutline
+import com.swent.shifter.ui.theme.shifter_signoutOutline
 import com.swent.shifter.ui.theme.shifter_headerBackground
 
 object SettingsScreenTestTags {
@@ -124,7 +124,7 @@ private fun SignOutButton(onClick: () -> Unit) {
       modifier =
           Modifier.fillMaxWidth().height(48.dp).testTag(SettingsScreenTestTags.SIGN_OUT_BUTTON),
       shape = RoundedCornerShape(16.dp),
-      border = BorderStroke(1.dp, shifter_errorOutline),
+      border = BorderStroke(1.dp, shifter_signoutOutline),
       colors =
           ButtonDefaults.outlinedButtonColors(
               containerColor = colors.errorContainer,
