@@ -275,6 +275,8 @@ class SignInViewModelTest {
       return result
     }
 
+    override fun currentUser(): AuthUser? = null
+
     override fun signOut(): Result<Unit> = Result.success(Unit)
   }
 }

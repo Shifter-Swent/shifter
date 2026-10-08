@@ -39,6 +39,9 @@ class AuthRepositoryFirebase(
     }
   }
 
+  /** Reads the session Firebase persisted on the device, without any network call. */
+  override fun currentUser(): AuthUser? = auth.currentUser?.toAuthUser()
+
   /** Clears the current Firebase Authentication session. */
   override fun signOut(): Result<Unit> {
     return runCatching { auth.signOut() }

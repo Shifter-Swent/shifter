@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter
 
 import android.os.Bundle
@@ -29,6 +30,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.navigation.NavigationActions
@@ -49,6 +51,8 @@ import com.swent.shifter.ui.theme.ShifterTheme
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    // Firebase restores the previous session synchronously, so a returning user skips sign-in.
+    val isSignedIn = AuthRepositoryProvider.repository.currentUser() != null
     setContent {
       ShifterTheme {
         // A surface container using the 'background' color from the theme
@@ -56,20 +60,26 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
-          ShifterApp()
+          ShifterApp(isSignedIn = isSignedIn)
         }
       }
     }
   }
 }
 
+/**
+ * The app's navigation graph.
+ *
+ * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
+ */
 @Composable
 fun ShifterApp(
+    isSignedIn: Boolean,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
 ) {
   val nav = rememberNavigationActions(navController)
-  val start = remember { startApp(false, false) }
+  val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
   NavHost(navController, startDestination = start) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
@@ -148,5 +158,5 @@ private fun TabPage(current: Tab, nav: NavigationActions) {
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-  ShifterTheme { ShifterApp() }
+  ShifterTheme { ShifterApp(isSignedIn = false) }
 }
