@@ -6,6 +6,8 @@ package com.swent.shifter.model.event
  *
  * ViewModels depend on this interface and never on an implementation, so the Firestore repository
  * can be replaced by a fake in unit tests.
+ *
+ * Every method throws an [EventRepositoryException] when the backend fails.
  */
 interface EventRepository {
 
