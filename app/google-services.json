@@ -12,7 +12,20 @@
           "package_name": "com.swent.shifter"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "482506989555-3oqrirmn0i0hpaov5hja2rc0avsphd7p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.swent.shifter",
+            "certificate_hash": "a8708df6c1963587cfe31869d299407477af380a"
+          }
+        },
+        {
+          "client_id": "482506989555-tv1b7kkm4ql6jfghab11btjk533k95g8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAnFa4fuSf2kRn64y7ChRpl0rfcJ2beHuk"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "482506989555-tv1b7kkm4ql6jfghab11btjk533k95g8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
