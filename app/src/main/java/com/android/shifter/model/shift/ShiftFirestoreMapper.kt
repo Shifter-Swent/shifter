@@ -1,9 +1,14 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.shift
 
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
-import java.time.Instant
+import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.requireStringList
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "Shift"
 
 /**
  * Names of the shifts subcollection and of every field of a shift document.
@@ -45,35 +50,11 @@ internal fun Shift.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toShift(): Shift =
     Shift(
         id = id,
-        teamId = requireString(ShiftSchema.TEAM_ID),
-        assigneeIds = requireAssigneeIds(),
-        startAt = requireInstant(ShiftSchema.START_AT),
-        endAt = requireInstant(ShiftSchema.END_AT),
-        createdAt = requireInstant(ShiftSchema.CREATED_AT),
+        teamId = requireString(ENTITY, ShiftSchema.TEAM_ID),
+        // Absent means nobody is scheduled yet; a malformed entry fails rather than quietly
+        // taking a volunteer off a shift they are due to work.
+        assigneeIds = requireStringList(ENTITY, ShiftSchema.ASSIGNEE_IDS),
+        startAt = requireInstant(ENTITY, ShiftSchema.START_AT),
+        endAt = requireInstant(ENTITY, ShiftSchema.END_AT),
+        createdAt = requireInstant(ENTITY, ShiftSchema.CREATED_AT),
     )
-
-/**
- * An absent field means the shift has no assignees yet and maps to an empty list.
- *
- * An explicit null is rejected: a non-nullable list never serializes to null, so null is a schema
- * problem rather than an empty shift.
- *
- * Order is preserved as stored, and malformed entries are rejected rather than skipped.
- */
-private fun DocumentSnapshot.requireAssigneeIds(): List<String> {
-  if (!contains(ShiftSchema.ASSIGNEE_IDS)) return emptyList()
-  val entries = get(ShiftSchema.ASSIGNEE_IDS) as? List<*> ?: invalid(ShiftSchema.ASSIGNEE_IDS)
-  return entries.map { it as? String ?: invalid(ShiftSchema.ASSIGNEE_IDS) }
-}
-
-private fun DocumentSnapshot.requireString(field: String): String =
-    get(field) as? String ?: invalid(field)
-
-private fun DocumentSnapshot.requireInstant(field: String): Instant =
-    (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
-
-private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException("Shift document '$id' has a missing or invalid '$field' field")
-
-/** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
-private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)
