@@ -2,8 +2,8 @@
 package com.swent.shifter.screen
 
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
-import com.swent.shifter.authentication.SignInScreenTestTags
 import com.swent.shifter.resources.C
+import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import io.github.kakaocup.compose.node.element.KNode
 
