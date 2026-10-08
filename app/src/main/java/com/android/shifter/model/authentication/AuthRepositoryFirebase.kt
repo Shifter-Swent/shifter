@@ -1,3 +1,6 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Based on Bootcamp authentication material.
+
 package com.swent.shifter.model.authentication
 
 import androidx.credentials.Credential
@@ -8,9 +11,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.tasks.await
-
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Based on Bootcamp authentication material.
 
 /** AuthRepository implementation backed by Firebase Authentication. */
 class AuthRepositoryFirebase(

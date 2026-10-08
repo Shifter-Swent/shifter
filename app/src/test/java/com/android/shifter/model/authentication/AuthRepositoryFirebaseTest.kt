@@ -1,3 +1,5 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
 package com.swent.shifter.model.authentication
 
 import android.os.Bundle
@@ -22,8 +24,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 
 @RunWith(RobolectricTestRunner::class)
 class AuthRepositoryFirebaseTest {

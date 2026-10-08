@@ -1,12 +1,12 @@
+// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Based on Bootcamp authentication material.
+
 package com.swent.shifter.model.authentication
 
 import android.os.Bundle
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.GoogleAuthProvider
-
-// Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-// Based on Bootcamp authentication material.
 
 /**
  * Converts Credential Manager data into credentials that Firebase can authenticate.
