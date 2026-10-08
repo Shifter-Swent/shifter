@@ -127,9 +127,10 @@ configurations.named("androidTestImplementation") {
 }
 
 dependencies {
-  implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
-  implementation("com.google.firebase:firebase-auth")
-  implementation("com.google.firebase:firebase-firestore")
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
+  implementation(libs.kotlinx.coroutines.play.services)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
@@ -142,6 +143,11 @@ dependencies {
   testImplementation(libs.mockk)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
+
+  // Credential Manager (for Google Sign-In)
+  implementation(libs.credentials)
+  implementation(libs.credentials.play.services.auth)
+  implementation(libs.googleid)
 
   // ------------- Jetpack Compose ------------------
   val composeBom = platform(libs.compose.bom)
@@ -169,6 +175,10 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+  testImplementation(libs.mockk)
+
+  // ----------       Coroutines      ------------
+  globalTestImplementation(libs.kotlinx.coroutines.test)
 }
 
 tasks.withType<Test> {
