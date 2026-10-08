@@ -231,6 +231,23 @@ class CreateEventViewModelTest {
   }
 
   @Test
+  fun onEventCreatedHandled_marksItHandledAndKeepsTheEvent() = runTest {
+    fillValidForm()
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+    assertFalse(state.createdEventHandled)
+    val created = state.createdEvent
+
+    viewModel.onEventCreatedHandled()
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(state.createdEventHandled)
+    assertEquals(created, state.createdEvent)
+    assertEquals(1, repository.events.size)
+  }
+
+  @Test
   fun secondSubmitAfterSuccess_createsNothing() = runTest {
     fillValidForm()
     viewModel.createEvent()

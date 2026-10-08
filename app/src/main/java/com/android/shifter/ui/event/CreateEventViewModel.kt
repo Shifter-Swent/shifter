@@ -56,6 +56,8 @@ enum class EventFormError(val field: EventFormField) {
  * @property errors the current validation errors. Empty until the organizer first tries to submit,
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
  * @property createdEvent the persisted event once creation succeeded, null before.
+ * @property createdEventHandled whether the screen already reacted to [createdEvent], e.g. by
+ *   opening it, so it does not react again after a recomposition or configuration change.
  */
 data class CreateEventUiState(
     val title: String = "",
@@ -68,6 +70,7 @@ data class CreateEventUiState(
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
     val createdEvent: Event? = null,
+    val createdEventHandled: Boolean = false,
 ) {
   /** The error to show under [field], or null when it is valid. */
   fun errorFor(field: EventFormField): EventFormError? = errors.firstOrNull { it.field == field }
@@ -140,6 +143,14 @@ class CreateEventViewModel(
         _uiState.update { it.copy(isSaving = false, saveFailed = true) }
       }
     }
+  }
+
+  /**
+   * Marks [CreateEventUiState.createdEvent] as handled once the screen reacted to it. The event
+   * itself is kept, so the form still cannot create it a second time.
+   */
+  fun onEventCreatedHandled() {
+    _uiState.update { it.copy(createdEventHandled = true) }
   }
 
   private fun edit(change: (CreateEventUiState) -> CreateEventUiState) {
