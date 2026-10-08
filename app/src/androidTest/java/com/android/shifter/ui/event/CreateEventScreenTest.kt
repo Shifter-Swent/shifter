@@ -1,11 +1,16 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -117,7 +122,7 @@ class CreateEventScreenTest {
     EventFormField.entries
         .filter { it != EventFormField.TYPE }
         .forEach { errorNode(it).performScrollTo().assertIsDisplayed() }
-    node(CreateEventScreenTestTags.TYPE_ERROR).performScrollTo().assertIsDisplayed()
+    errorNode(EventFormField.TYPE).performScrollTo().assertIsDisplayed()
     assertTrue(repository.created.isEmpty())
   }
 
@@ -251,6 +256,42 @@ class CreateEventScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(1, reports)
+  }
+
+  @Test
+  fun createdEvent_isNotReportedAgainAfterRecreation() {
+    var reports = 0
+    val viewModel = CreateEventViewModel(RecordingRepository(), "organizer-1", clock)
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      ShifterTheme { CreateEventScreen(viewModel, onEventCreated = { reports++ }, onBack = {}) }
+    }
+
+    fillValidForm()
+    node(CreateEventScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
+    composeTestRule.waitUntil { reports > 0 }
+    restorationTester.emulateSavedInstanceStateRestore()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, reports)
+  }
+
+  @Test
+  fun dateFields_exposeTheirLabelAndErrorToAccessibility() {
+    setScreen(RecordingRepository())
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val start = context.getString(R.string.create_event_field_start)
+    val end = context.getString(R.string.create_event_field_end)
+
+    node(CreateEventScreenTestTags.START_FIELD).assert(hasContentDescription(start))
+    node(CreateEventScreenTestTags.END_FIELD).assert(hasContentDescription(end))
+
+    node(CreateEventScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
+
+    val dateError = context.getString(R.string.create_event_error_date_invalid)
+    listOf(CreateEventScreenTestTags.START_FIELD, CreateEventScreenTestTags.END_FIELD).forEach {
+      node(it).assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, dateError))
+    }
   }
 
   @Test

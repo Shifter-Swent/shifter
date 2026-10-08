@@ -52,6 +52,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -69,7 +72,6 @@ object CreateEventScreenTestTags {
   const val ADDRESS_FIELD = "CreateEventAddressField"
   const val START_FIELD = "CreateEventStartField"
   const val END_FIELD = "CreateEventEndField"
-  const val TYPE_ERROR = "CreateEventTypeError"
   const val SUBMIT_BUTTON = "CreateEventSubmitButton"
   const val SAVING_INDICATOR = "CreateEventSavingIndicator"
   const val SAVE_ERROR = "CreateEventSaveError"
@@ -82,7 +84,8 @@ object CreateEventScreenTestTags {
 /**
  * Lets an organizer create an event.
  *
- * @param onEventCreated called once with the persisted event, e.g. to open it.
+ * @param onEventCreated called once with the persisted event, e.g. to open it, even if the screen
+ *   is recomposed or recreated afterwards.
  * @param onBack called when the organizer leaves without creating the event.
  */
 @Composable
@@ -93,7 +96,13 @@ fun CreateEventScreen(
 ) {
   val uiState by viewModel.uiState.collectAsState()
 
-  LaunchedEffect(uiState.createdEvent) { uiState.createdEvent?.let(onEventCreated) }
+  val createdEvent = uiState.createdEvent
+  LaunchedEffect(createdEvent, uiState.createdEventHandled) {
+    if (createdEvent != null && !uiState.createdEventHandled) {
+      viewModel.onEventCreatedHandled()
+      onEventCreated(createdEvent)
+    }
+  }
 
   CreateEventContent(
       state = uiState,
@@ -366,7 +375,9 @@ private fun DateCard(
     testTag: String,
     modifier: Modifier = Modifier,
 ) {
-  val error = state.errorFor(field)
+  val fieldError = state.errorFor(field)
+  val labelText = stringResource(label)
+  val errorText = fieldError?.let { stringResource(it.message) }
   val colorScheme = MaterialTheme.colorScheme
   val shape = MaterialTheme.shapes.medium
   val textStyle =
@@ -380,12 +391,16 @@ private fun DateCard(
             Modifier.fillMaxWidth()
                 .clip(shape)
                 .background(colorScheme.primaryContainer)
-                .border(1.dp, if (error != null) colorScheme.error else colorScheme.primary, shape)
+                .border(
+                    1.dp,
+                    if (fieldError != null) colorScheme.error else colorScheme.primary,
+                    shape,
+                )
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
       Text(
-          text = stringResource(label),
+          text = labelText,
           style = MaterialTheme.typography.labelSmall,
           color = colorScheme.onSurfaceVariant,
       )
@@ -397,7 +412,13 @@ private fun DateCard(
           textStyle = textStyle,
           cursorBrush = SolidColor(colorScheme.primary),
           keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-          modifier = Modifier.fillMaxWidth().testTag(testTag),
+          // Unlike OutlinedTextField, BasicTextField does not expose its label or error to
+          // TalkBack.
+          modifier =
+              Modifier.fillMaxWidth().testTag(testTag).semantics {
+                contentDescription = labelText
+                if (errorText != null) error(errorText)
+              },
           decorationBox = { innerTextField ->
             Box(contentAlignment = Alignment.CenterStart) {
               if (value.isEmpty()) {
@@ -413,9 +434,9 @@ private fun DateCard(
           },
       )
     }
-    if (error != null) {
+    if (errorText != null) {
       Text(
-          text = stringResource(error.message),
+          text = errorText,
           color = colorScheme.error,
           style = MaterialTheme.typography.bodySmall,
           modifier = Modifier.testTag(CreateEventScreenTestTags.error(field)),
@@ -461,7 +482,7 @@ private fun TypeSelector(
           text = stringResource(error.message),
           color = MaterialTheme.colorScheme.error,
           style = MaterialTheme.typography.bodySmall,
-          modifier = Modifier.testTag(CreateEventScreenTestTags.TYPE_ERROR),
+          modifier = Modifier.testTag(CreateEventScreenTestTags.error(EventFormField.TYPE)),
       )
     }
   }
