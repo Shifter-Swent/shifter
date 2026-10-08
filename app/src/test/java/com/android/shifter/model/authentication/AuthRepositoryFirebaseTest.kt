@@ -1,4 +1,5 @@
 // Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 
 package com.swent.shifter.model.authentication
 
@@ -41,7 +42,7 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun signInWithGoogle_returnsAuthenticatedUser() = runBlocking {
+  fun signInWithGoogle_returnsAuthenticatedUserMappedToAuthUser() = runBlocking {
     val credential = googleCredential()
     val authCredential = mockk<AuthCredential>()
     val user = mockk<FirebaseUser>()
@@ -54,11 +55,17 @@ class AuthRepositoryFirebaseTest {
     every { helper.toFirebaseCredential("id-token") } returns authCredential
     every { auth.signInWithCredential(authCredential) } returns Tasks.forResult(authResult)
     every { authResult.user } returns user
+    every { user.uid } returns "uid-1"
+    every { user.email } returns "ada@example.com"
+    every { user.displayName } returns "Ada"
 
     val result = repository.signInWithGoogle(credential)
 
     assertTrue(result.isSuccess)
-    assertEquals(user, result.getOrNull())
+    assertEquals(
+        AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"),
+        result.getOrNull(),
+    )
   }
 
   @Test

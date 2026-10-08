@@ -52,11 +52,12 @@ class AuthRepositoryFirebaseEmulatorTest {
 
     assertEquals(email, user.email)
     assertEquals(DISPLAY_NAME, user.displayName)
+    val currentUser = auth.currentUser
+    assertEquals("the session must be the signed-in user", user.uid, currentUser?.uid)
     assertTrue(
         "the user must be linked to the Google provider",
-        user.providerData.any { it.providerId == GOOGLE_PROVIDER_ID },
+        currentUser!!.providerData.any { it.providerId == GOOGLE_PROVIDER_ID },
     )
-    assertEquals("the session must be the signed-in user", user.uid, auth.currentUser?.uid)
   }
 
   @Test

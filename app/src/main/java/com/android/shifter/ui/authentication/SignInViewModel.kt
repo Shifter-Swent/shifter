@@ -13,10 +13,10 @@ import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.firebase.auth.FirebaseUser
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
-import com.swent.shifter.model.authentication.AuthRepositoryFirebase
+import com.swent.shifter.model.authentication.AuthRepositoryProvider
+import com.swent.shifter.model.authentication.AuthUser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,13 +25,13 @@ import kotlinx.coroutines.launch
 
 data class AuthUIState(
     val isLoading: Boolean = false,
-    val user: FirebaseUser? = null,
+    val user: AuthUser? = null,
     val errorMsg: String? = null,
     /** One-shot event: set on a successful sign-in, reset once the screen has navigated. */
     val signedIn: Boolean = false,
 )
 
-class SignInViewModel(private val repository: AuthRepository = AuthRepositoryFirebase()) :
+class SignInViewModel(private val repository: AuthRepository = AuthRepositoryProvider.repository) :
     ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()

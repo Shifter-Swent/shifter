@@ -12,8 +12,9 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.firebase.auth.FirebaseUser
 import com.swent.shifter.R
+import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.authentication.AuthUser
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -44,7 +45,7 @@ class SignInViewModelTest {
   @Test
   fun signIn_acceptsGoogleAccountDifferentFromDeviceAccount() {
     val newGoogleAccountCredential = mockk<Credential>()
-    val user = mockk<FirebaseUser>()
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
     repository.result = Result.success(user)
     stubCredentialManager(newGoogleAccountCredential)
 
@@ -62,7 +63,7 @@ class SignInViewModelTest {
   fun signIn_acceptsAnyGoogleAccountReturnedByCredentialManager() {
     val firstAccountCredential = mockk<Credential>()
     val secondAccountCredential = mockk<Credential>()
-    repository.result = Result.success(mockk<FirebaseUser>())
+    repository.result = Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
 
     stubCredentialManager(firstAccountCredential)
     viewModel.signIn(context, credentialManager)
@@ -82,7 +83,7 @@ class SignInViewModelTest {
 
   @Test
   fun signIn_success_raisesSignedInEventUntilHandled() {
-    val user = mockk<FirebaseUser>()
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
     repository.result = Result.success(user)
     stubCredentialManager(mockk<Credential>())
 
@@ -252,11 +253,11 @@ class SignInViewModelTest {
 
   // A (Fake) implementation of AuthRepository that records the received credential and returns a
   // configurable result.
-  private class RecordingAuthRepository : com.swent.shifter.model.authentication.AuthRepository {
+  private class RecordingAuthRepository : AuthRepository {
     var receivedCredential: Credential? = null
-    var result: Result<FirebaseUser> = Result.failure(IllegalStateException("No result configured"))
+    var result: Result<AuthUser> = Result.failure(IllegalStateException("No result configured"))
 
-    override suspend fun signInWithGoogle(credential: Credential): Result<FirebaseUser> {
+    override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {
       receivedCredential = credential
       return result
     }
