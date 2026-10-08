@@ -70,5 +70,14 @@ internal fun DocumentSnapshot.requireInt(entity: String, field: String): Int {
   return whole.toInt()
 }
 
+/**
+ * Reads the id of the event this document is nested under, for the entities stored in a
+ * subcollection of `/events/{eventId}`. The path is the only place that id is kept, so a document
+ * with no parent event is malformed.
+ */
+internal fun DocumentSnapshot.requireParentEventId(entity: String): String =
+    reference.parent.parent?.id
+        ?: throw IllegalStateException("$entity document '$id' is not nested under an event")
+
 /** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
 internal fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)

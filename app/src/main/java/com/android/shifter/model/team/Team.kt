@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 import java.time.Instant
@@ -6,9 +7,9 @@ import java.time.Instant
 /**
  * A group of volunteers an organizer creates inside an event, led by a manager.
  *
- * The event is not a property: it is the parent document of the team.
- *
  * @property id the backend document id, empty until the team has been created.
+ * @property eventId id of the event the team belongs to. The event document is the parent of the
+ *   team, so the path carries this id and it is never stored as a field.
  * @property icon identifier of the icon the team is shown with.
  * @property managerId id of the `/users` document of the manager, or null while the team has none:
  *   an organizer creates a team before appointing someone to lead it.
@@ -20,6 +21,7 @@ import java.time.Instant
  */
 data class Team(
     val id: String = "",
+    val eventId: String,
     val name: String,
     val icon: String,
     val managerId: String? = null,

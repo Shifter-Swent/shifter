@@ -1,8 +1,10 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.shift
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireParentEventId
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
@@ -51,7 +53,7 @@ internal fun Shift.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toShift(): Shift =
     Shift(
         id = id,
-        eventId = requireEventId(),
+        eventId = requireParentEventId(ENTITY),
         teamId = requireString(ENTITY, ShiftSchema.TEAM_ID),
         // Absent means nobody is scheduled yet; a malformed entry fails rather than quietly
         // taking a volunteer off a shift they are due to work.
@@ -60,8 +62,3 @@ internal fun DocumentSnapshot.toShift(): Shift =
         endAt = requireInstant(ENTITY, ShiftSchema.END_AT),
         createdAt = requireInstant(ENTITY, ShiftSchema.CREATED_AT),
     )
-
-/** A shift document only exists under an event document, whose id is the shift's event id. */
-private fun DocumentSnapshot.requireEventId(): String =
-    reference.parent.parent?.id
-        ?: throw IllegalStateException("Shift document '$id' is not nested under an event")
