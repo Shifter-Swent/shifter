@@ -65,6 +65,16 @@ fun MyEventsLayout(
           subtitle = subtitle,
       )
       EventTabs(selected = state.selectedTab, onSelect = onTabSelected)
+      if (state.withdrawFailed) {
+        Text(
+            text = stringResource(R.string.my_events_withdraw_error),
+            color = MaterialTheme.colorScheme.error,
+            fontSize = 13.sp,
+            modifier =
+                Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    .testTag(MyEventsTestTags.WITHDRAW_ERROR),
+        )
+      }
       Box(Modifier.fillMaxSize()) {
         when {
           // A reload keeps the cards already shown instead of replacing them with the spinner.
@@ -73,7 +83,8 @@ fun MyEventsLayout(
                   color = MaterialTheme.colorScheme.primary,
                   modifier = Modifier.align(Alignment.Center).testTag(MyEventsTestTags.LOADING),
               )
-          state.errorMessage != null -> CenteredMessage(state.errorMessage, MyEventsTestTags.ERROR)
+          state.loadFailed ->
+              CenteredMessage(stringResource(R.string.my_events_load_error), MyEventsTestTags.ERROR)
           state.visibleEvents.isEmpty() ->
               CenteredMessage(
                   stringResource(

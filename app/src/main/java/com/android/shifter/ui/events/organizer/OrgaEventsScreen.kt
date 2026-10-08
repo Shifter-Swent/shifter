@@ -39,9 +39,10 @@ import com.swent.shifter.ui.theme.ShifterTheme
 fun OrgaEventsScreen(
     viewModel: MyEventsViewModel,
     avatarInitial: String,
-    onManageEvent: (eventId: String) -> Unit = {},
-    onCreateEventClick: () -> Unit = {},
-    onAvatarClick: () -> Unit = {},
+    onManageEvent: (eventId: String) -> Unit,
+    onCreateEventClick: () -> Unit,
+    onVolunteerViewClick: () -> Unit,
+    onAvatarClick: () -> Unit,
 ) {
   val state by viewModel.uiState.collectAsState()
   OrgaEventsContent(
@@ -50,6 +51,7 @@ fun OrgaEventsScreen(
       onTabSelected = viewModel::selectTab,
       onManageEvent = onManageEvent,
       onCreateEventClick = onCreateEventClick,
+      onVolunteerViewClick = onVolunteerViewClick,
       onAvatarClick = onAvatarClick,
   )
 }

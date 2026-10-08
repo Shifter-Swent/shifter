@@ -10,7 +10,6 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -28,7 +27,7 @@ class MyEventsViewModelTest {
           locationLabel = "Lyon",
           timeLabel = "08:00 – 14:00",
           badge = badge,
-          footerLabel = "Role: Volunteer",
+          footer = EventCardFooter.VOLUNTEER,
       )
 
   private val confirmed = card("confirmed", EventBadge.CONFIRMED)
@@ -60,7 +59,7 @@ class MyEventsViewModelTest {
     val state = viewModel.uiState.value
     assertEquals(listOf(confirmed, pending, preparation, ongoing), state.upcoming)
     assertEquals(listOf(ended), state.past)
-    assertNull(state.errorMessage)
+    assertFalse(state.loadFailed)
   }
 
   @Test
@@ -78,29 +77,41 @@ class MyEventsViewModelTest {
   }
 
   @Test
-  fun loaderFailure_showsItsMessage() = runTest {
-    val viewModel = MyEventsViewModel { throw IllegalStateException("Network down") }
+  fun loaderFailure_isReportedWithoutItsMessage() = runTest {
+    val viewModel = MyEventsViewModel { throw IllegalStateException("PERMISSION_DENIED: …") }
     advanceUntilIdle()
 
     val state = viewModel.uiState.value
     assertFalse(state.isLoading)
-    assertEquals("Network down", state.errorMessage)
+    assertTrue(state.loadFailed)
     assertTrue(state.upcoming.isEmpty())
   }
 
   @Test
-  fun loaderFailureWithoutMessage_showsAGenericMessage() = runTest {
-    val viewModel = MyEventsViewModel { throw IllegalStateException() }
+  fun refresh_cancelsTheLoadStillRunning() = runTest {
+    val stale = CompletableDeferred<List<EventCardUi>>()
+    var calls = 0
+    val viewModel = MyEventsViewModel {
+      calls++
+      if (calls == 1) stale.await() else listOf(ongoing)
+    }
     advanceUntilIdle()
 
-    assertEquals("Could not load your events", viewModel.uiState.value.errorMessage)
+    // The second load answers first, then the first one finishes with older data.
+    viewModel.refresh()
+    advanceUntilIdle()
+    stale.complete(listOf(confirmed))
+    advanceUntilIdle()
+
+    assertEquals(listOf(ongoing), viewModel.uiState.value.upcoming)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
   fun refresh_clearsTheErrorAndKeepsTheSelectedTab() = runTest {
     var fail = true
     val viewModel = MyEventsViewModel {
-      if (fail) throw IllegalStateException("Network down") else listOf(ended)
+      if (fail) throw IllegalStateException("offline") else listOf(ended)
     }
     advanceUntilIdle()
     viewModel.selectTab(EventTab.PAST)
@@ -110,7 +121,7 @@ class MyEventsViewModelTest {
     advanceUntilIdle()
 
     val state = viewModel.uiState.value
-    assertNull(state.errorMessage)
+    assertFalse(state.loadFailed)
     assertEquals(EventTab.PAST, state.selectedTab)
     assertEquals(listOf(ended), state.visibleEvents)
   }

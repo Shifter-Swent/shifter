@@ -45,14 +45,16 @@ class MyEventsScreensTest : TestCase() {
   fun staffScreen_showsItsEventsSwitchesTabsAndReportsActions() = run {
     var organizerViewClicks = 0
     val withdrawn = mutableListOf<String>()
-    val viewModel = MyEventsViewModel(SampleMyEvents.staffLoader)
+    val viewModel =
+        StaffEventsViewModel(SampleMyEvents.staffLoader, EventWithdrawer { withdrawn += it })
     composeTestRule.setContent {
       ShifterTheme {
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = "J",
             onOrganizerViewClick = { organizerViewClicks++ },
-            onWithdraw = { withdrawn += it },
+            onScanQrClick = {},
+            onAvatarClick = {},
         )
       }
     }
@@ -66,15 +68,17 @@ class MyEventsScreensTest : TestCase() {
         card("tech-summit").assertIsDisplayed()
         scanQrButton { assertIsDisplayed() }
       }
-      step("Withdraw reports the event") {
+      step("Withdraw goes through the ViewModel and removes the card") {
         action("city-marathon").performClick()
+        composeTestRule.waitForIdle()
         assertEquals(listOf("city-marathon"), withdrawn)
+        card("city-marathon").assertDoesNotExist()
       }
       step("Past only shows ended events") {
         pastTab { performClick() }
         pastTab { assertIsSelected() }
         card("winter-food-bank").assertIsDisplayed()
-        card("city-marathon").assertDoesNotExist()
+        card("beach-cleanup").assertDoesNotExist()
       }
       step("Organizer View reports the click, navigation is left to the caller") {
         organizerViewButton { performClick() }
@@ -95,6 +99,8 @@ class MyEventsScreensTest : TestCase() {
             avatarInitial = "J",
             onManageEvent = { managed += it },
             onCreateEventClick = { createClicks++ },
+            onVolunteerViewClick = {},
+            onAvatarClick = {},
         )
       }
     }
