@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.ui.navigation.NavigationTestTags
@@ -57,6 +58,7 @@ fun SettingsRoute(
     onBack: () -> Unit,
     onSignedOut: () -> Unit,
     viewModel: SettingsViewModel = viewModel(),
+    credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
 ) {
   val context = LocalContext.current
   val uiState by viewModel.uiState.collectAsState()
@@ -68,7 +70,14 @@ fun SettingsRoute(
     }
   }
 
-  SettingsScreen(onBack = onBack, onSignOut = { viewModel.signOut(onSignedOut) })
+  LaunchedEffect(uiState.signedOut) {
+    if (uiState.signedOut) {
+      onSignedOut()
+      viewModel.onSignedOutHandled()
+    }
+  }
+
+  SettingsScreen(onBack = onBack, onSignOut = { viewModel.signOut(credentialManager) })
 }
 
 /**

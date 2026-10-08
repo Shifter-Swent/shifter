@@ -4,7 +4,10 @@ package com.swent.shifter.ui.settings
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
@@ -31,6 +34,7 @@ class SettingsRouteTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   private val repository = AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+  private val credentialManager = RecordingCredentialManager()
 
   @Before
   fun setUp() {
@@ -45,7 +49,7 @@ class SettingsRouteTest {
   }
 
   @Test
-  fun signOut_clearsTheSessionThenReportsIt() {
+  fun signOut_clearsTheSessionAndTheCredentialsThenReportsIt() {
     runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
     assertNotNull(AuthEmulator.auth.currentUser)
     var signedOut = 0
@@ -56,15 +60,16 @@ class SettingsRouteTest {
             onBack = {},
             onSignedOut = { signedOut++ },
             viewModel = viewModel,
+            credentialManager = credentialManager,
         )
       }
     }
 
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
-    composeTestRule.waitForIdle()
 
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedOut == 1 }
     assertNull(AuthEmulator.auth.currentUser)
-    assertEquals(1, signedOut)
+    assertEquals(1, credentialManager.clearCalls)
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */
@@ -74,5 +79,21 @@ class SettingsRouteTest {
         .setId(email)
         .setIdToken(AuthEmulator.fakeGoogleIdToken("google-" + UUID.randomUUID(), email, "Ada"))
         .build()
+  }
+
+  /** A [CredentialManager] that only records that its state was cleared. */
+  private class RecordingCredentialManager :
+      CredentialManager by CredentialManager.create(
+          InstrumentationRegistry.getInstrumentation().targetContext
+      ) {
+    var clearCalls = 0
+
+    override suspend fun clearCredentialState(request: ClearCredentialStateRequest) {
+      clearCalls++
+    }
+  }
+
+  private companion object {
+    const val TIMEOUT_MILLIS = 20_000L
   }
 }
