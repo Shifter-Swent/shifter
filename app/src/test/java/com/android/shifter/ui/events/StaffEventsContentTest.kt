@@ -5,17 +5,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.events.staff.StaffEventsContent
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,7 +69,7 @@ class StaffEventsContentTest {
   }
 
   @Test
-  fun cardsShowTheirStatusAndRole() {
+  fun cardsShowTheirStatusAndFooter() {
     setContent(MyEventsUiState(upcoming = upcoming))
 
     composeTestRule
@@ -73,7 +78,28 @@ class StaffEventsContentTest {
     composeTestRule
         .onNodeWithTag(MyEventsTestTags.statusPill("beach-cleanup"))
         .assertTextEquals("● Pending approval")
+    composeTestRule.onAllNodesWithText("Role: Volunteer").assertCountEquals(2)
     composeTestRule.onNodeWithText("Awaiting organizer approval").assertIsDisplayed()
+  }
+
+  @Test
+  fun lastCard_staysAboveTheFloatingButtons() {
+    setContent(MyEventsUiState(upcoming = upcoming))
+
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.EVENT_LIST)
+        .performScrollToIndex(upcoming.lastIndex)
+
+    val lastCard =
+        composeTestRule
+            .onNodeWithTag(MyEventsTestTags.eventCard(upcoming.last().id))
+            .getBoundsInRoot()
+    val button =
+        composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).getBoundsInRoot()
+    assertTrue(
+        "the last card (bottom ${lastCard.bottom}) must end above the button (top ${button.top})",
+        lastCard.bottom <= button.top,
+    )
   }
 
   @Test
