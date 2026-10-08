@@ -3,6 +3,25 @@
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
 
+    <!-- My Events -->
+    <string name="my_events_title">My Events</string>
+    <string name="my_events_open_profile">Open profile</string>
+    <string name="my_events_tab_upcoming">Upcoming</string>
+    <string name="my_events_tab_past">Past</string>
+    <string name="my_events_empty_upcoming">No upcoming events</string>
+    <string name="my_events_empty_past">No past events</string>
+    <string name="my_events_status_pill">● %1$s</string>
+    <string name="my_events_badge_confirmed">Confirmed</string>
+    <string name="my_events_badge_pending_approval">Pending approval</string>
+    <string name="my_events_badge_in_preparation">In preparation</string>
+    <string name="my_events_badge_ongoing">Ongoing</string>
+    <string name="my_events_badge_ended">Ended</string>
+    <string name="my_events_footer_volunteer">Role: Volunteer</string>
+    <string name="my_events_footer_organizer">Role: Organizer</string>
+    <string name="my_events_footer_awaiting_approval">Awaiting organizer approval</string>
+    <string name="my_events_action_withdraw">Withdraw</string>
+    <string name="my_events_action_manage_event">Manage event</string>
+
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_sign_out">Sign out</string>
