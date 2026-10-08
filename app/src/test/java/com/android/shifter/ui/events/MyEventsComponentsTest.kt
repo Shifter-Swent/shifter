@@ -3,8 +3,10 @@ package com.swent.shifter.ui.events
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -17,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.events.components.EventCard
 import com.swent.shifter.ui.events.components.EventCardAction
+import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.EventTabs
 import com.swent.shifter.ui.events.components.MyEventsLayout
 import com.swent.shifter.ui.events.components.MyEventsTopBar
@@ -40,7 +43,7 @@ class MyEventsComponentsTest {
           locationLabel = "Lyon, Place Bellecour",
           timeLabel = "08:00 – 14:00",
           badge = badge,
-          footerLabel = "Role: Volunteer",
+          footer = EventCardFooter.VOLUNTEER,
       )
 
   @Test
@@ -50,7 +53,7 @@ class MyEventsComponentsTest {
       ShifterTheme {
         EventCard(
             card("e1", EventBadge.CONFIRMED),
-            EventCardAction("Withdraw", Color.Red) { clicks++ },
+            EventCardAction(EventCardActionType.WITHDRAW) { clicks++ },
         )
       }
     }
@@ -90,7 +93,9 @@ class MyEventsComponentsTest {
     }
 
     EventBadge.entries.forEach {
-      composeTestRule.onNodeWithTag("pill_${it.name}").assertTextEquals("● ${it.label}")
+      composeTestRule
+          .onNodeWithTag("pill_${it.name}")
+          .assertTextEquals("● ${BADGE_LABELS.getValue(it)}")
     }
   }
 
@@ -145,7 +150,7 @@ class MyEventsComponentsTest {
             avatarInitial = "J",
             onTabSelected = {},
             onAvatarClick = {},
-            cardAction = { EventCardAction("Open", Color.Blue) {} },
+            cardAction = { EventCardAction(EventCardActionType.MANAGE_EVENT) {} },
         ) {
           Text("Floating", Modifier.testTag("floating"))
         }
@@ -165,17 +170,29 @@ class MyEventsComponentsTest {
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).assertIsSelected()
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("past")).assertExists()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction("past")).assertTextEquals("Open")
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.eventAction("past"))
+        .assertTextEquals("Manage event")
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("upcoming")).assertDoesNotExist()
     composeTestRule.onNodeWithTag("floating").assertIsDisplayed()
   }
 
   @Test
-  fun layout_showsLoadingInsteadOfTheList() {
+  fun layout_showsLoadingWhileThereIsNothingToShowYet() {
     setLayout(MyEventsUiState(isLoading = true))
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertExists()
     composeTestRule.onNodeWithTag(MyEventsTestTags.EVENT_LIST).assertDoesNotExist()
+  }
+
+  @Test
+  fun layout_keepsTheCardsWhileReloading() {
+    setLayout(
+        MyEventsUiState(upcoming = listOf(card("e1", EventBadge.CONFIRMED)), isLoading = true)
+    )
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("e1")).assertExists()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertDoesNotExist()
   }
 
   @Test
@@ -187,8 +204,59 @@ class MyEventsComponentsTest {
 
   @Test
   fun layout_showsAnEmptyMessagePerTab() {
-    setLayout(MyEventsUiState(selectedTab = EventTab.PAST))
+    var state by mutableStateOf(MyEventsUiState())
+    composeTestRule.setContent {
+      ShifterTheme {
+        MyEventsLayout(
+            state = state,
+            avatarInitial = "J",
+            onTabSelected = { state = state.copy(selectedTab = it) },
+            onAvatarClick = {},
+            cardAction = { null },
+        )
+      }
+    }
 
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.EMPTY_STATE)
+        .assertTextEquals("No upcoming events")
+    composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.EMPTY_STATE).assertTextEquals("No past events")
+  }
+
+  @Test
+  fun eventCard_showsTheLabelOfEveryFooterAndAction() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        Column {
+          EventCard(
+              card("organizer", EventBadge.ONGOING).copy(footer = EventCardFooter.ORGANIZER),
+              EventCardAction(EventCardActionType.MANAGE_EVENT) {},
+          )
+          EventCard(
+              card("pending", EventBadge.PENDING_APPROVAL)
+                  .copy(footer = EventCardFooter.AWAITING_APPROVAL),
+              null,
+          )
+        }
+      }
+    }
+
+    composeTestRule.onNodeWithText("Role: Organizer").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.eventAction("organizer"))
+        .assertTextEquals("Manage event")
+    composeTestRule.onNodeWithText("Awaiting organizer approval").assertIsDisplayed()
+  }
+
+  private companion object {
+    val BADGE_LABELS =
+        mapOf(
+            EventBadge.CONFIRMED to "Confirmed",
+            EventBadge.PENDING_APPROVAL to "Pending approval",
+            EventBadge.IN_PREPARATION to "In preparation",
+            EventBadge.ONGOING to "Ongoing",
+            EventBadge.ENDED to "Ended",
+        )
   }
 }

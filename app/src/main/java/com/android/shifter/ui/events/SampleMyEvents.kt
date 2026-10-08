@@ -13,7 +13,7 @@ object SampleMyEvents {
               locationLabel = "Lyon, Place Bellecour",
               timeLabel = "08:00 – 14:00",
               badge = EventBadge.CONFIRMED,
-              footerLabel = "Role: Volunteer",
+              footer = EventCardFooter.VOLUNTEER,
           ),
           EventCardUi(
               id = "tech-summit",
@@ -22,7 +22,7 @@ object SampleMyEvents {
               locationLabel = "Paris, Station F",
               timeLabel = "10:00 – 18:00",
               badge = EventBadge.CONFIRMED,
-              footerLabel = "Role: Volunteer",
+              footer = EventCardFooter.VOLUNTEER,
           ),
           EventCardUi(
               id = "beach-cleanup",
@@ -31,7 +31,7 @@ object SampleMyEvents {
               locationLabel = "Marseille, Plage",
               timeLabel = "09:00 – 13:00",
               badge = EventBadge.PENDING_APPROVAL,
-              footerLabel = "Awaiting organizer approval",
+              footer = EventCardFooter.AWAITING_APPROVAL,
           ),
           EventCardUi(
               id = "winter-food-bank",
@@ -40,7 +40,7 @@ object SampleMyEvents {
               locationLabel = "Grenoble, Halles",
               timeLabel = "09:00 – 12:00",
               badge = EventBadge.ENDED,
-              footerLabel = "Role: Volunteer",
+              footer = EventCardFooter.VOLUNTEER,
           ),
       )
 
@@ -99,5 +99,5 @@ object SampleMyEvents {
       location: String,
       time: String,
       badge: EventBadge,
-  ) = EventCardUi(id, title, date, location, time, badge, footerLabel = "Role: Organizer")
+  ) = EventCardUi(id, title, date, location, time, badge, footer = EventCardFooter.ORGANIZER)
 }
