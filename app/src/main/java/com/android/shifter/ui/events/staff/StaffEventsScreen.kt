@@ -9,6 +9,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -22,11 +24,36 @@ import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.SampleMyEvents
+import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.components.EventCardAction
 import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
 import com.swent.shifter.ui.events.components.SwitchViewButton
 import com.swent.shifter.ui.theme.ShifterTheme
+
+/**
+ * [StaffEventsContent] driven by [viewModel], which owns the cards and the selected tab and
+ * withdraws from events. The other callbacks are navigation, left to the caller.
+ */
+@Composable
+fun StaffEventsScreen(
+    viewModel: StaffEventsViewModel,
+    avatarInitial: String,
+    onOrganizerViewClick: () -> Unit,
+    onScanQrClick: () -> Unit,
+    onAvatarClick: () -> Unit,
+) {
+  val state by viewModel.uiState.collectAsState()
+  StaffEventsContent(
+      state = state,
+      avatarInitial = avatarInitial,
+      onTabSelected = viewModel::selectTab,
+      onWithdraw = viewModel::withdraw,
+      onOrganizerViewClick = onOrganizerViewClick,
+      onScanQrClick = onScanQrClick,
+      onAvatarClick = onAvatarClick,
+  )
+}
 
 /**
  * The events the user takes part in as a volunteer (Figma "My-Events", VM-00).

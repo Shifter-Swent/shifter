@@ -59,6 +59,8 @@
     <string name="my_events_scan_invitation">Scan an event invitation</string>
     <string name="my_events_volunteer_view">Volunteer View</string>
     <string name="my_events_create_event">Create my event</string>
+    <string name="my_events_load_error">Could not load your events</string>
+    <string name="my_events_withdraw_error">Could not withdraw from the event. Please try again.</string>
 
     <!-- Join an event -->
     <string name="join_event_title">Join an event</string>
