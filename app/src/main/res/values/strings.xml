@@ -57,6 +57,8 @@
     <string name="my_events_action_manage_event">Manage event</string>
     <string name="my_events_organizer_view">Organizer View</string>
     <string name="my_events_scan_invitation">Scan an event invitation</string>
+    <string name="my_events_volunteer_view">Volunteer View</string>
+    <string name="my_events_create_event">Create my event</string>
 
     <!-- Join an event -->
     <string name="join_event_title">Join an event</string>

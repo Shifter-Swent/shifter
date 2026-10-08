@@ -43,4 +43,57 @@ object SampleMyEvents {
               footer = EventCardFooter.VOLUNTEER,
           ),
       )
+
+  val organizer: List<EventCardUi> =
+      listOf(
+          organized(
+              "arts-festival",
+              "Community Arts Festival",
+              "Sat 28 Jun 2025",
+              "Nantes, Île de Nantes",
+              "08:00 – 14:00",
+              EventBadge.IN_PREPARATION,
+          ),
+          organized(
+              "food-drive",
+              "Local Food Drive",
+              "Fri 20 Jun 2025",
+              "Lille, Grand Place",
+              "10:00 – 18:00",
+              EventBadge.ONGOING,
+          ),
+          organized(
+              "urban-garden",
+              "Urban Garden Workshop",
+              "Sun 13 Jul 2025",
+              "Rennes, Parc du Thabor",
+              "09:00 – 13:00",
+              EventBadge.IN_PREPARATION,
+          ),
+          organized(
+              "volunteer-fair",
+              "Spring Volunteer Fair",
+              "Sat 17 May 2025",
+              "Bordeaux, Quays",
+              "11:00 – 17:00",
+              EventBadge.ENDED,
+          ),
+          organized(
+              "river-cleanup",
+              "River Cleanup Day",
+              "Sun 4 May 2025",
+              "Toulouse, Garonne",
+              "09:30 – 13:30",
+              EventBadge.ENDED,
+          ),
+      )
+
+  private fun organized(
+      id: String,
+      title: String,
+      date: String,
+      location: String,
+      time: String,
+      badge: EventBadge,
+  ) = EventCardUi(id, title, date, location, time, badge, footer = EventCardFooter.ORGANIZER)
 }
