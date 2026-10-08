@@ -23,8 +23,8 @@ internal object MissionSchema {
 
   const val TITLE = "title"
   const val DESCRIPTION = "description"
-  const val SECTOR_ID = "sectorId"
-  const val STAFF_NEEDED = "staffNeeded"
+  const val TEAM_ID = "teamId"
+  const val VOLUNTEERS_NEEDED = "volunteersNeeded"
   const val START_AT = "startAt"
   const val END_AT = "endAt"
   const val ASSIGNEE_IDS = "assigneeIds"
@@ -40,8 +40,8 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         MissionSchema.TITLE to title,
         MissionSchema.DESCRIPTION to description,
-        MissionSchema.SECTOR_ID to sectorId,
-        MissionSchema.STAFF_NEEDED to staffNeeded,
+        MissionSchema.TEAM_ID to teamId,
+        MissionSchema.VOLUNTEERS_NEEDED to volunteersNeeded,
         MissionSchema.START_AT to startAt.toFirestoreTimestamp(),
         MissionSchema.END_AT to endAt.toFirestoreTimestamp(),
         MissionSchema.ASSIGNEE_IDS to assigneeIds,
@@ -54,7 +54,8 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
  *
  * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
  * document that cannot be mapped is a schema problem, which must not be mistaken for "no mission".
- * A sector of the wrong type is rejected too, rather than silently moving the mission to "General".
+ * A team id of the wrong type is rejected too, rather than silently moving the mission to
+ * "General".
  */
 internal fun DocumentSnapshot.toMission(): Mission =
     Mission(
@@ -62,8 +63,8 @@ internal fun DocumentSnapshot.toMission(): Mission =
         eventId = requireEventId(),
         title = requireString(MissionSchema.TITLE),
         description = requireString(MissionSchema.DESCRIPTION),
-        sectorId = optionalString(MissionSchema.SECTOR_ID),
-        staffNeeded = requireStaffNeeded(),
+        teamId = optionalString(MissionSchema.TEAM_ID),
+        volunteersNeeded = requireVolunteersNeeded(),
         startAt = requireInstant(MissionSchema.START_AT),
         endAt = requireInstant(MissionSchema.END_AT),
         // Absent means nobody is assigned yet; a malformed entry fails rather than hiding the
@@ -79,11 +80,12 @@ private fun DocumentSnapshot.requireEventId(): String =
 
 /**
  * Firestore stores every integer as a 64-bit Long, so the count comes back as a Long. A fractional
- * or out-of-range value is rejected rather than rounded: a wrong staff count would be shown to the
- * organizer as if it were the one they entered.
+ * or out-of-range value is rejected rather than rounded: a wrong volunteer count would be shown to
+ * the organizer as if it were the one they entered.
  */
-private fun DocumentSnapshot.requireStaffNeeded(): Int {
-  val value = get(MissionSchema.STAFF_NEEDED) as? Long ?: invalid(MissionSchema.STAFF_NEEDED)
-  if (value !in Int.MIN_VALUE..Int.MAX_VALUE) invalid(MissionSchema.STAFF_NEEDED)
+private fun DocumentSnapshot.requireVolunteersNeeded(): Int {
+  val value =
+      get(MissionSchema.VOLUNTEERS_NEEDED) as? Long ?: invalid(MissionSchema.VOLUNTEERS_NEEDED)
+  if (value !in Int.MIN_VALUE..Int.MAX_VALUE) invalid(MissionSchema.VOLUNTEERS_NEEDED)
   return value.toInt()
 }

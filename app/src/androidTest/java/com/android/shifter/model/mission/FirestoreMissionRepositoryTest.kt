@@ -16,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -30,16 +31,21 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FirestoreMissionRepositoryTest {
 
+  private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
   private val repository = FirestoreMissionRepository(firestore)
 
   /** The documents this test created, deleted in [tearDown]. */
   private val createdDocuments = mutableListOf<DocumentReference>()
 
+  /** `firestore.rules` only lets signed-in users touch missions. */
+  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+
   @After
   fun tearDown() = emulatorTest {
     createdDocuments.forEach { it.delete().await() }
     createdDocuments.clear()
+    auth.signOut()
   }
 
   @Test
@@ -70,8 +76,8 @@ class FirestoreMissionRepositoryTest {
         "Trier les produits collectés et vérifier les dates de péremption.",
         found.description,
     )
-    assertEquals("logistics", found.sectorId)
-    assertEquals(3, found.staffNeeded)
+    assertEquals("team-logistics", found.teamId)
+    assertEquals(3, found.volunteersNeeded)
     assertEquals(Instant.parse("2026-06-20T12:00:00Z"), found.startAt)
     assertEquals(Instant.parse("2026-06-20T13:30:00Z"), found.endAt)
     // Order matters: the team is listed in the order people were assigned.
@@ -81,17 +87,17 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMission_roundTripsAGeneralMissionWithoutAssignees() = emulatorTest {
-    // What the creation screen produces: no assignee yet, and possibly the "General" sector. A null
-    // sector must come back as a null rather than as an empty string, and an empty list must not
+    // What the creation screen produces: no assignee yet, and possibly the "General" team. A null
+    // team id must come back as a null rather than as an empty string, and an empty list must not
     // come back as a missing field.
     val eventId = uniqueEventId()
-    val created = create(richMission(eventId).copy(sectorId = null, assigneeIds = emptyList()))
+    val created = create(richMission(eventId).copy(teamId = null, assigneeIds = emptyList()))
 
     val found = repository.getMission(eventId, created.id)
 
     assertEquals(created, found)
     checkNotNull(found)
-    assertNull("a General mission must keep a null sector", found.sectorId)
+    assertNull("a General mission must keep a null team id", found.teamId)
     assertTrue("an empty assignee list must stay empty", found.assigneeIds.isEmpty())
   }
 
@@ -158,28 +164,28 @@ class FirestoreMissionRepositoryTest {
   }
 
   @Test
-  fun getMission_failsLoudlyOnAFractionalStaffCount() = emulatorTest {
+  fun getMission_failsLoudlyOnAFractionalVolunteerCount() = emulatorTest {
     // Rounding 2.5 people to 2 or 3 would show the organizer a count they never entered.
-    val (eventId, missionId) = writeRawMission { it + (MissionSchema.STAFF_NEEDED to 2.5) }
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.VOLUNTEERS_NEEDED to 2.5) }
 
-    assertFailsOnField(eventId, missionId, MissionSchema.STAFF_NEEDED)
+    assertFailsOnField(eventId, missionId, MissionSchema.VOLUNTEERS_NEEDED)
   }
 
   @Test
-  fun getMission_failsLoudlyOnAStaffCountOutOfTheIntRange() = emulatorTest {
+  fun getMission_failsLoudlyOnAVolunteerCountOutOfTheIntRange() = emulatorTest {
     val (eventId, missionId) =
-        writeRawMission { it + (MissionSchema.STAFF_NEEDED to Int.MAX_VALUE + 1L) }
+        writeRawMission { it + (MissionSchema.VOLUNTEERS_NEEDED to Int.MAX_VALUE + 1L) }
 
-    assertFailsOnField(eventId, missionId, MissionSchema.STAFF_NEEDED)
+    assertFailsOnField(eventId, missionId, MissionSchema.VOLUNTEERS_NEEDED)
   }
 
   @Test
-  fun getMission_failsLoudlyOnASectorIdWithAWrongType() = emulatorTest {
-    // sectorId is optional, so absent and null both mean "General". A value of another type does
-    // not: mapping it to null would silently move the mission out of its sector.
-    val (eventId, missionId) = writeRawMission { it + (MissionSchema.SECTOR_ID to 7) }
+  fun getMission_failsLoudlyOnATeamIdWithAWrongType() = emulatorTest {
+    // teamId is optional, so absent and null both mean "General". A value of another type does
+    // not: mapping it to null would silently move the mission out of its team.
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.TEAM_ID to 7) }
 
-    assertFailsOnField(eventId, missionId, MissionSchema.SECTOR_ID)
+    assertFailsOnField(eventId, missionId, MissionSchema.TEAM_ID)
   }
 
   @Test
@@ -265,7 +271,7 @@ class FirestoreMissionRepositoryTest {
   private fun uniqueEventId(): String = "event-" + UUID.randomUUID()
 
   /**
-   * A mission exercising every non-trivial mapping: a sector, a staff count above one, two
+   * A mission exercising every non-trivial mapping: a team, a volunteer count above one, two
    * assignees and three instants.
    *
    * The instants are whole seconds on purpose: Firestore keeps microseconds, so a sub-microsecond
@@ -277,8 +283,8 @@ class FirestoreMissionRepositoryTest {
           eventId = eventId,
           title = "Trier les dons alimentaires",
           description = "Trier les produits collectés et vérifier les dates de péremption.",
-          sectorId = "logistics",
-          staffNeeded = 3,
+          teamId = "team-logistics",
+          volunteersNeeded = 3,
           startAt = Instant.parse("2026-06-20T12:00:00Z"),
           endAt = Instant.parse("2026-06-20T13:30:00Z"),
           assigneeIds = listOf("$eventId-staff-1", "$eventId-staff-2"),
