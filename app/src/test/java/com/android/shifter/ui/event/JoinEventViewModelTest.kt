@@ -4,11 +4,13 @@ package com.swent.shifter.ui.event
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
+import com.swent.shifter.model.membership.MembershipRequestStatus
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -22,7 +24,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -46,8 +47,43 @@ class JoinEventViewModelTest {
     viewModel.findEvent()
 
     assertEquals(EVENT, viewModel.uiState.value.event)
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun findEvent_matchesALowercaseCode() {
+    coEvery { events.getEventByJoinCode("ABC123") } returns EVENT
+
+    viewModel.onJoinCodeChange("abc123")
+    viewModel.findEvent()
+
+    assertEquals(EVENT, viewModel.uiState.value.event)
+  }
+
+  @Test
+  fun findEvent_showsAMessageForEachFailure() {
+    fun failWith(error: Exception): JoinEventError? {
+      coEvery { events.getEventByJoinCode(any()) } throws error
+      viewModel.onJoinCodeChange("ABC123")
+      viewModel.findEvent()
+      return viewModel.uiState.value.error
+    }
+
+    assertEquals(JoinEventError.OFFLINE, failWith(EventRepositoryException.Unavailable()))
+    assertEquals(JoinEventError.UNEXPECTED, failWith(EventRepositoryException.Unknown()))
+    assertNull(viewModel.uiState.value.event)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun changeCode_leavesTheEventAndKeepsTheCode() {
+    loadEvent()
+
+    viewModel.changeCode()
+
+    assertNull(viewModel.uiState.value.event)
+    assertEquals("ABC123", viewModel.uiState.value.joinCode)
   }
 
   @Test
@@ -60,10 +96,10 @@ class JoinEventViewModelTest {
     viewModel.onJoinCodeChange("NOPE")
     viewModel.findEvent()
     assertNull(viewModel.uiState.value.event)
-    assertEquals("No event uses this code", viewModel.uiState.value.errorMsg)
+    assertEquals(JoinEventError.UNKNOWN_CODE, viewModel.uiState.value.error)
 
     viewModel.onJoinCodeChange("NOPE2")
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
   }
 
   @Test
@@ -71,7 +107,7 @@ class JoinEventViewModelTest {
     loadEvent()
     coEvery { requests.apply(any(), any()) } answers { secondArg() }
 
-    viewModel.apply()
+    viewModel.applyToEvent()
 
     val expected =
         MembershipRequest(
@@ -80,18 +116,31 @@ class JoinEventViewModelTest {
             createdAt = NOW,
         )
     coVerify(exactly = 1) { requests.apply(EVENT.id, expected) }
-    assertTrue(viewModel.uiState.value.applied)
+    assertEquals(MembershipRequestStatus.PENDING, viewModel.uiState.value.requestStatus)
+  }
+
+  @Test
+  fun apply_showsTheStatusOfAnAlreadyDecidedRequest() {
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers
+        {
+          secondArg<MembershipRequest>().copy(status = MembershipRequestStatus.REJECTED)
+        }
+
+    viewModel.applyToEvent()
+
+    assertEquals(MembershipRequestStatus.REJECTED, viewModel.uiState.value.requestStatus)
   }
 
   @Test
   fun apply_doesNothingTwiceOrWithoutAnEvent() {
-    viewModel.apply()
+    viewModel.applyToEvent()
     coVerify(exactly = 0) { requests.apply(any(), any()) }
 
     loadEvent()
     coEvery { requests.apply(any(), any()) } answers { secondArg() }
-    viewModel.apply()
-    viewModel.apply()
+    viewModel.applyToEvent()
+    viewModel.applyToEvent()
     coVerify(exactly = 1) { requests.apply(any(), any()) }
   }
 
@@ -100,31 +149,31 @@ class JoinEventViewModelTest {
     loadEvent()
     userId = null
 
-    viewModel.apply()
+    viewModel.applyToEvent()
 
-    assertEquals("You must be signed in to apply", viewModel.uiState.value.errorMsg)
+    assertEquals(JoinEventError.NOT_SIGNED_IN, viewModel.uiState.value.error)
     coVerify(exactly = 0) { requests.apply(any(), any()) }
   }
 
   @Test
   fun apply_showsAMessageForEachFailure() {
     loadEvent()
-    fun failWith(error: Exception): String? {
+    fun failWith(error: Exception): JoinEventError? {
       coEvery { requests.apply(any(), any()) } throws error
-      viewModel.apply()
-      return viewModel.uiState.value.errorMsg
+      viewModel.applyToEvent()
+      return viewModel.uiState.value.error
     }
 
     assertEquals(
-        "You are offline, try again later",
+        JoinEventError.OFFLINE,
         failWith(MembershipRequestRepositoryException.Unavailable()),
     )
     assertEquals(
-        "You cannot apply to this event",
+        JoinEventError.PERMISSION_DENIED,
         failWith(MembershipRequestRepositoryException.PermissionDenied()),
     )
-    assertEquals("Something went wrong, try again", failWith(IllegalStateException()))
-    assertFalse(viewModel.uiState.value.applied)
+    assertEquals(JoinEventError.UNEXPECTED, failWith(IllegalStateException()))
+    assertNull(viewModel.uiState.value.requestStatus)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 

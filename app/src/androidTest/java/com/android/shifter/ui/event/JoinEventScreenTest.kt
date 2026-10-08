@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.membership.MembershipRequestStatus
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -46,22 +47,31 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheEventNameAndAppliesOnClick() {
+  fun showsTheEventNameAndAppliesOrChangesTheCodeOnClick() {
     var applyClicks = 0
+    var changeCodeClicks = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT), onApply = { applyClicks++ })
+      content(
+          uiState = JoinEventUiState(event = EVENT),
+          onApply = { applyClicks++ },
+          onChangeCode = { changeCodeClicks++ },
+      )
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals("Lakeside")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.CHANGE_CODE_BUTTON).performClick()
 
     assertEquals(1, applyClicks)
+    assertEquals(1, changeCodeClicks)
   }
 
   @Test
   fun replacesTheButtonOnceApplied() {
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT, applied = true), onApply = {})
+      content(
+          uiState = JoinEventUiState(event = EVENT, requestStatus = MembershipRequestStatus.PENDING)
+      )
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
@@ -69,12 +79,23 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheErrorMessage() {
+  fun showsADecidedRequestAsSuch() {
     composeTestRule.setContent {
       content(
-          uiState = JoinEventUiState(errorMsg = "No event uses this code"),
-          onApply = {},
+          uiState =
+              JoinEventUiState(event = EVENT, requestStatus = MembershipRequestStatus.REJECTED)
       )
+    }
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE)
+        .assertTextEquals("● Your request was declined")
+  }
+
+  @Test
+  fun showsTheErrorMessage() {
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(error = JoinEventError.UNKNOWN_CODE))
     }
 
     composeTestRule
@@ -89,7 +110,8 @@ class JoinEventScreenTest {
       onJoinCodeChange: (String) -> Unit = {},
       onFindEvent: () -> Unit = {},
       onApply: () -> Unit = {},
-  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onApply)
+      onChangeCode: () -> Unit = {},
+  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onApply, onChangeCode)
 
   private companion object {
     val EVENT =

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,16 +27,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_inputBackground
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_success
+import com.swent.shifter.ui.theme.shifter_successContainer
 import com.swent.shifter.ui.theme.shifter_warning
 import com.swent.shifter.ui.theme.shifter_warningContainer
 import java.time.Instant
@@ -44,6 +51,7 @@ object JoinEventScreenTestTags {
   const val FIND_BUTTON = "JoinEventFindButton"
   const val EVENT_TITLE = "JoinEventTitle"
   const val APPLY_BUTTON = "JoinEventApplyButton"
+  const val CHANGE_CODE_BUTTON = "JoinEventChangeCodeButton"
   const val APPLIED_MESSAGE = "JoinEventAppliedMessage"
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
 }
@@ -56,7 +64,8 @@ fun JoinEventScreen(viewModel: JoinEventViewModel) {
       uiState = uiState,
       onJoinCodeChange = viewModel::onJoinCodeChange,
       onFindEvent = viewModel::findEvent,
-      onApply = viewModel::apply,
+      onApply = viewModel::applyToEvent,
+      onChangeCode = viewModel::changeCode,
   )
 }
 
@@ -70,6 +79,7 @@ fun JoinEventContent(
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
     onApply: () -> Unit,
+    onChangeCode: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
   val event = uiState.event
@@ -83,14 +93,14 @@ fun JoinEventContent(
       verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
   ) {
     Text(
-        text = "Join an event",
+        text = stringResource(R.string.join_event_title),
         color = colors.onBackground,
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold,
     )
     if (event == null) {
       Text(
-          text = "Enter the code the organizer shared with you.",
+          text = stringResource(R.string.join_event_intro),
           color = shifter_mutedText,
           fontSize = 14.sp,
       )
@@ -98,21 +108,35 @@ fun JoinEventContent(
     } else {
       EventSummary(event)
     }
+    val requestStatus = uiState.requestStatus
     when {
       uiState.isLoading -> CircularProgressIndicator(color = colors.primary)
-      uiState.applied -> PendingBadge()
+      requestStatus != null -> StatusBadge(requestStatus)
       event == null ->
           PrimaryButton(
-              "Find event",
+              stringResource(R.string.join_event_find),
               onFindEvent,
               JoinEventScreenTestTags.FIND_BUTTON,
               uiState.joinCode.isNotBlank(),
           )
-      else -> PrimaryButton("Apply", onApply, JoinEventScreenTestTags.APPLY_BUTTON)
+      else ->
+          PrimaryButton(
+              stringResource(R.string.join_event_apply),
+              onApply,
+              JoinEventScreenTestTags.APPLY_BUTTON,
+          )
     }
-    uiState.errorMsg?.let {
+    if (event != null && !uiState.isLoading) {
+      TextButton(
+          onClick = onChangeCode,
+          modifier = Modifier.testTag(JoinEventScreenTestTags.CHANGE_CODE_BUTTON),
+      ) {
+        Text(stringResource(R.string.join_event_change_code), color = colors.primary)
+      }
+    }
+    uiState.error?.let {
       Text(
-          text = it,
+          text = stringResource(it.messageRes()),
           color = colors.error,
           fontSize = 14.sp,
           modifier = Modifier.testTag(JoinEventScreenTestTags.ERROR_MESSAGE),
@@ -127,7 +151,7 @@ private fun JoinCodeField(joinCode: String, onJoinCodeChange: (String) -> Unit) 
   OutlinedTextField(
       value = joinCode,
       onValueChange = onJoinCodeChange,
-      label = { Text("Join code") },
+      label = { Text(stringResource(R.string.join_event_code_label)) },
       singleLine = true,
       shape = RoundedCornerShape(14.dp),
       colors =
@@ -166,21 +190,44 @@ private fun EventSummary(event: Event) {
   }
 }
 
-/** Same colors as the "Pending approval" status of My Events. */
+/** Where the request stands, in the colors of the matching status of My Events. */
 @Composable
-private fun PendingBadge() {
+private fun StatusBadge(status: MembershipRequestStatus) {
+  val (text, color, container) =
+      when (status) {
+        MembershipRequestStatus.PENDING ->
+            Triple(R.string.join_event_status_pending, shifter_warning, shifter_warningContainer)
+        MembershipRequestStatus.ACCEPTED ->
+            Triple(R.string.join_event_status_accepted, shifter_success, shifter_successContainer)
+        MembershipRequestStatus.REJECTED ->
+            Triple(
+                R.string.join_event_status_rejected,
+                MaterialTheme.colorScheme.error,
+                MaterialTheme.colorScheme.errorContainer,
+            )
+      }
   Text(
-      text = "● Request sent, pending approval",
-      color = shifter_warning,
+      text = stringResource(text),
+      color = color,
       fontSize = 13.sp,
       fontWeight = FontWeight.SemiBold,
       modifier =
           Modifier.clip(RoundedCornerShape(20.dp))
-              .background(shifter_warningContainer)
+              .background(container)
               .padding(horizontal = 12.dp, vertical = 6.dp)
               .testTag(JoinEventScreenTestTags.APPLIED_MESSAGE),
   )
 }
+
+@StringRes
+private fun JoinEventError.messageRes(): Int =
+    when (this) {
+      JoinEventError.UNKNOWN_CODE -> R.string.join_event_error_unknown_code
+      JoinEventError.NOT_SIGNED_IN -> R.string.join_event_error_not_signed_in
+      JoinEventError.OFFLINE -> R.string.join_event_error_offline
+      JoinEventError.PERMISSION_DENIED -> R.string.join_event_error_permission_denied
+      JoinEventError.UNEXPECTED -> R.string.join_event_error_unexpected
+    }
 
 /** Full-width button styled like the sign-in button. */
 @Composable
@@ -209,20 +256,26 @@ private fun PrimaryButton(
 @Preview(name = "Step 1: join code")
 @Composable
 private fun JoinEventCodePreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}) }
+  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}, {}) }
 }
 
 @Preview(name = "Step 2: event and Apply")
 @Composable
 private fun JoinEventApplyPreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(event = PREVIEW_EVENT), {}, {}, {}) }
+  ShifterTheme { JoinEventContent(JoinEventUiState(event = PREVIEW_EVENT), {}, {}, {}, {}) }
 }
 
 @Preview(name = "Step 2: request sent")
 @Composable
 private fun JoinEventAppliedPreview() {
   ShifterTheme {
-    JoinEventContent(JoinEventUiState(event = PREVIEW_EVENT, applied = true), {}, {}, {})
+    JoinEventContent(
+        JoinEventUiState(event = PREVIEW_EVENT, requestStatus = MembershipRequestStatus.PENDING),
+        {},
+        {},
+        {},
+        {},
+    )
   }
 }
 
