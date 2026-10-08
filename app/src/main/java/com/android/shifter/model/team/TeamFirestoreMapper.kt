@@ -26,6 +26,7 @@ internal object TeamSchema {
   const val NAME = "name"
   const val ICON = "icon"
   const val MANAGER_ID = "managerId"
+  const val MEMBER_IDS = "memberIds"
   const val VOLUNTEERS_NEEDED = "volunteersNeeded"
   const val CHECK_IN_ZONE = "checkInZone"
   const val CREATED_AT = "createdAt"
@@ -49,6 +50,7 @@ internal fun Team.toFirestoreMap(): Map<String, Any?> =
         TeamSchema.NAME to name,
         TeamSchema.ICON to icon,
         TeamSchema.MANAGER_ID to managerId,
+        TeamSchema.MEMBER_IDS to memberIds,
         TeamSchema.VOLUNTEERS_NEEDED to volunteersNeeded,
         TeamSchema.CHECK_IN_ZONE to checkInZone?.toFirestoreMap(),
         TeamSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
@@ -68,6 +70,7 @@ internal fun DocumentSnapshot.toTeam(): Team =
         name = requireString(ENTITY, TeamSchema.NAME),
         icon = requireString(ENTITY, TeamSchema.ICON),
         managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),
+        memberIds = requireMemberIds(),
         volunteersNeeded = requireInt(TeamSchema.VOLUNTEERS_NEEDED),
         checkInZone = optionalCheckInZone(),
         createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
@@ -100,6 +103,22 @@ private fun DocumentSnapshot.optionalCheckInZone(): CheckInZone? {
 
 private fun DocumentSnapshot.requireZoneValue(zone: Map<*, *>, field: String): Double =
     (zone[field] as? Number)?.toDouble() ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)
+
+/**
+ * An absent field means the team has no members yet and maps to an empty list.
+ *
+ * An explicit null is rejected instead, unlike [Team.managerId] and [Team.checkInZone], where null
+ * is a valid domain value written by the mapper.
+ *
+ * A malformed entry is rejected rather than skipped: dropping an id would quietly remove a
+ * volunteer from the team.
+ */
+private fun DocumentSnapshot.requireMemberIds(): List<String> {
+  if (!contains(TeamSchema.MEMBER_IDS)) return emptyList()
+  val entries =
+      get(TeamSchema.MEMBER_IDS) as? List<*> ?: invalidField(ENTITY, TeamSchema.MEMBER_IDS)
+  return entries.map { it as? String ?: invalidField(ENTITY, TeamSchema.MEMBER_IDS) }
+}
 
 /**
  * Firestore stores whole numbers as Longs and fractional ones as Doubles, both wider than [Int], so

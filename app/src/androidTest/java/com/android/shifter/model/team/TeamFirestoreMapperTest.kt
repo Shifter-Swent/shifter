@@ -67,6 +67,7 @@ class TeamFirestoreMapperTest {
     assertEquals("Logistics", mapped.name)
     assertEquals("truck", mapped.icon)
     assertEquals(MANAGER_ID, mapped.managerId)
+    assertEquals(MEMBERS, mapped.memberIds)
     assertEquals(12, mapped.volunteersNeeded)
     assertEquals(CheckInZone(46.3869, 6.2228, 75.0), mapped.checkInZone)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
@@ -93,6 +94,98 @@ class TeamFirestoreMapperTest {
     val teamId = writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.MANAGER_ID to 7))
 
     assertFailsOnField(teamId, TeamSchema.MANAGER_ID)
+  }
+
+  @Test
+  fun toTeam_roundTripsSeveralMemberIds() = emulatorTest {
+    // A volunteer may belong to several teams, so nothing here is exclusive: the list is simply the
+    // ids of the volunteers of this team, stored and read back as written.
+    val stored = richTeam().copy(memberIds = listOf("user-a", "user-b", "user-c"))
+    val teamId = writeRawTeam(stored.toFirestoreMap())
+
+    val snapshot = read(teamId)
+    val mapped = snapshot.toTeam()
+
+    assertEquals(
+        "the field must be stored as a Firestore list of strings",
+        listOf("user-a", "user-b", "user-c"),
+        snapshot.get(TeamSchema.MEMBER_IDS),
+    )
+    assertEquals(listOf("user-a", "user-b", "user-c"), mapped.memberIds)
+    assertEquals(stored.copy(id = teamId), mapped)
+  }
+
+  @Test
+  fun toTeam_roundTripsATeamWithoutMembers() = emulatorTest {
+    // An empty team is valid: an organizer creates it before assigning anyone to it.
+    val stored = richTeam().copy(memberIds = emptyList())
+    val teamId = writeRawTeam(stored.toFirestoreMap())
+
+    val snapshot = read(teamId)
+    val mapped = snapshot.toTeam()
+
+    assertTrue(
+        "an empty list must be stored rather than omitted",
+        snapshot.contains(TeamSchema.MEMBER_IDS),
+    )
+    assertEquals(emptyList<String>(), mapped.memberIds)
+    assertEquals(stored.copy(id = teamId), mapped)
+  }
+
+  @Test
+  fun toTeam_mapsAnAbsentMemberIdsToAnEmptyList() = emulatorTest {
+    // The key is removed rather than written as null, which is what a team document saved before
+    // the field existed looks like. "Nobody yet" is indistinguishable from a legitimately empty
+    // team, so it maps to an empty list rather than failing.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.MEMBER_IDS)
+
+    val snapshot = read(teamId)
+
+    assertFalse("the field must really be absent", snapshot.contains(TeamSchema.MEMBER_IDS))
+    assertEquals(emptyList<String>(), snapshot.toTeam().memberIds)
+  }
+
+  @Test
+  fun toTeam_keepsTheManagerOutOfMemberIds() = emulatorTest {
+    // managerId already says who leads the team: adding them to the members would double-count them
+    // against volunteersNeeded.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap())
+
+    val mapped = read(teamId).toTeam()
+
+    assertEquals(MANAGER_ID, mapped.managerId)
+    assertFalse(
+        "the manager must not be implicitly a member",
+        mapped.memberIds.contains(MANAGER_ID),
+    )
+  }
+
+  @Test
+  fun toTeam_failsLoudlyOnAMemberIdsThatIsNotAList() = emulatorTest {
+    val teamId =
+        writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.MEMBER_IDS to "user-volunteer-1"))
+
+    assertFailsOnField(teamId, TeamSchema.MEMBER_IDS)
+  }
+
+  @Test
+  fun toTeam_failsLoudlyOnAMemberIdsEntryThatIsNotAString() = emulatorTest {
+    // Skipping the malformed entry would quietly drop a volunteer out of their team.
+    val teamId =
+        writeRawTeam(
+            richTeam().toFirestoreMap() + (TeamSchema.MEMBER_IDS to listOf("user-volunteer-1", 7))
+        )
+
+    assertFailsOnField(teamId, TeamSchema.MEMBER_IDS)
+  }
+
+  @Test
+  fun toTeam_failsLoudlyOnAnExplicitlyNullMemberIds() = emulatorTest {
+    // Unlike managerId and checkInZone, null is not a value this mapper ever writes here: a
+    // non-nullable list always serializes to a list, so a null is a schema problem.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.MEMBER_IDS to null))
+
+    assertFailsOnField(teamId, TeamSchema.MEMBER_IDS)
   }
 
   @Test
@@ -287,6 +380,7 @@ class TeamFirestoreMapperTest {
           name = "Logistics",
           icon = "truck",
           managerId = MANAGER_ID,
+          memberIds = MEMBERS,
           volunteersNeeded = 12,
           checkInZone = CheckInZone(latitude = 46.3869, longitude = 6.2228, radiusMeters = 75.0),
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
@@ -328,5 +422,7 @@ class TeamFirestoreMapperTest {
     const val TIMEOUT_MILLIS = 20_000L
 
     const val MANAGER_ID = "user-manager-1"
+
+    val MEMBERS = listOf("user-volunteer-1", "user-volunteer-2")
   }
 }

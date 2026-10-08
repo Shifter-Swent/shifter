@@ -12,6 +12,9 @@ import java.time.Instant
  * @property icon identifier of the icon the team is shown with.
  * @property managerId id of the `/users` document of the manager, or null while the team has none:
  *   an organizer creates a team before appointing someone to lead it.
+ * @property memberIds ids of the `/users` documents of the volunteers who belong to the team, empty
+ *   while nobody has been assigned to it yet. The manager is not one of them: they are found
+ *   through [managerId]. A volunteer may belong to several teams of the same event.
  * @property checkInZone where volunteers of this team are checked in automatically, or null while
  *   the organizer has not placed it on the map.
  */
@@ -20,6 +23,7 @@ data class Team(
     val name: String,
     val icon: String,
     val managerId: String? = null,
+    val memberIds: List<String> = emptyList(),
     val volunteersNeeded: Int,
     val checkInZone: CheckInZone? = null,
     val createdAt: Instant,
