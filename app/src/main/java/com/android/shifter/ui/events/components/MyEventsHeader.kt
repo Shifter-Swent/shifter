@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -29,6 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.swent.shifter.R
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -52,7 +54,7 @@ fun MyEventsTopBar(
   ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Text(
-          text = "My Events",
+          text = stringResource(R.string.my_events_title),
           color = colors.onBackground,
           fontSize = 22.sp,
           fontWeight = FontWeight.Bold,
@@ -74,7 +76,10 @@ fun MyEventsTopBar(
             Modifier.size(36.dp)
                 .clip(CircleShape)
                 .background(shifter_avatarBackground)
-                .clickable(onClickLabel = "Open profile", onClick = onAvatarClick)
+                .clickable(
+                    onClickLabel = stringResource(R.string.my_events_open_profile),
+                    onClick = onAvatarClick,
+                )
                 .testTag(MyEventsTestTags.AVATAR),
     ) {
       Text(
@@ -97,14 +102,14 @@ fun EventTabs(
   Column(modifier = modifier.fillMaxWidth()) {
     Row(modifier = Modifier.padding(horizontal = 24.dp)) {
       EventTabItem(
-          label = "Upcoming",
+          label = stringResource(R.string.my_events_tab_upcoming),
           isSelected = selected == EventTab.UPCOMING,
           width = 160.dp,
           testTag = MyEventsTestTags.UPCOMING_TAB,
           onClick = { onSelect(EventTab.UPCOMING) },
       )
       EventTabItem(
-          label = "Past",
+          label = stringResource(R.string.my_events_tab_past),
           isSelected = selected == EventTab.PAST,
           width = 150.dp,
           testTag = MyEventsTestTags.PAST_TAB,

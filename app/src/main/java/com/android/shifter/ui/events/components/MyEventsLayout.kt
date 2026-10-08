@@ -19,9 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.swent.shifter.R
 import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
@@ -60,7 +62,8 @@ fun MyEventsLayout(
       EventTabs(selected = state.selectedTab, onSelect = onTabSelected)
       Box(Modifier.fillMaxSize()) {
         when {
-          state.isLoading ->
+          // A reload keeps the cards already shown instead of replacing them with the spinner.
+          state.isLoading && state.visibleEvents.isEmpty() ->
               CircularProgressIndicator(
                   color = MaterialTheme.colorScheme.primary,
                   modifier = Modifier.align(Alignment.Center).testTag(MyEventsTestTags.LOADING),
@@ -68,8 +71,10 @@ fun MyEventsLayout(
           state.errorMessage != null -> CenteredMessage(state.errorMessage, MyEventsTestTags.ERROR)
           state.visibleEvents.isEmpty() ->
               CenteredMessage(
-                  if (state.selectedTab == EventTab.UPCOMING) "No upcoming events"
-                  else "No past events",
+                  stringResource(
+                      if (state.selectedTab == EventTab.UPCOMING) R.string.my_events_empty_upcoming
+                      else R.string.my_events_empty_past
+                  ),
                   MyEventsTestTags.EMPTY_STATE,
               )
           else ->

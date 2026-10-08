@@ -12,23 +12,29 @@ enum class EventTab {
  *
  * Staff cards show the user's participation status ([CONFIRMED], [PENDING_APPROVAL]), organizer
  * cards show the event lifecycle ([IN_PREPARATION], [ONGOING]). Both show [ENDED] once the event is
- * over.
+ * over. A single enum on purpose: it describes what the shared card displays, not a domain status.
  */
-enum class EventBadge(val label: String) {
-  CONFIRMED("Confirmed"),
-  PENDING_APPROVAL("Pending approval"),
-  IN_PREPARATION("In preparation"),
-  ONGOING("Ongoing"),
-  ENDED("Ended"),
+enum class EventBadge {
+  CONFIRMED,
+  PENDING_APPROVAL,
+  IN_PREPARATION,
+  ONGOING,
+  ENDED,
+}
+
+/** The left part of an event card footer: the user's role, or why they have none yet. */
+enum class EventCardFooter {
+  VOLUNTEER,
+  ORGANIZER,
+  AWAITING_APPROVAL,
 }
 
 /**
- * Everything an event card displays, already formatted.
+ * Everything an event card displays.
  *
  * This model belongs to the UI layer and never references the domain `Event`, so the screens can be
- * built and tested before the repositories exist.
- *
- * @property footerLabel the left part of the card footer, e.g. "Role: Volunteer".
+ * built and tested independently of the repositories. Texts that come from a fixed set ([badge],
+ * [footer]) are enums, so the components can read them from the string resources.
  */
 data class EventCardUi(
     val id: String,
@@ -37,7 +43,7 @@ data class EventCardUi(
     val locationLabel: String,
     val timeLabel: String,
     val badge: EventBadge,
-    val footerLabel: String,
+    val footer: EventCardFooter,
 )
 
 /** State of a My Events screen, shared by the staff and the organizer views. */
