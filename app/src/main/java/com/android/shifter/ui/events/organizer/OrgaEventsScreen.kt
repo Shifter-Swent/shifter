@@ -12,9 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -26,7 +26,9 @@ import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.SampleMyEvents
 import com.swent.shifter.ui.events.components.EventCardAction
+import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
+import com.swent.shifter.ui.events.components.SwitchViewButton
 import com.swent.shifter.ui.theme.ShifterTheme
 
 /** The events the user organizes (Figma "My Events Organizer", OR-00). Stateless. */
@@ -37,20 +39,26 @@ fun OrgaEventsContent(
     onTabSelected: (EventTab) -> Unit,
     onManageEvent: (eventId: String) -> Unit,
     onCreateEventClick: () -> Unit,
+    onVolunteerViewClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
-  val manageColor = MaterialTheme.colorScheme.primary
   MyEventsLayout(
       state = state,
       avatarInitial = avatarInitial,
-      subtitle = "Organizer View",
+      subtitle = stringResource(R.string.my_events_organizer_view),
       onTabSelected = onTabSelected,
       onAvatarClick = onAvatarClick,
       cardAction = { card ->
-        EventCardAction("Manage event", manageColor) { onManageEvent(card.id) }
+        EventCardAction(EventCardActionType.MANAGE_EVENT) { onManageEvent(card.id) }
       },
       modifier = Modifier.testTag(MyEventsTestTags.ORGANIZER_SCREEN),
   ) {
+    // Mirrors the staff screen's "Organizer View" button, so the organizer can go back.
+    SwitchViewButton(
+        label = stringResource(R.string.my_events_volunteer_view),
+        testTag = MyEventsTestTags.VOLUNTEER_VIEW_BUTTON,
+        onClick = onVolunteerViewClick,
+    )
     CreateEventButton(onCreateEventClick)
   }
 }
@@ -66,10 +74,15 @@ private fun BoxScope.CreateEventButton(onClick: () -> Unit) {
         Icon(
             painter = painterResource(R.drawable.ic_plus),
             contentDescription = null,
-            tint = Color.Unspecified,
         )
       },
-      text = { Text(text = "Create my event", fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
+      text = {
+        Text(
+            text = stringResource(R.string.my_events_create_event),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+      },
       modifier =
           Modifier.align(Alignment.BottomEnd)
               .padding(end = 18.dp, bottom = 16.dp)
@@ -91,6 +104,7 @@ private fun OrgaEventsContentPreview() {
         onTabSelected = {},
         onManageEvent = {},
         onCreateEventClick = {},
+        onVolunteerViewClick = {},
         onAvatarClick = {},
     )
   }

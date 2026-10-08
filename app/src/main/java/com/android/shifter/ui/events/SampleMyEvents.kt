@@ -95,5 +95,5 @@ object SampleMyEvents {
       location: String,
       time: String,
       badge: EventBadge,
-  ) = EventCardUi(id, title, date, location, time, badge, footerLabel = "Role: Organizer")
+  ) = EventCardUi(id, title, date, location, time, badge, footer = EventCardFooter.ORGANIZER)
 }
