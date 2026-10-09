@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
@@ -25,7 +26,7 @@ import org.junit.runner.RunWith
  * Integration tests for [FirestoreMissionRepository], running the real Firestore SDK against the
  * Firestore emulator through [FirestoreEmulator].
  *
- * Isolation: every test builds its missions under a fresh random event id, so no test can observe
+ * Isolation: every test builds its missions under a fresh event of its own, so no test can observe
  * another test's data and the order they run in does not matter. Every document created is
  * remembered and deleted in [tearDown], which JUnit runs even when an assertion fails.
  */
@@ -45,14 +46,15 @@ class FirestoreMissionRepositoryTest {
 
   @After
   fun tearDown() = emulatorTest {
-    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
+    // Children first: once its event is gone, the rules refuse to delete them.
+    step("cleanup") { createdDocuments.asReversed().forEach { it.delete().await() } }
     createdDocuments.clear()
     auth.signOut()
   }
 
   @Test
   fun createMission_generatesANonEmptyIdAndStoresTheMissionUnderItsEvent() = emulatorTest {
-    val created = create(richMission(uniqueEventId()))
+    val created = create(richMission(newEvent()))
 
     assertTrue("the generated id must not be empty", created.id.isNotEmpty())
     val document = missionDocument(created.eventId, created.id).get(Source.SERVER).await()
@@ -61,7 +63,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMission_returnsTheStoredMissionWithEveryDomainField() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val created = create(richMission(eventId))
 
     val found = repository.getMission(eventId, created.id)
@@ -92,7 +94,7 @@ class FirestoreMissionRepositoryTest {
     // What the creation screen produces: no assignee yet, and possibly the "General" team. A null
     // team id must come back as a null rather than as an empty string, and an empty list must not
     // come back as a missing field.
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val created = create(richMission(eventId).copy(teamId = null, assigneeIds = emptyList()))
 
     val found = repository.getMission(eventId, created.id)
@@ -105,7 +107,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun createMission_doesNotDuplicateTheIdsAsDocumentFields() = emulatorTest {
-    val created = create(richMission(uniqueEventId()))
+    val created = create(richMission(newEvent()))
 
     val document = missionDocument(created.eventId, created.id).get(Source.SERVER).await()
 
@@ -129,15 +131,15 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMission_returnsNullForAnUnknownId() = emulatorTest {
-    assertNull(repository.getMission(uniqueEventId(), "missing-" + UUID.randomUUID()))
+    assertNull(repository.getMission(newEvent(), "missing-" + UUID.randomUUID()))
   }
 
   @Test
   fun getMission_returnsNullForAMissionOfAnotherEvent() = emulatorTest {
     // Mission ids are only unique within their event, so the event id is part of the lookup.
-    val created = create(richMission(uniqueEventId()))
+    val created = create(richMission(newEvent()))
 
-    assertNull(repository.getMission(uniqueEventId(), created.id))
+    assertNull(repository.getMission(newEvent(), created.id))
   }
 
   @Test
@@ -222,13 +224,13 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMissionsByEvent_returnsOnlyTheMissionsOfThatEvent() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val mine =
         listOf(
             create(richMission(eventId).copy(title = "Trier les dons alimentaires")),
             create(richMission(eventId).copy(title = "Tenir le stand d'accueil")),
         )
-    val theirs = create(richMission(uniqueEventId()))
+    val theirs = create(richMission(newEvent()))
 
     val found = repository.getMissionsByEvent(eventId)
 
@@ -240,18 +242,18 @@ class FirestoreMissionRepositoryTest {
   fun getMissionsByEvent_returnsAnEmptyListForAnEventWithoutMissions() = emulatorTest {
     // A fresh id no mission was ever created under, so "no missions" cannot be confused with "the
     // other tests' missions were cleaned up".
-    assertEquals(emptyList<Mission>(), repository.getMissionsByEvent(uniqueEventId()))
+    assertEquals(emptyList<Mission>(), repository.getMissionsByEvent(newEvent()))
   }
 
   @Test
   fun getMissionsByTeams_returnsTheMissionsOfThoseTeamsOfThatEventOnly() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val logistics = create(richMission(eventId).copy(teamId = "team-logistics"))
     val bar = create(richMission(eventId).copy(teamId = "team-bar"))
     create(richMission(eventId).copy(teamId = "team-security"))
     // A "General" mission of no team, which a manager must never be served.
     create(richMission(eventId).copy(teamId = null))
-    val theirs = create(richMission(uniqueEventId()).copy(teamId = "team-logistics"))
+    val theirs = create(richMission(newEvent()).copy(teamId = "team-logistics"))
 
     val found = repository.getMissionsByTeams(eventId, setOf("team-logistics", "team-bar"))
 
@@ -261,7 +263,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMissionsByTeams_withoutAnyTeam_returnsAnEmptyList() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     create(richMission(eventId).copy(teamId = "team-logistics"))
 
     assertEquals(emptyList<Mission>(), repository.getMissionsByTeams(eventId, emptySet()))
@@ -270,7 +272,7 @@ class FirestoreMissionRepositoryTest {
   @Test
   fun getMissionsByTeams_withManyTeams_returnsEachMissionOnceAndNothingForTheEmptyOnes() =
       emulatorTest {
-        val eventId = uniqueEventId()
+        val eventId = newEvent()
         val mine = create(richMission(eventId).copy(teamId = "team-logistics"))
         // One query per team, so more teams than an `in` filter would take is not a limit, and the
         // 30 teams without a mission must each contribute nothing rather than fail the call.
@@ -284,8 +286,8 @@ class FirestoreMissionRepositoryTest {
   @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = emulatorTest {
     val uid = signedInUid()
-    val firstEvent = uniqueEventId()
-    val secondEvent = uniqueEventId()
+    val firstEvent = newEvent()
+    val secondEvent = newEvent()
     val late = create(assignedMission(firstEvent, startHour = 15, uid))
     val early = create(assignedMission(secondEvent, startHour = 9, "someone-else", uid))
     create(assignedMission(firstEvent, startHour = 12, "someone-else"))
@@ -299,7 +301,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMissionsAssignedTo_returnsAnEmptyListForAUserWithoutMissions() = emulatorTest {
-    create(assignedMission(uniqueEventId(), startHour = 9, "someone-else"))
+    create(assignedMission(newEvent(), startHour = 9, "someone-else"))
 
     assertEquals(emptyList<Mission>(), repository.getMissionsAssignedTo(signedInUid()))
   }
@@ -308,7 +310,7 @@ class FirestoreMissionRepositoryTest {
   fun getMissionsAssignedTo_isDeniedForTheMissionsOfAnotherUser() = emulatorTest {
     // The collection-group rule only lets a user list the missions they are assigned to.
     val other = "someone-else-" + UUID.randomUUID()
-    create(assignedMission(uniqueEventId(), startHour = 9, other))
+    create(assignedMission(newEvent(), startHour = 9, other))
 
     val failure = runCatching { repository.getMissionsAssignedTo(other) }.exceptionOrNull()
 
@@ -320,7 +322,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMission_roundTripsAGeoTimedMission() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val created = create(geoTimed(eventId, startHour = 12, endHour = 13))
 
     val found = repository.getMission(eventId, created.id)
@@ -364,7 +366,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun createMission_refusesAGeoTimedMissionOverlappingOneOfTheSameTeam() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val existing = create(geoTimed(eventId, startHour = 12, endHour = 14))
 
     val failure = runCatching {
@@ -386,7 +388,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun createMission_acceptsMissionsThatDoNotConflict() = emulatorTest {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val existing = create(geoTimed(eventId, startHour = 12, endHour = 14))
 
     val accepted =
@@ -418,7 +420,7 @@ class FirestoreMissionRepositoryTest {
   private suspend fun writeRawMission(
       body: (Map<String, Any?>) -> Map<String, Any?>
   ): Pair<String, String> {
-    val eventId = uniqueEventId()
+    val eventId = newEvent()
     val document = missionsOf(eventId).document()
     createdDocuments += document
     step("write") { document.set(body(richMission(eventId).toFirestoreMap())).await() }
@@ -449,10 +451,10 @@ class FirestoreMissionRepositoryTest {
       missionsOf(eventId).document(missionId)
 
   /**
-   * The event document itself is never written: Firestore lets a subcollection exist under a
-   * missing document, and the repository must not depend on the event being there.
+   * Creates a fresh event owned by the signed-in user, which `firestore.rules` requires before any
+   * mission can be written under it, and remembers it for cleanup.
    */
-  private fun uniqueEventId(): String = "event-" + UUID.randomUUID()
+  private suspend fun newEvent(): String = ScratchEvents.create().also { createdDocuments += it }.id
 
   /**
    * A mission exercising every non-trivial mapping: a team, a volunteer count above one, two

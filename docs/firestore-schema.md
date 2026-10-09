@@ -202,7 +202,7 @@ every access to it is denied.
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams`, `shifts`, `missions` | Any signed-in user | **Temporary**: any signed-in user |
+| `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
@@ -227,11 +227,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 ## Known gaps
 
-- **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
-  the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
-- **Check-ins trust `assigneeIds` and the team's `managerId`, which anyone signed in can still
-  write.** Until the `missions` and `teams` rules are tightened, a user could assign themself to
-  a mission, or make themself a team's manager, and then check in.
+- **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
+  write them; malformed documents are caught by the mappers. Team managers have no write access
+  yet: only the organizer edits these subcollections.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
