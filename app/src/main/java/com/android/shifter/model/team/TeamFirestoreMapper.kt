@@ -7,6 +7,7 @@ import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireInt
+import com.swent.shifter.model.firestore.requireParentEventId
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
@@ -17,9 +18,9 @@ private const val ENTITY = "Team"
 /**
  * Names of the teams subcollection and of every field of a team document.
  *
- * [Team.id] and the event id are deliberately absent: the first is the document id, the second the
- * id of the parent document, so the path already carries both and storing them would be a second
- * source of truth.
+ * [Team.id] and [Team.eventId] are deliberately absent: they are carried by the document path
+ * `/events/{eventId}/teams/{teamId}`, never by fields, so the path stays the single source of truth
+ * for both.
  */
 internal object TeamSchema {
 
@@ -60,7 +61,8 @@ internal fun Team.toFirestoreMap(): Map<String, Any?> =
     )
 
 /**
- * Rebuilds the [Team] stored in this document, taking [Team.id] from the document id.
+ * Rebuilds the [Team] stored in this document, taking [Team.id] from the document id and
+ * [Team.eventId] from the id of the event document it is nested under.
  *
  * Throws [IllegalStateException] when a required field is missing or has an unexpected type: a
  * document that cannot be mapped is a schema problem, which must not be mistaken for "no team".
@@ -70,6 +72,7 @@ internal fun Team.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toTeam(): Team =
     Team(
         id = id,
+        eventId = requireParentEventId(ENTITY),
         name = requireString(ENTITY, TeamSchema.NAME),
         icon = requireString(ENTITY, TeamSchema.ICON),
         managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),

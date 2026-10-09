@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -23,9 +24,10 @@ import org.junit.runner.RunWith
 /**
  * Mapping tests for [toTeam] and [toFirestoreMap], run against the Firestore emulator.
  *
- * There is no team repository yet, so each test writes a raw document and reads it back: a
- * [DocumentSnapshot] cannot be constructed outside Firebase. Every instance works under a freshly
- * generated event id, so tests cannot observe each other whatever order they run in.
+ * Each test writes a raw document and reads it back, bypassing [FirestoreTeamRepository]: no
+ * repository call can write a malformed document, and a [DocumentSnapshot] cannot be constructed
+ * outside Firebase. Every instance works under a freshly generated event id, so tests cannot
+ * observe each other whatever order they run in.
  */
 @RunWith(AndroidJUnit4::class)
 class TeamFirestoreMapperTest {
@@ -64,6 +66,7 @@ class TeamFirestoreMapperTest {
     val mapped = read(teamId).toTeam()
 
     assertEquals(teamId, mapped.id)
+    assertEquals(eventId, mapped.eventId)
     assertEquals("Logistics", mapped.name)
     assertEquals("truck", mapped.icon)
     assertEquals(MANAGER_ID, mapped.managerId)
@@ -72,7 +75,7 @@ class TeamFirestoreMapperTest {
     assertEquals(CheckInZone(46.3869, 6.2228, 75.0), mapped.checkInZone)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
 
-    // The id is the only field the document cannot carry, so the rest must round-trip.
+    // The ids come from the path, so the rest of the team must round-trip through the fields.
     assertEquals(stored.copy(id = teamId), mapped)
   }
 
@@ -361,7 +364,11 @@ class TeamFirestoreMapperTest {
     // The parent event is the path: a field could contradict it.
     val teamId = writeRawTeam(richTeam().toFirestoreMap())
 
-    assertFalse("the event id must not be a field", read(teamId).contains("eventId"))
+    val snapshot = read(teamId)
+
+    assertFalse("the event id must not be a field", snapshot.contains("eventId"))
+    // Absent from the document, yet present on the model: it can only come from the path.
+    assertEquals("the event id must still be mapped", eventId, snapshot.toTeam().eventId)
   }
 
   @Test
@@ -377,6 +384,7 @@ class TeamFirestoreMapperTest {
   /** Whole-second instants on purpose: Firestore keeps microseconds, not nanoseconds. */
   private fun richTeam() =
       Team(
+          eventId = eventId,
           name = "Logistics",
           icon = "truck",
           managerId = MANAGER_ID,
