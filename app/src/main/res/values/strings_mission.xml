@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Mission creation -->
+    <string name="add_mission_title">Add a mission</string>
+    <string name="add_mission_back">Management</string>
+    <string name="add_mission_intro">Define the mission, the staff needed and the time slot.</string>
+    <string name="add_mission_event_period">%1$s · %2$s–%3$s</string>
+    <string name="add_mission_event_period_multi_day">%1$s – %2$s</string>
+    <string name="add_mission_field_title">Mission name</string>
+    <string name="add_mission_field_description">Description</string>
+    <string name="add_mission_field_team">Team</string>
+    <string name="add_mission_team_general">General</string>
+    <string name="add_mission_team_hint">General = no team.</string>
+    <string name="add_mission_field_volunteers">Staff needed</string>
+    <string name="add_mission_volunteers_hint">Positive whole number · min. 1 · Nobody assigned yet.</string>
+    <string name="add_mission_decrease_volunteers">Decrease staff needed</string>
+    <string name="add_mission_increase_volunteers">Increase staff needed</string>
+    <string name="add_mission_field_day">Day</string>
+    <string name="add_mission_field_start">Start time</string>
+    <string name="add_mission_field_end">End time</string>
+    <string name="add_mission_pick_placeholder">Choose</string>
+    <string name="add_mission_schedule_hint">Within the event hours. An end before the start is on the next day.</string>
+    <string name="add_mission_schedule_ends_next_day">Ends the next day.</string>
+    <string name="add_mission_submit">Add the mission</string>
+    <string name="add_mission_cancel">Cancel</string>
+    <string name="add_mission_dialog_confirm">OK</string>
+    <string name="add_mission_load_failed">Could not load the event.</string>
+    <string name="add_mission_retry">Retry</string>
+    <string name="add_mission_error_title_empty">Enter a name</string>
+    <string name="add_mission_error_title_too_long">Use at most 80 characters</string>
+    <string name="add_mission_error_description_empty">Enter a description</string>
+    <string name="add_mission_error_description_too_long">Use at most 2000 characters</string>
+    <string name="add_mission_error_day_missing">Choose a day</string>
+    <string name="add_mission_error_start_missing">Choose a start time</string>
+    <string name="add_mission_error_end_missing">Choose an end time</string>
+    <string name="add_mission_error_end_not_after_start">The mission must not end when it starts</string>
+    <string name="add_mission_error_outside_event">The mission must take place during the event</string>
+    <string name="add_mission_error_save_failed">Could not add the mission. Try again.</string>
+</resources>
