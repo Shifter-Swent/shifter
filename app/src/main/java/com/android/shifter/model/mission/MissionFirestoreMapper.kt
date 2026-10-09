@@ -5,6 +5,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireInt
+import com.swent.shifter.model.firestore.requireParentEventId
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
@@ -63,7 +64,7 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
 internal fun DocumentSnapshot.toMission(): Mission =
     Mission(
         id = id,
-        eventId = requireEventId(),
+        eventId = requireParentEventId(ENTITY),
         title = requireString(ENTITY, MissionSchema.TITLE),
         description = requireString(ENTITY, MissionSchema.DESCRIPTION),
         teamId = optionalString(ENTITY, MissionSchema.TEAM_ID),
@@ -75,8 +76,3 @@ internal fun DocumentSnapshot.toMission(): Mission =
         assigneeIds = requireStringList(ENTITY, MissionSchema.ASSIGNEE_IDS),
         createdAt = requireInstant(ENTITY, MissionSchema.CREATED_AT),
     )
-
-/** A mission document only exists under an event document, whose id is the mission's event id. */
-private fun DocumentSnapshot.requireEventId(): String =
-    reference.parent.parent?.id
-        ?: throw IllegalStateException("Mission document '$id' is not nested under an event")
