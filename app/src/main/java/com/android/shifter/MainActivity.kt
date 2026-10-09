@@ -42,6 +42,8 @@ import com.swent.shifter.resources.C
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.event.CreateEventContent
 import com.swent.shifter.ui.event.CreateEventUiState
+import com.swent.shifter.ui.event.EventCreatedContent
+import com.swent.shifter.ui.event.EventCreatedUiState
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
@@ -55,7 +57,6 @@ import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.Organizer
 import com.swent.shifter.ui.navigation.OrganizerEvent
 import com.swent.shifter.ui.navigation.OrganizerEventScreen
-
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.SignedOut
 import com.swent.shifter.ui.navigation.Tab
@@ -161,8 +162,20 @@ fun ShifterApp(
             onAddressChange = {},
             onStartAtChange = {},
             onEndAtChange = {},
-            onSubmit = {},
+            onSubmit = {
+              // The form gives way to the code: Back from there returns to the events list.
+              nav.backTo(Organizer.Events)
+              nav.navigateTo(Organizer.EventCreated)
+            },
             onBack = nav::goBack,
+        )
+      }
+      composable<Organizer.EventCreated> {
+        // No repositories are wired yet: the code is empty until an event is really created.
+        EventCreatedContent(
+            state = EventCreatedUiState(isLoading = false),
+            onRetry = {},
+            onDone = { nav.backTo(Organizer.Events) },
         )
       }
       navigation<OrganizerEvent>(startDestination = OrganizerTabs.home) {

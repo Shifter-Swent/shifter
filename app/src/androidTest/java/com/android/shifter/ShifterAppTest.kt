@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.espresso.Espresso.pressBack
@@ -18,6 +19,7 @@ import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
+import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.navigation.NavigationActions
@@ -163,6 +165,36 @@ class ShifterAppTest {
   }
 
   @Test
+  fun createEvent_submitShowsTheCodeAndDoneReturnsToTheEvents() {
+    openCreateEventForm()
+
+    composeTestRule
+        .onNodeWithTag(CreateEventScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun eventCreated_deviceBackSkipsTheFormAndReturnsToTheEvents() {
+    openCreateEventForm()
+    composeTestRule
+        .onNodeWithTag(CreateEventScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).assertIsDisplayed()
+
+    pressBack()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(CreateEventScreenTestTags.TITLE_FIELD).assertDoesNotExist()
+  }
+
+  @Test
   fun volunteerEvent_opensOnOverviewAndReachesEveryTab() {
     val nav = setAppAndGetNavigation()
 
@@ -198,6 +230,12 @@ class ShifterAppTest {
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)
+  }
+
+  private fun openCreateEventForm() {
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
   }
 
   /**
