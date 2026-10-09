@@ -103,6 +103,8 @@ class SettingsViewModelTest {
     override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
         Result.failure(UnsupportedOperationException())
 
+    override fun currentUser(): AuthUser? = null
+
     override fun signOut(): Result<Unit> {
       signOutCalls++
       return signOutResult

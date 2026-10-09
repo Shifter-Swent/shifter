@@ -53,7 +53,7 @@ import com.swent.shifter.ui.navigation.VolunteerEventScreen
 import com.swent.shifter.ui.navigation.VolunteerTabs
 import com.swent.shifter.ui.navigation.rememberNavigationActions
 import com.swent.shifter.ui.navigation.startApp
-import com.swent.shifter.ui.settings.SettingsScreen
+import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.theme.ShifterTheme
 
 class MainActivity : ComponentActivity() {
@@ -109,8 +109,7 @@ fun ShifterApp(
         )
       }
       composable<Volunteer.ProfileSettings> {
-        // Sign-out is wired once the settings ViewModel (#109) is on main.
-        SettingsScreen(onBack = { nav.goBack() }, onSignOut = { /* TODO */ })
+        SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.Overview) {
         navigation<VolunteerTabs.Overview>(startDestination = VolunteerEventScreen.Overview) {

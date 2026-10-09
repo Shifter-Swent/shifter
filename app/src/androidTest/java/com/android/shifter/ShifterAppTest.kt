@@ -4,15 +4,23 @@ package com.swent.shifter
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
+import com.swent.shifter.model.authentication.AuthRepositoryFirebase
+import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.util.UUID
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -26,8 +34,14 @@ class ShifterAppTest {
 
   @Before
   fun setUp() {
-    // The sign-in screen builds the production repository: keep it on the emulator, signed out.
+    // The screens build the production repository: keep it on the emulator, signed out.
     AuthEmulator.auth.signOut()
+  }
+
+  @After
+  fun tearDown() {
+    AuthEmulator.auth.signOut()
+    AuthEmulator.clearAccounts()
   }
 
   @Test
@@ -57,11 +71,45 @@ class ShifterAppTest {
   }
 
   @Test
+  fun settings_signOutClearsTheSessionAndReturnsToSignIn() {
+    runBlocking {
+      AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+          .signInWithGoogle(googleCredential())
+          .getOrThrow()
+    }
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(SignInScreenTestTags.LOGIN_BUTTON)
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    assertNull(AuthEmulator.auth.currentUser)
+  }
+
+  @Test
   fun staffEvents_switchesToThePastTab() {
     composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).assertIsSelected()
+  }
+
+  /** The credential Credential Manager would return for a fresh fake Google account. */
+  private fun googleCredential(): GoogleIdTokenCredential {
+    val email = "volunteer-${UUID.randomUUID()}@example.com"
+    return GoogleIdTokenCredential.Builder()
+        .setId(email)
+        .setIdToken(AuthEmulator.fakeGoogleIdToken("google-" + UUID.randomUUID(), email, "Ada"))
+        .build()
+  }
+
+  private companion object {
+    const val TIMEOUT_MILLIS = 20_000L
   }
 }
