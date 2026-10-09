@@ -41,6 +41,12 @@ service cloud.firestore {
            == request.auth.uid;
     }
 
+    // Whether uid is still a participant of eventId once the current commit is applied.
+    function isParticipantAfter(eventId, uid) {
+      let participants = /databases/$(database)/documents/eventParticipants/$(eventId);
+      return existsAfter(participants) && uid in getAfter(participants).data.participantIds;
+    }
+
     match /events/{eventId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
@@ -75,7 +81,9 @@ service cloud.firestore {
               || (request.resource.data.status == 'REJECTED'
                 && !(uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
                        .data.participantIds)));
-        allow delete: if false;
+        // A volunteer withdraws by deleting their own request, leaving the participants in the
+        // same commit.
+        allow delete: if isRequester() && !isParticipantAfter(eventId, uid);
       }
 
       // missions/{missionId}: rules do not cascade into subcollections, so the event rule above
@@ -127,10 +135,20 @@ service cloud.firestore {
         && (request.resource.data.participantIds.size() == 0
             || (request.resource.data.participantIds.size() == 1
                 && hasStatus(request.resource.data.participantIds[0], 'ACCEPTED')));
-      allow update: if isOrganizer(eventId)
+      // A volunteer leaves on their own, deleting their request in the same commit.
+      function isWithdrawal() {
+        let previous = resource.data.participantIds;
+        let next = request.resource.data.participantIds;
+        return previous.removeAll(next) == [request.auth.uid]
+          && next.removeAll(previous).size() == 0
+          && !existsAfter(
+               /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
+      }
+
+      allow update: if signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list
-        && validChange();
+        && ((isOrganizer(eventId) && validChange()) || isWithdrawal());
       allow delete: if false;
     }
   }

@@ -131,7 +131,8 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 | `participantIds` | list of string | uids of the volunteers whose request is `ACCEPTED` |
 
 Accepting or rejecting a request updates the request and this document in the same batch. The rules
-check that they agree (see below).
+check that they agree (see below). A volunteer who withdraws deletes their request and leaves this
+document in the same transaction, so they can apply again later.
 
 ## Security rules
 
@@ -144,8 +145,8 @@ every access to it is denied.
 |---|---|---|
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
-| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer. Only the organizer updates it, and only `status`. No delete |
-| `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
+| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer. Only the organizer updates it, and only `status`. Deleted by the volunteer only, once they are no longer a participant |
+| `eventParticipants/{eventId}` | Any signed-in user | The organizer: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit. A volunteer may only remove themself, deleting their request in the same commit |
 | `teams`, `shifts`, `missions` | Any signed-in user | **Temporary**: any signed-in user |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
