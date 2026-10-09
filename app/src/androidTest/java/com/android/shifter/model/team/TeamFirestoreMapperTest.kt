@@ -3,12 +3,13 @@
 package com.swent.shifter.model.team
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -35,8 +36,14 @@ class TeamFirestoreMapperTest {
   private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
 
-  /** The parent event of every document this test writes. Never created: only its path is used. */
-  private val eventId = "event-" + UUID.randomUUID()
+  /**
+   * The parent event of every document this test writes, owned by the signed-in user as
+   * `firestore.rules` requires.
+   */
+  private lateinit var event: DocumentReference
+
+  private val eventId
+    get() = event.id
 
   private val teams
     get() =
@@ -49,12 +56,18 @@ class TeamFirestoreMapperTest {
   private val createdTeamIds = mutableListOf<String>()
 
   /** `firestore.rules` only lets signed-in users touch the teams of an event. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signInAndCreateTheEvent() = emulatorTest {
+    auth.signInAnonymously().await()
+    event = ScratchEvents.create()
+  }
 
   @After
   fun tearDown() = emulatorTest {
     createdTeamIds.forEach { teams.document(it).delete().await() }
     createdTeamIds.clear()
+    // After its teams: once the event is gone, the rules refuse to delete them.
+    event.delete().await()
     auth.signOut()
   }
 
