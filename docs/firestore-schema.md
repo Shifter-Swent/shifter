@@ -146,15 +146,16 @@ every access to it is denied.
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer. Only the organizer updates it, and only `status`. No delete |
 | `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams`, `shifts`, `missions` | Any signed-in user | **Temporary**: any signed-in user |
+| `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
 
 ## Known gaps
 
-- **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
-  the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
+- **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
+  write them; malformed documents are caught by the mappers. Team managers have no write access
+  yet: only the organizer edits these subcollections.
 - **`Event.memberIds`** is deprecated in favour of `eventParticipants` and will be removed.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
