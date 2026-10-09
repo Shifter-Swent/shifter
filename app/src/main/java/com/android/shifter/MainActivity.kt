@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -18,6 +17,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,10 +25,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -39,8 +41,11 @@ import com.swent.shifter.resources.C
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.organizer.OrgaEventsContent
 import com.swent.shifter.ui.events.staff.StaffEventsContent
+import com.swent.shifter.ui.navigation.Destination
 import com.swent.shifter.ui.navigation.NavigationActions
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.Organizer
 import com.swent.shifter.ui.navigation.OrganizerEvent
 import com.swent.shifter.ui.navigation.OrganizerEventScreen
@@ -89,7 +94,7 @@ fun ShifterApp(
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
-  NavHost(navController, startDestination = start) {
+  NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
       composable<SignedOut.SignIn> { SignInScreen(onSignedIn = { nav.enterApp(Volunteer) }) }
     }
@@ -104,45 +109,75 @@ fun ShifterApp(
             onTabSelected = { selectedTab = it },
             onWithdraw = { /* TODO */ },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
-            onScanQrClick = { /* TODO */ },
+            onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
         )
       }
       composable<Volunteer.ProfileSettings> {
         SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
       }
-      navigation<VolunteerEvent>(startDestination = VolunteerTabs.Overview) {
-        navigation<VolunteerTabs.Overview>(startDestination = VolunteerEventScreen.Overview) {
-          composable<VolunteerEventScreen.Overview> { TabPage(VolunteerTabs.Overview, nav) }
-        }
+      composable<Volunteer.QrApply> { PlaceholderPage(Volunteer.QrApply, onBack = nav::goBack) }
+      navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
+        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
+        tab<VolunteerTabs.Map, VolunteerEventScreen.Map>(VolunteerTabs.Map, nav)
+        tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
+            VolunteerTabs.Discussions,
+            nav,
+        )
       }
     }
 
     navigation<Organizer>(startDestination = Organizer.Events) {
       composable<Organizer.Events> {
-        Page("My events") {
-          Button(onClick = { nav.enterEvent(OrganizerEvent("demo")) }) { Text("Open event") }
-          Button(onClick = { nav.enterApp(Volunteer) }) { Text("Switch to Volunteer") }
-        }
+        // No events ViewModel yet: only the selected tab is held here.
+        var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
+        OrgaEventsContent(
+            state = MyEventsUiState(selectedTab = selectedTab),
+            avatarInitial = "A",
+            onTabSelected = { selectedTab = it },
+            onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
+            onCreateEventClick = { /* TODO */ },
+            onVolunteerViewClick = { nav.enterApp(Volunteer) },
+            onAvatarClick = { nav.navigateTo(Organizer.ProfileSettings) },
+        )
       }
-      navigation<OrganizerEvent>(startDestination = OrganizerTabs.People) {
-        navigation<OrganizerTabs.People>(startDestination = OrganizerEventScreen.People) {
-          composable<OrganizerEventScreen.People> { TabPage(OrganizerTabs.People, nav) }
-        }
-        navigation<OrganizerTabs.Overview>(startDestination = OrganizerEventScreen.Overview) {
-          composable<OrganizerEventScreen.Overview> { TabPage(OrganizerTabs.Overview, nav) }
-        }
+      composable<Organizer.ProfileSettings> {
+        SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
+      }
+      navigation<OrganizerEvent>(startDestination = OrganizerTabs.home) {
+        tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(OrganizerTabs.Overview, nav)
+        tab<OrganizerTabs.People, OrganizerEventScreen.People>(OrganizerTabs.People, nav)
+        tab<OrganizerTabs.Map, OrganizerEventScreen.Map>(OrganizerTabs.Map, nav)
+        tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
+            OrganizerTabs.Discussions,
+            nav,
+        )
       }
     }
   }
 }
 
-/** A title with optional buttons below it. */
+/** Registers [tab] as its own graph, so it keeps its own back stack, holding its home screen. */
+private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
+    tab: Tab,
+    nav: NavigationActions,
+) {
+  navigation<T>(startDestination = tab.home) { composable<S> { TabPage(tab, nav) } }
+}
+
+/** Stand-in for a screen that is not built yet: its title, and a Back button when given one. */
 @Composable
-private fun Page(title: String, content: @Composable () -> Unit = {}) {
+private fun PlaceholderPage(destination: Destination, onBack: (() -> Unit)? = null) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-    Text(title)
-    content()
+    if (onBack != null) {
+      TextButton(
+          onClick = onBack,
+          modifier = Modifier.testTag(NavigationTestTags.GO_BACK_BUTTON),
+      ) {
+        Text("Back")
+      }
+    }
+    Text(destination.title, modifier = Modifier.testTag(NavigationTestTags.TOP_BAR_TITLE))
   }
 }
 
@@ -157,24 +192,25 @@ private fun TabPage(current: Tab, nav: NavigationActions) {
   }
   Scaffold(
       bottomBar = {
-        NavigationBar {
+        NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
           current.set.all.forEach { tab ->
             NavigationBarItem(
                 selected = tab == current,
                 onClick = { nav.switchTab(tab) },
                 icon = { Icon(tab.icon, contentDescription = null) },
                 label = { Text(tab.label) },
+                modifier = Modifier.testTag(tab.testTag),
             )
           }
         }
       }
   ) { padding ->
-    Box(modifier = Modifier.padding(padding)) { Page(current.home.title) }
+    Box(modifier = Modifier.padding(padding)) { PlaceholderPage(current.home) }
   }
 }
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun ShifterAppPreview() {
   ShifterTheme { ShifterApp(isSignedIn = false) }
 }
