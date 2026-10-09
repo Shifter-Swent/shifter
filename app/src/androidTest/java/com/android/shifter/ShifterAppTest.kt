@@ -18,9 +18,11 @@ import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.navigation.NavigationActions
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.OrganizerEvent
+import com.swent.shifter.ui.navigation.OrganizerEventScreen
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.TabSet
 import com.swent.shifter.ui.navigation.Volunteer
@@ -168,6 +170,21 @@ class ShifterAppTest {
     assertTabsReachable(OrganizerTabs)
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun organizerEvent_addMissionOpensTheFormAndBackReturns() {
+    val nav = setAppAndGetNavigation()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
+
+    composeTestRule.onNodeWithTag(ShifterAppTestTags.ADD_MISSION_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.Overview.title)
   }
 
   /**

@@ -23,7 +23,7 @@ import kotlinx.serialization.Serializable
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
  *   ├── Events (OR-00), ProfileSettings
- *   └── OrganizerEvent(eventId): Overview, People, Map, Discussions
+ *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -261,6 +261,14 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object Overview : OrganizerEventScreen {
     override val title = "Overview"
+    override val tab
+      get() = OrganizerTabs.Overview
+  }
+
+  /** Mission creation form, opened on top of the event's Overview. */
+  @Serializable
+  data object AddMission : OrganizerEventScreen {
+    override val title = "Add mission"
     override val tab
       get() = OrganizerTabs.Overview
   }

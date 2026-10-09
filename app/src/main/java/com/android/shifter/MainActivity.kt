@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -43,6 +44,9 @@ import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
 import com.swent.shifter.ui.events.staff.StaffEventsContent
+import com.swent.shifter.ui.mission.AddMissionActions
+import com.swent.shifter.ui.mission.AddMissionContent
+import com.swent.shifter.ui.mission.AddMissionUiState
 import com.swent.shifter.ui.navigation.Destination
 import com.swent.shifter.ui.navigation.NavigationActions
 import com.swent.shifter.ui.navigation.NavigationTestTags
@@ -145,7 +149,26 @@ fun ShifterApp(
         SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
       }
       navigation<OrganizerEvent>(startDestination = OrganizerTabs.home) {
-        tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(OrganizerTabs.Overview, nav)
+        tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(
+            OrganizerTabs.Overview,
+            nav,
+            content = {
+              Button(
+                  onClick = { nav.navigateTo(OrganizerEventScreen.AddMission) },
+                  modifier = Modifier.testTag(ShifterAppTestTags.ADD_MISSION_BUTTON),
+              ) {
+                Text(OrganizerEventScreen.AddMission.title)
+              }
+            },
+        ) {
+          composable<OrganizerEventScreen.AddMission> {
+            // No repositories are wired yet: the form only shows and goes back.
+            AddMissionContent(
+                state = AddMissionUiState(isLoadingEvent = false),
+                actions = AddMissionActions(onBack = nav::goBack),
+            )
+          }
+        }
         tab<OrganizerTabs.People, OrganizerEventScreen.People>(OrganizerTabs.People, nav)
         tab<OrganizerTabs.Map, OrganizerEventScreen.Map>(OrganizerTabs.Map, nav)
         tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
@@ -157,17 +180,36 @@ fun ShifterApp(
   }
 }
 
-/** Registers [tab] as its own graph, so it keeps its own back stack, holding its home screen. */
+/**
+ * Registers [tab] as its own graph, so it keeps its own back stack: its home screen, showing
+ * [content] under its title, and the [screens] opened on top of it.
+ */
 private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
     tab: Tab,
     nav: NavigationActions,
+    noinline content: @Composable () -> Unit = {},
+    crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
-  navigation<T>(startDestination = tab.home) { composable<S> { TabPage(tab, nav) } }
+  navigation<T>(startDestination = tab.home) {
+    composable<S> { TabPage(tab, nav, content) }
+    screens()
+  }
 }
 
-/** Stand-in for a screen that is not built yet: its title, and a Back button when given one. */
+object ShifterAppTestTags {
+  const val ADD_MISSION_BUTTON = "AddMissionButton"
+}
+
+/**
+ * Stand-in for a screen that is not built yet: its title, a Back button when given one, and the
+ * [content] that links to the screens already built.
+ */
 @Composable
-private fun PlaceholderPage(destination: Destination, onBack: (() -> Unit)? = null) {
+private fun PlaceholderPage(
+    destination: Destination,
+    onBack: (() -> Unit)? = null,
+    content: @Composable () -> Unit = {},
+) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
     if (onBack != null) {
       TextButton(
@@ -178,12 +220,13 @@ private fun PlaceholderPage(destination: Destination, onBack: (() -> Unit)? = nu
       }
     }
     Text(destination.title, modifier = Modifier.testTag(NavigationTestTags.TOP_BAR_TITLE))
+    content()
   }
 }
 
 /** A tab of an event, with the bottom bar listing the other tabs of the same event. */
 @Composable
-private fun TabPage(current: Tab, nav: NavigationActions) {
+private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit = {}) {
   BackHandler {
     when (current.set) {
       VolunteerTabs -> nav.backTo(Volunteer.Events)
@@ -205,7 +248,7 @@ private fun TabPage(current: Tab, nav: NavigationActions) {
         }
       }
   ) { padding ->
-    Box(modifier = Modifier.padding(padding)) { PlaceholderPage(current.home) }
+    Box(modifier = Modifier.padding(padding)) { PlaceholderPage(current.home, content = content) }
   }
 }
 
