@@ -44,6 +44,8 @@ import com.swent.shifter.ui.event.CreateEventContent
 import com.swent.shifter.ui.event.CreateEventUiState
 import com.swent.shifter.ui.event.EventCreatedContent
 import com.swent.shifter.ui.event.EventCreatedUiState
+import com.swent.shifter.ui.event.JoinEventContent
+import com.swent.shifter.ui.event.JoinEventUiState
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
@@ -124,7 +126,17 @@ fun ShifterApp(
       composable<Volunteer.ProfileSettings> {
         SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
       }
-      composable<Volunteer.QrApply> { PlaceholderPage(Volunteer.QrApply, onBack = nav::goBack) }
+      composable<Volunteer.QrApply> {
+        // No repositories are wired yet: only the typed code is held here, no event is found.
+        var joinCode by rememberSaveable { mutableStateOf("") }
+        JoinEventContent(
+            uiState = JoinEventUiState(joinCode = joinCode),
+            onJoinCodeChange = { joinCode = it },
+            onFindEvent = {},
+            onBack = {},
+            onApply = {},
+        )
+      }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
         tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
         tab<VolunteerTabs.Map, VolunteerEventScreen.Map>(VolunteerTabs.Map, nav)

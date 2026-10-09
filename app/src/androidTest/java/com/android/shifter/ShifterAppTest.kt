@@ -2,13 +2,16 @@
 package com.swent.shifter
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.espresso.Espresso.pressBack
@@ -20,6 +23,7 @@ import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
+import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.navigation.NavigationActions
@@ -28,7 +32,6 @@ import com.swent.shifter.ui.navigation.OrganizerEvent
 import com.swent.shifter.ui.navigation.OrganizerEventScreen
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.TabSet
-import com.swent.shifter.ui.navigation.Volunteer
 import com.swent.shifter.ui.navigation.VolunteerEvent
 import com.swent.shifter.ui.navigation.VolunteerTabs
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
@@ -117,16 +120,29 @@ class ShifterAppTest {
   }
 
   @Test
-  fun staffEvents_scanQrOpensTheJoinPlaceholderAndBackReturns() {
+  fun staffEvents_scanQrOpensJoinEventAndBackReturns() {
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
+
+    pressBack()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun joinEvent_keepsTheTypedCode() {
     composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(Volunteer.QrApply.title)
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput("ABC123")
 
-    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .assertTextContains("ABC123")
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsEnabled()
   }
 
   @Test
