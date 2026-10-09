@@ -2,7 +2,10 @@
 package com.swent.shifter.ui.mission
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
@@ -30,9 +33,22 @@ data class TeamOption(val id: String, val name: String)
  */
 data class EventPeriod(val title: String, val start: LocalDateTime, val end: LocalDateTime) {
 
-  /** Whether a mission on [day] from [start] to [end] takes place within the event. */
-  fun contains(day: LocalDate, start: LocalTime, end: LocalTime): Boolean =
-      !day.atTime(start).isBefore(this.start) && !day.atTime(end).isAfter(this.end)
+  /** Whether a mission from [start] to [end] takes place within the event. */
+  fun contains(start: LocalDateTime, end: LocalDateTime): Boolean =
+      !start.isBefore(this.start) && !end.isAfter(this.end)
+}
+
+/**
+ * When a mission starting on [day] at [start] and ending at [end] takes place. An end earlier than
+ * the start is on the next day, so a night slot such as 22:00 to 02:00 can be entered.
+ */
+internal fun missionSlot(
+    day: LocalDate,
+    start: LocalTime,
+    end: LocalTime,
+): Pair<LocalDateTime, LocalDateTime> {
+  val endDay = if (end.isBefore(start)) day.plusDays(1) else day
+  return day.atTime(start) to endDay.atTime(end)
 }
 
 /** A form field of the mission creation screen. */
@@ -48,7 +64,9 @@ enum class MissionFormField {
  */
 enum class MissionFormError(val field: MissionFormField) {
   TITLE_EMPTY(MissionFormField.TITLE),
+  TITLE_TOO_LONG(MissionFormField.TITLE),
   DESCRIPTION_EMPTY(MissionFormField.DESCRIPTION),
+  DESCRIPTION_TOO_LONG(MissionFormField.DESCRIPTION),
   DAY_MISSING(MissionFormField.DAY),
   START_MISSING(MissionFormField.SCHEDULE),
   END_MISSING(MissionFormField.SCHEDULE),
@@ -64,6 +82,8 @@ enum class MissionFormError(val field: MissionFormField) {
  * @property errors the current validation errors. Empty until the organizer first tries to submit,
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
  * @property createdMission the persisted mission once creation succeeded, null before.
+ * @property createdMissionHandled whether the screen already reacted to [createdMission], e.g. by
+ *   going back, so it does not react again after a recomposition or configuration change.
  */
 data class AddMissionUiState(
     val event: EventPeriod? = null,
@@ -81,19 +101,33 @@ data class AddMissionUiState(
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
     val createdMission: Mission? = null,
+    val createdMissionHandled: Boolean = false,
 ) {
   /** The error to show under [field], or null when it is valid. */
   fun errorFor(field: MissionFormField): MissionFormError? = errors.firstOrNull {
     it.field == field
   }
 
-  /** Whether the form can be submitted: the event is known and nothing is being saved. */
+  /**
+   * Whether the form can be submitted: the event is known, nothing is being saved and the mission
+   * has not been created yet, so a second tap before leaving the screen cannot create it twice.
+   */
   val canSubmit: Boolean
-    get() = event != null && !isSaving
+    get() = event != null && !isSaving && createdMission == null
+
+  /** Whether the chosen end time falls on the day after the mission starts. */
+  val endsNextDay: Boolean
+    get() = startTime != null && endTime != null && endTime.isBefore(startTime)
 
   companion object {
     /** A mission records a need for at least one person. */
     const val MIN_VOLUNTEERS = 1
+
+    /** Longest title accepted, so it fits on mission cards and in lists. Same as for events. */
+    const val TITLE_MAX_LENGTH = 80
+
+    /** Longest description accepted. Same as for events. */
+    const val DESCRIPTION_MAX_LENGTH = 2000
   }
 }
 
@@ -109,6 +143,7 @@ class AddMissionViewModel(
     private val eventId: String,
     private val missionRepository: MissionRepository,
     private val eventRepository: EventRepository,
+    // TODO(#86): load the event's teams from TeamRepository instead of injecting them.
     teams: List<TeamOption> = emptyList(),
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
@@ -187,7 +222,12 @@ class AddMissionViewModel(
       return
     }
     // Validation guarantees the day and both times are set.
-    val day = form.day ?: return
+    val (startAt, endAt) =
+        missionSlot(
+            checkNotNull(form.day),
+            checkNotNull(form.startTime),
+            checkNotNull(form.endTime),
+        )
     val mission =
         Mission(
             eventId = eventId,
@@ -195,8 +235,8 @@ class AddMissionViewModel(
             description = form.description.trim(),
             teamId = form.teamId,
             volunteersNeeded = form.volunteersNeeded,
-            startAt = day.atTime(form.startTime ?: return).atZone(clock.zone).toInstant(),
-            endAt = day.atTime(form.endTime ?: return).atZone(clock.zone).toInstant(),
+            startAt = startAt.atZone(clock.zone).toInstant(),
+            endAt = endAt.atZone(clock.zone).toInstant(),
             createdAt = clock.instant(),
         )
     _uiState.update { it.copy(errors = emptySet(), isSaving = true, saveFailed = false) }
@@ -212,6 +252,11 @@ class AddMissionViewModel(
     }
   }
 
+  /** Records that the screen reacted to [AddMissionUiState.createdMission]. */
+  fun onMissionAddedHandled() {
+    _uiState.update { it.copy(createdMissionHandled = true) }
+  }
+
   private fun edit(change: (AddMissionUiState) -> AddMissionUiState) {
     _uiState.update { state ->
       val edited = change(state).copy(saveFailed = false)
@@ -220,8 +265,16 @@ class AddMissionViewModel(
   }
 
   private fun validate(form: AddMissionUiState): Set<MissionFormError> = buildSet {
-    if (form.title.isBlank()) add(MissionFormError.TITLE_EMPTY)
-    if (form.description.isBlank()) add(MissionFormError.DESCRIPTION_EMPTY)
+    when {
+      form.title.isBlank() -> add(MissionFormError.TITLE_EMPTY)
+      form.title.trim().length > AddMissionUiState.TITLE_MAX_LENGTH ->
+          add(MissionFormError.TITLE_TOO_LONG)
+    }
+    when {
+      form.description.isBlank() -> add(MissionFormError.DESCRIPTION_EMPTY)
+      form.description.trim().length > AddMissionUiState.DESCRIPTION_MAX_LENGTH ->
+          add(MissionFormError.DESCRIPTION_TOO_LONG)
+    }
     if (form.day == null) add(MissionFormError.DAY_MISSING)
 
     val start = form.startTime
@@ -229,9 +282,31 @@ class AddMissionViewModel(
     when {
       start == null -> add(MissionFormError.START_MISSING)
       end == null -> add(MissionFormError.END_MISSING)
-      !end.isAfter(start) -> add(MissionFormError.END_NOT_AFTER_START)
-      form.day != null && form.event?.contains(form.day, start, end) == false ->
+      // An earlier end is on the next day; only an equal one leaves the mission with no duration.
+      end == start -> add(MissionFormError.END_NOT_AFTER_START)
+      form.day != null && form.event?.containsSlot(form.day, start, end) == false ->
           add(MissionFormError.OUTSIDE_EVENT)
+    }
+  }
+
+  private fun EventPeriod.containsSlot(day: LocalDate, start: LocalTime, end: LocalTime): Boolean {
+    val (startAt, endAt) = missionSlot(day, start, end)
+    return contains(startAt, endAt)
+  }
+
+  companion object {
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(
+        eventId: String,
+        missionRepository: MissionRepository,
+        eventRepository: EventRepository,
+        teams: List<TeamOption> = emptyList(),
+        clock: Clock = Clock.systemDefaultZone(),
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer { AddMissionViewModel(eventId, missionRepository, eventRepository, teams, clock) }
     }
   }
 }

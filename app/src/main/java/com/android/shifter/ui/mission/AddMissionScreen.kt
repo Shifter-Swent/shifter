@@ -115,7 +115,13 @@ fun AddMissionScreen(
 ) {
   val uiState by viewModel.uiState.collectAsState()
 
-  LaunchedEffect(uiState.createdMission) { uiState.createdMission?.let(onMissionAdded) }
+  val createdMission = uiState.createdMission
+  LaunchedEffect(createdMission, uiState.createdMissionHandled) {
+    if (createdMission != null && !uiState.createdMissionHandled) {
+      viewModel.onMissionAddedHandled()
+      onMissionAdded(createdMission)
+    }
+  }
 
   AddMissionContent(
       state = uiState,
@@ -544,7 +550,11 @@ private fun Schedule(state: AddMissionUiState, enabled: Boolean, actions: AddMis
       )
     }
     val error = state.errorFor(MissionFormField.SCHEDULE)
-    if (error != null) FieldError(error) else Hint(R.string.add_mission_schedule_hint)
+    when {
+      error != null -> FieldError(error)
+      state.endsNextDay -> Hint(R.string.add_mission_schedule_ends_next_day)
+      else -> Hint(R.string.add_mission_schedule_hint)
+    }
   }
 }
 
@@ -765,7 +775,9 @@ private val MissionFormError.message: Int
   get() =
       when (this) {
         MissionFormError.TITLE_EMPTY -> R.string.add_mission_error_title_empty
+        MissionFormError.TITLE_TOO_LONG -> R.string.add_mission_error_title_too_long
         MissionFormError.DESCRIPTION_EMPTY -> R.string.add_mission_error_description_empty
+        MissionFormError.DESCRIPTION_TOO_LONG -> R.string.add_mission_error_description_too_long
         MissionFormError.DAY_MISSING -> R.string.add_mission_error_day_missing
         MissionFormError.START_MISSING -> R.string.add_mission_error_start_missing
         MissionFormError.END_MISSING -> R.string.add_mission_error_end_missing

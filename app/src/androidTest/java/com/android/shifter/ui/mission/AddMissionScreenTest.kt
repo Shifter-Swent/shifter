@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -210,6 +211,27 @@ class AddMissionScreenTest {
   }
 
   @Test
+  fun tooLongTexts_areReportedWithTheLimit() {
+    setContent(
+        loaded.copy(
+            errors = setOf(MissionFormError.TITLE_TOO_LONG, MissionFormError.DESCRIPTION_TOO_LONG)
+        )
+    )
+
+    node(AddMissionScreenTestTags.error(MissionFormField.TITLE))
+        .assertTextEquals("Use at most 80 characters")
+    node(AddMissionScreenTestTags.error(MissionFormField.DESCRIPTION))
+        .assertTextEquals("Use at most 2000 characters")
+  }
+
+  @Test
+  fun anEndBeforeTheStart_isShownAsTheNextDay() {
+    setContent(loaded.copy(startTime = LocalTime.of(22, 0), endTime = LocalTime.of(2, 0)))
+
+    composeTestRule.onNodeWithText("Ends the next day.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
   fun whileSaving_showsAProgressAndDisablesTheButtons() {
     setContent(loaded.copy(isSaving = true))
 
@@ -281,7 +303,7 @@ class AddMissionScreenTest {
 
     // 10:00–10:00 does not end after it starts, so nothing is saved yet.
     node(AddMissionScreenTestTags.error(MissionFormField.SCHEDULE)).performScrollTo()
-    composeTestRule.onNodeWithText("The mission must end after it starts").assertIsDisplayed()
+    composeTestRule.onNodeWithText("The mission must not end when it starts").assertIsDisplayed()
     assertNull(added)
 
     viewModel.onEndTimeChange(LocalTime.of(11, 30))
@@ -293,6 +315,48 @@ class AddMissionScreenTest {
     assertEquals("logistics", mission.teamId)
     assertEquals(eventDay.atTime(11, 30).atZone(zone).toInstant(), mission.endAt)
     assertEquals(listOf(mission), missions.created)
+  }
+
+  @Test
+  fun addedMission_isNotReportedAgainAfterRecreation() {
+    val zone = ZoneId.of("Europe/Zurich")
+    val now = Instant.parse("2027-06-01T10:00:00Z")
+    val event =
+        Event(
+            id = "event-1",
+            organizerId = "organizer-1",
+            title = "Local Food Drive",
+            description = "Collect food",
+            type = EventType.FOOD,
+            startAt = eventDay.atTime(10, 0).atZone(zone).toInstant(),
+            endAt = eventDay.atTime(18, 0).atZone(zone).toInstant(),
+            location = EventLocation(address = "Grand Place, Lille"),
+            createdAt = now,
+        )
+    val viewModel =
+        AddMissionViewModel(
+            eventId = "event-1",
+            missionRepository = RecordingMissionRepository(),
+            eventRepository = SingleEventRepository(event),
+            clock = Clock.fixed(now, zone),
+        )
+    var reports = 0
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      ShifterTheme { AddMissionScreen(viewModel, onMissionAdded = { reports++ }, onBack = {}) }
+    }
+
+    viewModel.onTitleChange("Sort the donations")
+    viewModel.onDescriptionChange("Check the dates")
+    viewModel.onStartTimeChange(LocalTime.of(11, 0))
+    viewModel.onEndTimeChange(LocalTime.of(12, 0))
+    node(AddMissionScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
+    composeTestRule.waitUntil(timeoutMillis = 5_000) { reports > 0 }
+    // Leaves and re-enters the composition with the same ViewModel, like a rotation does.
+    restorationTester.emulateSavedInstanceStateRestore()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, reports)
   }
 }
 

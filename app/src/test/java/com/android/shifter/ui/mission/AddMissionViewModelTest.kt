@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
@@ -220,7 +221,7 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withEndNotAfterStart_reportsIt() = runTest {
+  fun addMission_endingWhenItStarts_reportsIt() = runTest {
     openForm()
     fillValidForm()
     viewModel.onEndTimeChange(LocalTime.of(14, 0))
@@ -229,6 +230,85 @@ class AddMissionViewModelTest {
 
     assertEquals(setOf(MissionFormError.END_NOT_AFTER_START), state.errors)
     assertEquals(MissionFormError.END_NOT_AFTER_START, state.errorFor(MissionFormField.SCHEDULE))
+  }
+
+  @Test
+  fun addMission_endingBeforeItStarts_endsTheNextDay_andMustStillFitTheEvent() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.onStartTimeChange(LocalTime.of(17, 0))
+    viewModel.onEndTimeChange(LocalTime.of(9, 0))
+
+    assertTrue(state.endsNextDay)
+    viewModel.addMission()
+
+    // 17:00 to 09:00 the next morning overflows an event ending at 18:00 the same day.
+    assertEquals(setOf(MissionFormError.OUTSIDE_EVENT), state.errors)
+    assertTrue(missions.created.isEmpty())
+  }
+
+  @Test
+  fun addMission_crossingMidnightWithinANightEvent_createsTheMissionUntilTheNextDay() = runTest {
+    // A festival night, 21 June 18:00 to 22 June 03:00.
+    events =
+        StubEventRepository(
+            event.copy(
+                startAt = eventDay.plusDays(1).atTime(18, 0).atZone(zone).toInstant(),
+                endAt = eventDay.plusDays(2).atTime(3, 0).atZone(zone).toInstant(),
+            )
+        )
+    openForm()
+    fillValidForm()
+    viewModel.onStartTimeChange(LocalTime.of(22, 0))
+    viewModel.onEndTimeChange(LocalTime.of(2, 0))
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertTrue(state.errors.isEmpty())
+    val mission = missions.created.single()
+    assertEquals(eventDay.plusDays(1).atTime(22, 0).atZone(zone).toInstant(), mission.startAt)
+    assertEquals(eventDay.plusDays(2).atTime(2, 0).atZone(zone).toInstant(), mission.endAt)
+  }
+
+  @Test
+  fun endsNextDay_isFalseUntilBothTimesAreSetAndTheEndIsEarlier() = runTest {
+    openForm()
+    assertFalse(state.endsNextDay)
+
+    viewModel.onStartTimeChange(LocalTime.of(22, 0))
+    assertFalse(state.endsNextDay)
+
+    viewModel.onEndTimeChange(LocalTime.of(23, 0))
+    assertFalse(state.endsNextDay)
+
+    viewModel.onEndTimeChange(LocalTime.of(1, 0))
+    assertTrue(state.endsNextDay)
+  }
+
+  @Test
+  fun addMission_withTooLongTitleAndDescription_reportsThem() = runTest {
+    openForm()
+    fillValidForm()
+    // Surrounding blanks are trimmed before counting, so they alone cannot make a text too long.
+    viewModel.onTitleChange(" " + "a".repeat(AddMissionUiState.TITLE_MAX_LENGTH) + " ")
+    viewModel.onDescriptionChange("b".repeat(AddMissionUiState.DESCRIPTION_MAX_LENGTH))
+
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertTrue(state.errors.isEmpty())
+
+    openForm()
+    fillValidForm()
+    viewModel.onTitleChange("a".repeat(AddMissionUiState.TITLE_MAX_LENGTH + 1))
+    viewModel.onDescriptionChange("b".repeat(AddMissionUiState.DESCRIPTION_MAX_LENGTH + 1))
+
+    viewModel.addMission()
+
+    assertEquals(
+        setOf(MissionFormError.TITLE_TOO_LONG, MissionFormError.DESCRIPTION_TOO_LONG),
+        state.errors,
+    )
   }
 
   @Test
@@ -332,6 +412,45 @@ class AddMissionViewModelTest {
   }
 
   @Test
+  fun addMission_isIgnoredAfterSuccess() = runTest {
+    openForm()
+    fillValidForm()
+
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertFalse(state.canSubmit)
+    // A second tap before the screen is left must not create the mission twice.
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(1, missions.created.size)
+  }
+
+  @Test
+  fun onMissionAddedHandled_marksTheCreatedMissionAsHandled() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertFalse(state.createdMissionHandled)
+
+    viewModel.onMissionAddedHandled()
+
+    assertTrue(state.createdMissionHandled)
+  }
+
+  @Test
+  fun factory_createsAViewModelForTheEvent() = runTest {
+    viewModel =
+        AddMissionViewModel.factory(event.id, missions, events, teams, clock)
+            .create(AddMissionViewModel::class.java, CreationExtras.Empty)
+    advanceUntilIdle()
+
+    assertEquals("Local Food Drive", state.event?.title)
+    assertEquals(teams, state.teams)
+  }
+
+  @Test
   fun addMission_whenTheRepositoryFails_reportsItAndClearsOnEdit() = runTest {
     openForm()
     fillValidForm()
@@ -357,13 +476,35 @@ class AddMissionViewModelTest {
             end = LocalDateTime.of(2027, 7, 22, 2, 0),
         )
 
-    assertTrue(period.contains(LocalDate.of(2027, 7, 21), LocalTime.of(18, 0), LocalTime.of(23, 0)))
-    assertTrue(period.contains(LocalDate.of(2027, 7, 22), LocalTime.of(0, 30), LocalTime.of(2, 0)))
-    assertFalse(
-        period.contains(LocalDate.of(2027, 7, 21), LocalTime.of(17, 0), LocalTime.of(19, 0))
-    )
-    assertFalse(period.contains(LocalDate.of(2027, 7, 22), LocalTime.of(1, 0), LocalTime.of(3, 0)))
+    assertTrue(period.contains(at(21, 18, 0), at(21, 23, 0)))
+    assertTrue(period.contains(at(21, 23, 0), at(22, 2, 0)))
+    assertTrue(period.contains(at(22, 0, 30), at(22, 2, 0)))
+    assertFalse(period.contains(at(21, 17, 0), at(21, 19, 0)))
+    assertFalse(period.contains(at(22, 1, 0), at(22, 3, 0)))
   }
+
+  @Test
+  fun missionSlot_putsAnEarlierEndOnTheNextDay() {
+    val day = LocalDate.of(2027, 7, 21)
+
+    assertEquals(
+        at(21, 14, 0) to at(21, 15, 30),
+        missionSlot(day, LocalTime.of(14, 0), LocalTime.of(15, 30)),
+    )
+    assertEquals(
+        at(21, 22, 0) to at(22, 2, 0),
+        missionSlot(day, LocalTime.of(22, 0), LocalTime.of(2, 0)),
+    )
+    // An equal end stays on the same day: validation reports it rather than reading 24 hours.
+    assertEquals(
+        at(21, 14, 0) to at(21, 14, 0),
+        missionSlot(day, LocalTime.of(14, 0), LocalTime.of(14, 0)),
+    )
+  }
+
+  /** [hour]:[minute] on [dayOfMonth] July 2027. */
+  private fun at(dayOfMonth: Int, hour: Int, minute: Int) =
+      LocalDateTime.of(2027, 7, dayOfMonth, hour, minute)
 }
 
 /** [EventRepository] that only knows [event]; setting [failure] makes every call throw it. */
