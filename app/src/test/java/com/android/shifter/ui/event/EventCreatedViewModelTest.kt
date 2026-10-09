@@ -4,6 +4,7 @@ package com.swent.shifter.ui.event
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
 import java.time.Instant
@@ -16,6 +17,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -83,25 +85,83 @@ class EventCreatedViewModelTest {
     val viewModel = EventCreatedViewModel(repository, "missing")
     dispatcher.scheduler.advanceUntilIdle()
 
-    assertTrue(viewModel.uiState.value.loadFailed)
+    assertEquals(EventCreatedError.NOT_FOUND, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isLoading)
     assertEquals("", viewModel.uiState.value.joinCode)
   }
 
   @Test
-  fun repositoryFailure_reportsFailureAndRetryLoadsTheEvent() = runTest {
+  fun eventWithoutJoinCode_reportsNotFoundInsteadOfAnEmptyCode() = runTest {
     val event = createdEvent()
-    repository.failure = IllegalStateException("offline")
+    repository.events[0] = event.copy(joinCode = "")
+
     val viewModel = EventCreatedViewModel(repository, event.id)
     dispatcher.scheduler.advanceUntilIdle()
-    assertTrue(viewModel.uiState.value.loadFailed)
+
+    assertEquals(EventCreatedError.NOT_FOUND, viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun failuresOtherThanOffline_areNotReportedAsOffline() = runTest {
+    val event = createdEvent()
+    val errors =
+        listOf(
+            EventRepositoryException.PermissionDenied(),
+            EventRepositoryException.Unknown(),
+            IllegalStateException("bug"),
+        )
+
+    for (error in errors) {
+      repository.failure = error
+      val viewModel = EventCreatedViewModel(repository, event.id)
+      dispatcher.scheduler.advanceUntilIdle()
+
+      assertEquals(error.toString(), EventCreatedError.UNEXPECTED, viewModel.uiState.value.error)
+    }
+  }
+
+  @Test
+  fun createdEvent_isShownRightAwayWithoutFetchingIt() = runTest {
+    val event = createdEvent()
+    repository.failure = EventRepositoryException.Unavailable()
+
+    val viewModel = EventCreatedViewModel(repository, event.id, createdEvent = event)
+    val shownBeforeAnyLoad = viewModel.uiState.value
+    dispatcher.scheduler.advanceUntilIdle()
+
+    val expected =
+        EventCreatedUiState(eventTitle = event.title, joinCode = event.joinCode, isLoading = false)
+    assertEquals(expected, shownBeforeAnyLoad)
+    assertEquals(expected, viewModel.uiState.value)
+  }
+
+  @Test
+  fun unusableCreatedEvent_loadsTheStoredOneInstead() = runTest {
+    val stored = createdEvent()
+    val other = createdEvent()
+
+    for (given in listOf(other, stored.copy(joinCode = ""))) {
+      val viewModel = EventCreatedViewModel(repository, stored.id, createdEvent = given)
+      dispatcher.scheduler.advanceUntilIdle()
+
+      assertEquals(stored.joinCode, viewModel.uiState.value.joinCode)
+    }
+  }
+
+  @Test
+  fun offline_reportsOfflineAndRetryLoadsTheEvent() = runTest {
+    val event = createdEvent()
+    repository.failure = EventRepositoryException.Unavailable()
+    val viewModel = EventCreatedViewModel(repository, event.id)
+    dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(EventCreatedError.OFFLINE, viewModel.uiState.value.error)
 
     repository.failure = null
     viewModel.retry()
     assertTrue(viewModel.uiState.value.isLoading)
     dispatcher.scheduler.advanceUntilIdle()
 
-    assertFalse(viewModel.uiState.value.loadFailed)
+    assertNull(viewModel.uiState.value.error)
     assertEquals(event.joinCode, viewModel.uiState.value.joinCode)
   }
 
@@ -130,13 +190,13 @@ class EventCreatedViewModelTest {
   @Test
   fun failedRetry_staysFailedAndCanBeRetriedAgain() = runTest {
     val event = createdEvent()
-    repository.failure = IllegalStateException("offline")
+    repository.failure = EventRepositoryException.Unavailable()
     val viewModel = EventCreatedViewModel(repository, event.id)
     dispatcher.scheduler.advanceUntilIdle()
 
     viewModel.retry()
     dispatcher.scheduler.advanceUntilIdle()
-    assertTrue(viewModel.uiState.value.loadFailed)
+    assertEquals(EventCreatedError.OFFLINE, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isLoading)
 
     repository.failure = null
@@ -148,7 +208,8 @@ class EventCreatedViewModelTest {
   @Test
   fun factory_createsViewModelForTheGivenEvent() = runTest {
     val event = createdEvent()
-    val factory = EventCreatedViewModel.factory(repository, event.id)
+    val factory = EventCreatedViewModel.factory(repository, event.id, createdEvent = event)
+    repository.failure = EventRepositoryException.Unavailable()
 
     val viewModel = factory.create(EventCreatedViewModel::class.java, CreationExtras.Empty)
     dispatcher.scheduler.advanceUntilIdle()

@@ -18,6 +18,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
@@ -120,16 +121,29 @@ class EventCreatedScreenTest {
   }
 
   @Test
-  fun loadFailure_showsErrorAndRetryCallsOnRetry() {
+  fun offline_showsErrorAndRetryCallsOnRetry() {
     var retries = 0
-    setContent(EventCreatedUiState(isLoading = false, loadFailed = true), onRetry = { retries++ })
+    setContent(
+        EventCreatedUiState(isLoading = false, error = EventCreatedError.OFFLINE),
+        onRetry = { retries++ },
+    )
 
     node(EventCreatedScreenTestTags.LOAD_ERROR)
-        .assertTextEquals(string(R.string.event_created_load_failed))
+        .assertTextEquals(string(R.string.event_created_error_offline))
     node(EventCreatedScreenTestTags.JOIN_CODE).assertDoesNotExist()
     node(EventCreatedScreenTestTags.RETRY_BUTTON).performScrollTo().performClick()
 
     assertEquals(1, retries)
+  }
+
+  @Test
+  fun failureRetryingCannotFix_showsItsMessageWithoutRetry() {
+    setContent(EventCreatedUiState(isLoading = false, error = EventCreatedError.NOT_FOUND))
+
+    node(EventCreatedScreenTestTags.LOAD_ERROR)
+        .assertTextEquals(string(R.string.event_created_error_not_found))
+    node(EventCreatedScreenTestTags.RETRY_BUTTON).assertDoesNotExist()
+    node(EventCreatedScreenTestTags.JOIN_CODE).assertDoesNotExist()
   }
 
   @Test
@@ -155,7 +169,7 @@ class EventCreatedScreenTest {
   @Test
   fun screen_backendUnreachable_retryShowsTheCodeOnceItIsBack() {
     val repository = StoredEventRepository(storedEvent)
-    repository.failure = IllegalStateException("offline")
+    repository.failure = EventRepositoryException.Unavailable()
     val viewModel = EventCreatedViewModel(repository, "event-1")
     composeTestRule.setContent { ShifterTheme { EventCreatedScreen(viewModel, onDone = {}) } }
 
@@ -185,7 +199,7 @@ class EventCreatedScreenTest {
     }
 
     node(EventCreatedScreenTestTags.DONE_BUTTON).performScrollTo().performClick()
-    state = EventCreatedUiState(isLoading = false, loadFailed = true)
+    state = EventCreatedUiState(isLoading = false, error = EventCreatedError.UNEXPECTED)
     composeTestRule.waitForIdle()
     node(EventCreatedScreenTestTags.DONE_BUTTON).performScrollTo().performClick()
 

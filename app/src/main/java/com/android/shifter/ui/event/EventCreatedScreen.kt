@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,26 +85,29 @@ fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone:
                   Modifier.testTag(EventCreatedScreenTestTags.LOADING_INDICATOR)
               )
             }
-        state.loadFailed -> {
+        state.error != null -> {
           Text(
-              text = stringResource(R.string.event_created_load_failed),
+              text = stringResource(state.error.message),
               color = MaterialTheme.colorScheme.error,
               style = MaterialTheme.typography.bodySmall,
               modifier = Modifier.testTag(EventCreatedScreenTestTags.LOAD_ERROR),
           )
-          OutlinedButton(
-              onClick = onRetry,
-              shape = MaterialTheme.shapes.medium,
-              modifier =
-                  Modifier.fillMaxWidth()
-                      .height(48.dp)
-                      .testTag(EventCreatedScreenTestTags.RETRY_BUTTON),
-          ) {
-            Text(
-                text = stringResource(R.string.event_created_retry),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-            )
+          // Only a connection problem can be fixed by trying again.
+          if (state.error == EventCreatedError.OFFLINE) {
+            OutlinedButton(
+                onClick = onRetry,
+                shape = MaterialTheme.shapes.medium,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .height(48.dp)
+                        .testTag(EventCreatedScreenTestTags.RETRY_BUTTON),
+            ) {
+              Text(
+                  text = stringResource(R.string.event_created_retry),
+                  style = MaterialTheme.typography.labelLarge,
+                  fontWeight = FontWeight.SemiBold,
+              )
+            }
           }
         }
         else -> {
@@ -208,6 +212,15 @@ private fun JoinCodeCard(joinCode: String) {
     )
   }
 }
+
+@get:StringRes
+private val EventCreatedError.message: Int
+  get() =
+      when (this) {
+        EventCreatedError.OFFLINE -> R.string.event_created_error_offline
+        EventCreatedError.NOT_FOUND -> R.string.event_created_error_not_found
+        EventCreatedError.UNEXPECTED -> R.string.event_created_error_unexpected
+      }
 
 @Preview(showBackground = true)
 @Composable

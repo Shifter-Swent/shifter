@@ -42,7 +42,9 @@
     <string name="event_created_code_label">Your event\'s unique code</string>
     <string name="event_created_code_hint">Share this code with volunteers so they can join your event.</string>
     <string name="event_created_done">Done</string>
-    <string name="event_created_load_failed">Could not load the event code. Check your connection.</string>
+    <string name="event_created_error_offline">Could not load the event code. Check your connection.</string>
+    <string name="event_created_error_not_found">This event has no join code. Try creating it again.</string>
+    <string name="event_created_error_unexpected">Could not load the event code.</string>
     <string name="event_created_retry">Try again</string>
 
     <!-- My Events -->
