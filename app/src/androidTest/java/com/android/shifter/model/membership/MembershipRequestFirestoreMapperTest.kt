@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.model.membership
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -6,6 +7,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
@@ -45,14 +47,17 @@ class MembershipRequestFirestoreMapperTest {
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdRequestIds = mutableListOf<String>()
 
-  /** `firestore.rules` only lets signed-in users touch the events collection. */
+  /** Scratch events belong to the signed-in test account, as required by `firestore.rules`. */
   @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
 
   @After
   fun tearDown() = emulatorTest {
-    createdRequestIds.forEach { scratch.document(it).delete().await() }
-    createdRequestIds.clear()
-    auth.signOut()
+    try {
+      createdRequestIds.forEach { FirestoreEmulatorAdmin.deleteDocument(scratch.document(it).path) }
+      createdRequestIds.clear()
+    } finally {
+      auth.signOut()
+    }
   }
 
   @Test
@@ -392,7 +397,8 @@ class MembershipRequestFirestoreMapperTest {
   private suspend fun writeRawRequest(body: Map<String, Any?>): String {
     val document = scratch.document(SCRATCH_ID_PREFIX + UUID.randomUUID())
     createdRequestIds += document.id
-    document.set(body).await()
+    // The mapper ignores this event field; malformed request fields remain untouched.
+    document.set(body + ("organizerId" to checkNotNull(auth.currentUser).uid)).await()
     return document.id
   }
 

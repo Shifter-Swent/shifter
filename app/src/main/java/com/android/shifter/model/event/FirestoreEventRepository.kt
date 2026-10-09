@@ -2,6 +2,8 @@
 package com.swent.shifter.model.event
 
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import kotlin.random.Random
 import kotlinx.coroutines.tasks.await
 
@@ -10,6 +12,7 @@ import kotlinx.coroutines.tasks.await
  *
  * All Firebase types stay inside this class and the [toEvent] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
+ * Firestore errors are rethrown as [EventRepositoryException].
  *
  * @param random source of randomness for join codes; inject a seeded [Random] to make collisions
  *   reproducible in tests.
@@ -28,35 +31,39 @@ class FirestoreEventRepository(
    * [Event.createdAt] is persisted as the caller supplied it: the repository does not invent time,
    * which keeps writes deterministic and testable.
    */
-  override suspend fun createEvent(event: Event): Event {
+  override suspend fun createEvent(event: Event): Event = translatingErrors {
     val document = events.document()
     val persisted = event.copy(id = document.id, joinCode = generateUnusedJoinCode())
     document.set(persisted.toFirestoreMap()).await()
-    return persisted
+    persisted
   }
 
-  override suspend fun getEvent(eventId: String): Event? =
-      events.document(eventId).get().await().takeIf { it.exists() }?.toEvent()
+  override suspend fun getEvent(eventId: String): Event? = translatingErrors {
+    events.document(eventId).get().await().takeIf { it.exists() }?.toEvent()
+  }
 
-  override suspend fun getEventByJoinCode(joinCode: String): Event? =
-      events
-          .whereEqualTo(EventSchema.JOIN_CODE, joinCode)
-          .limit(1)
-          .get()
-          .await()
-          .documents
-          .firstOrNull()
-          ?.toEvent()
+  override suspend fun getEventByJoinCode(joinCode: String): Event? = translatingErrors {
+    events
+        .whereEqualTo(EventSchema.JOIN_CODE, joinCode)
+        .limit(1)
+        .get()
+        .await()
+        .documents
+        .firstOrNull()
+        ?.toEvent()
+  }
 
-  override suspend fun getEventsByOrganizer(organizerId: String): List<Event> =
-      events.whereEqualTo(EventSchema.ORGANIZER_ID, organizerId).get().await().documents.map {
-        it.toEvent()
-      }
+  override suspend fun getEventsByOrganizer(organizerId: String): List<Event> = translatingErrors {
+    events.whereEqualTo(EventSchema.ORGANIZER_ID, organizerId).get().await().documents.map {
+      it.toEvent()
+    }
+  }
 
-  override suspend fun getEventsByMember(userId: String): List<Event> =
-      events.whereArrayContains(EventSchema.MEMBER_IDS, userId).get().await().documents.map {
-        it.toEvent()
-      }
+  override suspend fun getEventsByMember(userId: String): List<Event> = translatingErrors {
+    events.whereArrayContains(EventSchema.MEMBER_IDS, userId).get().await().documents.map {
+      it.toEvent()
+    }
+  }
 
   /**
    * Draws join codes until one is free, so two events never share a code.
@@ -84,10 +91,27 @@ class FirestoreEventRepository(
           }
       )
 
-  private companion object {
+  companion object {
+    /** Translates a Firestore error into the [EventRepositoryException] callers handle. */
+    fun toRepositoryException(e: FirebaseFirestoreException): EventRepositoryException =
+        when (e.code) {
+          Code.PERMISSION_DENIED,
+          Code.UNAUTHENTICATED -> EventRepositoryException.PermissionDenied(e)
+          Code.UNAVAILABLE,
+          Code.DEADLINE_EXCEEDED -> EventRepositoryException.Unavailable(e)
+          else -> EventRepositoryException.Unknown(e)
+        }
+
+    private inline fun <T> translatingErrors(block: () -> T): T =
+        try {
+          block()
+        } catch (e: FirebaseFirestoreException) {
+          throw toRepositoryException(e)
+        }
+
     /** Digits and upper-case letters, without the pairs users confuse: 0/O, 1/I/L. */
-    const val JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-    const val JOIN_CODE_LENGTH = 6
-    const val JOIN_CODE_ATTEMPTS = 5
+    private const val JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    private const val JOIN_CODE_LENGTH = 6
+    private const val JOIN_CODE_ATTEMPTS = 5
   }
 }

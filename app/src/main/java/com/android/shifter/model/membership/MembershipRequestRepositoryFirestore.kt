@@ -1,11 +1,14 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.membership
 
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.SetOptions
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.tasks.await
 
@@ -31,6 +34,66 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                 }
                 .await()
         existing?.toRequestOrThrow() ?: pending
+      }
+
+  override suspend fun accept(eventId: String, userId: String) {
+    translatingErrors {
+      // Both writes commit atomically: a failed write prevents the other from being applied.
+      val batch = db.batch()
+      batch.update(
+          requests(eventId).document(userId),
+          MembershipRequestSchema.STATUS,
+          MembershipRequestStatus.ACCEPTED.name,
+      )
+      batch.set(
+          db.collection("eventParticipants").document(eventId),
+          mapOf("participantIds" to FieldValue.arrayUnion(userId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
+    }
+  }
+
+  override suspend fun reject(eventId: String, userId: String) {
+    translatingErrors {
+      val batch = db.batch()
+      batch.update(
+          requests(eventId).document(userId),
+          MembershipRequestSchema.STATUS,
+          MembershipRequestStatus.REJECTED.name,
+      )
+      // Merge also handles rejection before a participants document exists.
+      batch.set(
+          db.collection("eventParticipants").document(eventId),
+          mapOf("participantIds" to FieldValue.arrayRemove(userId)),
+          SetOptions.merge(),
+      )
+      batch.commit().await()
+    }
+  }
+
+  override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
+      translatingErrors {
+        requests(eventId).get().await().documents.map { it.toRequestOrThrow() }
+      }
+
+  override suspend fun getMembershipRequestsByUId(userId: String): Map<String, MembershipRequest> =
+      translatingErrors {
+        db.collectionGroup(MembershipRequestSchema.COLLECTION)
+            .whereEqualTo(MembershipRequestSchema.USER_ID, userId)
+            .get()
+            .await()
+            .documents
+            .associate { document ->
+              val eventId =
+                  document.reference.parent.parent?.id
+                      ?: throw MembershipRequestRepositoryException.Unknown(
+                          IllegalStateException(
+                              "Membership request '${document.id}' has no parent event"
+                          )
+                      )
+              eventId to document.toRequestOrThrow()
+            }
       }
 
   private fun requests(eventId: String): CollectionReference =
