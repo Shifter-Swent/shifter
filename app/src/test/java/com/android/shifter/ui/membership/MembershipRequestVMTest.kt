@@ -6,6 +6,9 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -29,11 +32,17 @@ import org.junit.Test
 class MembershipRequestVMTest {
   private val dispatcher = StandardTestDispatcher()
   private val repository = mockk<MembershipRequestRepository>()
+  private val userRepository = mockk<UserRepository>()
   private val requests = listOf(request("alice"), request("bob"))
 
   @Before
   fun setUp() {
     Dispatchers.setMain(dispatcher)
+    coEvery { userRepository.getUser(any()) } answers
+        {
+          val uid = firstArg<String>()
+          User(uid = uid, displayName = "$uid Smith", email = "$uid@example.com")
+        }
     coEvery { repository.getMembershipRequestsByEId("event") } returns requests
     coEvery { repository.accept("event", any()) } returns Unit
     coEvery { repository.reject("event", any()) } returns Unit
@@ -47,25 +56,27 @@ class MembershipRequestVMTest {
   @Test
   fun initiallyLoadsAndPreventsOverlappingLoads() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         assertTrue(vm.uiState.value.isLoading)
         vm.loadRequests()
         advanceUntilIdle()
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         assertFalse(vm.uiState.value.isLoading)
         coVerify(exactly = 1) { repository.getMembershipRequestsByEId("event") }
+        coVerify(exactly = 1) { userRepository.getUser("alice") }
+        coVerify(exactly = 1) { userRepository.getUser("bob") }
       }
 
   @Test
   fun loadFailureKeepsDataAndCanBeClearedAndRetried() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         coEvery { repository.getMembershipRequestsByEId("event") } throws
             MembershipRequestRepositoryException.Unavailable()
         vm.loadRequests()
         advanceUntilIdle()
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         assertFalse(vm.uiState.value.isLoading)
         assertTrue(vm.uiState.value.errorMsg!!.contains("unavailable"))
         vm.clearError()
@@ -80,20 +91,20 @@ class MembershipRequestVMTest {
   @Test
   fun acceptsAndRejectsWithoutRemovingRequests() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         vm.accept("alice")
         assertEquals(setOf("alice"), vm.uiState.value.processingRequestIds)
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         advanceUntilIdle()
         assertEquals(
-            requests[0].copy(status = MembershipRequestStatus.ACCEPTED),
+            items(listOf(requests[0].copy(status = MembershipRequestStatus.ACCEPTED))).single(),
             vm.uiState.value.requests[0],
         )
         vm.reject("alice")
         advanceUntilIdle()
         assertEquals(
-            listOf(requests[0].copy(status = MembershipRequestStatus.REJECTED), requests[1]),
+            items(listOf(requests[0].copy(status = MembershipRequestStatus.REJECTED), requests[1])),
             vm.uiState.value.requests,
         )
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
@@ -108,7 +119,7 @@ class MembershipRequestVMTest {
         val bob = CompletableDeferred<Unit>()
         coEvery { repository.accept("event", "alice") } coAnswers { alice.await() }
         coEvery { repository.reject("event", "bob") } coAnswers { bob.await() }
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         vm.accept("alice")
         vm.accept("alice")
@@ -124,7 +135,7 @@ class MembershipRequestVMTest {
         advanceUntilIdle()
         assertEquals(
             listOf(MembershipRequestStatus.ACCEPTED, MembershipRequestStatus.REJECTED),
-            vm.uiState.value.requests.map { it.status },
+            vm.uiState.value.requests.map { it.request.status },
         )
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
         coVerify(exactly = 1) { repository.accept("event", "alice") }
@@ -135,7 +146,7 @@ class MembershipRequestVMTest {
   @Test
   fun decisionsDuringReloadAndUnknownUsersAreIgnored() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         vm.accept("unknown")
         vm.loadRequests()
@@ -149,34 +160,34 @@ class MembershipRequestVMTest {
   @Test
   fun decisionErrorsKeepStatusReleaseButtonsAndAllowRetry() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         coEvery { repository.accept("event", "alice") } throws
             MembershipRequestRepositoryException.PermissionDenied()
         vm.accept("alice")
         advanceUntilIdle()
         assertTrue(vm.uiState.value.errorMsg!!.contains("permission"))
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
         coEvery { repository.reject("event", "alice") } throws
             MembershipRequestRepositoryException.Unknown()
         vm.reject("alice")
         advanceUntilIdle()
         assertEquals("Something went wrong. Please try again.", vm.uiState.value.errorMsg)
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
         coEvery { repository.accept("event", "alice") } returns Unit
         vm.accept("alice")
         advanceUntilIdle()
         assertNull(vm.uiState.value.errorMsg)
-        assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].status)
+        assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].request.status)
       }
 
   @Test
   fun cancellationDoesNotBecomeAnErrorAndReleasesBusyState() =
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } throws CancellationException()
-        val vm = MembershipRequestVM("event", repository)
+        val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.isLoading)
         assertNull(vm.uiState.value.errorMsg)
@@ -186,10 +197,68 @@ class MembershipRequestVMTest {
         coEvery { repository.accept("event", "alice") } throws CancellationException()
         vm.accept("alice")
         advanceUntilIdle()
-        assertEquals(requests, vm.uiState.value.requests)
+        assertEquals(items(requests), vm.uiState.value.requests)
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
         assertNull(vm.uiState.value.errorMsg)
       }
+
+  @Test
+  fun missingAndBlankProfilesUseFallbackNames() =
+      runTest(dispatcher) {
+        coEvery { userRepository.getUser("alice") } returns null
+        coEvery { userRepository.getUser("bob") } returns User("bob", "  ", "bob@example.com")
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        assertEquals(requests, vm.uiState.value.requests.map { it.request })
+        assertEquals(
+            listOf("Unknown volunteer", "Unknown volunteer"),
+            vm.uiState.value.requests.map { it.displayName },
+        )
+        assertNull(vm.uiState.value.errorMsg)
+        assertFalse(vm.uiState.value.isLoading)
+      }
+
+  @Test
+  fun profileErrorsKeepRequestsAndOtherNamesAndAllowRetry() =
+      runTest(dispatcher) {
+        coEvery { userRepository.getUser("alice") } throws
+            UserRepositoryException.PermissionDenied()
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        assertEquals(requests, vm.uiState.value.requests.map { it.request })
+        assertEquals(
+            listOf("Unknown volunteer", "bob Smith"),
+            vm.uiState.value.requests.map { it.displayName },
+        )
+        assertNotNull(vm.uiState.value.errorMsg)
+        assertFalse(vm.uiState.value.isLoading)
+        vm.accept("alice")
+        advanceUntilIdle()
+        assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].request.status)
+        coEvery { userRepository.getUser("alice") } returns
+            User("alice", "Alice Smith", "alice@example.com")
+        vm.loadRequests()
+        advanceUntilIdle()
+        assertEquals("Alice Smith", vm.uiState.value.requests[0].displayName)
+        assertNull(vm.uiState.value.errorMsg)
+      }
+
+  @Test
+  fun profileCancellationKeepsPreviousDataAndReleasesLoading() =
+      runTest(dispatcher) {
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        coEvery { userRepository.getUser("bob") } throws CancellationException()
+        vm.loadRequests()
+        advanceUntilIdle()
+        assertEquals(items(requests), vm.uiState.value.requests)
+        assertNull(vm.uiState.value.errorMsg)
+        assertFalse(vm.uiState.value.isLoading)
+      }
+
+  private fun items(requests: List<MembershipRequest>) = requests.map {
+    MembershipRequestItemUIState(it, "${it.userId} Smith")
+  }
 
   private fun request(uid: String) =
       MembershipRequest(
