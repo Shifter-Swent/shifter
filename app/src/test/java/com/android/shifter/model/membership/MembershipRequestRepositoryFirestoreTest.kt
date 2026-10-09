@@ -148,6 +148,39 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
+  fun withdrawRemovesAParticipantAndDeletesTheRequestInOneTransaction() = runTest {
+    val removal = FieldValue.arrayRemove(request.userId)
+    every { transaction.get(participants) } returns
+        participantsSnapshot(listOf("other", request.userId))
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.userId) } returns removal
+      repository.withdraw("event", request.userId)
+      verify { transaction.update(participants, "participantIds", removal) }
+      verify { transaction.delete(ref) }
+    }
+  }
+
+  @Test
+  fun withdrawOnlyDeletesTheRequestOfANonParticipant() = runTest {
+    for (participantIds in listOf(null, listOf("other"))) {
+      every { transaction.get(participants) } returns participantsSnapshot(participantIds)
+      repository.withdraw("event", request.userId)
+    }
+    verify(exactly = 2) { transaction.delete(ref) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
+  }
+
+  @Test
+  fun withdrawTranslatesARefusal() = runTest {
+    val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
+    val failure = runCatching { repository.withdraw("event", request.userId) }.exceptionOrNull()
+    assertTrue(failure is MembershipRequestRepositoryException.PermissionDenied)
+    assertSame(error, failure?.cause)
+  }
+
+  @Test
   fun decisionsTranslateMissingRequestFailure() = runTest {
     val error = FirebaseFirestoreException("missing", Code.NOT_FOUND)
     every { batch.commit() } returns Tasks.forException(error)
@@ -298,6 +331,10 @@ class MembershipRequestRepositoryFirestoreTest {
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
   }
+
+  /** The participants document, missing when [participantIds] is null. */
+  private fun participantsSnapshot(participantIds: List<String>?): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also { every { it.get("participantIds") } returns participantIds }
 
   private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
     val snapshot = mockk<DocumentSnapshot>()

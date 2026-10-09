@@ -59,6 +59,8 @@ class JoinEventFlowTest {
 
         override suspend fun reject(eventId: String, userId: String): Unit = error("unused")
 
+        override suspend fun withdraw(eventId: String, userId: String): Unit = error("unused")
+
         override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
             error("unused")
 
