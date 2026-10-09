@@ -46,13 +46,22 @@ data class EventCardUi(
     val footer: EventCardFooter,
 )
 
-/** State of a My Events screen, shared by the staff and the organizer views. */
+/**
+ * State of a My Events screen, shared by the staff and the organizer views.
+ *
+ * Failures are flags rather than messages: the screen shows its own generic, translated text, so a
+ * backend error never reaches the user as is.
+ *
+ * @property loadFailed the events could not be loaded.
+ * @property withdrawFailed the last withdrawal failed (staff view only).
+ */
 data class MyEventsUiState(
     val selectedTab: EventTab = EventTab.UPCOMING,
     val upcoming: List<EventCardUi> = emptyList(),
     val past: List<EventCardUi> = emptyList(),
     val isLoading: Boolean = false,
-    val errorMessage: String? = null,
+    val loadFailed: Boolean = false,
+    val withdrawFailed: Boolean = false,
 ) {
   /** The cards of the selected tab. */
   val visibleEvents: List<EventCardUi>

@@ -1,19 +1,21 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.events.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -33,6 +35,9 @@ import com.swent.shifter.ui.events.MyEventsUiState
  * Layout shared by the staff and the organizer My Events screens: header, tabs, the cards of the
  * selected tab, and [floatingContent] drawn over the bottom of the list.
  *
+ * The floating buttons are the [Scaffold]'s bottom bar: the list still scrolls behind them, but it
+ * reserves exactly their height, so the last card always stops above them whatever the font size.
+ *
  * @param cardAction the action link of each card, or null to hide it.
  */
 @Composable
@@ -46,13 +51,13 @@ fun MyEventsLayout(
     subtitle: String? = null,
     floatingContent: @Composable BoxScope.() -> Unit = {},
 ) {
-  Box(
-      modifier =
-          modifier
-              .fillMaxSize()
-              .background(MaterialTheme.colorScheme.background)
-              .safeDrawingPadding()
-  ) {
+  Scaffold(
+      modifier = modifier.fillMaxSize().safeDrawingPadding(),
+      containerColor = MaterialTheme.colorScheme.background,
+      // The insets are already handled by safeDrawingPadding.
+      contentWindowInsets = WindowInsets(0),
+      bottomBar = { Box(Modifier.fillMaxWidth()) { floatingContent() } },
+  ) { innerPadding ->
     Column(Modifier.fillMaxSize()) {
       MyEventsTopBar(
           avatarInitial = avatarInitial,
@@ -60,6 +65,16 @@ fun MyEventsLayout(
           subtitle = subtitle,
       )
       EventTabs(selected = state.selectedTab, onSelect = onTabSelected)
+      if (state.withdrawFailed) {
+        Text(
+            text = stringResource(R.string.my_events_withdraw_error),
+            color = MaterialTheme.colorScheme.error,
+            fontSize = 13.sp,
+            modifier =
+                Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    .testTag(MyEventsTestTags.WITHDRAW_ERROR),
+        )
+      }
       Box(Modifier.fillMaxSize()) {
         when {
           // A reload keeps the cards already shown instead of replacing them with the spinner.
@@ -68,7 +83,8 @@ fun MyEventsLayout(
                   color = MaterialTheme.colorScheme.primary,
                   modifier = Modifier.align(Alignment.Center).testTag(MyEventsTestTags.LOADING),
               )
-          state.errorMessage != null -> CenteredMessage(state.errorMessage, MyEventsTestTags.ERROR)
+          state.loadFailed ->
+              CenteredMessage(stringResource(R.string.my_events_load_error), MyEventsTestTags.ERROR)
           state.visibleEvents.isEmpty() ->
               CenteredMessage(
                   stringResource(
@@ -79,9 +95,13 @@ fun MyEventsLayout(
               )
           else ->
               LazyColumn(
-                  // The bottom padding keeps the last card above the floating buttons.
                   contentPadding =
-                      PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 100.dp),
+                      PaddingValues(
+                          start = 16.dp,
+                          top = 16.dp,
+                          end = 16.dp,
+                          bottom = innerPadding.calculateBottomPadding() + 16.dp,
+                      ),
                   verticalArrangement = Arrangement.spacedBy(12.dp),
                   modifier = Modifier.fillMaxSize().testTag(MyEventsTestTags.EVENT_LIST),
               ) {
@@ -92,7 +112,6 @@ fun MyEventsLayout(
         }
       }
     }
-    floatingContent()
   }
 }
 

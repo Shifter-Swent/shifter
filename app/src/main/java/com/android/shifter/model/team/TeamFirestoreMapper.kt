@@ -1,11 +1,14 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
+import com.swent.shifter.model.firestore.requireInt
 import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
 
 /** Names this entity in the failure a malformed document raises. */
@@ -70,8 +73,10 @@ internal fun DocumentSnapshot.toTeam(): Team =
         name = requireString(ENTITY, TeamSchema.NAME),
         icon = requireString(ENTITY, TeamSchema.ICON),
         managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),
-        memberIds = requireMemberIds(),
-        volunteersNeeded = requireInt(TeamSchema.VOLUNTEERS_NEEDED),
+        // Absent means nobody was assigned yet; a malformed entry fails rather than quietly
+        // removing a volunteer from the team.
+        memberIds = requireStringList(ENTITY, TeamSchema.MEMBER_IDS),
+        volunteersNeeded = requireInt(ENTITY, TeamSchema.VOLUNTEERS_NEEDED),
         checkInZone = optionalCheckInZone(),
         createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
     )
@@ -103,34 +108,3 @@ private fun DocumentSnapshot.optionalCheckInZone(): CheckInZone? {
 
 private fun DocumentSnapshot.requireZoneValue(zone: Map<*, *>, field: String): Double =
     (zone[field] as? Number)?.toDouble() ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)
-
-/**
- * An absent field means the team has no members yet and maps to an empty list.
- *
- * An explicit null is rejected instead, unlike [Team.managerId] and [Team.checkInZone], where null
- * is a valid domain value written by the mapper.
- *
- * A malformed entry is rejected rather than skipped: dropping an id would quietly remove a
- * volunteer from the team.
- */
-private fun DocumentSnapshot.requireMemberIds(): List<String> {
-  if (!contains(TeamSchema.MEMBER_IDS)) return emptyList()
-  val entries =
-      get(TeamSchema.MEMBER_IDS) as? List<*> ?: invalidField(ENTITY, TeamSchema.MEMBER_IDS)
-  return entries.map { it as? String ?: invalidField(ENTITY, TeamSchema.MEMBER_IDS) }
-}
-
-/**
- * Firestore stores whole numbers as Longs and fractional ones as Doubles, both wider than [Int], so
- * the count is read as a [Number] and narrowed here. A value the narrowing would change is rejected
- * rather than silently repaired: truncating `3.5`, or wrapping a count beyond [Int.MAX_VALUE] round
- * to a negative one, would staff the team with a number nobody wrote.
- */
-private fun DocumentSnapshot.requireInt(field: String): Int {
-  val value = get(field) as? Number ?: invalidField(ENTITY, field)
-  val whole = value.toLong()
-  // Rejects a fractional, infinite or NaN value, then one that does not fit in an Int.
-  if (whole.toDouble() != value.toDouble() || whole != whole.toInt().toLong())
-      invalidField(ENTITY, field)
-  return whole.toInt()
-}

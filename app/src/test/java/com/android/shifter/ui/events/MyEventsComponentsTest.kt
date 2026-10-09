@@ -196,10 +196,24 @@ class MyEventsComponentsTest {
   }
 
   @Test
-  fun layout_showsTheErrorMessage() {
-    setLayout(MyEventsUiState(errorMessage = "Network down"))
+  fun layout_showsAGenericMessageWhenLoadingFailed() {
+    setLayout(MyEventsUiState(loadFailed = true))
 
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ERROR).assertTextEquals("Network down")
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.ERROR)
+        .assertTextEquals("Could not load your events")
+  }
+
+  @Test
+  fun layout_showsTheWithdrawErrorAboveTheCards() {
+    setLayout(
+        MyEventsUiState(upcoming = listOf(card("e1", EventBadge.CONFIRMED)), withdrawFailed = true)
+    )
+
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.WITHDRAW_ERROR)
+        .assertTextEquals("Could not withdraw from the event. Please try again.")
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("e1")).assertExists()
   }
 
   @Test
