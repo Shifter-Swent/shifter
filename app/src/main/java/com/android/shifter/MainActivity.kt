@@ -40,6 +40,8 @@ import androidx.navigation.compose.rememberNavController
 import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.authentication.SignInScreen
+import com.swent.shifter.ui.event.CreateEventContent
+import com.swent.shifter.ui.event.CreateEventUiState
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
@@ -53,6 +55,7 @@ import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.Organizer
 import com.swent.shifter.ui.navigation.OrganizerEvent
 import com.swent.shifter.ui.navigation.OrganizerEventScreen
+
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.SignedOut
 import com.swent.shifter.ui.navigation.Tab
@@ -140,13 +143,27 @@ fun ShifterApp(
             avatarInitial = "A",
             onTabSelected = { selectedTab = it },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
-            onCreateEventClick = { /* TODO */ },
+            onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
             onVolunteerViewClick = { nav.enterApp(Volunteer) },
             onAvatarClick = { nav.navigateTo(Organizer.ProfileSettings) },
         )
       }
       composable<Organizer.ProfileSettings> {
         SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
+      }
+      composable<Organizer.CreateEvent> {
+        // No repositories are wired yet: the form only shows and goes back.
+        CreateEventContent(
+            state = CreateEventUiState(),
+            onTitleChange = {},
+            onDescriptionChange = {},
+            onTypeChange = {},
+            onAddressChange = {},
+            onStartAtChange = {},
+            onEndAtChange = {},
+            onSubmit = {},
+            onBack = nav::goBack,
+        )
       }
       navigation<OrganizerEvent>(startDestination = OrganizerTabs.home) {
         tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(

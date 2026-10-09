@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
- *   ├── Events (OR-00), ProfileSettings
+ *   ├── Events (OR-00), ProfileSettings, CreateEvent
  *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
@@ -189,6 +189,11 @@ data object Organizer : App {
   @Serializable
   data object ProfileSettings : Destination {
     override val title = "Profile & Settings"
+  }
+
+  @Serializable
+  data object CreateEvent : Destination {
+    override val title = "Create event"
   }
 }
 

@@ -17,6 +17,7 @@ import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.navigation.NavigationActions
@@ -146,6 +147,18 @@ class ShifterAppTest {
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun organizerEvents_createEventOpensTheFormAndBackReturns() {
+    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(CreateEventScreenTestTags.TITLE_FIELD).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(CreateEventScreenTestTags.BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
   }
 
