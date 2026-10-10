@@ -150,23 +150,24 @@ class MembershipRequestRepositoryFirestoreTest {
   @Test
   fun withdrawRemovesAParticipantAndDeletesTheRequestInOneTransaction() = runTest {
     val removal = FieldValue.arrayRemove(request.userId)
-    every { transaction.get(participants) } returns
-        participantsSnapshot(listOf("other", request.userId))
+    every { transaction.get(ref) } returns statusSnapshot("ACCEPTED")
     mockkStatic(FieldValue::class) {
       every { FieldValue.arrayRemove(request.userId) } returns removal
       repository.withdraw("event", request.userId)
       verify { transaction.update(participants, "participantIds", removal) }
       verify { transaction.delete(ref) }
     }
+    // The volunteer may not be allowed to read the participants document.
+    verify(exactly = 0) { transaction.get(participants) }
   }
 
   @Test
   fun withdrawOnlyDeletesTheRequestOfANonParticipant() = runTest {
-    for (participantIds in listOf(null, listOf("other"))) {
-      every { transaction.get(participants) } returns participantsSnapshot(participantIds)
+    for (status in listOf(null, "PENDING", "REJECTED")) {
+      every { transaction.get(ref) } returns statusSnapshot(status)
       repository.withdraw("event", request.userId)
     }
-    verify(exactly = 2) { transaction.delete(ref) }
+    verify(exactly = 3) { transaction.delete(ref) }
     verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
   }
 
@@ -332,9 +333,9 @@ class MembershipRequestRepositoryFirestoreTest {
     assertEquals(error, thrown!!.cause)
   }
 
-  /** The participants document, missing when [participantIds] is null. */
-  private fun participantsSnapshot(participantIds: List<String>?): DocumentSnapshot =
-      mockk<DocumentSnapshot>().also { every { it.get("participantIds") } returns participantIds }
+  /** The volunteer's request, missing when [status] is null. */
+  private fun statusSnapshot(status: String?): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also { every { it.getString("status") } returns status }
 
   private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
     val snapshot = mockk<DocumentSnapshot>()
