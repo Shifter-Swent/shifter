@@ -98,4 +98,19 @@
     <string name="settings_title">Settings</string>
     <string name="settings_sign_out">Sign out</string>
     <string name="content_description_back">Back</string>
+
+    <!-- People screen -->
+    <string name="people_title">People</string>
+    <string name="people_tab_participants">Participants</string>
+    <string name="people_tab_requests">Requests</string>
+    <string name="people_participants_placeholder">Participants will appear here.</string>
+
+    <!-- Membership requests -->
+    <string name="membership_requests_empty">No membership requests yet.</string>
+    <string name="membership_requests_retry">Retry</string>
+    <string name="membership_requests_status_pending">Pending</string>
+    <string name="membership_requests_status_accepted">Accepted</string>
+    <string name="membership_requests_status_rejected">Rejected</string>
+    <string name="membership_requests_accept">Accept</string>
+    <string name="membership_requests_reject">Reject</string>
 </resources>
