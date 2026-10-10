@@ -22,6 +22,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -117,6 +118,27 @@ class AuthRepositoryFirebaseTest {
         "Firebase returned no authenticated user",
         result.exceptionOrNull()?.message,
     )
+  }
+
+  @Test
+  fun currentUser_mapsTheRestoredFirebaseUser() {
+    val user = mockk<FirebaseUser>()
+    every { auth.currentUser } returns user
+    every { user.uid } returns "uid-1"
+    every { user.email } returns "ada@example.com"
+    every { user.displayName } returns "Ada"
+
+    assertEquals(
+        AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"),
+        repository.currentUser(),
+    )
+  }
+
+  @Test
+  fun currentUser_isNullWithoutASession() {
+    every { auth.currentUser } returns null
+
+    assertNull(repository.currentUser())
   }
 
   @Test

@@ -13,8 +13,8 @@ import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
-import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.authentication.FakeAuthRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -35,7 +35,7 @@ class SignInViewModelTest {
 
   private val context = mockk<Context>()
   private val credentialManager = mockk<CredentialManager>()
-  private val repository = RecordingAuthRepository()
+  private val repository = FakeAuthRepository()
   private val viewModel = SignInViewModel(repository)
 
   // Set up the mock context to return a default web client ID for testing
@@ -47,7 +47,7 @@ class SignInViewModelTest {
   fun signIn_acceptsGoogleAccountDifferentFromDeviceAccount() {
     val newGoogleAccountCredential = mockk<Credential>()
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
-    repository.result = Result.success(user)
+    repository.signInResult = Result.success(user)
     stubCredentialManager(newGoogleAccountCredential)
 
     viewModel.signIn(context, credentialManager)
@@ -64,7 +64,8 @@ class SignInViewModelTest {
   fun signIn_acceptsAnyGoogleAccountReturnedByCredentialManager() {
     val firstAccountCredential = mockk<Credential>()
     val secondAccountCredential = mockk<Credential>()
-    repository.result = Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
 
     stubCredentialManager(firstAccountCredential)
     viewModel.signIn(context, credentialManager)
@@ -85,7 +86,7 @@ class SignInViewModelTest {
   @Test
   fun signIn_success_raisesSignedInEventUntilHandled() {
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
-    repository.result = Result.success(user)
+    repository.signInResult = Result.success(user)
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -101,7 +102,7 @@ class SignInViewModelTest {
 
   @Test
   fun signIn_failure_doesNotRaiseSignedInEvent() {
-    repository.result = Result.failure(IllegalStateException("Repository unavailable"))
+    repository.signInResult = Result.failure(IllegalStateException("Repository unavailable"))
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -113,7 +114,7 @@ class SignInViewModelTest {
   @Test
   fun signIn_repositoryFailure_setsErrorAndClearsUser() {
     val credential = mockk<Credential>()
-    repository.result = Result.failure(IllegalStateException("Repository unavailable"))
+    repository.signInResult = Result.failure(IllegalStateException("Repository unavailable"))
     stubCredentialManager(credential)
 
     viewModel.signIn(context, credentialManager)
@@ -228,7 +229,7 @@ class SignInViewModelTest {
 
   @Test
   fun signIn_repositoryFailureWithoutMessage_usesGenericSignInError() {
-    repository.result = Result.failure(IllegalStateException())
+    repository.signInResult = Result.failure(IllegalStateException())
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -262,19 +263,5 @@ class SignInViewModelTest {
     // Stub the CredentialManager to return the response when getCredential is called
     coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } returns
         response
-  }
-
-  // A (Fake) implementation of AuthRepository that records the received credential and returns a
-  // configurable result.
-  private class RecordingAuthRepository : AuthRepository {
-    var receivedCredential: Credential? = null
-    var result: Result<AuthUser> = Result.failure(IllegalStateException("No result configured"))
-
-    override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {
-      receivedCredential = credential
-      return result
-    }
-
-    override fun signOut(): Result<Unit> = Result.success(Unit)
   }
 }
