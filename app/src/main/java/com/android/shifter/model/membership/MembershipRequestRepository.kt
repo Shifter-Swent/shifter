@@ -41,6 +41,14 @@ interface MembershipRequestRepository {
   suspend fun reject(eventId: String, userId: String)
 
   /**
+   * Withdraws [userId] from [eventId]: deletes their request and removes them from the event
+   * participants atomically, whatever the request status, so they can apply again later.
+   * Withdrawing without a request does nothing. Only the volunteer themself can withdraw: security
+   * rules deny anyone else with [MembershipRequestRepositoryException.PermissionDenied].
+   */
+  suspend fun withdraw(eventId: String, userId: String)
+
+  /**
    * Returns all requests for [eventId], or an empty list if there are none.
    *
    * With Firestore's default persistent cache, an offline query may return cached data, including

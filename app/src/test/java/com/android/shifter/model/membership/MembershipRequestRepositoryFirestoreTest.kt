@@ -148,6 +148,40 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
+  fun withdrawRemovesAParticipantAndDeletesTheRequestInOneTransaction() = runTest {
+    val removal = FieldValue.arrayRemove(request.userId)
+    every { transaction.get(ref) } returns statusSnapshot("ACCEPTED")
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.userId) } returns removal
+      repository.withdraw("event", request.userId)
+      verify { transaction.update(participants, "participantIds", removal) }
+      verify { transaction.delete(ref) }
+    }
+    // The volunteer may not be allowed to read the participants document.
+    verify(exactly = 0) { transaction.get(participants) }
+  }
+
+  @Test
+  fun withdrawOnlyDeletesTheRequestOfANonParticipant() = runTest {
+    for (status in listOf(null, "PENDING", "REJECTED")) {
+      every { transaction.get(ref) } returns statusSnapshot(status)
+      repository.withdraw("event", request.userId)
+    }
+    verify(exactly = 3) { transaction.delete(ref) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
+  }
+
+  @Test
+  fun withdrawTranslatesARefusal() = runTest {
+    val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
+    val failure = runCatching { repository.withdraw("event", request.userId) }.exceptionOrNull()
+    assertTrue(failure is MembershipRequestRepositoryException.PermissionDenied)
+    assertSame(error, failure?.cause)
+  }
+
+  @Test
   fun decisionsTranslateMissingRequestFailure() = runTest {
     val error = FirebaseFirestoreException("missing", Code.NOT_FOUND)
     every { batch.commit() } returns Tasks.forException(error)
@@ -298,6 +332,10 @@ class MembershipRequestRepositoryFirestoreTest {
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
   }
+
+  /** The volunteer's request, missing when [status] is null. */
+  private fun statusSnapshot(status: String?): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also { every { it.getString("status") } returns status }
 
   private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
     val snapshot = mockk<DocumentSnapshot>()

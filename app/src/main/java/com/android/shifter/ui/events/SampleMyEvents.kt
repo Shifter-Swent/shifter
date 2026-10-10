@@ -95,9 +95,6 @@ object SampleMyEvents {
   val staffLoader = MyEventsLoader { staff }
   val organizerLoader = MyEventsLoader { organizer }
 
-  /** Temporary withdrawer that always succeeds, until one built on the repositories exists. */
-  val withdrawer = EventWithdrawer {}
-
   private fun organized(
       id: String,
       title: String,

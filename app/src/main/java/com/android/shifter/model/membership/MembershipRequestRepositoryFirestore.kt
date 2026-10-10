@@ -3,6 +3,7 @@
 package com.swent.shifter.model.membership
 
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -46,8 +47,8 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           MembershipRequestStatus.ACCEPTED.name,
       )
       batch.set(
-          db.collection("eventParticipants").document(eventId),
-          mapOf("participantIds" to FieldValue.arrayUnion(userId)),
+          participants(eventId),
+          mapOf(PARTICIPANT_IDS to FieldValue.arrayUnion(userId)),
           SetOptions.merge(),
       )
       batch.commit().await()
@@ -64,11 +65,33 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       )
       // Merge also handles rejection before a participants document exists.
       batch.set(
-          db.collection("eventParticipants").document(eventId),
-          mapOf("participantIds" to FieldValue.arrayRemove(userId)),
+          participants(eventId),
+          mapOf(PARTICIPANT_IDS to FieldValue.arrayRemove(userId)),
           SetOptions.merge(),
       )
       batch.commit().await()
+    }
+  }
+
+  override suspend fun withdraw(eventId: String, userId: String) {
+    translatingErrors {
+      val request = requests(eventId).document(userId)
+      // The rules keep an ACCEPTED request and participation in step, so the volunteer's own
+      // request says whether they are a participant: they need not read the participants document.
+      // A pending request may have no participants document yet, and a volunteer may not create it.
+      db.runTransaction { transaction ->
+            val status = transaction.get(request).getString(MembershipRequestSchema.STATUS)
+            if (status == MembershipRequestStatus.ACCEPTED.name) {
+              transaction.update(
+                  participants(eventId),
+                  PARTICIPANT_IDS,
+                  FieldValue.arrayRemove(userId),
+              )
+            }
+            transaction.delete(request)
+            null
+          }
+          .await()
     }
   }
 
@@ -101,7 +124,13 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           .document(eventId)
           .collection(MembershipRequestSchema.COLLECTION)
 
+  private fun participants(eventId: String): DocumentReference =
+      db.collection(PARTICIPANTS_COLLECTION).document(eventId)
+
   companion object {
+    private const val PARTICIPANTS_COLLECTION = "eventParticipants"
+    private const val PARTICIPANT_IDS = "participantIds"
+
     /**
      * Translates a Firestore error into the [MembershipRequestRepositoryException] callers handle.
      */

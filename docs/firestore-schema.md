@@ -131,7 +131,8 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 | `participantIds` | list of string | uids of the volunteers whose request is `ACCEPTED` |
 
 Accepting or rejecting a request updates the request and this document in the same batch. The rules
-check that they agree (see below).
+check that they agree (see below). A volunteer who withdraws deletes their request and leaves this
+document in the same transaction, so they can apply again later.
 
 ## Security rules
 
@@ -150,6 +151,10 @@ every access to it is denied.
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
+
+A withdrawal is the one exception to the table above: a volunteer may delete their own request
+and, in the same commit, remove themself (and only themself) from `eventParticipants`. A request
+can only be deleted once its volunteer is no longer a participant.
 
 ## Known gaps
 

@@ -119,4 +119,21 @@ class RepositoryMyEventsLoadersTest {
     assertTrue(organizerError is EventRepositoryException.Unavailable)
     assertTrue(staffError is EventRepositoryException.Unavailable)
   }
+
+  @Test
+  fun withdrawer_withdrawsTheSignedInUserFromTheEvent() = runTest {
+    coEvery { requests.withdraw("upcoming", "volunteer") } returns Unit
+
+    MembershipEventWithdrawer(requests) { "volunteer" }.withdraw("upcoming")
+
+    coVerify(exactly = 1) { requests.withdraw("upcoming", "volunteer") }
+  }
+
+  @Test
+  fun withdrawer_failsWithoutASignedInUserAndWithdrawsNobody() = runTest {
+    val error = runCatching { MembershipEventWithdrawer(requests) { null }.withdraw("upcoming") }
+
+    assertTrue(error.exceptionOrNull() is IllegalStateException)
+    coVerify(exactly = 0) { requests.withdraw(any(), any()) }
+  }
 }
