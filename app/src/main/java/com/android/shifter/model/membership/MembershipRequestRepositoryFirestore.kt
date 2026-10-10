@@ -75,15 +75,20 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun withdraw(eventId: String, userId: String) {
     translatingErrors {
-      val participants = participants(eventId)
-      // The participants are only updated when the user is one of them: a pending request may have
-      // no participants document yet, and a volunteer is not allowed to create it.
+      val request = requests(eventId).document(userId)
+      // The rules keep an ACCEPTED request and participation in step, so the volunteer's own
+      // request says whether they are a participant: they need not read the participants document.
+      // A pending request may have no participants document yet, and a volunteer may not create it.
       db.runTransaction { transaction ->
-            val participantIds = transaction.get(participants).get(PARTICIPANT_IDS) as? List<*>
-            if (participantIds?.contains(userId) == true) {
-              transaction.update(participants, PARTICIPANT_IDS, FieldValue.arrayRemove(userId))
+            val status = transaction.get(request).getString(MembershipRequestSchema.STATUS)
+            if (status == MembershipRequestStatus.ACCEPTED.name) {
+              transaction.update(
+                  participants(eventId),
+                  PARTICIPANT_IDS,
+                  FieldValue.arrayRemove(userId),
+              )
             }
-            transaction.delete(requests(eventId).document(userId))
+            transaction.delete(request)
             null
           }
           .await()
