@@ -75,6 +75,7 @@ object CreateEventScreenTestTags {
   const val SUBMIT_BUTTON = "CreateEventSubmitButton"
   const val SAVING_INDICATOR = "CreateEventSavingIndicator"
   const val SAVE_ERROR = "CreateEventSaveError"
+  const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
 
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
@@ -184,6 +185,15 @@ fun CreateEventContent(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_ERROR),
+        )
+      }
+
+      if (state.saveUnconfirmed) {
+        Text(
+            text = stringResource(R.string.create_event_save_unconfirmed),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED),
         )
       }
 

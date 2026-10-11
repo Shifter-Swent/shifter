@@ -321,6 +321,7 @@ class CreateEventViewModelTest {
     dispatcher.scheduler.advanceUntilIdle()
 
     assertTrue(state.saveFailed)
+    assertFalse(state.saveUnconfirmed)
     assertFalse(state.isSaving)
     assertNull(state.createdEvent)
 
@@ -333,7 +334,7 @@ class CreateEventViewModelTest {
   }
 
   @Test
-  fun createEvent_whenSaveIsNeverConfirmed_reportsFailureAfterTimeout() = runTest {
+  fun createEvent_whenSaveIsNeverConfirmed_reportsItUnconfirmedAfterTimeout() = runTest {
     fillValidForm()
     repository.unconfirmedWrites = true
 
@@ -343,8 +344,24 @@ class CreateEventViewModelTest {
     dispatcher.scheduler.advanceUntilIdle()
 
     assertFalse(state.isSaving)
-    assertTrue(state.saveFailed)
+    assertTrue(state.saveUnconfirmed)
+    assertFalse(state.saveFailed)
     assertNull(state.createdEvent)
+  }
+
+  @Test
+  fun unconfirmedSave_staysReportedWhileEditingUntilTheNextSubmit() = runTest {
+    fillValidForm()
+    repository.unconfirmedWrites = true
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    // The queued write may still create the event, whatever the organizer edits meanwhile.
+    viewModel.onTitleChange("Paléo")
+    assertTrue(state.saveUnconfirmed)
+
+    viewModel.createEvent()
+    assertFalse(state.saveUnconfirmed)
   }
 
   @Test
@@ -362,7 +379,7 @@ class CreateEventViewModelTest {
     val saved = repository.events.single()
     assertEquals(firstAttempt.id, saved.id)
     assertEquals(saved, state.createdEvent)
-    assertFalse(state.saveFailed)
+    assertFalse(state.saveUnconfirmed)
   }
 
   @Test

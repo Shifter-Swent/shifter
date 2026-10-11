@@ -57,6 +57,9 @@ enum class EventFormError(val field: EventFormField) {
  *
  * @property errors the current validation errors. Empty until the organizer first tries to submit,
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
+ * @property saveFailed the backend refused or failed the last save, so the event was not created.
+ * @property saveUnconfirmed the last save timed out, typically offline: the backend has not
+ *   confirmed it yet, but it may still create the event once the device is back online.
  * @property createdEvent the persisted event once creation succeeded, null before.
  * @property createdEventHandled whether the screen already reacted to [createdEvent], e.g. by
  *   opening it, so it does not react again after a recomposition or configuration change.
@@ -71,6 +74,7 @@ data class CreateEventUiState(
     val errors: Set<EventFormError> = emptySet(),
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
+    val saveUnconfirmed: Boolean = false,
     val createdEvent: Event? = null,
     val createdEventHandled: Boolean = false,
 ) {
@@ -141,14 +145,17 @@ class CreateEventViewModel(
             location = EventLocation(address = form.address.trim()),
             createdAt = clock.instant(),
         )
-    _uiState.update { it.copy(errors = emptySet(), isSaving = true, saveFailed = false) }
+    _uiState.update {
+      it.copy(errors = emptySet(), isSaving = true, saveFailed = false, saveUnconfirmed = false)
+    }
     viewModelScope.launch {
       try {
         // Offline, the backend may neither confirm nor reject the write, so stop waiting at some
-        // point instead of leaving the screen saving forever.
+        // point instead of leaving the screen saving forever. The write is not refused, only
+        // unconfirmed: it may still go through once the device is back online.
         val created = withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) { repository.createEvent(event) }
         _uiState.update {
-          it.copy(isSaving = false, saveFailed = created == null, createdEvent = created)
+          it.copy(isSaving = false, saveUnconfirmed = created == null, createdEvent = created)
         }
       } catch (e: CancellationException) {
         throw e
@@ -213,7 +220,9 @@ class CreateEventViewModel(
     /** Longest description accepted. */
     const val DESCRIPTION_MAX_LENGTH = 2000
 
-    /** How long a save may take before it is reported as failed, so the organizer can retry. */
+    /**
+     * How long a save may take before it is reported as unconfirmed, so the organizer can retry.
+     */
     const val SAVE_TIMEOUT_MILLIS = 15_000L
 
     /**

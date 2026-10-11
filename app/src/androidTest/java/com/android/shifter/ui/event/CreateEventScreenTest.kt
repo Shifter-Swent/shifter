@@ -316,6 +316,28 @@ class CreateEventScreenTest {
   }
 
   @Test
+  fun unconfirmedSave_isShownInsteadOfTheFailure() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        CreateEventContent(
+            state = CreateEventUiState(saveUnconfirmed = true),
+            onTitleChange = {},
+            onDescriptionChange = {},
+            onTypeChange = {},
+            onAddressChange = {},
+            onStartAtChange = {},
+            onEndAtChange = {},
+            onSubmit = {},
+            onBack = {},
+        )
+      }
+    }
+
+    node(CreateEventScreenTestTags.SAVE_UNCONFIRMED).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
+  }
+
+  @Test
   fun backButton_callsOnBack() {
     var backCalled = false
     setScreen(RecordingRepository(), onBack = { backCalled = true })
