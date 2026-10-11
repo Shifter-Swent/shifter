@@ -4,12 +4,10 @@ package com.swent.shifter.ui.events
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.membership.AvailabilitySlot
+import com.swent.shifter.model.membership.FakeMembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequest
-import com.swent.shifter.model.membership.MembershipRequestRepository
+import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.mockk
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.test.runTest
@@ -22,11 +20,11 @@ class RepositoryMyEventsLoadersTest {
   private val now = Instant.parse("2025-06-01T10:00:00Z")
   private val zone = ZoneId.of("Europe/Paris")
   private val events = FakeEventRepository()
-  private val requests = mockk<MembershipRequestRepository>()
+  private val requests = FakeMembershipRequestRepository()
 
-  private val upcoming = event(id = "upcoming")
+  private val upcoming = testEvent(id = "upcoming")
   private val past =
-      event(id = "past", startAt = "2025-05-01T08:00:00Z", endAt = "2025-05-01T10:00:00Z")
+      testEvent(id = "past", startAt = "2025-05-01T08:00:00Z", endAt = "2025-05-01T10:00:00Z")
 
   private fun organizerLoader(userId: String? = "organizer") =
       OrganizerEventsLoader(events, { userId }, { now }, { zone })
@@ -45,7 +43,7 @@ class RepositoryMyEventsLoadersTest {
 
   @Test
   fun organizer_loadsOnlyTheEventsOfTheSignedInUser() = runTest {
-    events.events += listOf(past, upcoming, event(id = "other").copy(organizerId = "someone"))
+    events.events += listOf(past, upcoming, testEvent(id = "other").copy(organizerId = "someone"))
 
     val cards = organizerLoader().load()
 
@@ -56,14 +54,11 @@ class RepositoryMyEventsLoadersTest {
 
   @Test
   fun staff_showsAcceptedAndPendingEventsAndLeavesRejectedOnesOut() = runTest {
-    events.events += listOf(upcoming, past, event(id = "pending"), event(id = "rejected"))
-    coEvery { requests.getMembershipRequestsByUId("volunteer") } returns
-        mapOf(
-            "upcoming" to request(MembershipRequestStatus.ACCEPTED),
-            "past" to request(MembershipRequestStatus.ACCEPTED),
-            "pending" to request(MembershipRequestStatus.PENDING),
-            "rejected" to request(MembershipRequestStatus.REJECTED),
-        )
+    events.events += listOf(upcoming, past, testEvent(id = "pending"), testEvent(id = "rejected"))
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+    requests.add("past", request(MembershipRequestStatus.ACCEPTED))
+    requests.add("pending", request(MembershipRequestStatus.PENDING))
+    requests.add("rejected", request(MembershipRequestStatus.REJECTED))
 
     val cards = staffLoader().load().associate { it.id to it.badge }
 
@@ -80,37 +75,36 @@ class RepositoryMyEventsLoadersTest {
   @Test
   fun staff_leavesOutPendingRequestsOfOverEventsAndDeletedEvents() = runTest {
     events.events += past
-    coEvery { requests.getMembershipRequestsByUId("volunteer") } returns
-        mapOf(
-            "past" to request(MembershipRequestStatus.PENDING),
-            "deleted" to request(MembershipRequestStatus.ACCEPTED),
-        )
+    requests.add("past", request(MembershipRequestStatus.PENDING))
+    requests.add("deleted", request(MembershipRequestStatus.ACCEPTED))
 
     assertEquals(emptyList<EventCardUi>(), staffLoader().load())
   }
 
   @Test
   fun staff_withoutRequestsLoadsNoEvent() = runTest {
-    coEvery { requests.getMembershipRequestsByUId("volunteer") } returns emptyMap()
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED).copy(userId = "someone"))
 
     assertEquals(emptyList<EventCardUi>(), staffLoader().load())
   }
 
   @Test
   fun loaders_failWithoutASignedInUserAndQueryNothing() = runTest {
+    // A query would throw these instead of the expected IllegalStateException.
+    events.failure = EventRepositoryException.Unavailable(RuntimeException("queried"))
+    requests.failure = MembershipRequestRepositoryException.Unavailable()
+
     val organizerError = runCatching { organizerLoader(null).load() }.exceptionOrNull()
     val staffError = runCatching { staffLoader(null).load() }.exceptionOrNull()
 
     assertTrue(organizerError is IllegalStateException)
     assertTrue(staffError is IllegalStateException)
-    coVerify(exactly = 0) { requests.getMembershipRequestsByUId(any()) }
   }
 
   @Test
   fun loaders_letRepositoryErrorsThroughForTheViewModelToReport() = runTest {
     events.failure = EventRepositoryException.Unavailable(RuntimeException("offline"))
-    coEvery { requests.getMembershipRequestsByUId("volunteer") } returns
-        mapOf("upcoming" to request(MembershipRequestStatus.ACCEPTED))
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
 
     val organizerError = runCatching { organizerLoader().load() }.exceptionOrNull()
     val staffError = runCatching { staffLoader().load() }.exceptionOrNull()
