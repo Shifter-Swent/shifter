@@ -22,7 +22,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -48,7 +47,6 @@ import com.swent.shifter.ui.mission.AddMissionActions
 import com.swent.shifter.ui.mission.AddMissionContent
 import com.swent.shifter.ui.mission.AddMissionUiState
 import com.swent.shifter.ui.settings.SettingsRoute
-import com.swent.shifter.ui.theme.ShifterTheme
 
 /**
  * The app's navigation graph.
@@ -86,7 +84,7 @@ fun ShifterNavHost(
         )
       }
       composable<Volunteer.ProfileSettings> {
-        SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
+        SettingsRoute(onBack = nav::goBack, onSignedOut = { nav.enterApp(SignedOut) })
       }
       composable<Volunteer.QrApply> {
         // No repositories are wired yet: only the typed code is held here, no event is found.
@@ -95,7 +93,7 @@ fun ShifterNavHost(
             uiState = JoinEventUiState(joinCode = joinCode),
             onJoinCodeChange = { joinCode = it },
             onFindEvent = {},
-            onBack = {},
+            onBack = nav::goBack,
             onApply = {},
         )
       }
@@ -124,7 +122,7 @@ fun ShifterNavHost(
         )
       }
       composable<Organizer.ProfileSettings> {
-        SettingsRoute(onBack = { nav.goBack() }, onSignedOut = { nav.enterApp(SignedOut) })
+        SettingsRoute(onBack = nav::goBack, onSignedOut = { nav.enterApp(SignedOut) })
       }
       composable<Organizer.CreateEvent> {
         // No repositories are wired yet: the form only shows and goes back.
