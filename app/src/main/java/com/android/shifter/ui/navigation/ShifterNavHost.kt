@@ -95,7 +95,7 @@ fun ShifterNavHost(
             uiState = JoinEventUiState(joinCode = joinCode),
             onJoinCodeChange = { joinCode = it },
             onFindEvent = {},
-            onBack = nav::goBack,
+            onBack = {},
             onApply = {},
         )
       }
