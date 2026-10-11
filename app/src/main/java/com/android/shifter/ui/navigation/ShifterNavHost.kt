@@ -255,9 +255,3 @@ private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable (
     Box(modifier = Modifier.padding(padding)) { PlaceholderPage(current.home, content = content) }
   }
 }
-
-@Preview(showBackground = true)
-@Composable
-fun ShifterNavHostPreview() {
-  ShifterTheme { ShifterNavHost(isSignedIn = false) }
-}
