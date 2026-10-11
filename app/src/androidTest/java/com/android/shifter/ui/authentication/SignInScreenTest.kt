@@ -61,7 +61,6 @@ class SignInScreenTest {
     AuthEmulator.clearAccounts()
   }
 
-
   @Test
   fun signInScreen_displaysSignInContent() {
     composeTestRule.setContent { ShifterTheme { SignInScreen(authViewModel = viewModel) } }
