@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.swent.shifter
+package com.swent.shifter.ui.navigation
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -26,14 +26,6 @@ import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
-import com.swent.shifter.ui.navigation.NavigationActions
-import com.swent.shifter.ui.navigation.NavigationTestTags
-import com.swent.shifter.ui.navigation.OrganizerEvent
-import com.swent.shifter.ui.navigation.OrganizerEventScreen
-import com.swent.shifter.ui.navigation.OrganizerTabs
-import com.swent.shifter.ui.navigation.TabSet
-import com.swent.shifter.ui.navigation.VolunteerEvent
-import com.swent.shifter.ui.navigation.VolunteerTabs
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
@@ -45,9 +37,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Verifies that [ShifterApp] starts on the destination matching the restored session. */
+/** Verifies that [ShifterNavHost] starts on the right destination and links every screen. */
 @RunWith(AndroidJUnit4::class)
-class ShifterAppTest {
+class ShifterNavHostTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
@@ -65,14 +57,14 @@ class ShifterAppTest {
 
   @Test
   fun signedOut_startsOnSignIn() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = false) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = false) } }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
   }
 
   @Test
   fun signedIn_skipsSignInAndStartsOnVolunteerEvents() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
@@ -80,7 +72,7 @@ class ShifterAppTest {
 
   @Test
   fun staffEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
@@ -96,7 +88,7 @@ class ShifterAppTest {
           .signInWithGoogle(googleCredential())
           .getOrThrow()
     }
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
@@ -112,7 +104,7 @@ class ShifterAppTest {
 
   @Test
   fun staffEvents_switchesToThePastTab() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
 
@@ -121,7 +113,7 @@ class ShifterAppTest {
 
   @Test
   fun staffEvents_scanQrOpensJoinEventAndBackReturns() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
@@ -132,7 +124,7 @@ class ShifterAppTest {
 
   @Test
   fun joinEvent_keepsTheTypedCode() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
@@ -147,7 +139,7 @@ class ShifterAppTest {
 
   @Test
   fun organizerView_switchesModesBothWays() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
@@ -158,7 +150,7 @@ class ShifterAppTest {
 
   @Test
   fun organizerEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
@@ -170,7 +162,7 @@ class ShifterAppTest {
 
   @Test
   fun organizerEvents_createEventOpensTheFormAndBackReturns() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
@@ -239,7 +231,7 @@ class ShifterAppTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
 
-    composeTestRule.onNodeWithTag(ShifterAppTestTags.ADD_MISSION_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
@@ -249,7 +241,7 @@ class ShifterAppTest {
   }
 
   private fun openCreateEventForm() {
-    composeTestRule.setContent { ShifterTheme { ShifterApp(isSignedIn = true) } }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
   }
@@ -262,7 +254,7 @@ class ShifterAppTest {
     lateinit var navController: NavHostController
     composeTestRule.setContent {
       navController = rememberNavController()
-      ShifterTheme { ShifterApp(isSignedIn = true, navController = navController) }
+      ShifterTheme { ShifterNavHost(isSignedIn = true, navController = navController) }
     }
     composeTestRule.waitForIdle()
     return NavigationActions(navController)
