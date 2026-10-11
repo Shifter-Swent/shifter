@@ -1,0 +1,44 @@
+# Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+name: Build APK
+
+# Run the workflow by hand from the Actions tab, e.g. to hand out an installable build for a release
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    name: Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository on the runner; it includes app/google-services.json
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # Cache the gradle folder so the dependencies are not downloaded again on every run
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      # The debug build is signed with the debug key, so it can be installed on any device
+      - name: Assemble debug APK
+        run: |
+          ./gradlew assembleDebug --parallel --build-cache
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: shifter-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
