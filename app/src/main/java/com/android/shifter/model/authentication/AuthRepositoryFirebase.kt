@@ -7,16 +7,19 @@ package com.swent.shifter.model.authentication
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.auth.auth
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
-/** AuthRepository implementation backed by Firebase Authentication. */
+/**
+ * AuthRepository implementation backed by Firebase Authentication.
+ *
+ * [auth] is injected explicitly. Current production construction is centralized in
+ * [com.swent.shifter.model.RepositoryProviderFactory].
+ */
 class AuthRepositoryFirebase(
-    private val auth: FirebaseAuth = Firebase.auth,
+    private val auth: FirebaseAuth,
     private val helper: GoogleSignInHelper = DefaultGoogleSignInHelper(),
 ) : AuthRepository {
 
