@@ -38,7 +38,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -57,7 +56,7 @@ object SettingsScreenTestTags {
 fun SettingsRoute(
     onBack: () -> Unit,
     onSignedOut: () -> Unit,
-    viewModel: SettingsViewModel = viewModel(),
+    viewModel: SettingsViewModel,
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
 ) {
   val context = LocalContext.current

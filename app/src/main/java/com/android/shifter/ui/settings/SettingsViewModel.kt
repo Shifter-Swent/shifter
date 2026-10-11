@@ -6,9 +6,11 @@ import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.authentication.AuthRepository
-import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,9 +23,7 @@ data class SettingsUiState(
     val signedOut: Boolean = false,
 )
 
-class SettingsViewModel(
-    private val repository: AuthRepository = AuthRepositoryProvider.repository
-) : ViewModel() {
+class SettingsViewModel(private val repository: AuthRepository) : ViewModel() {
   private val _uiState = MutableStateFlow(SettingsUiState())
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -60,7 +60,15 @@ class SettingsViewModel(
     _uiState.update { it.copy(errorMsg = null) }
   }
 
-  private companion object {
-    const val TAG = "SettingsViewModel"
+  companion object {
+    private const val TAG = "SettingsViewModel"
+
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(repository: AuthRepository): ViewModelProvider.Factory = viewModelFactory {
+      initializer { SettingsViewModel(repository) }
+    }
   }
 }

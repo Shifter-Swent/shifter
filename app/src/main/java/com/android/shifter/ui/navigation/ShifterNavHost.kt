@@ -23,15 +23,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
-import com.swent.shifter.model.authentication.AuthRepositoryProvider
-import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.ui.authentication.SignInScreen
+import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.event.CreateEventContent
 import com.swent.shifter.ui.event.CreateEventUiState
 import com.swent.shifter.ui.event.EventCreatedContent
@@ -49,26 +50,34 @@ import com.swent.shifter.ui.mission.AddMissionContent
 import com.swent.shifter.ui.mission.AddMissionUiState
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
+import com.swent.shifter.ui.settings.SettingsViewModel
 
 /**
  * The app's navigation graph.
  *
  * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
- * @param currentUser The signed-in account, read when an events list opens to show its avatar.
+ * @param repositories The repositories the screens' ViewModels are built from. It has no default,
+ *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  */
 @Composable
 fun ShifterNavHost(
     isSignedIn: Boolean,
+    repositories: RepositoryProvider,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
-    currentUser: () -> AuthUser? = { AuthRepositoryProvider.repository.currentUser() },
 ) {
+  val auth = repositories.authRepository
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
-      composable<SignedOut.SignIn> { SignInScreen(onSignedIn = { nav.enterApp(Volunteer) }) }
+      composable<SignedOut.SignIn> {
+        SignInScreen(
+            authViewModel = viewModel(factory = SignInViewModel.factory(auth)),
+            onSignedIn = { nav.enterApp(Volunteer) },
+        )
+      }
     }
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
@@ -77,7 +86,7 @@ fun ShifterNavHost(
         var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
         StaffEventsContent(
             state = MyEventsUiState(selectedTab = selectedTab),
-            avatarInitial = remember { avatarInitial(currentUser()) },
+            avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onTabSelected = { selectedTab = it },
             onWithdraw = { /* TODO */ },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
@@ -86,7 +95,11 @@ fun ShifterNavHost(
         )
       }
       composable<Volunteer.ProfileSettings> {
-        SettingsRoute(onBack = nav::goBack, onSignedOut = { nav.enterApp(SignedOut) })
+        SettingsRoute(
+            onBack = nav::goBack,
+            onSignedOut = { nav.enterApp(SignedOut) },
+            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+        )
       }
       composable<Volunteer.QrApply> {
         // No repositories are wired yet: only the typed code is held here, no event is found.
@@ -115,7 +128,7 @@ fun ShifterNavHost(
         var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
         OrgaEventsContent(
             state = MyEventsUiState(selectedTab = selectedTab),
-            avatarInitial = remember { avatarInitial(currentUser()) },
+            avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onTabSelected = { selectedTab = it },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
@@ -124,7 +137,11 @@ fun ShifterNavHost(
         )
       }
       composable<Organizer.ProfileSettings> {
-        SettingsRoute(onBack = nav::goBack, onSignedOut = { nav.enterApp(SignedOut) })
+        SettingsRoute(
+            onBack = nav::goBack,
+            onSignedOut = { nav.enterApp(SignedOut) },
+            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+        )
       }
       composable<Organizer.CreateEvent> {
         // No repositories are wired yet: the form only shows and goes back.

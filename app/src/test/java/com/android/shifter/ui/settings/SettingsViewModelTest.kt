@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.authentication.FakeAuthRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -89,6 +90,19 @@ class SettingsViewModelTest {
     viewModel.clearErrorMsg()
 
     assertNull(viewModel.uiState.value.errorMsg)
+  }
+
+  @Test
+  fun factory_createsViewModelOnTheGivenRepository() {
+    val built =
+        SettingsViewModel.factory(repository)
+            .create(SettingsViewModel::class.java, CreationExtras.Empty)
+
+    built.signOut(credentialManager)
+    idle()
+
+    assertEquals(1, repository.signOutCalls)
+    assertTrue(built.uiState.value.signedOut)
   }
 
   /** Runs the coroutines launched in viewModelScope, which use the main looper. */
