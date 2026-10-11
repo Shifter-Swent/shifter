@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.navigation
 
 import androidx.lifecycle.Lifecycle
@@ -151,7 +152,23 @@ class NavigationActionsTest {
   fun enterEvent_clearsSavedTabStatesFromPreviousEvents() {
     nav.enterEvent(VolunteerEvent("b"))
 
-    VolunteerTabs.all.forEach { tab -> verify { navController.clearBackStack(tab) } }
+    VolunteerTabs.all.forEach { tab -> verify { navController.clearBackStack(tab::class) } }
+  }
+
+  @Test
+  fun enterEvent_withUnavailableTabStates_stillOpensTheEvent() {
+    listOf(VolunteerEvent("b"), OrganizerEvent("b")).forEach { event ->
+      event.tabs.all.forEach { tab ->
+        every { navController.clearBackStack(tab::class) } returns false
+        every { navController.clearBackStack(tab) } throws
+            IllegalArgumentException("Destination is not registered")
+      }
+
+      nav.enterEvent(event)
+
+      event.tabs.all.forEach { tab -> verify { navController.clearBackStack(tab::class) } }
+      assertEquals(event.list, optionsOf(event).popUpToRouteObject)
+    }
   }
 
   @Test
