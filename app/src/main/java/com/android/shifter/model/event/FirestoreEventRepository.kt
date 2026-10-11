@@ -59,12 +59,6 @@ class FirestoreEventRepository(
     }
   }
 
-  override suspend fun getEventsByMember(userId: String): List<Event> = translatingErrors {
-    events.whereArrayContains(EventSchema.MEMBER_IDS, userId).get().await().documents.map {
-      it.toEvent()
-    }
-  }
-
   /**
    * Draws join codes until one is free, so two events never share a code.
    *
