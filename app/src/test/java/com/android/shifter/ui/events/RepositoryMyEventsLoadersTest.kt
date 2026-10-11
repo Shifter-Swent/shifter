@@ -116,18 +116,25 @@ class RepositoryMyEventsLoadersTest {
 
   @Test
   fun withdrawer_withdrawsTheSignedInUserFromTheEvent() = runTest {
-    coEvery { requests.withdraw("upcoming", "volunteer") } returns Unit
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+    requests.participants["upcoming"] = mutableSetOf("volunteer", "other")
 
     MembershipEventWithdrawer(requests) { "volunteer" }.withdraw("upcoming")
 
-    coVerify(exactly = 1) { requests.withdraw("upcoming", "volunteer") }
+    assertEquals(
+        emptyMap<String, MembershipRequest>(),
+        requests.getMembershipRequestsByUId("volunteer"),
+    )
+    assertEquals(setOf("other"), requests.participants["upcoming"])
   }
 
   @Test
   fun withdrawer_failsWithoutASignedInUserAndWithdrawsNobody() = runTest {
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+
     val error = runCatching { MembershipEventWithdrawer(requests) { null }.withdraw("upcoming") }
 
     assertTrue(error.exceptionOrNull() is IllegalStateException)
-    coVerify(exactly = 0) { requests.withdraw(any(), any()) }
+    assertEquals(setOf("upcoming"), requests.getMembershipRequestsByUId("volunteer").keys)
   }
 }
