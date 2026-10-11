@@ -333,6 +333,39 @@ class CreateEventViewModelTest {
   }
 
   @Test
+  fun createEvent_whenSaveIsNeverConfirmed_reportsFailureAfterTimeout() = runTest {
+    fillValidForm()
+    repository.unconfirmedWrites = true
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceTimeBy(CreateEventViewModel.SAVE_TIMEOUT_MILLIS - 1)
+    assertTrue(state.isSaving)
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertFalse(state.isSaving)
+    assertTrue(state.saveFailed)
+    assertNull(state.createdEvent)
+  }
+
+  @Test
+  fun retryAfterTimeout_overwritesTheSameEventInsteadOfDuplicatingIt() = runTest {
+    fillValidForm()
+    repository.unconfirmedWrites = true
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+    val firstAttempt = repository.events.single()
+
+    repository.unconfirmedWrites = false
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    val saved = repository.events.single()
+    assertEquals(firstAttempt.id, saved.id)
+    assertEquals(saved, state.createdEvent)
+    assertFalse(state.saveFailed)
+  }
+
+  @Test
   fun editingAfterAFailedSave_clearsTheFailure() = runTest {
     fillValidForm()
     repository.failure = IllegalStateException("offline")

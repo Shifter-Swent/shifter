@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
 import com.google.firebase.firestore.FirebaseFirestore
@@ -26,13 +27,14 @@ class FirestoreEventRepository(
     get() = firestore.collection(EventSchema.COLLECTION)
 
   /**
-   * Writes [event] under a freshly generated document id and join code.
+   * Writes [event] under a freshly generated join code, and under [Event.id] when it is set or a
+   * freshly generated document id otherwise.
    *
    * [Event.createdAt] is persisted as the caller supplied it: the repository does not invent time,
    * which keeps writes deterministic and testable.
    */
   override suspend fun createEvent(event: Event): Event = translatingErrors {
-    val document = events.document()
+    val document = if (event.id.isEmpty()) events.document() else events.document(event.id)
     val persisted = event.copy(id = document.id, joinCode = generateUnusedJoinCode())
     document.set(persisted.toFirestoreMap()).await()
     persisted

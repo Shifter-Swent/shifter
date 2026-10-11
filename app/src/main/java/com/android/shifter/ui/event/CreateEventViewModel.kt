@@ -16,12 +16,14 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.ResolverStyle
+import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** A form field of the event creation screen. */
 enum class EventFormField {
@@ -95,6 +97,12 @@ class CreateEventViewModel(
   /** Becomes true on the first submit, after which errors follow every edit. */
   private var submitAttempted = false
 
+  /**
+   * Id of the event this form creates, kept across retries: a save that timed out may still reach
+   * the backend later, so a retry must overwrite that event instead of creating a duplicate.
+   */
+  private val eventId = UUID.randomUUID().toString()
+
   fun onTitleChange(title: String) = edit { it.copy(title = title) }
 
   fun onDescriptionChange(description: String) = edit { it.copy(description = description) }
@@ -123,6 +131,7 @@ class CreateEventViewModel(
     // Validation guarantees the type and both dates are present and parseable.
     val event =
         Event(
+            id = eventId,
             organizerId = organizerId,
             title = form.title.trim(),
             description = form.description.trim(),
@@ -135,8 +144,12 @@ class CreateEventViewModel(
     _uiState.update { it.copy(errors = emptySet(), isSaving = true, saveFailed = false) }
     viewModelScope.launch {
       try {
-        val created = repository.createEvent(event)
-        _uiState.update { it.copy(isSaving = false, createdEvent = created) }
+        // Offline, the backend may neither confirm nor reject the write, so stop waiting at some
+        // point instead of leaving the screen saving forever.
+        val created = withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) { repository.createEvent(event) }
+        _uiState.update {
+          it.copy(isSaving = false, saveFailed = created == null, createdEvent = created)
+        }
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
@@ -199,6 +212,9 @@ class CreateEventViewModel(
 
     /** Longest description accepted. */
     const val DESCRIPTION_MAX_LENGTH = 2000
+
+    /** How long a save may take before it is reported as failed, so the organizer can retry. */
+    const val SAVE_TIMEOUT_MILLIS = 15_000L
 
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
