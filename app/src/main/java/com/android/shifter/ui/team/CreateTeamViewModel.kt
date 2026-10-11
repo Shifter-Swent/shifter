@@ -109,13 +109,13 @@ class CreateTeamViewModel(
       _uiState.update { it.copy(errors = errors, saveFailed = false) }
       return
     }
-    // Validation guarantees an icon has been chosen.
+    // Validation guarantees a non-blank icon has been chosen.
     val team =
         Team(
             eventId = eventId,
             name = form.name.trim(),
             description = form.description.trim(),
-            icon = checkNotNull(form.icon),
+            icon = checkNotNull(form.icon).trim(),
             managerId = null,
             memberIds = emptyList(),
             volunteersNeeded = null,
@@ -156,7 +156,7 @@ class CreateTeamViewModel(
       form.name.isBlank() -> add(TeamFormError.NAME_EMPTY)
       form.name.trim().length > NAME_MAX_LENGTH -> add(TeamFormError.NAME_TOO_LONG)
     }
-    if (form.icon == null) add(TeamFormError.ICON_MISSING)
+    if (form.icon.isNullOrBlank()) add(TeamFormError.ICON_MISSING)
     when {
       form.description.isBlank() -> add(TeamFormError.DESCRIPTION_EMPTY)
       form.description.trim().length > DESCRIPTION_MAX_LENGTH ->

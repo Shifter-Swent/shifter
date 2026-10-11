@@ -113,6 +113,7 @@ class CreateTeamViewModelTest {
     assertEquals(TeamFormError.NAME_EMPTY, state.errorFor(TeamFormField.NAME))
   }
 
+  /** Nothing picked yet, so the icon is still null. */
   @Test
   fun submit_withoutAnIcon_reportsItUnderTheIconField() = runTest {
     viewModel.onNameChange("Logistics")
@@ -122,6 +123,28 @@ class CreateTeamViewModelTest {
     assertEquals(TeamFormError.ICON_MISSING, state.errorFor(TeamFormField.ICON))
     assertNull(state.errorFor(TeamFormField.NAME))
     assertNull(state.errorFor(TeamFormField.DESCRIPTION))
+  }
+
+  /** A whitespace-only identifier is invalid, even if it is not empty. */
+  @Test
+  fun submit_withABlankIcon_reportsItAsMissing() = runTest {
+    fillValidForm()
+    viewModel.onIconChange("   ")
+    submit()
+
+    assertEquals(TeamFormError.ICON_MISSING, state.errorFor(TeamFormField.ICON))
+    assertEquals(emptyList<Any>(), teams.teams)
+  }
+
+  /** Padding never reaches the backend: the stored identifier has to match the catalogue. */
+  @Test
+  fun createTeam_persistsTheTrimmedIcon() = runTest {
+    fillValidForm()
+    viewModel.onIconChange("  box  ")
+    submit()
+
+    assertEquals(emptySet<TeamFormError>(), state.errors)
+    assertEquals("box", teams.teams.single().icon)
   }
 
   @Test
