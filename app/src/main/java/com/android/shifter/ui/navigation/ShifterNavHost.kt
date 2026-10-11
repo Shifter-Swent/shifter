@@ -30,6 +30,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.swent.shifter.model.authentication.AuthRepositoryProvider
+import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.event.CreateEventContent
 import com.swent.shifter.ui.event.CreateEventUiState
@@ -39,6 +41,7 @@ import com.swent.shifter.ui.event.JoinEventContent
 import com.swent.shifter.ui.event.JoinEventUiState
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
 import com.swent.shifter.ui.events.staff.StaffEventsContent
 import com.swent.shifter.ui.mission.AddMissionActions
@@ -51,12 +54,14 @@ import com.swent.shifter.ui.theme.ShifterTheme
  * The app's navigation graph.
  *
  * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
+ * @param currentUser The signed-in account, read when an events list opens to show its avatar.
  */
 @Composable
 fun ShifterNavHost(
     isSignedIn: Boolean,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    currentUser: () -> AuthUser? = { AuthRepositoryProvider.repository.currentUser() },
 ) {
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
@@ -72,7 +77,7 @@ fun ShifterNavHost(
         var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
         StaffEventsContent(
             state = MyEventsUiState(selectedTab = selectedTab),
-            avatarInitial = "A",
+            avatarInitial = remember { avatarInitial(currentUser()) },
             onTabSelected = { selectedTab = it },
             onWithdraw = { /* TODO */ },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
@@ -110,7 +115,7 @@ fun ShifterNavHost(
         var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
         OrgaEventsContent(
             state = MyEventsUiState(selectedTab = selectedTab),
-            avatarInitial = "A",
+            avatarInitial = remember { avatarInitial(currentUser()) },
             onTabSelected = { selectedTab = it },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },

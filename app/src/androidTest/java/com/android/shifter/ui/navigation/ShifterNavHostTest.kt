@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
+import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
@@ -203,6 +204,30 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun eventsLists_showTheInitialOfTheSignedInUser() {
+    val user = AuthUser(uid = "uid-1", email = "grace@example.com", displayName = "grace")
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, currentUser = { user }) }
+    }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
+  }
+
+  @Test
+  fun staffEvents_avatarReadsTheFirebaseSession() {
+    runBlocking {
+      AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+          .signInWithGoogle(googleCredential(name = "Grace"))
+          .getOrThrow()
+    }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
+  }
+
+  @Test
   fun volunteerEvent_opensOnOverviewAndReachesEveryTab() {
     val nav = setAppAndGetNavigation()
 
@@ -275,11 +300,11 @@ class ShifterNavHostTest {
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */
-  private fun googleCredential(): GoogleIdTokenCredential {
+  private fun googleCredential(name: String = "Ada"): GoogleIdTokenCredential {
     val email = "volunteer-${UUID.randomUUID()}@example.com"
     return GoogleIdTokenCredential.Builder()
         .setId(email)
-        .setIdToken(AuthEmulator.fakeGoogleIdToken("google-" + UUID.randomUUID(), email, "Ada"))
+        .setIdToken(AuthEmulator.fakeGoogleIdToken("google-" + UUID.randomUUID(), email, name))
         .build()
   }
 
