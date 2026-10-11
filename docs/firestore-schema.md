@@ -154,7 +154,8 @@ requests across all events.
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
 and, in the same commit, remove themself (and only themself) from `eventParticipants`. A request
-can only be deleted once its volunteer is no longer a participant.
+can only be deleted once its volunteer is no longer a participant, and never once it is
+`REJECTED`, so a volunteer cannot undo a rejection by applying again.
 
 ## Known gaps
 

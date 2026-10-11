@@ -42,9 +42,11 @@ interface MembershipRequestRepository {
 
   /**
    * Withdraws [userId] from [eventId]: deletes their request and removes them from the event
-   * participants atomically, whatever the request status, so they can apply again later.
-   * Withdrawing without a request does nothing. Only the volunteer themself can withdraw: security
-   * rules deny anyone else with [MembershipRequestRepositoryException.PermissionDenied].
+   * participants atomically, so they can apply again later. Withdrawing without a request does
+   * nothing. Only the volunteer themself can withdraw, and only from a pending or accepted request:
+   * security rules deny anyone else, and a rejected request, with
+   * [MembershipRequestRepositoryException.PermissionDenied], so a rejection cannot be undone by
+   * applying again.
    */
   suspend fun withdraw(eventId: String, userId: String)
 

@@ -81,9 +81,12 @@ service cloud.firestore {
               || (request.resource.data.status == 'REJECTED'
                 && !(uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
                        .data.participantIds)));
-        // A volunteer withdraws by deleting their own request, leaving the participants in the
-        // same commit.
-        allow delete: if isRequester() && !isParticipantAfter();
+        // A volunteer withdraws by deleting their own pending or accepted request, leaving the
+        // participants in the same commit. A rejected request stays, so the rejection cannot be
+        // undone by applying again.
+        allow delete: if isRequester()
+          && (resource == null || resource.data.status != 'REJECTED')
+          && !isParticipantAfter();
       }
 
       // missions/{missionId}: rules do not cascade into subcollections, so the event rule above

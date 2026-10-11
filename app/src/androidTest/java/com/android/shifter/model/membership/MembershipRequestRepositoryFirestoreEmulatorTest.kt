@@ -205,6 +205,23 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun rejectedVolunteerCanNeitherWithdrawNorApplyAgain() = emulatorTest {
+    val eventId = event()
+    val pending = apply(eventId, volunteer)
+    signIn(organizer)
+    repository.reject(eventId, volunteer.uid)
+    signIn(volunteer)
+    assertDenied { repository.withdraw(eventId, volunteer.uid) }
+    assertDenied { requestRef(eventId, volunteer).delete().await() }
+    assertDenied { requestRef(eventId, volunteer).set(pending.toFirestoreMap()).await() }
+    assertEquals(MembershipRequestStatus.REJECTED, apply(eventId, volunteer).status)
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.REJECTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+  }
+
+  @Test
   fun withdrawalNeedsBothWritesAndOnlyTheVolunteerThemself() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
