@@ -25,7 +25,7 @@ eventParticipants/{eventId}
 |---|---|---|
 | `users/{uid}` | A user's profile, keyed by their Firebase Auth uid | `UserRepositoryFirestore` |
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
-| `events/{eventId}/teams/{teamId}` | A team ("pôle" in the app) of the event | `TeamSchema` |
+| `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/membershipRequests/{uid}` | A volunteer's request to join, keyed by their uid | `MembershipRequestSchema` |
@@ -82,10 +82,11 @@ eventParticipants/{eventId}
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | |
+| `description` | string | What the team does, written when it is created |
 | `icon` | string | Icon identifier |
 | `managerId` | string \| null | `null` until the organizer appoints a manager |
 | `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer may be in several teams |
-| `volunteersNeeded` | number | Whole number |
+| `volunteersNeeded` | number \| null | Whole number. `null` until the staffing need is set: it is not asked for when the team is created |
 | `checkInZone` | map \| null | `latitude`, `longitude`, `radiusMeters`, all required when the zone is set |
 | `createdAt` | timestamp | |
 
