@@ -162,12 +162,13 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
-  fun withdrawOnlyDeletesTheRequestOfANonParticipant() = runTest {
-    for (status in listOf(null, "PENDING", "REJECTED")) {
+  fun withdrawOnlyDeletesAPendingOrMissingRequest() = runTest {
+    // A rejected request cannot be withdrawn: the rules deny it, see the emulator tests.
+    for (status in listOf(null, "PENDING")) {
       every { transaction.get(ref) } returns statusSnapshot(status)
       repository.withdraw("event", request.userId)
     }
-    verify(exactly = 3) { transaction.delete(ref) }
+    verify(exactly = 2) { transaction.delete(ref) }
     verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
   }
 
