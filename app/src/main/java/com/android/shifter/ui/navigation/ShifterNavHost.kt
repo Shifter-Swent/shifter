@@ -43,9 +43,11 @@ import com.swent.shifter.ui.events.MyEventsUiState
 import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
 import com.swent.shifter.ui.events.staff.StaffEventsContent
+import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.mission.AddMissionActions
 import com.swent.shifter.ui.mission.AddMissionContent
 import com.swent.shifter.ui.mission.AddMissionUiState
+import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 
 /**
@@ -171,7 +173,20 @@ fun ShifterNavHost(
             )
           }
         }
-        tab<OrganizerTabs.People, OrganizerEventScreen.People>(OrganizerTabs.People, nav)
+        navigation<OrganizerTabs.People>(startDestination = OrganizerTabs.People.home) {
+          composable<OrganizerEventScreen.People> {
+            BackHandler { nav.backTo(Organizer.Events) }
+            // No repositories are wired yet: the requests list is empty and its buttons do nothing.
+            // PeopleScreen draws its own bottom bar, so it is not wrapped in a TabPage.
+            PeopleScreen(
+                uiState = MembershipRequestUIState(isLoading = false),
+                onAccept = {},
+                onReject = {},
+                onRetry = {},
+                onNavigate = nav::switchTab,
+            )
+          }
+        }
         tab<OrganizerTabs.Map, OrganizerEventScreen.Map>(OrganizerTabs.Map, nav)
         tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
             OrganizerTabs.Discussions,

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -265,6 +266,26 @@ class ShifterNavHostTest {
         .assertTextEquals(OrganizerEventScreen.Overview.title)
   }
 
+  @Test
+  fun organizerEvent_peopleTabOpensThePeopleScreenAndBackReturns() {
+    val nav = setAppAndGetNavigation()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
+
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+    assertPeopleScreenShown()
+
+    // Its own bottom bar leads to the other tabs.
+    composeTestRule.onNodeWithTag(OrganizerTabs.Overview.testTag).performClick()
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.Overview.title)
+
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+    pressBack()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
   private fun openCreateEventForm() {
     composeTestRule.setContent { ShifterTheme { ShifterNavHost(isSignedIn = true) } }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -285,6 +306,13 @@ class ShifterNavHostTest {
     return NavigationActions(navController)
   }
 
+  /** The real People screen is shown, with its own bottom bar on the People tab. */
+  private fun assertPeopleScreenShown() {
+    composeTestRule.onNodeWithText("Participants").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertDoesNotExist()
+  }
+
   /** The event opens on the set's home tab, then each tab shows its own screen. */
   private fun assertTabsReachable(tabs: TabSet) {
     composeTestRule
@@ -293,9 +321,13 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
     tabs.all.forEach { tab ->
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      composeTestRule
-          .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-          .assertTextEquals(tab.home.title)
+      if (tab == OrganizerTabs.People) {
+        assertPeopleScreenShown()
+      } else {
+        composeTestRule
+            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+            .assertTextEquals(tab.home.title)
+      }
     }
   }
 
