@@ -29,6 +29,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.Pill
+import com.swent.shifter.ui.components.PillColors
 import com.swent.shifter.ui.events.EventBadge
 import com.swent.shifter.ui.events.EventCardFooter
 import com.swent.shifter.ui.events.EventCardUi
@@ -125,24 +127,18 @@ fun EventCard(card: EventCardUi, action: EventCardAction?, modifier: Modifier = 
 @Composable
 fun StatusPill(badge: EventBadge, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
-  val (content, container) =
+  val pillColors =
       when (badge) {
         EventBadge.CONFIRMED,
-        EventBadge.ONGOING -> shifter_success to shifter_successContainer
-        EventBadge.PENDING_APPROVAL -> shifter_warning to shifter_warningContainer
-        EventBadge.IN_PREPARATION -> colors.primary to colors.primaryContainer
-        EventBadge.ENDED -> colors.onSurfaceVariant to shifter_divider
+        EventBadge.ONGOING -> PillColors(shifter_success, shifter_successContainer)
+        EventBadge.PENDING_APPROVAL -> PillColors(shifter_warning, shifter_warningContainer)
+        EventBadge.IN_PREPARATION -> PillColors(colors.primary, colors.primaryContainer)
+        EventBadge.ENDED -> PillColors(colors.onSurfaceVariant, shifter_divider)
       }
-  Text(
+  Pill(
       text = stringResource(R.string.my_events_status_pill, stringResource(badge.labelRes)),
-      color = content,
-      fontSize = 11.sp,
-      fontWeight = FontWeight.SemiBold,
-      modifier =
-          modifier
-              .clip(RoundedCornerShape(20.dp))
-              .background(container)
-              .padding(horizontal = 10.dp, vertical = 4.dp),
+      colors = pillColors,
+      modifier = modifier,
   )
 }
 

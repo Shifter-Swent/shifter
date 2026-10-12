@@ -8,12 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,21 +20,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.UnderlinedTab
+import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_avatarBackground
-import com.swent.shifter.ui.theme.shifter_divider
-import com.swent.shifter.ui.theme.shifter_tabInactive
 
 /** "My Events" title, an optional [subtitle] such as "Organizer View", and the user's avatar. */
 @Composable
@@ -99,57 +94,20 @@ fun EventTabs(
     onSelect: (EventTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  Column(modifier = modifier.fillMaxWidth()) {
-    Row(modifier = Modifier.padding(horizontal = 24.dp)) {
-      EventTabItem(
-          label = stringResource(R.string.my_events_tab_upcoming),
-          isSelected = selected == EventTab.UPCOMING,
-          width = 160.dp,
-          testTag = MyEventsTestTags.UPCOMING_TAB,
-          onClick = { onSelect(EventTab.UPCOMING) },
-      )
-      EventTabItem(
-          label = stringResource(R.string.my_events_tab_past),
-          isSelected = selected == EventTab.PAST,
-          width = 150.dp,
-          testTag = MyEventsTestTags.PAST_TAB,
-          onClick = { onSelect(EventTab.PAST) },
-      )
-    }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(shifter_divider))
-  }
-}
-
-@Composable
-private fun EventTabItem(
-    label: String,
-    isSelected: Boolean,
-    width: Dp,
-    testTag: String,
-    onClick: () -> Unit,
-) {
-  val colors = MaterialTheme.colorScheme
-  Column(
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(6.dp),
-      modifier =
-          Modifier.width(width)
-              .semantics { selected = isSelected }
-              .clickable(role = Role.Tab, onClick = onClick)
-              .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-              .testTag(testTag),
-  ) {
-    Text(
-        text = label,
-        color = if (isSelected) colors.onBackground else shifter_tabInactive,
-        fontSize = 14.sp,
-        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+  UnderlinedTabRow(modifier) {
+    UnderlinedTab(
+        label = stringResource(R.string.my_events_tab_upcoming),
+        isSelected = selected == EventTab.UPCOMING,
+        onClick = { onSelect(EventTab.UPCOMING) },
+        width = 160.dp,
+        modifier = Modifier.testTag(MyEventsTestTags.UPCOMING_TAB),
     )
-    Box(
-        Modifier.fillMaxWidth()
-            .height(2.dp)
-            .clip(RoundedCornerShape(1.dp))
-            .background(if (isSelected) colors.primary else shifter_divider)
+    UnderlinedTab(
+        label = stringResource(R.string.my_events_tab_past),
+        isSelected = selected == EventTab.PAST,
+        onClick = { onSelect(EventTab.PAST) },
+        width = 150.dp,
+        modifier = Modifier.testTag(MyEventsTestTags.PAST_TAB),
     )
   }
 }
