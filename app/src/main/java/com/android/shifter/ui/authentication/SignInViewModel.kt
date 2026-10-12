@@ -81,11 +81,11 @@ class SignInViewModel(
       } catch (e: NoCredentialException) {
         showError("No Google credential is available for sign-in")
       } catch (e: GetCredentialException) {
-        showError("Failed to get credentials: ${e.localizedMessage ?: "Unknown error"}")
+        showError("Failed to get credentials: ${e.localizedMessage ?: UNKNOWN_ERROR}")
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        showError("Unexpected error: ${e.localizedMessage ?: "Unknown error"}")
+        showError("Unexpected error: ${e.localizedMessage ?: UNKNOWN_ERROR}")
       }
     }
   }
@@ -101,7 +101,7 @@ class SignInViewModel(
       signOutWithoutProfile()
       throw e
     } catch (e: Exception) {
-      val reason = e.localizedMessage ?: "Unknown error"
+      val reason = e.localizedMessage ?: UNKNOWN_ERROR
       if (signOutWithoutProfile()) {
         showError("Could not load your profile: $reason")
       } else {
@@ -125,6 +125,9 @@ class SignInViewModel(
 
   companion object {
     private const val TAG = "SignInViewModel"
+
+    /** Shown when an exception carries no message. */
+    private const val UNKNOWN_ERROR = "Unknown error"
 
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
