@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model
 
 import com.google.firebase.Firebase
@@ -25,12 +26,12 @@ object RepositoryProviderFactory {
    * The container the production app is built from: one instance for the whole process, created on
    * first access and backed by the default `Firebase.firestore` and `Firebase.auth`.
    *
-   * Because it is process-wide, it must stay replaceable. The composition root has to take a
-   * [RepositoryProvider] parameter defaulting to this, and instrumented tests have to pass
-   * `create(FirestoreEmulator.firestore, AuthEmulator.auth)` instead. Otherwise a UI test that
-   * reaches Firestore through this one initializes the shared instance against the production
-   * backend, and every later `useEmulator` call in the same process throws. That wiring belongs to
-   * the navigation follow-ups in #174.
+   * Only `MainActivity` reads it: `ShifterNavHost` takes its [RepositoryProvider] as a required
+   * parameter with no default, so instrumented tests pass `create(FirestoreEmulator.firestore,
+   * AuthEmulator.auth)` and cannot reach production by forgetting it. Tests that launch
+   * `MainActivity` itself must initialize the emulator instances before the activity starts.
+   * Otherwise this one initializes the shared Firestore instance against the production backend,
+   * and every later `useEmulator` call in the same process throws.
    */
   val production: RepositoryProvider by lazy { create(Firebase.firestore, Firebase.auth) }
 
