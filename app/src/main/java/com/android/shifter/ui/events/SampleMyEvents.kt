@@ -88,7 +88,10 @@ object SampleMyEvents {
           ),
       )
 
-  /** Temporary loaders showing the mock-ups, until loaders built on the repositories exist. */
+  /**
+   * Loaders showing the mock-ups, for tests; the app uses [StaffEventsLoader] and
+   * [OrganizerEventsLoader].
+   */
   val staffLoader = MyEventsLoader { staff }
   val organizerLoader = MyEventsLoader { organizer }
 
