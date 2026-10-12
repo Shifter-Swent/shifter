@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -28,9 +29,11 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
+import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
+import com.swent.shifter.ui.event.EventDetailsTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
@@ -41,6 +44,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -163,6 +167,57 @@ class ShifterNavHostTest {
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .assertTextContains("ABC123")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun joinEvent_applyingWithTheCodeSendsTheRequestAndBackLeavesToTheEvents() {
+    val event = createEvent(signIn())
+    val volunteer = signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput(event.joinCode)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
+
+    val requests = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequestsByUId(volunteer.uid)
+    }
+    assertEquals(MembershipRequestStatus.PENDING, requests[event.id]?.status)
+
+    // The screen's Back returns to the code, then the device Back leaves to the events list. The
+    // keyboard is closed first, or the device Back would only close it.
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
+    closeSoftKeyboard()
+    pressBack()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun joinEvent_unknownCodeShowsAnError() {
+    signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput("NOPE00")
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+
+    waitForNode(JoinEventScreenTestTags.ERROR_MESSAGE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertDoesNotExist()
   }
 
   @Test
