@@ -4,8 +4,6 @@ name: Build APK
 # Run the workflow by hand from the Actions tab, e.g. to hand out an installable build for a release
 on:
   workflow_dispatch:
-  # Temporary: lets the PR run the workflow before it is on main. Remove before merging.
-  pull_request:
 
 # The job only reads the repository
 permissions:
