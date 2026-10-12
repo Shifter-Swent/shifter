@@ -42,6 +42,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.ui.theme.ShifterTheme
 
 object SignInScreenTestTags {
@@ -149,7 +151,10 @@ fun GoogleSignInButton(onSignIn: () -> Unit) {
 fun SignInScreenPreview() {
   ShifterTheme {
     SignInScreen(
-        authViewModel = viewModel(factory = SignInViewModel.factory(PreviewAuthRepository))
+        authViewModel =
+            viewModel(
+                factory = SignInViewModel.factory(PreviewAuthRepository, PreviewUserRepository)
+            )
     )
   }
 }
@@ -162,4 +167,12 @@ private object PreviewAuthRepository : AuthRepository {
   override fun currentUser(): AuthUser? = null
 
   override fun signOut(): Result<Unit> = Result.success(Unit)
+}
+
+/** Never reached: the preview never signs in. */
+private object PreviewUserRepository : UserRepository {
+  override suspend fun getUser(uid: String): User? = null
+
+  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
+      throw UnsupportedOperationException("Preview")
 }

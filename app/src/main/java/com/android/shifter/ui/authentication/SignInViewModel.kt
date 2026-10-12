@@ -19,6 +19,8 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +36,11 @@ data class AuthUIState(
     val signedIn: Boolean = false,
 )
 
-class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
+/** Signs the user in with Google, then makes sure their Firestore profile exists. */
+class SignInViewModel(
+    private val repository: AuthRepository,
+    private val userRepository: UserRepository,
+) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
 
@@ -67,14 +73,7 @@ class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
         repository
             .signInWithGoogle(credential)
             .fold(
-                onSuccess = { user ->
-                  _uiState.value =
-                      AuthUIState(
-                          isLoading = false,
-                          user = user,
-                          signedIn = true,
-                      )
-                },
+                onSuccess = { user -> createProfile(user) },
                 onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
             )
       } catch (e: GetCredentialCancellationException) {
@@ -91,6 +90,21 @@ class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
     }
   }
 
+  /**
+   * Creates the profile of [user] on their first sign-in. Without a profile the app cannot work, so
+   * a failure signs the user out again: otherwise the next launch would skip this screen.
+   */
+  private suspend fun createProfile(user: AuthUser) {
+    try {
+      userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+    } catch (e: UserRepositoryException) {
+      repository.signOut()
+      showError("Could not load your profile: ${e.localizedMessage}")
+      return
+    }
+    _uiState.value = AuthUIState(isLoading = false, user = user, signedIn = true)
+  }
+
   private fun showError(message: String) {
     _uiState.update { it.copy(isLoading = false, errorMsg = message) }
   }
@@ -100,8 +114,11 @@ class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments.
      */
-    fun factory(repository: AuthRepository): ViewModelProvider.Factory = viewModelFactory {
-      initializer { SignInViewModel(repository) }
+    fun factory(
+        repository: AuthRepository,
+        userRepository: UserRepository,
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer { SignInViewModel(repository, userRepository) }
     }
   }
 }

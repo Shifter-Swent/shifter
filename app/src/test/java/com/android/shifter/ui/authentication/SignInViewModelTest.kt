@@ -16,6 +16,8 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
+import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -37,7 +39,8 @@ class SignInViewModelTest {
   private val context = mockk<Context>()
   private val credentialManager = mockk<CredentialManager>()
   private val repository = FakeAuthRepository()
-  private val viewModel = SignInViewModel(repository)
+  private val userRepository = FakeUserRepository()
+  private val viewModel = SignInViewModel(repository, userRepository)
 
   // Set up the mock context to return a default web client ID for testing
   init {
@@ -263,7 +266,7 @@ class SignInViewModelTest {
     repository.signInResult = Result.success(user)
     stubCredentialManager(credential)
     val built =
-        SignInViewModel.factory(repository)
+        SignInViewModel.factory(repository, userRepository)
             .create(SignInViewModel::class.java, CreationExtras.Empty)
 
     built.signIn(context, credentialManager)
@@ -271,6 +274,57 @@ class SignInViewModelTest {
 
     assertEquals(credential, repository.receivedCredential)
     assertEquals(user, built.uiState.value.user)
+  }
+
+  @Test
+  fun signIn_success_createsProfileOnFirstSignIn() {
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    val profile = userRepository.users.getValue("uid-1")
+    assertEquals("Ada", profile.displayName)
+    assertEquals("ada@example.com", profile.email)
+  }
+
+  @Test
+  fun signIn_accountWithoutNameOrEmail_createsProfileWithEmptyFields() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    val profile = userRepository.users.getValue("uid-1")
+    assertEquals("", profile.displayName)
+    assertEquals("", profile.email)
+    assertTrue(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun signIn_profileFailure_signsOutAndShowsError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = UserRepositoryException.Unavailable()
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // A session without a profile must not survive, or the next launch would skip sign-in.
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertEquals(
+        "Could not load your profile: The user profile service is unavailable",
+        viewModel.uiState.value.errorMsg,
+    )
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertNull(viewModel.uiState.value.user)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   // Helper method to stub the CredentialManager to return a specific credential
