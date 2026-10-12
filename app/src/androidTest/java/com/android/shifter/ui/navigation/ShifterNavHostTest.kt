@@ -20,7 +20,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.RepositoryProviderFactory
+import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.membership.AvailabilitySlot
+import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -29,10 +36,13 @@ import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -53,8 +63,12 @@ class ShifterNavHostTest {
     AuthEmulator.auth.signOut()
   }
 
+  /** Documents written by a test, deleted afterwards so the next tests start from a clean state. */
+  private val createdPaths = mutableListOf<String>()
+
   @After
   fun tearDown() {
+    runBlocking { createdPaths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
     AuthEmulator.auth.signOut()
     AuthEmulator.clearAccounts()
   }
@@ -294,6 +308,47 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
   }
 
+  @Test
+  fun staffEvents_showTheAppliedEventAndWithdrawRemovesIt() {
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    val volunteer = signIn()
+    applyTo(event, volunteer)
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(MyEventsTestTags.eventCard(event.id))
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    val requests = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequestsByUId(volunteer.uid)
+    }
+    assertTrue(requests.isEmpty())
+  }
+
+  @Test
+  fun organizerEvents_showTheOrganizedEventAndManageOpensIt() {
+    val event = createEvent(signIn())
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
+
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.Overview.title)
+  }
+
   private fun openCreateEventForm() {
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
@@ -303,8 +358,8 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Shows the signed-in app and returns its navigation, to open an event: the lists have no cards
-   * until an events ViewModel loads them.
+   * Shows the signed-in app and returns its navigation, to open an event without creating one: no
+   * account is signed in, so the lists have no cards.
    */
   private fun setAppAndGetNavigation(): NavigationActions {
     lateinit var navController: NavHostController
@@ -344,6 +399,54 @@ class ShifterNavHostTest {
             .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
             .assertTextEquals(tab.home.title)
       }
+    }
+  }
+
+  /** Signs in a fresh fake Google account, which the app then reads as its current user. */
+  private fun signIn(): AuthUser = runBlocking {
+    repositories.authRepository.signInWithGoogle(googleCredential()).getOrThrow()
+  }
+
+  /** Creates an upcoming event organized by [organizer], who must be the signed-in user. */
+  private fun createEvent(organizer: AuthUser): Event {
+    val now = Instant.now()
+    val event = runBlocking {
+      repositories.eventRepository.createEvent(
+          Event(
+              organizerId = organizer.uid,
+              title = "Beach cleanup",
+              description = "Collect the litter left on the beach.",
+              type = EventType.NATURE,
+              startAt = now.plus(Duration.ofDays(1)),
+              endAt = now.plus(Duration.ofDays(2)),
+              location = EventLocation("Vidy beach, Lausanne"),
+              createdAt = now,
+          )
+      )
+    }
+    createdPaths += "events/${event.id}"
+    return event
+  }
+
+  /** Sends a pending request to [event] for [volunteer], who must be the signed-in user. */
+  private fun applyTo(event: Event, volunteer: AuthUser) {
+    runBlocking {
+      repositories.membershipRequestRepository.apply(
+          event.id,
+          MembershipRequest(
+              userId = volunteer.uid,
+              availability = listOf(AvailabilitySlot(event.startAt, event.endAt)),
+              createdAt = Instant.now(),
+          ),
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
+  }
+
+  private fun waitForNode(tag: String) {
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
     }
   }
 
