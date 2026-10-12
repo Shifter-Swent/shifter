@@ -67,5 +67,16 @@ class StaffEventsLoader(
   }
 }
 
+/** Withdraws the signed-in user from an event, through their membership request. */
+class MembershipEventWithdrawer(
+    private val membershipRequestRepository: MembershipRequestRepository,
+    private val currentUserId: () -> String?,
+) : EventWithdrawer {
+
+  override suspend fun withdraw(eventId: String) {
+    membershipRequestRepository.withdraw(eventId, signedInUser(currentUserId))
+  }
+}
+
 private fun signedInUser(currentUserId: () -> String?): String =
     checkNotNull(currentUserId()) { "My Events needs a signed-in user" }
