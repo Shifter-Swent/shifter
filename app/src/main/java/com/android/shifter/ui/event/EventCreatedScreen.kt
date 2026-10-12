@@ -4,23 +4,16 @@ package com.swent.shifter.ui.event
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -33,7 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +33,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.FormHeader
+import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
@@ -69,7 +63,16 @@ fun EventCreatedScreen(viewModel: EventCreatedViewModel, onDone: () -> Unit) {
 /** Stateless content of [EventCreatedScreen]: renders [state] and reports every interaction. */
 @Composable
 fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone: () -> Unit) {
-  Scaffold(topBar = { EventCreatedHeader(onDone) }) { padding ->
+  Scaffold(
+      topBar = {
+        FormHeader(
+            backLabel = stringResource(R.string.create_event_back),
+            title = stringResource(R.string.event_created_title),
+            backButtonTestTag = EventCreatedScreenTestTags.BACK_BUTTON,
+            onBack = onDone,
+        )
+      }
+  ) { padding ->
     Column(
         modifier =
             Modifier.fillMaxSize()
@@ -125,58 +128,12 @@ fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone:
           )
         }
       }
-      Button(
+      FormPrimaryButton(
+          text = stringResource(R.string.event_created_done),
           onClick = onDone,
-          shape = MaterialTheme.shapes.medium,
-          modifier =
-              Modifier.fillMaxWidth().height(48.dp).testTag(EventCreatedScreenTestTags.DONE_BUTTON),
-      ) {
-        Text(
-            text = stringResource(R.string.event_created_done),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-      }
-    }
-  }
-}
-
-/** Return link to the organizer's events, above the screen title, as on [CreateEventScreen]. */
-@Composable
-private fun EventCreatedHeader(onBack: () -> Unit) {
-  Column(
-      modifier =
-          Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.background)
-              .padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Row(
-        modifier =
-            Modifier.clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Button, onClick = onBack)
-                .testTag(EventCreatedScreenTestTags.BACK_BUTTON),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Icon(
-          Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(14.dp),
-      )
-      Text(
-          text = stringResource(R.string.create_event_back),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.primary,
+          testTag = EventCreatedScreenTestTags.DONE_BUTTON,
       )
     }
-    Text(
-        text = stringResource(R.string.event_created_title),
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-    )
   }
 }
 

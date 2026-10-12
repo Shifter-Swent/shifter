@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
@@ -36,8 +34,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
@@ -60,12 +56,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.ui.components.FieldLabel
+import com.swent.shifter.ui.components.FormHeader
+import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
@@ -161,7 +160,16 @@ data class AddMissionActions(
 @Composable
 fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
   val editable = !state.isSaving
-  Scaffold(topBar = { FormHeader(actions.onBack) }) { padding ->
+  Scaffold(
+      topBar = {
+        FormHeader(
+            backLabel = stringResource(R.string.add_mission_back),
+            title = stringResource(R.string.add_mission_title),
+            backButtonTestTag = AddMissionScreenTestTags.BACK_BUTTON,
+            onBack = actions.onBack,
+        )
+      }
+  ) { padding ->
     Column(
         modifier =
             Modifier.fillMaxSize()
@@ -171,7 +179,7 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
       EventContext(state, actions.onRetryLoad)
-      FormTextField(
+      MissionTextField(
           value = state.title,
           onValueChange = actions.onTitleChange,
           label = R.string.add_mission_field_title,
@@ -179,7 +187,7 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
           enabled = editable,
           testTag = AddMissionScreenTestTags.TITLE_FIELD,
       )
-      FormTextField(
+      MissionTextField(
           value = state.description,
           onValueChange = actions.onDescriptionChange,
           label = R.string.add_mission_field_description,
@@ -207,45 +215,6 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
       }
       FormActions(state, actions)
     }
-  }
-}
-
-/** Return link to the management screen, above the screen title. */
-@Composable
-private fun FormHeader(onBack: () -> Unit) {
-  Column(
-      modifier =
-          Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.background)
-              .padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Row(
-        modifier =
-            Modifier.clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Button, onClick = onBack)
-                .testTag(AddMissionScreenTestTags.BACK_BUTTON),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Icon(
-          Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(14.dp),
-      )
-      Text(
-          text = stringResource(R.string.add_mission_back),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.primary,
-      )
-    }
-    Text(
-        text = stringResource(R.string.add_mission_title),
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-    )
   }
 }
 
@@ -300,15 +269,6 @@ private fun EventContext(state: AddMissionUiState, onRetryLoad: () -> Unit) {
 }
 
 @Composable
-private fun FieldLabel(@StringRes text: Int) {
-  Text(
-      text = stringResource(text),
-      style = MaterialTheme.typography.bodySmall,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-  )
-}
-
-@Composable
 private fun Hint(@StringRes text: Int) {
   Text(
       text = stringResource(text),
@@ -329,8 +289,9 @@ private fun FieldError(error: MissionFormError?) {
   }
 }
 
+/** A [FormTextField] with the [error] of its field shown under it. */
 @Composable
-private fun FormTextField(
+private fun MissionTextField(
     value: String,
     onValueChange: (String) -> Unit,
     @StringRes label: Int,
@@ -339,30 +300,15 @@ private fun FormTextField(
     testTag: String,
     singleLine: Boolean = true,
 ) {
-  val colorScheme = MaterialTheme.colorScheme
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    FieldLabel(label)
-    OutlinedTextField(
+    FormTextField(
         value = value,
         onValueChange = onValueChange,
+        label = stringResource(label),
         isError = error != null,
-        singleLine = singleLine,
-        minLines = if (singleLine) 1 else 3,
         enabled = enabled,
-        textStyle = MaterialTheme.typography.bodyMedium,
-        shape = MaterialTheme.shapes.medium,
-        colors =
-            OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = colorScheme.surfaceVariant,
-                unfocusedContainerColor = colorScheme.surfaceVariant,
-                disabledContainerColor = colorScheme.surfaceVariant,
-                errorContainerColor = colorScheme.surfaceVariant,
-                unfocusedBorderColor = colorScheme.outline,
-                disabledBorderColor = colorScheme.outline,
-            ),
-        keyboardOptions =
-            KeyboardOptions(imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),
-        modifier = Modifier.fillMaxWidth().testTag(testTag),
+        testTag = testTag,
+        singleLine = singleLine,
     )
     FieldError(error)
   }
@@ -377,7 +323,7 @@ private fun TeamSelector(
     onTeamChange: (String?) -> Unit,
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    FieldLabel(R.string.add_mission_field_team)
+    FieldLabel(stringResource(R.string.add_mission_field_team))
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -449,7 +395,7 @@ private fun VolunteersStepper(
   val colorScheme = MaterialTheme.colorScheme
   val shape = MaterialTheme.shapes.medium
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    FieldLabel(R.string.add_mission_field_volunteers)
+    FieldLabel(stringResource(R.string.add_mission_field_volunteers))
     Row(
         modifier =
             Modifier.fillMaxWidth()
@@ -519,7 +465,7 @@ private fun StepperButton(
 private fun Schedule(state: AddMissionUiState, enabled: Boolean, actions: AddMissionActions) {
   val event = state.event
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    FieldLabel(R.string.add_mission_field_day)
+    FieldLabel(stringResource(R.string.add_mission_field_day))
     DayField(
         day = state.day,
         event = event,
@@ -659,7 +605,7 @@ private fun TimeField(
 ) {
   var open by rememberSaveable { mutableStateOf(false) }
   Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    FieldLabel(label)
+    FieldLabel(stringResource(label))
     PickerField(
         text = time?.format(TIME_FORMAT),
         enabled = enabled,
@@ -702,27 +648,14 @@ private fun TimeField(
 @Composable
 private fun FormActions(state: AddMissionUiState, actions: AddMissionActions) {
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-    Button(
+    FormPrimaryButton(
+        text = stringResource(R.string.add_mission_submit),
         onClick = actions.onSubmit,
+        testTag = AddMissionScreenTestTags.SUBMIT_BUTTON,
         enabled = state.canSubmit,
-        shape = MaterialTheme.shapes.medium,
-        modifier =
-            Modifier.fillMaxWidth().height(48.dp).testTag(AddMissionScreenTestTags.SUBMIT_BUTTON),
-    ) {
-      if (state.isSaving) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(24.dp).testTag(AddMissionScreenTestTags.SAVING_INDICATOR),
-            color = MaterialTheme.colorScheme.onPrimary,
-            strokeWidth = 2.dp,
-        )
-      } else {
-        Text(
-            text = stringResource(R.string.add_mission_submit),
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-      }
-    }
+        isLoading = state.isSaving,
+        loadingIndicatorTestTag = AddMissionScreenTestTags.SAVING_INDICATOR,
+    )
     OutlinedButton(
         onClick = actions.onBack,
         enabled = !state.isSaving,
