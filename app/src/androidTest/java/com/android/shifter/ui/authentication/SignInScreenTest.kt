@@ -63,7 +63,7 @@ class SignInScreenTest {
 
   @Test
   fun signInScreen_displaysSignInContent() {
-    composeTestRule.setContent { ShifterTheme { SignInScreen() } }
+    composeTestRule.setContent { ShifterTheme { SignInScreen(authViewModel = viewModel) } }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.APP_NAME).assertTextEquals("Shifter")
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_TITLE).assertIsDisplayed()

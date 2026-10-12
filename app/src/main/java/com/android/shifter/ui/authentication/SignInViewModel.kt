@@ -11,11 +11,13 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
-import com.swent.shifter.model.authentication.AuthRepositoryProvider
 import com.swent.shifter.model.authentication.AuthUser
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,8 +34,7 @@ data class AuthUIState(
     val signedIn: Boolean = false,
 )
 
-class SignInViewModel(private val repository: AuthRepository = AuthRepositoryProvider.repository) :
-    ViewModel() {
+class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
 
@@ -92,5 +93,15 @@ class SignInViewModel(private val repository: AuthRepository = AuthRepositoryPro
 
   private fun showError(message: String) {
     _uiState.update { it.copy(isLoading = false, errorMsg = message) }
+  }
+
+  companion object {
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(repository: AuthRepository): ViewModelProvider.Factory = viewModelFactory {
+      initializer { SignInViewModel(repository) }
+    }
   }
 }

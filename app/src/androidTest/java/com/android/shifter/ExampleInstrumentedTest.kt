@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import com.swent.shifter.firebase.AuthEmulator
+import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.screen.MainScreen
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.junit.Rule
@@ -17,11 +18,16 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
 
-  // Runs before the activity launches, since MainActivity reads the session in onCreate.
+  // Runs before the activity launches, since MainActivity reads the session in onCreate. It also
+  // wires the shared Firestore instance to the emulator before RepositoryProviderFactory.production
+  // can reach it, so a later useEmulator call in this process does not throw.
   @get:Rule(order = 0)
   val signedOut =
       object : ExternalResource() {
-        override fun before() = AuthEmulator.auth.signOut()
+        override fun before() {
+          FirestoreEmulator.firestore
+          AuthEmulator.auth.signOut()
+        }
       }
 
   @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()

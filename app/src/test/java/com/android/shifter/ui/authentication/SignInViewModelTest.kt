@@ -11,6 +11,7 @@ import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthUser
@@ -253,6 +254,23 @@ class SignInViewModelTest {
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
     coVerify(exactly = 1) { credentialManager.getCredential(context, any<GetCredentialRequest>()) }
+  }
+
+  @Test
+  fun factory_createsViewModelOnTheGivenRepository() {
+    val credential = mockk<Credential>()
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    stubCredentialManager(credential)
+    val built =
+        SignInViewModel.factory(repository)
+            .create(SignInViewModel::class.java, CreationExtras.Empty)
+
+    built.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(credential, repository.receivedCredential)
+    assertEquals(user, built.uiState.value.user)
   }
 
   // Helper method to stub the CredentialManager to return a specific credential
