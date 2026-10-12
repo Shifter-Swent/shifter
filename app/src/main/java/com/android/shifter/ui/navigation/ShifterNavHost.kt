@@ -23,6 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -87,24 +89,26 @@ fun ShifterNavHost(
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
       composable<Volunteer.Events> {
+        val viewModel: StaffEventsViewModel =
+            viewModel(
+                factory =
+                    StaffEventsViewModel.factory(
+                        loader =
+                            StaffEventsLoader(
+                                repositories.eventRepository,
+                                repositories.membershipRequestRepository,
+                                currentUserId,
+                            ),
+                        withdrawer =
+                            MembershipEventWithdrawer(
+                                repositories.membershipRequestRepository,
+                                currentUserId,
+                            ),
+                    )
+            )
+        RefreshOnReturn(viewModel)
         StaffEventsScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        StaffEventsViewModel.factory(
-                            loader =
-                                StaffEventsLoader(
-                                    repositories.eventRepository,
-                                    repositories.membershipRequestRepository,
-                                    currentUserId,
-                                ),
-                            withdrawer =
-                                MembershipEventWithdrawer(
-                                    repositories.membershipRequestRepository,
-                                    currentUserId,
-                                ),
-                        )
-                ),
+            viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
@@ -141,14 +145,16 @@ fun ShifterNavHost(
 
     navigation<Organizer>(startDestination = Organizer.Events) {
       composable<Organizer.Events> {
+        val viewModel: MyEventsViewModel =
+            viewModel(
+                factory =
+                    MyEventsViewModel.factory(
+                        OrganizerEventsLoader(repositories.eventRepository, currentUserId)
+                    )
+            )
+        RefreshOnReturn(viewModel)
         OrgaEventsScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        MyEventsViewModel.factory(
-                            OrganizerEventsLoader(repositories.eventRepository, currentUserId)
-                        )
-                ),
+            viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
@@ -247,6 +253,20 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
   navigation<T>(startDestination = tab.home) {
     composable<S> { TabPage(tab, nav, content) }
     screens()
+  }
+}
+
+/**
+ * Reloads [viewModel] each time its list comes back on top, so it shows what changed while another
+ * screen was open, such as a request just sent. The first resume is skipped, since the ViewModel
+ * already loads once created.
+ */
+@Composable
+private fun RefreshOnReturn(viewModel: MyEventsViewModel) {
+  // Saveable, as the list leaves the composition while another screen is on top of it.
+  var shownOnce by rememberSaveable { mutableStateOf(false) }
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+    if (shownOnce) viewModel.refresh() else shownOnce = true
   }
 }
 

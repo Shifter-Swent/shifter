@@ -334,6 +334,25 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun staffEvents_reloadWhenComingBackToTheList() {
+    val event = createEvent(signIn())
+    val volunteer = signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    // Loaded once with no request yet.
+    waitForNode(MyEventsTestTags.EMPTY_STATE)
+
+    // The request is sent while another screen is on top of the list.
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
+    applyTo(event, volunteer)
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+  }
+
+  @Test
   fun organizerEvents_showTheOrganizedEventAndManageOpensIt() {
     val event = createEvent(signIn())
     composeTestRule.setContent {
