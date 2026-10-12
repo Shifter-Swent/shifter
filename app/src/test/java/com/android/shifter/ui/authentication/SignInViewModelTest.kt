@@ -327,6 +327,60 @@ class SignInViewModelTest {
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
+  @Test
+  fun signIn_unexpectedProfileFailure_signsOutAndShowsError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = IllegalStateException("Mapper bug")
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // Not only repository errors: any failure must close the session without a profile.
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertEquals("Could not load your profile: Mapper bug", viewModel.uiState.value.errorMsg)
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun signIn_cancelledDuringProfileCreation_signsOutWithoutError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = CancellationException("ViewModel cleared")
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertNull(viewModel.uiState.value.errorMsg)
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun signIn_profileFailureAndSignOutFailure_reportsBoth() {
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    repository.signOutResult = Result.failure(IllegalStateException("Sign-out failed"))
+    userRepository.failure = UserRepositoryException.Unavailable()
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // The session survived, so the user must be told it was not closed.
+    assertEquals(user, repository.currentUser())
+    assertEquals(
+        "Could not load your profile (The user profile service is unavailable) " +
+            "and could not sign you out",
+        viewModel.uiState.value.errorMsg,
+    )
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
   // Helper method to stub the CredentialManager to return a specific credential
   private fun stubCredentialManager(credential: Credential) {
     // Create a mock GetCredentialResponse that returns the provided credential

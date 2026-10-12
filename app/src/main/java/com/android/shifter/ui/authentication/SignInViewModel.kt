@@ -5,6 +5,7 @@
 package com.swent.shifter.ui.authentication
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -20,7 +21,6 @@ import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.model.user.UserRepositoryException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,19 +97,35 @@ class SignInViewModel(
   private suspend fun createProfile(user: AuthUser) {
     try {
       userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
-    } catch (e: UserRepositoryException) {
-      repository.signOut()
-      showError("Could not load your profile: ${e.localizedMessage}")
+    } catch (e: CancellationException) {
+      signOutWithoutProfile()
+      throw e
+    } catch (e: Exception) {
+      val reason = e.localizedMessage ?: "Unknown error"
+      if (signOutWithoutProfile()) {
+        showError("Could not load your profile: $reason")
+      } else {
+        showError("Could not load your profile ($reason) and could not sign you out")
+      }
       return
     }
     _uiState.value = AuthUIState(isLoading = false, user = user, signedIn = true)
   }
+
+  /** Closes the session left without a profile. Returns `false`, after logging, if it could not. */
+  private fun signOutWithoutProfile(): Boolean =
+      repository
+          .signOut()
+          .onFailure { Log.e(TAG, "Could not sign out after a profile failure", it) }
+          .isSuccess
 
   private fun showError(message: String) {
     _uiState.update { it.copy(isLoading = false, errorMsg = message) }
   }
 
   companion object {
+    private const val TAG = "SignInViewModel"
+
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments.
