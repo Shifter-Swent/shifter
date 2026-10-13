@@ -10,6 +10,9 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Co
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -44,6 +47,21 @@ class AuthRepositoryFirebase(
 
   /** Reads the session Firebase persisted on the device, without any network call. */
   override fun currentUser(): AuthUser? = auth.currentUser?.toAuthUser()
+
+  /**
+   * Turns Firebase's [FirebaseAuth.AuthStateListener] callback into a [Flow].
+   *
+   * Nothing runs until the flow is collected; each collector then registers its own listener, which
+   * Firebase calls once on registration with the current session, then on every sign-in or
+   * sign-out, including a session ending outside the app.
+   */
+  override val authState: Flow<AuthUser?> = callbackFlow {
+    // Sends the session Firebase reports to the collector, mapped to the app's own type.
+    val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.toAuthUser()) }
+    auth.addAuthStateListener(listener)
+    // Keeps the flow open while collected, then removes the listener so Firebase does not keep it.
+    awaitClose { auth.removeAuthStateListener(listener) }
+  }
 
   /** Clears the current Firebase Authentication session. */
   override fun signOut(): Result<Unit> {

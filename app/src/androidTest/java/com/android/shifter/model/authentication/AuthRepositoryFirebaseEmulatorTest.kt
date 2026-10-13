@@ -5,6 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -104,6 +106,31 @@ class AuthRepositoryFirebaseEmulatorTest {
 
     assertTrue(result.isSuccess)
     assertNull(auth.currentUser)
+  }
+
+  @Test
+  fun authState_emitsTheCurrentSessionOnCollection() = emulatorTest {
+    assertNull("no session before sign-in", repository.authState.first())
+
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+
+    assertEquals(user, repository.authState.first())
+  }
+
+  @Test
+  fun authState_emitsNullWhenTheSessionEndsWhileCollecting() = emulatorTest {
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+    val states = mutableListOf<AuthUser?>()
+
+    // End the session from outside the repository once the listener has reported it.
+    repository.authState
+        .onEach { states += it }
+        .onEach { if (it != null) auth.signOut() }
+        .first { it == null }
+
+    assertEquals(listOf(user, null), states)
   }
 
   /** The credential Credential Manager returns after the user picked the given Google account. */

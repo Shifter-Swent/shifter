@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.espresso.Espresso.pressBack
@@ -32,6 +33,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
@@ -70,9 +72,7 @@ class ShifterNavHostTest {
 
   @Test
   fun signedIn_skipsSignInAndStartsOnVolunteerEvents() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
@@ -80,9 +80,7 @@ class ShifterNavHostTest {
 
   @Test
   fun staffEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
@@ -93,28 +91,54 @@ class ShifterNavHostTest {
 
   @Test
   fun settings_signOutClearsTheSessionAndReturnsToSignIn() {
-    runBlocking { repositories.authRepository.signInWithGoogle(googleCredential()).getOrThrow() }
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    val navController = signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
 
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule
-          .onAllNodesWithTag(SignInScreenTestTags.LOGIN_BUTTON)
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-    }
+    waitForSignIn()
     assertNull(AuthEmulator.auth.currentUser)
+    // Settings and the session listener both react to the sign-out: only one may navigate.
+    composeTestRule.waitForIdle()
+    val signInEntries =
+        navController.currentBackStack.value.count { it.destination.hasRoute<SignedOut.SignIn>() }
+    assertEquals(1, signInEntries)
+  }
+
+  @Test
+  fun sessionAlreadyGoneAtLaunch_returnsToSignIn() {
+    // Started as signed in, but the session ended before the app listened to it.
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+
+    waitForSignIn()
+  }
+
+  @Test
+  fun sessionEndingOutsideTheApp_returnsToSignIn() {
+    signInAndShowApp()
+
+    // As when the session expires or the account is disabled: no screen asked for it.
+    AuthEmulator.auth.signOut()
+
+    waitForSignIn()
+  }
+
+  @Test
+  fun sessionEndingOutsideTheApp_fromOrganizerMode_returnsToSignIn() {
+    signInAndShowApp()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+
+    AuthEmulator.auth.signOut()
+
+    waitForSignIn()
   }
 
   @Test
   fun staffEvents_switchesToThePastTab() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
 
@@ -123,9 +147,7 @@ class ShifterNavHostTest {
 
   @Test
   fun staffEvents_scanQrOpensJoinEventAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
@@ -136,9 +158,7 @@ class ShifterNavHostTest {
 
   @Test
   fun joinEvent_keepsTheTypedCode() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
@@ -153,9 +173,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerView_switchesModesBothWays() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
@@ -166,9 +184,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
@@ -180,9 +196,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvents_createEventOpensTheFormAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
@@ -224,12 +238,7 @@ class ShifterNavHostTest {
 
   @Test
   fun eventsLists_showTheInitialOfTheSignedInUser() {
-    runBlocking {
-      repositories.authRepository.signInWithGoogle(googleCredential(name = "grace")).getOrThrow()
-    }
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp(name = "grace")
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -295,9 +304,7 @@ class ShifterNavHostTest {
   }
 
   private fun openCreateEventForm() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
   }
@@ -306,21 +313,7 @@ class ShifterNavHostTest {
    * Shows the signed-in app and returns its navigation, to open an event: the lists have no cards
    * until an events ViewModel loads them.
    */
-  private fun setAppAndGetNavigation(): NavigationActions {
-    lateinit var navController: NavHostController
-    composeTestRule.setContent {
-      navController = rememberNavController()
-      ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = true,
-            repositories = repositories,
-            navController = navController,
-        )
-      }
-    }
-    composeTestRule.waitForIdle()
-    return NavigationActions(navController)
-  }
+  private fun setAppAndGetNavigation(): NavigationActions = NavigationActions(signInAndShowApp())
 
   /** The real People screen is shown, with its own bottom bar on the People tab. */
   private fun assertPeopleScreenShown() {
@@ -344,6 +337,35 @@ class ShifterNavHostTest {
             .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
             .assertTextEquals(tab.home.title)
       }
+    }
+  }
+
+  /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
+  private fun signInAndShowApp(name: String = "Ada"): NavHostController {
+    runBlocking {
+      repositories.authRepository.signInWithGoogle(googleCredential(name)).getOrThrow()
+    }
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    return navController
+  }
+
+  private fun waitForSignIn() {
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(SignInScreenTestTags.LOGIN_BUTTON)
+          .fetchSemanticsNodes()
+          .isNotEmpty()
     }
   }
 
