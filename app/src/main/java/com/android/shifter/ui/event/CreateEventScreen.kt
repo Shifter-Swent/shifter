@@ -195,6 +195,16 @@ fun CreateEventContent(
         )
       }
 
+      if (state.saveUnconfirmed) {
+        Text(
+            text = stringResource(R.string.create_event_save_unconfirmed),
+            // Not an error: the event is on its way, so it must not read as a failure.
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED),
+        )
+      }
+
       FormPrimaryButton(
           text = stringResource(R.string.create_event_submit),
           onClick = onSubmit,
