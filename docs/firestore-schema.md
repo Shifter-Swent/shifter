@@ -72,7 +72,6 @@ eventParticipants/{eventId}
 | `startAt`, `endAt` | timestamp | |
 | `location` | map | `address` (string), `latitude` and `longitude` (number \| null, both set or both null) |
 | `emergencyContacts` | list of maps | `name`, `phoneNumber` (string), `role` (string \| null) |
-| `memberIds` | list of string | **Deprecated**: participants live in `eventParticipants`. To be removed (#103) |
 | `joinCode` | string | Unique, generated on creation |
 | `status` | string | `PREPARATION`, `ONGOING`, `COMPLETED`, `ARCHIVED` |
 | `createdAt` | timestamp | |
@@ -161,7 +160,6 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 - **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
   the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
-- **`Event.memberIds`** is deprecated in favour of `eventParticipants` and will be removed.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
 - **`User.createdAt`** is still read as a `java.util.Date`, unlike the other models, which use

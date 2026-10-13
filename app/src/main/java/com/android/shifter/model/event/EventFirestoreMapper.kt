@@ -31,7 +31,6 @@ internal object EventSchema {
   const val END_AT = "endAt"
   const val LOCATION = "location"
   const val EMERGENCY_CONTACTS = "emergencyContacts"
-  const val MEMBER_IDS = "memberIds"
   const val JOIN_CODE = "joinCode"
   const val STATUS = "status"
   const val CREATED_AT = "createdAt"
@@ -67,7 +66,6 @@ internal fun Event.toFirestoreMap(): Map<String, Any?> =
         EventSchema.END_AT to endAt.toFirestoreTimestamp(),
         EventSchema.LOCATION to location.toFirestoreMap(),
         EventSchema.EMERGENCY_CONTACTS to emergencyContacts.map { it.toFirestoreMap() },
-        EventSchema.MEMBER_IDS to memberIds,
         EventSchema.JOIN_CODE to joinCode,
         EventSchema.STATUS to status.name,
         EventSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
@@ -94,7 +92,6 @@ internal fun DocumentSnapshot.toEvent(): Event =
         endAt = requireInstant(ENTITY, EventSchema.END_AT),
         location = requireLocation(),
         emergencyContacts = requireEmergencyContacts(),
-        memberIds = requireMemberIds(),
         joinCode = requireString(ENTITY, EventSchema.JOIN_CODE),
         status = requireEventStatus(),
         createdAt = requireInstant(ENTITY, EventSchema.CREATED_AT),
@@ -183,14 +180,4 @@ private fun DocumentSnapshot.requireEmergencyContacts(): List<EmergencyContact> 
         role = contact[EventSchema.ContactFields.ROLE] as? String,
     )
   }
-}
-
-/**
- * An absent field means nobody joined the event yet. A malformed entry is rejected rather than
- * skipped: dropping a member would hide the event from the volunteer who joined it.
- */
-private fun DocumentSnapshot.requireMemberIds(): List<String> {
-  val field = get(EventSchema.MEMBER_IDS) ?: return emptyList()
-  val entries = field as? List<*> ?: invalidField(ENTITY, EventSchema.MEMBER_IDS)
-  return entries.map { it as? String ?: invalidField(ENTITY, EventSchema.MEMBER_IDS) }
 }

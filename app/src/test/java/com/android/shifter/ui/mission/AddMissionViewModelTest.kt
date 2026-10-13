@@ -524,7 +524,4 @@ private class StubEventRepository(private val event: Event) : EventRepository {
 
   override suspend fun getEventsByOrganizer(organizerId: String): List<Event> =
       throw UnsupportedOperationException()
-
-  override suspend fun getEventsByMember(userId: String): List<Event> =
-      throw UnsupportedOperationException()
 }

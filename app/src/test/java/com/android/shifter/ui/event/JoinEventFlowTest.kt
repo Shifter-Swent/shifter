@@ -45,8 +45,6 @@ class JoinEventFlowTest {
         override suspend fun getEvent(eventId: String) = error("unused")
 
         override suspend fun getEventsByOrganizer(organizerId: String) = error("unused")
-
-        override suspend fun getEventsByMember(userId: String) = error("unused")
       }
 
   private val requests =
