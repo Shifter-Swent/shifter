@@ -74,7 +74,8 @@ fun ShifterNavHost(
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
       composable<SignedOut.SignIn> {
         SignInScreen(
-            authViewModel = viewModel(factory = SignInViewModel.factory(auth)),
+            authViewModel =
+                viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
             onSignedIn = { nav.enterApp(Volunteer) },
         )
       }

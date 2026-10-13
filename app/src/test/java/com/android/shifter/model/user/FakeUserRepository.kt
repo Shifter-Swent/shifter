@@ -10,7 +10,7 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
 
   val users: MutableMap<String, User> = initialUsers.associateBy { it.uid }.toMutableMap()
 
-  var failure: UserRepositoryException? = null
+  var failure: Exception? = null
 
   override suspend fun getUser(uid: String): User? {
     failure?.let { throw it }

@@ -5,6 +5,7 @@
 package com.swent.shifter.ui.authentication
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -19,6 +20,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.UserRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +36,11 @@ data class AuthUIState(
     val signedIn: Boolean = false,
 )
 
-class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
+/** Signs the user in with Google, then makes sure their Firestore profile exists. */
+class SignInViewModel(
+    private val repository: AuthRepository,
+    private val userRepository: UserRepository,
+) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
 
@@ -67,14 +73,7 @@ class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
         repository
             .signInWithGoogle(credential)
             .fold(
-                onSuccess = { user ->
-                  _uiState.value =
-                      AuthUIState(
-                          isLoading = false,
-                          user = user,
-                          signedIn = true,
-                      )
-                },
+                onSuccess = { user -> createProfile(user) },
                 onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
             )
       } catch (e: GetCredentialCancellationException) {
@@ -82,26 +81,64 @@ class SignInViewModel(private val repository: AuthRepository) : ViewModel() {
       } catch (e: NoCredentialException) {
         showError("No Google credential is available for sign-in")
       } catch (e: GetCredentialException) {
-        showError("Failed to get credentials: ${e.localizedMessage ?: "Unknown error"}")
+        showError("Failed to get credentials: ${e.localizedMessage ?: UNKNOWN_ERROR}")
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        showError("Unexpected error: ${e.localizedMessage ?: "Unknown error"}")
+        showError("Unexpected error: ${e.localizedMessage ?: UNKNOWN_ERROR}")
       }
     }
   }
+
+  /**
+   * Creates the profile of [user] on their first sign-in. Without a profile the app cannot work, so
+   * a failure signs the user out again: otherwise the next launch would skip this screen.
+   */
+  private suspend fun createProfile(user: AuthUser) {
+    try {
+      userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+    } catch (e: CancellationException) {
+      signOutWithoutProfile()
+      _uiState.update { it.copy(isLoading = false) }
+      throw e
+    } catch (e: Exception) {
+      val reason = e.localizedMessage ?: UNKNOWN_ERROR
+      if (signOutWithoutProfile()) {
+        showError("Could not load your profile: $reason")
+      } else {
+        showError("Could not load your profile ($reason) and could not sign you out")
+      }
+      return
+    }
+    _uiState.value = AuthUIState(isLoading = false, user = user, signedIn = true)
+  }
+
+  /** Closes the session left without a profile. Returns `false`, after logging, if it could not. */
+  private fun signOutWithoutProfile(): Boolean =
+      repository
+          .signOut()
+          .onFailure { Log.e(TAG, "Could not sign out after a profile failure", it) }
+          .isSuccess
 
   private fun showError(message: String) {
     _uiState.update { it.copy(isLoading = false, errorMsg = message) }
   }
 
   companion object {
+    private const val TAG = "SignInViewModel"
+
+    /** Shown when an exception carries no message. */
+    private const val UNKNOWN_ERROR = "Unknown error"
+
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments.
      */
-    fun factory(repository: AuthRepository): ViewModelProvider.Factory = viewModelFactory {
-      initializer { SignInViewModel(repository) }
+    fun factory(
+        repository: AuthRepository,
+        userRepository: UserRepository,
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer { SignInViewModel(repository, userRepository) }
     }
   }
 }
