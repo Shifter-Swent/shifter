@@ -132,8 +132,8 @@ fun FormTextField(
 }
 
 /**
- * The full-width main button of a form. While [isLoading], it shows a progress indicator instead of
- * [text].
+ * The full-width submit button of a form. While [isLoading], it shows a progress indicator instead
+ * of [text]. For a standalone action such as Apply, use PrimaryButton instead.
  *
  * @param loadingIndicatorTestTag test tag of the progress indicator, none when null.
  */
