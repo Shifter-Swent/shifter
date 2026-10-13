@@ -1,13 +1,19 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.membership
 
+import com.swent.shifter.model.team.TeamRepository
+
 /**
  * In-memory [MembershipRequestRepository] for unit tests.
  *
  * @property failure when set, every call throws it, to simulate a backend error.
+ * @param teams when set, decisions and withdrawals keep the requested team's members in step, like
+ *   the backend does. Left null, tests that do not look at teams need not create them.
  */
-class FakeMembershipRequestRepository(var failure: Exception? = null) :
-    MembershipRequestRepository {
+class FakeMembershipRequestRepository(
+    var failure: Exception? = null,
+    private val teams: TeamRepository? = null,
+) : MembershipRequestRepository {
 
   /** Requests keyed by event id, then by the volunteer's user id. */
   private val requests = mutableMapOf<String, MutableMap<String, MembershipRequest>>()
@@ -30,19 +36,24 @@ class FakeMembershipRequestRepository(var failure: Exception? = null) :
   }
 
   override suspend fun accept(eventId: String, userId: String) {
-    decide(eventId, userId, MembershipRequestStatus.ACCEPTED)
+    val request = decide(eventId, userId, MembershipRequestStatus.ACCEPTED)
     participants.getOrPut(eventId) { mutableSetOf() } += userId
+    teams?.addMember(eventId, request.teamId, userId)
   }
 
   override suspend fun reject(eventId: String, userId: String) {
-    decide(eventId, userId, MembershipRequestStatus.REJECTED)
+    val request = decide(eventId, userId, MembershipRequestStatus.REJECTED)
     participants.getOrPut(eventId) { mutableSetOf() } -= userId
+    teams?.removeMember(eventId, request.teamId, userId)
   }
 
   override suspend fun withdraw(eventId: String, userId: String) {
     failure?.let { throw it }
-    requests[eventId]?.remove(userId)
+    val request = requests[eventId]?.remove(userId)
     participants[eventId]?.remove(userId)
+    if (request?.status == MembershipRequestStatus.ACCEPTED) {
+      teams?.removeMember(eventId, request.teamId, userId)
+    }
   }
 
   override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? {
@@ -62,8 +73,15 @@ class FakeMembershipRequestRepository(var failure: Exception? = null) :
         .toMap()
   }
 
-  /** Sets the status of an existing request, failing like the backend when there is none. */
-  private fun decide(eventId: String, userId: String, status: MembershipRequestStatus) {
+  /**
+   * Sets the status of an existing request and returns it, failing like the backend when there is
+   * none.
+   */
+  private fun decide(
+      eventId: String,
+      userId: String,
+      status: MembershipRequestStatus,
+  ): MembershipRequest {
     failure?.let { throw it }
     val byUser = requests[eventId]
     val request =
@@ -71,6 +89,6 @@ class FakeMembershipRequestRepository(var failure: Exception? = null) :
             ?: throw MembershipRequestRepositoryException.Unknown(
                 IllegalStateException("No request from '$userId' for event '$eventId'")
             )
-    byUser[userId] = request.copy(status = status)
+    return request.copy(status = status).also { byUser[userId] = it }
   }
 }

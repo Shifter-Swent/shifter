@@ -30,6 +30,7 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -69,6 +70,9 @@ class ShifterNavHostTest {
 
   /** Documents written by a test, deleted afterwards so the next tests start from a clean state. */
   private val createdPaths = mutableListOf<String>()
+
+  /** The team created with each event, keyed by event id, for volunteers to apply to. */
+  private val teamIds = mutableMapOf<String, String>()
 
   @After
   fun tearDown() {
@@ -188,9 +192,12 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun joinEvent_applyingShowsTheRequestOnFindingAgainAndTheEventInTheList() {
+  fun joinEvent_findingAnAppliedEventShowsTheRequestAndTheEventInTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
+    // The Join screen has no team picker yet, so the request is sent directly, for the event's
+    // team.
+    applyTo(event, volunteer)
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
@@ -202,28 +209,21 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
     waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
-    // Deleted before its event, as Firestore does not cascade the deletion.
-    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
 
+    // Finding the event shows the request already sent instead of the Apply button.
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
     val request = runBlocking {
       repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
     }
     assertEquals(MembershipRequestStatus.PENDING, request?.status)
-
-    // Finding the event again shows the request already sent instead of the Apply button.
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
     // The screen's Back returns to the code, then the device Back leaves to the events list.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
-    // The list reloads on return, so the event just applied to shows up in it.
+    // The event applied to shows up in the list.
     waitForNode(MyEventsTestTags.eventCard(event.id))
   }
 
@@ -556,6 +556,21 @@ class ShifterNavHostTest {
       )
     }
     createdPaths += "events/${event.id}"
+    // Volunteers apply to a team of the event, so every event gets one.
+    val team = runBlocking {
+      repositories.teamRepository.createTeam(
+          Team(
+              eventId = event.id,
+              name = "Litter pickers",
+              description = "Walk the beach and collect the litter.",
+              icon = "trash",
+              createdAt = now,
+          )
+      )
+    }
+    teamIds[event.id] = team.id
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/teams/${team.id}")
     return event
   }
 
@@ -566,6 +581,7 @@ class ShifterNavHostTest {
           event.id,
           MembershipRequest(
               userId = volunteer.uid,
+              teamId = teamIds.getValue(event.id),
               availability = listOf(AvailabilitySlot(event.startAt, event.endAt)),
               createdAt = Instant.now(),
           ),

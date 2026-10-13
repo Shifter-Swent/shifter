@@ -11,6 +11,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.SetOptions
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.team.TeamSchema
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -39,7 +40,8 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun accept(eventId: String, userId: String) {
     translatingErrors {
-      // Both writes commit atomically: a failed write prevents the other from being applied.
+      val team = requestedTeam(eventId, userId)
+      // The three writes commit atomically: a failed write prevents the others from being applied.
       val batch = db.batch()
       batch.update(
           requests(eventId).document(userId),
@@ -51,12 +53,14 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           mapOf(PARTICIPANT_IDS to FieldValue.arrayUnion(userId)),
           SetOptions.merge(),
       )
+      batch.update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
       batch.commit().await()
     }
   }
 
   override suspend fun reject(eventId: String, userId: String) {
     translatingErrors {
+      val team = requestedTeam(eventId, userId)
       val batch = db.batch()
       batch.update(
           requests(eventId).document(userId),
@@ -69,6 +73,8 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           mapOf(PARTICIPANT_IDS to FieldValue.arrayRemove(userId)),
           SetOptions.merge(),
       )
+      // Rejecting an accepted request takes the volunteer out of their team as well.
+      batch.update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
       batch.commit().await()
     }
   }
@@ -80,13 +86,21 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       // request says whether they are a participant: they need not read the participants document.
       // A pending request may have no participants document yet, and a volunteer may not create it.
       db.runTransaction { transaction ->
-            val status = transaction.get(request).getString(MembershipRequestSchema.STATUS)
+            val snapshot = transaction.get(request)
+            val status = snapshot.getString(MembershipRequestSchema.STATUS)
             if (status == MembershipRequestStatus.ACCEPTED.name) {
               transaction.update(
                   participants(eventId),
                   PARTICIPANT_IDS,
                   FieldValue.arrayRemove(userId),
               )
+              snapshot.getString(MembershipRequestSchema.TEAM_ID)?.let { teamId ->
+                transaction.update(
+                    team(eventId, teamId),
+                    TeamSchema.MEMBER_IDS,
+                    FieldValue.arrayRemove(userId),
+                )
+              }
             }
             transaction.delete(request)
             null
@@ -131,6 +145,26 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   private fun participants(eventId: String): DocumentReference =
       db.collection(PARTICIPANTS_COLLECTION).document(eventId)
+
+  private fun team(eventId: String, teamId: String): DocumentReference =
+      db.collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(TeamSchema.COLLECTION)
+          .document(teamId)
+
+  /**
+   * The team [userId] applied to in [eventId], read from their request. The team of a request never
+   * changes once it is sent, so it can be read before the batch that decides the request.
+   */
+  private suspend fun requestedTeam(eventId: String, userId: String): DocumentReference {
+    val snapshot = requests(eventId).document(userId).get().await()
+    if (!snapshot.exists()) {
+      throw MembershipRequestRepositoryException.Unknown(
+          NoSuchElementException("No request from '$userId' for event '$eventId'")
+      )
+    }
+    return team(eventId, snapshot.toRequestOrThrow().teamId)
+  }
 
   companion object {
     private const val PARTICIPANTS_COLLECTION = "eventParticipants"

@@ -23,28 +23,30 @@ interface MembershipRequestRepository {
 
   /**
    * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.ACCEPTED] and adds
-   * the user to the event participants without duplicates, atomically. If the request does not
-   * exist, a backend NOT_FOUND error is translated to
-   * [MembershipRequestRepositoryException.Unknown]. Security rules may instead deny the operation
-   * with [MembershipRequestRepositoryException.PermissionDenied].
+   * the user, without duplicates, to the event participants and to the members of the team they
+   * applied to ([MembershipRequest.teamId]), atomically. Fails with
+   * [MembershipRequestRepositoryException.Unknown] if the request or its team does not exist.
+   * Security rules may instead deny the operation with
+   * [MembershipRequestRepositoryException.PermissionDenied].
    */
   suspend fun accept(eventId: String, userId: String)
 
   /**
    * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED] and removes
-   * the user from the event participants atomically, without deleting the request. Other
-   * participants are preserved; if the participants document is absent, an empty list is created.
-   * Fails if the request does not exist: a backend NOT_FOUND error is translated to
-   * [MembershipRequestRepositoryException.Unknown]. Security rules may instead deny the operation
-   * with [MembershipRequestRepositoryException.PermissionDenied].
+   * the user from the event participants and from the members of the team they applied to,
+   * atomically, without deleting the request. Other participants are preserved; if the participants
+   * document is absent, an empty list is created. Fails with
+   * [MembershipRequestRepositoryException.Unknown] if the request or its team does not exist.
+   * Security rules may instead deny the operation with
+   * [MembershipRequestRepositoryException.PermissionDenied].
    */
   suspend fun reject(eventId: String, userId: String)
 
   /**
    * Withdraws [userId] from [eventId]: deletes their request and removes them from the event
-   * participants atomically, so they can apply again later. Withdrawing without a request does
-   * nothing. Only the volunteer themself can withdraw, and only from a pending or accepted request:
-   * security rules deny anyone else, and a rejected request, with
+   * participants and from their team atomically, so they can apply again later. Withdrawing without
+   * a request does nothing. Only the volunteer themself can withdraw, and only from a pending or
+   * accepted request: security rules deny anyone else, and a rejected request, with
    * [MembershipRequestRepositoryException.PermissionDenied], so a rejection cannot be undone by
    * applying again.
    */
