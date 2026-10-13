@@ -99,6 +99,7 @@ class SignInViewModel(
       userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
     } catch (e: CancellationException) {
       signOutWithoutProfile()
+      _uiState.update { it.copy(isLoading = false) }
       throw e
     } catch (e: Exception) {
       val reason = e.localizedMessage ?: UNKNOWN_ERROR

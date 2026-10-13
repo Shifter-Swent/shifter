@@ -358,6 +358,7 @@ class SignInViewModelTest {
     assertNull(repository.currentUser())
     assertNull(viewModel.uiState.value.errorMsg)
     assertFalse(viewModel.uiState.value.signedIn)
+    assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
