@@ -1,12 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -16,7 +17,6 @@ import androidx.compose.ui.test.performTextInput
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
@@ -44,7 +44,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ShifterNavHostTest {
 
-  @get:Rule val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   /** Every repository on the emulators, so no test reaches the production backend. */
   private val repositories =
@@ -338,6 +338,20 @@ class ShifterNavHostTest {
             .assertTextEquals(tab.home.title)
       }
     }
+  }
+
+  /**
+   * Presses the device Back button through the activity's dispatcher, the way the system delivers
+   * it to `BackHandler` and the NavHost. Espresso's `pressBack()` first waits for the window to
+   * have focus, which a system dialog on the CI emulator can take away, making these tests flaky.
+   */
+  private fun pressBack() {
+    // Like Espresso, let the last action settle so the current screen's BackHandler is set.
+    composeTestRule.waitForIdle()
+    composeTestRule.runOnUiThread {
+      composeTestRule.activity.onBackPressedDispatcher.onBackPressed()
+    }
+    composeTestRule.waitForIdle()
   }
 
   /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
