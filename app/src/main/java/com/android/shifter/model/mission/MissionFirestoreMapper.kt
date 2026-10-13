@@ -2,6 +2,7 @@
 package com.swent.shifter.model.mission
 
 import com.google.firebase.firestore.DocumentSnapshot
+import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireInt
@@ -31,8 +32,16 @@ internal object MissionSchema {
   const val VOLUNTEERS_NEEDED = "volunteersNeeded"
   const val START_AT = "startAt"
   const val END_AT = "endAt"
+  const val LOCATION = "location"
   const val ASSIGNEE_IDS = "assigneeIds"
   const val CREATED_AT = "createdAt"
+
+  /** Fields of the [LOCATION] map. */
+  object LocationFields {
+    const val ADDRESS = "address"
+    const val LATITUDE = "latitude"
+    const val LONGITUDE = "longitude"
+  }
 }
 
 /**
@@ -48,6 +57,7 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
         MissionSchema.VOLUNTEERS_NEEDED to volunteersNeeded,
         MissionSchema.START_AT to startAt.toFirestoreTimestamp(),
         MissionSchema.END_AT to endAt.toFirestoreTimestamp(),
+        MissionSchema.LOCATION to location?.toFirestoreMap(),
         MissionSchema.ASSIGNEE_IDS to assigneeIds,
         MissionSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
     )
@@ -71,8 +81,39 @@ internal fun DocumentSnapshot.toMission(): Mission =
         volunteersNeeded = requireInt(ENTITY, MissionSchema.VOLUNTEERS_NEEDED),
         startAt = requireInstant(ENTITY, MissionSchema.START_AT),
         endAt = requireInstant(ENTITY, MissionSchema.END_AT),
+        location = optionalLocation(),
         // Absent means nobody is assigned yet; a malformed entry fails rather than hiding the
         // mission from the person assigned to it.
         assigneeIds = requireStringList(ENTITY, MissionSchema.ASSIGNEE_IDS),
         createdAt = requireInstant(ENTITY, MissionSchema.CREATED_AT),
     )
+
+private fun MissionLocation.toFirestoreMap(): Map<String, Any?> =
+    mapOf(
+        MissionSchema.LocationFields.ADDRESS to address,
+        MissionSchema.LocationFields.LATITUDE to latitude,
+        MissionSchema.LocationFields.LONGITUDE to longitude,
+    )
+
+/**
+ * An absent or null field means the mission has no location. A location that is there is mapped in
+ * full: half a location would put the mission on the map at a wrong point, or in no place at all,
+ * so it is rejected rather than completed with a default, as are coordinates out of range.
+ *
+ * Any [Number] is accepted for the coordinates, because a whole-degree coordinate comes back from
+ * Firestore as a Long rather than as a Double.
+ */
+private fun DocumentSnapshot.optionalLocation(): MissionLocation? {
+  val value = get(MissionSchema.LOCATION) ?: return null
+  val location = value as? Map<*, *> ?: invalidField(ENTITY, MissionSchema.LOCATION)
+  val address =
+      location[MissionSchema.LocationFields.ADDRESS] as? String
+          ?: invalidField(ENTITY, MissionSchema.LOCATION)
+  val latitude = requireCoordinate(location, MissionSchema.LocationFields.LATITUDE)
+  val longitude = requireCoordinate(location, MissionSchema.LocationFields.LONGITUDE)
+  return runCatching { MissionLocation(address, latitude, longitude) }
+      .getOrElse { invalidField(ENTITY, MissionSchema.LOCATION) }
+}
+
+private fun DocumentSnapshot.requireCoordinate(location: Map<*, *>, field: String): Double =
+    (location[field] as? Number)?.toDouble() ?: invalidField(ENTITY, MissionSchema.LOCATION)

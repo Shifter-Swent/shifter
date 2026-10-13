@@ -108,8 +108,13 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 | `teamId` | string \| null | `null` means "General": the mission belongs to no team |
 | `volunteersNeeded` | number | Whole number, at least 1 (checked by the app) |
 | `startAt`, `endAt` | timestamp | A mission has its own slot, with no `shiftId`: it may cover only part of a shift |
+| `location` | map \| null | `address` (string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
 | `assigneeIds` | list of string | |
 | `createdAt` | timestamp | |
+
+Two GeoTimed missions of the same team must not overlap; adjacent slots are allowed. The app checks
+this before writing (`FirestoreMissionRepository.createMission`), not the rules, and the check is
+not atomic.
 
 ### `events/{eventId}/membershipRequests/{uid}`
 
