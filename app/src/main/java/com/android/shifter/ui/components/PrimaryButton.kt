@@ -15,7 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Full-width button styled like the sign-in button. */
+/** Full-width button styled like the sign-in button, for standalone actions such as Apply. For the
+ * submit button of a form, use FormPrimaryButton */
 @Composable
 fun PrimaryButton(
     text: String,
