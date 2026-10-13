@@ -110,7 +110,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
 
-    waitForSignIn()
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
     assertNull(AuthEmulator.auth.currentUser)
     // Settings and the session listener both react to the sign-out: only one may navigate.
     composeTestRule.waitForIdle()
@@ -126,7 +126,7 @@ class ShifterNavHostTest {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
 
-    waitForSignIn()
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
   }
 
   @Test
@@ -136,7 +136,7 @@ class ShifterNavHostTest {
     // As when the session expires or the account is disabled: no screen asked for it.
     AuthEmulator.auth.signOut()
 
-    waitForSignIn()
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
   }
 
   @Test
@@ -147,7 +147,7 @@ class ShifterNavHostTest {
 
     AuthEmulator.auth.signOut()
 
-    waitForSignIn()
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
   }
 
   @Test
@@ -446,15 +446,6 @@ class ShifterNavHostTest {
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     return navController
-  }
-
-  private fun waitForSignIn() {
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule
-          .onAllNodesWithTag(SignInScreenTestTags.LOGIN_BUTTON)
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-    }
   }
 
   /** Signs in a fresh fake Google account, which the app then reads as its current user. */
