@@ -135,7 +135,7 @@ fun FormTextField(
  * The full-width main button of a form. While [isLoading], it shows a progress indicator instead of
  * [text].
  *
- * @param loadingIndicatorTestTag test tag of the progress indicator.
+ * @param loadingIndicatorTestTag test tag of the progress indicator, none when null.
  */
 @Composable
 fun FormPrimaryButton(
@@ -144,7 +144,7 @@ fun FormPrimaryButton(
     testTag: String,
     enabled: Boolean = true,
     isLoading: Boolean = false,
-    loadingIndicatorTestTag: String = "",
+    loadingIndicatorTestTag: String? = null,
 ) {
   Button(
       onClick = onClick,
@@ -154,7 +154,9 @@ fun FormPrimaryButton(
   ) {
     if (isLoading) {
       CircularProgressIndicator(
-          modifier = Modifier.size(24.dp).testTag(loadingIndicatorTestTag),
+          modifier =
+              Modifier.size(24.dp)
+                  .then(loadingIndicatorTestTag?.let { Modifier.testTag(it) } ?: Modifier),
           color = MaterialTheme.colorScheme.onPrimary,
           strokeWidth = 2.dp,
       )

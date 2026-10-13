@@ -6,10 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -120,6 +122,23 @@ class FormComponentsTest {
     composeTestRule.onNodeWithTag(LOADING, useUnmergedTree = true).assertIsDisplayed()
     composeTestRule.onNodeWithText("Save").assertDoesNotExist()
     composeTestRule.onNodeWithTag(BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
+  fun formPrimaryButton_whileLoadingWithoutTag_showsUntaggedIndicator() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        FormPrimaryButton(text = "Save", onClick = {}, testTag = BUTTON, isLoading = true)
+      }
+    }
+
+    composeTestRule
+        .onNode(
+            hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate),
+            useUnmergedTree = true,
+        )
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag("", useUnmergedTree = true).assertDoesNotExist()
   }
 
   private companion object {
