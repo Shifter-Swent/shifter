@@ -36,9 +36,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.Credential
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
+import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.ui.theme.ShifterTheme
 
 object SignInScreenTestTags {
@@ -50,7 +55,7 @@ object SignInScreenTestTags {
 
 @Composable
 fun SignInScreen(
-    authViewModel: SignInViewModel = viewModel(),
+    authViewModel: SignInViewModel,
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
     onSignedIn: () -> Unit = {},
 ) {
@@ -144,5 +149,30 @@ fun GoogleSignInButton(onSignIn: () -> Unit) {
 @Preview(showBackground = true)
 @Composable
 fun SignInScreenPreview() {
-  ShifterTheme { SignInScreen() }
+  ShifterTheme {
+    SignInScreen(
+        authViewModel =
+            viewModel(
+                factory = SignInViewModel.factory(PreviewAuthRepository, PreviewUserRepository)
+            )
+    )
+  }
+}
+
+/** Signed out, and never asked to sign in: the preview only draws the screen. */
+private object PreviewAuthRepository : AuthRepository {
+  override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
+      Result.failure(UnsupportedOperationException("Preview"))
+
+  override fun currentUser(): AuthUser? = null
+
+  override fun signOut(): Result<Unit> = Result.success(Unit)
+}
+
+/** Never reached: the preview never signs in. */
+private object PreviewUserRepository : UserRepository {
+  override suspend fun getUser(uid: String): User? = null
+
+  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
+      throw UnsupportedOperationException("Preview")
 }

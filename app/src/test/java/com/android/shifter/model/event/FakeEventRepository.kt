@@ -45,9 +45,4 @@ class FakeEventRepository(
     failure?.let { throw it }
     return events.filter { it.organizerId == organizerId }
   }
-
-  override suspend fun getEventsByMember(userId: String): List<Event> {
-    failure?.let { throw it }
-    return events.filter { userId in it.memberIds }
-  }
 }

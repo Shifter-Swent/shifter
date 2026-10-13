@@ -25,7 +25,7 @@ eventParticipants/{eventId}
 |---|---|---|
 | `users/{uid}` | A user's profile, keyed by their Firebase Auth uid | `UserRepositoryFirestore` |
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
-| `events/{eventId}/teams/{teamId}` | A team ("pôle" in the app) of the event | `TeamSchema` |
+| `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/membershipRequests/{uid}` | A volunteer's request to join, keyed by their uid | `MembershipRequestSchema` |
@@ -72,7 +72,6 @@ eventParticipants/{eventId}
 | `startAt`, `endAt` | timestamp | |
 | `location` | map | `address` (string), `latitude` and `longitude` (number \| null, both set or both null) |
 | `emergencyContacts` | list of maps | `name`, `phoneNumber` (string), `role` (string \| null) |
-| `memberIds` | list of string | **Deprecated**: participants live in `eventParticipants`. To be removed (#103) |
 | `joinCode` | string | Unique, generated on creation |
 | `status` | string | `PREPARATION`, `ONGOING`, `COMPLETED`, `ARCHIVED` |
 | `createdAt` | timestamp | |
@@ -82,10 +81,11 @@ eventParticipants/{eventId}
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | |
+| `description` | string | What the team does, written when it is created |
 | `icon` | string | Icon identifier |
 | `managerId` | string \| null | `null` until the organizer appoints a manager |
 | `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer may be in several teams |
-| `volunteersNeeded` | number | Whole number |
+| `volunteersNeeded` | number \| null | Whole number. `null` until the staffing need is set: it is not asked for when the team is created |
 | `checkInZone` | map \| null | `latitude`, `longitude`, `radiusMeters`, all required when the zone is set |
 | `createdAt` | timestamp | |
 
@@ -131,7 +131,8 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 | `participantIds` | list of string | uids of the volunteers whose request is `ACCEPTED` |
 
 Accepting or rejecting a request updates the request and this document in the same batch. The rules
-check that they agree (see below).
+check that they agree (see below). A volunteer who withdraws deletes their request and leaves this
+document in the same transaction, so they can apply again later.
 
 ## Security rules
 
@@ -151,11 +152,15 @@ every access to it is denied.
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
 
+A withdrawal is the one exception to the table above: a volunteer may delete their own request
+and, in the same commit, remove themself (and only themself) from `eventParticipants`. A request
+can only be deleted once its volunteer is no longer a participant, and never once it is
+`REJECTED`, so a volunteer cannot undo a rejection by applying again.
+
 ## Known gaps
 
 - **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
   the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
-- **`Event.memberIds`** is deprecated in favour of `eventParticipants` and will be removed.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
 - **`User.createdAt`** is still read as a `java.util.Date`, unlike the other models, which use

@@ -4,9 +4,9 @@ package com.swent.shifter.model.team
 
 import com.google.firebase.firestore.DocumentSnapshot
 import com.swent.shifter.model.firestore.invalidField
+import com.swent.shifter.model.firestore.optionalInt
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
-import com.swent.shifter.model.firestore.requireInt
 import com.swent.shifter.model.firestore.requireParentEventId
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
@@ -28,6 +28,7 @@ internal object TeamSchema {
   const val COLLECTION = "teams"
 
   const val NAME = "name"
+  const val DESCRIPTION = "description"
   const val ICON = "icon"
   const val MANAGER_ID = "managerId"
   const val MEMBER_IDS = "memberIds"
@@ -52,6 +53,7 @@ internal object TeamSchema {
 internal fun Team.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         TeamSchema.NAME to name,
+        TeamSchema.DESCRIPTION to description,
         TeamSchema.ICON to icon,
         TeamSchema.MANAGER_ID to managerId,
         TeamSchema.MEMBER_IDS to memberIds,
@@ -74,12 +76,14 @@ internal fun DocumentSnapshot.toTeam(): Team =
         id = id,
         eventId = requireParentEventId(ENTITY),
         name = requireString(ENTITY, TeamSchema.NAME),
+        description = requireString(ENTITY, TeamSchema.DESCRIPTION),
         icon = requireString(ENTITY, TeamSchema.ICON),
         managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),
         // Absent means nobody was assigned yet; a malformed entry fails rather than quietly
         // removing a volunteer from the team.
         memberIds = requireStringList(ENTITY, TeamSchema.MEMBER_IDS),
-        volunteersNeeded = requireInt(ENTITY, TeamSchema.VOLUNTEERS_NEEDED),
+        // Absent means no staffing need has been set yet, which is how a team is created.
+        volunteersNeeded = optionalInt(ENTITY, TeamSchema.VOLUNTEERS_NEEDED),
         checkInZone = optionalCheckInZone(),
         createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
     )

@@ -2,18 +2,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.people
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -26,26 +18,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.UnderlinedTab
+import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.membership.MembershipRequestsScreen
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.Tab
 import com.swent.shifter.ui.theme.ShifterTheme
-import com.swent.shifter.ui.theme.shifter_divider
 import com.swent.shifter.ui.theme.shifter_tabInactive
 
 /** People navigation shell. Participants content will be added separately. */
@@ -106,36 +94,15 @@ private fun PeopleTopBar() {
 /** Underlined tabs followed by the full-width divider, like the My Events tabs. */
 @Composable
 private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-  val colors = MaterialTheme.colorScheme
-  Column(Modifier.fillMaxWidth()) {
-    Row(Modifier.padding(horizontal = 24.dp)) {
-      labels.forEachIndexed { index, label ->
-        val isSelected = index == selected
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier =
-                Modifier.width(150.dp)
-                    .semantics { this.selected = isSelected }
-                    .clickable(role = Role.Tab) { onSelect(index) }
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-        ) {
-          Text(
-              text = label,
-              color = if (isSelected) colors.onBackground else shifter_tabInactive,
-              fontSize = 14.sp,
-              fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
-          )
-          Box(
-              Modifier.fillMaxWidth()
-                  .height(2.dp)
-                  .clip(RoundedCornerShape(1.dp))
-                  .background(if (isSelected) colors.primary else shifter_divider)
-          )
-        }
-      }
+  UnderlinedTabRow {
+    labels.forEachIndexed { index, label ->
+      UnderlinedTab(
+          label = label,
+          isSelected = index == selected,
+          onClick = { onSelect(index) },
+          width = 150.dp,
+      )
     }
-    Box(Modifier.fillMaxWidth().height(1.dp).background(shifter_divider))
   }
 }
 

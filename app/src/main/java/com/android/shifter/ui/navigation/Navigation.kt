@@ -22,8 +22,8 @@ import kotlinx.serialization.Serializable
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
- *   ├── Events (OR-00), ProfileSettings
- *   └── OrganizerEvent(eventId): Overview, People, Map, Discussions
+ *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated
+ *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -190,6 +190,17 @@ data object Organizer : App {
   data object ProfileSettings : Destination {
     override val title = "Profile & Settings"
   }
+
+  @Serializable
+  data object CreateEvent : Destination {
+    override val title = "Create event"
+  }
+
+  /** Shows the join code of the event just created, in place of the creation form. */
+  @Serializable
+  data object EventCreated : Destination {
+    override val title = "Event created"
+  }
 }
 
 @Serializable
@@ -265,6 +276,14 @@ sealed interface OrganizerEventScreen : Destination {
       get() = OrganizerTabs.Overview
   }
 
+  /** Mission creation form, opened on top of the event's Overview. */
+  @Serializable
+  data object AddMission : OrganizerEventScreen {
+    override val title = "Add mission"
+    override val tab
+      get() = OrganizerTabs.Overview
+  }
+
   @Serializable
   data object People : OrganizerEventScreen {
     override val title = "People"
@@ -313,7 +332,8 @@ open class NavigationActions(private val navController: NavHostController) {
 
   /** Opens an event on top of its events list, replacing any event already open. */
   open fun enterEvent(event: EventMode) {
-    event.tabs.all.forEach { navController.clearBackStack(it) }
+    // Clear by route class so tabs absent from the current graph are harmless.
+    event.tabs.all.forEach { navController.clearBackStack(it::class) }
     navController.navigate(event) {
       popUpTo(event.list)
       launchSingleTop = true

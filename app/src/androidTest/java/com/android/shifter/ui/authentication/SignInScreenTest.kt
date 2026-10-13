@@ -18,11 +18,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
+import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
+import com.swent.shifter.model.user.USERS_COLLECTION
+import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,8 +49,13 @@ class SignInScreenTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
+  private val userRepository = UserRepositoryFirestore(FirestoreEmulator.firestore)
+
   private val viewModel =
-      SignInViewModel(AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper()))
+      SignInViewModel(
+          AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper()),
+          userRepository,
+      )
 
   private var signedInCalls = 0
 
@@ -57,13 +67,17 @@ class SignInScreenTest {
 
   @After
   fun tearDown() {
+    // Delete the profile a sign-in created, so each run starts from an empty emulator.
+    AuthEmulator.auth.currentUser?.uid?.let { uid ->
+      runBlocking { FirestoreEmulatorAdmin.deleteDocument("$USERS_COLLECTION/$uid") }
+    }
     AuthEmulator.auth.signOut()
     AuthEmulator.clearAccounts()
   }
 
   @Test
   fun signInScreen_displaysSignInContent() {
-    composeTestRule.setContent { ShifterTheme { SignInScreen() } }
+    composeTestRule.setContent { ShifterTheme { SignInScreen(authViewModel = viewModel) } }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.APP_NAME).assertTextEquals("Shifter")
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_TITLE).assertIsDisplayed()
@@ -116,6 +130,8 @@ class SignInScreenTest {
 
     assertEquals(email, AuthEmulator.auth.currentUser?.email)
     assertEquals(email, viewModel.uiState.value.user?.email)
+    val uid = AuthEmulator.auth.currentUser!!.uid
+    assertEquals(DISPLAY_NAME, runBlocking { userRepository.getUser(uid) }?.displayName)
 
     // Recreating the screen, as on a rotation, must not navigate a second time.
     restorationTester.emulateSavedInstanceStateRestore()

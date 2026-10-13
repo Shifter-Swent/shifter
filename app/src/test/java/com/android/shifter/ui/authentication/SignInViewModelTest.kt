@@ -11,10 +11,13 @@ import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
-import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.authentication.FakeAuthRepository
+import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -35,8 +38,9 @@ class SignInViewModelTest {
 
   private val context = mockk<Context>()
   private val credentialManager = mockk<CredentialManager>()
-  private val repository = RecordingAuthRepository()
-  private val viewModel = SignInViewModel(repository)
+  private val repository = FakeAuthRepository()
+  private val userRepository = FakeUserRepository()
+  private val viewModel = SignInViewModel(repository, userRepository)
 
   // Set up the mock context to return a default web client ID for testing
   init {
@@ -47,7 +51,7 @@ class SignInViewModelTest {
   fun signIn_acceptsGoogleAccountDifferentFromDeviceAccount() {
     val newGoogleAccountCredential = mockk<Credential>()
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
-    repository.result = Result.success(user)
+    repository.signInResult = Result.success(user)
     stubCredentialManager(newGoogleAccountCredential)
 
     viewModel.signIn(context, credentialManager)
@@ -64,7 +68,8 @@ class SignInViewModelTest {
   fun signIn_acceptsAnyGoogleAccountReturnedByCredentialManager() {
     val firstAccountCredential = mockk<Credential>()
     val secondAccountCredential = mockk<Credential>()
-    repository.result = Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
 
     stubCredentialManager(firstAccountCredential)
     viewModel.signIn(context, credentialManager)
@@ -85,7 +90,7 @@ class SignInViewModelTest {
   @Test
   fun signIn_success_raisesSignedInEventUntilHandled() {
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
-    repository.result = Result.success(user)
+    repository.signInResult = Result.success(user)
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -101,7 +106,7 @@ class SignInViewModelTest {
 
   @Test
   fun signIn_failure_doesNotRaiseSignedInEvent() {
-    repository.result = Result.failure(IllegalStateException("Repository unavailable"))
+    repository.signInResult = Result.failure(IllegalStateException("Repository unavailable"))
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -113,7 +118,7 @@ class SignInViewModelTest {
   @Test
   fun signIn_repositoryFailure_setsErrorAndClearsUser() {
     val credential = mockk<Credential>()
-    repository.result = Result.failure(IllegalStateException("Repository unavailable"))
+    repository.signInResult = Result.failure(IllegalStateException("Repository unavailable"))
     stubCredentialManager(credential)
 
     viewModel.signIn(context, credentialManager)
@@ -228,7 +233,7 @@ class SignInViewModelTest {
 
   @Test
   fun signIn_repositoryFailureWithoutMessage_usesGenericSignInError() {
-    repository.result = Result.failure(IllegalStateException())
+    repository.signInResult = Result.failure(IllegalStateException())
     stubCredentialManager(mockk<Credential>())
 
     viewModel.signIn(context, credentialManager)
@@ -254,6 +259,129 @@ class SignInViewModelTest {
     coVerify(exactly = 1) { credentialManager.getCredential(context, any<GetCredentialRequest>()) }
   }
 
+  @Test
+  fun factory_createsViewModelOnTheGivenRepository() {
+    val credential = mockk<Credential>()
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    stubCredentialManager(credential)
+    val built =
+        SignInViewModel.factory(repository, userRepository)
+            .create(SignInViewModel::class.java, CreationExtras.Empty)
+
+    built.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(credential, repository.receivedCredential)
+    assertEquals(user, built.uiState.value.user)
+  }
+
+  @Test
+  fun signIn_success_createsProfileOnFirstSignIn() {
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    val profile = userRepository.users.getValue("uid-1")
+    assertEquals("Ada", profile.displayName)
+    assertEquals("ada@example.com", profile.email)
+  }
+
+  @Test
+  fun signIn_accountWithoutNameOrEmail_createsProfileWithEmptyFields() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    val profile = userRepository.users.getValue("uid-1")
+    assertEquals("", profile.displayName)
+    assertEquals("", profile.email)
+    assertTrue(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun signIn_profileFailure_signsOutAndShowsError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = UserRepositoryException.Unavailable()
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // A session without a profile must not survive, or the next launch would skip sign-in.
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertEquals(
+        "Could not load your profile: The user profile service is unavailable",
+        viewModel.uiState.value.errorMsg,
+    )
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertNull(viewModel.uiState.value.user)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signIn_unexpectedProfileFailure_signsOutAndShowsError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = IllegalStateException("Mapper bug")
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // Not only repository errors: any failure must close the session without a profile.
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertEquals("Could not load your profile: Mapper bug", viewModel.uiState.value.errorMsg)
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun signIn_cancelledDuringProfileCreation_signsOutWithoutError() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    userRepository.failure = CancellationException("ViewModel cleared")
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(1, repository.signOutCalls)
+    assertNull(repository.currentUser())
+    assertNull(viewModel.uiState.value.errorMsg)
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun signIn_profileFailureAndSignOutFailure_reportsBoth() {
+    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    repository.signInResult = Result.success(user)
+    repository.signOutResult = Result.failure(IllegalStateException("Sign-out failed"))
+    userRepository.failure = UserRepositoryException.Unavailable()
+    stubCredentialManager(mockk<Credential>())
+
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // The session survived, so the user must be told it was not closed.
+    assertEquals(user, repository.currentUser())
+    assertEquals(
+        "Could not load your profile (The user profile service is unavailable) " +
+            "and could not sign you out",
+        viewModel.uiState.value.errorMsg,
+    )
+    assertFalse(viewModel.uiState.value.signedIn)
+  }
+
   // Helper method to stub the CredentialManager to return a specific credential
   private fun stubCredentialManager(credential: Credential) {
     // Create a mock GetCredentialResponse that returns the provided credential
@@ -262,19 +390,5 @@ class SignInViewModelTest {
     // Stub the CredentialManager to return the response when getCredential is called
     coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } returns
         response
-  }
-
-  // A (Fake) implementation of AuthRepository that records the received credential and returns a
-  // configurable result.
-  private class RecordingAuthRepository : AuthRepository {
-    var receivedCredential: Credential? = null
-    var result: Result<AuthUser> = Result.failure(IllegalStateException("No result configured"))
-
-    override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {
-      receivedCredential = credential
-      return result
-    }
-
-    override fun signOut(): Result<Unit> = Result.success(Unit)
   }
 }

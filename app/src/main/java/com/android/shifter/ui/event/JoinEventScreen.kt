@@ -9,12 +9,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -25,7 +22,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -37,13 +33,12 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.ui.components.Pill
+import com.swent.shifter.ui.components.PrimaryButton
+import com.swent.shifter.ui.components.membershipStatusColors
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_inputBackground
 import com.swent.shifter.ui.theme.shifter_mutedText
-import com.swent.shifter.ui.theme.shifter_success
-import com.swent.shifter.ui.theme.shifter_successContainer
-import com.swent.shifter.ui.theme.shifter_warning
-import com.swent.shifter.ui.theme.shifter_warningContainer
 import java.time.Instant
 
 object JoinEventScreenTestTags {
@@ -174,29 +169,17 @@ internal fun ErrorText(error: JoinEventError) {
 /** Where the request stands, in the colors of the matching status of My Events. */
 @Composable
 internal fun StatusBadge(status: MembershipRequestStatus) {
-  val (text, color, container) =
+  val text =
       when (status) {
-        MembershipRequestStatus.PENDING ->
-            Triple(R.string.join_event_status_pending, shifter_warning, shifter_warningContainer)
-        MembershipRequestStatus.ACCEPTED ->
-            Triple(R.string.join_event_status_accepted, shifter_success, shifter_successContainer)
-        MembershipRequestStatus.REJECTED ->
-            Triple(
-                R.string.join_event_status_rejected,
-                MaterialTheme.colorScheme.error,
-                MaterialTheme.colorScheme.errorContainer,
-            )
+        MembershipRequestStatus.PENDING -> R.string.join_event_status_pending
+        MembershipRequestStatus.ACCEPTED -> R.string.join_event_status_accepted
+        MembershipRequestStatus.REJECTED -> R.string.join_event_status_rejected
       }
-  Text(
+  Pill(
       text = stringResource(text),
-      color = color,
-      fontSize = 13.sp,
-      fontWeight = FontWeight.SemiBold,
-      modifier =
-          Modifier.clip(RoundedCornerShape(20.dp))
-              .background(container)
-              .padding(horizontal = 12.dp, vertical = 6.dp)
-              .testTag(JoinEventScreenTestTags.APPLIED_MESSAGE),
+      colors = membershipStatusColors(status),
+      modifier = Modifier.testTag(JoinEventScreenTestTags.APPLIED_MESSAGE),
+      large = true,
   )
 }
 
@@ -209,30 +192,6 @@ private fun JoinEventError.messageRes(): Int =
       JoinEventError.PERMISSION_DENIED -> R.string.join_event_error_permission_denied
       JoinEventError.UNEXPECTED -> R.string.join_event_error_unexpected
     }
-
-/** Full-width button styled like the sign-in button. */
-@Composable
-internal fun PrimaryButton(
-    text: String,
-    onClick: () -> Unit,
-    testTag: String,
-    enabled: Boolean = true,
-) {
-  val colors = MaterialTheme.colorScheme
-  Button(
-      onClick = onClick,
-      enabled = enabled,
-      shape = RoundedCornerShape(18.dp),
-      colors =
-          ButtonDefaults.buttonColors(
-              containerColor = colors.primary,
-              contentColor = colors.onPrimary,
-          ),
-      modifier = Modifier.fillMaxWidth().height(58.dp).testTag(testTag),
-  ) {
-    Text(text = text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-  }
-}
 
 @Preview(name = "Step 1: join code")
 @Composable

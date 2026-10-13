@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
 import java.time.LocalDate

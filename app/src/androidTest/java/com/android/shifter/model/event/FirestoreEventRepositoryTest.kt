@@ -105,18 +105,15 @@ class FirestoreEventRepositoryTest {
     assertNull("an unset role must stay null", found.emergencyContacts[1].role)
     assertEquals(EventStatus.ONGOING, found.status)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), found.createdAt)
-    // Order matters: the volunteer list is rendered in the order the members joined.
-    assertEquals(membersOf(organizerId), found.memberIds)
   }
 
   @Test
-  fun getEvent_roundTripsAnEventWithoutAnImageContactsOrMembers() = emulatorTest {
-    // The optional collections and the optional image. A null image must come back as a null
+  fun getEvent_roundTripsAnEventWithoutAnImageOrContacts() = emulatorTest {
+    // The optional collection and the optional image. A null image must come back as a null
     // rather than as an empty string, and an empty list must not come back as a missing field.
     val created =
         create(
-            richEvent(uniqueOrganizerId())
-                .copy(imageUrl = null, emergencyContacts = emptyList(), memberIds = emptyList())
+            richEvent(uniqueOrganizerId()).copy(imageUrl = null, emergencyContacts = emptyList())
         )
 
     val found = repository.getEvent(created.id)
@@ -125,7 +122,6 @@ class FirestoreEventRepositoryTest {
     checkNotNull(found)
     assertNull("a null image must stay null", found.imageUrl)
     assertTrue("an empty contact list must stay empty", found.emergencyContacts.isEmpty())
-    assertTrue("an empty member list must stay empty", found.memberIds.isEmpty())
   }
 
   @Test
@@ -155,6 +151,24 @@ class FirestoreEventRepositoryTest {
 
     assertEquals("the event id must be the document id", created.id, document.id)
     assertFalse("the id must not be duplicated as a field", document.contains("id"))
+  }
+
+  /**
+   * Participation lives in `eventParticipants`, so `memberIds` was removed from the event document
+   * (#175). The name is spelled out because [EventSchema] no longer declares it, which is the whole
+   * point: a test for an absent field has to name that field itself.
+   */
+  @Test
+  fun createEvent_doesNotWriteTheRemovedMemberIdsField() = emulatorTest {
+    val created = create(richEvent(uniqueOrganizerId()))
+
+    val document =
+        firestore.collection(EventSchema.COLLECTION).document(created.id).get(Source.SERVER).await()
+
+    assertFalse(
+        "an event must not carry memberIds: participants live in eventParticipants",
+        document.contains("memberIds"),
+    )
   }
 
   @Test
@@ -244,13 +258,6 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
-  fun getEvent_failsLoudlyOnMalformedMemberIds() = emulatorTest {
-    val eventId = writeRawEvent { it + (EventSchema.MEMBER_IDS to listOf(1, 2)) }
-
-    assertFailsOnField(eventId, EventSchema.MEMBER_IDS)
-  }
-
-  @Test
   fun getEvent_failsLoudlyOnHalfSetCoordinates() = emulatorTest {
     // A pin at (46.5, nowhere) is not an event waiting to be geocoded, it is a broken document.
     val eventId = writeRawEvent {
@@ -306,31 +313,6 @@ class FirestoreEventRepositoryTest {
     assertEquals(emptyList<Event>(), repository.getEventsByOrganizer(uniqueOrganizerId()))
   }
 
-  @Test
-  fun getEventsByMember_returnsOnlyTheEventsTheUserJoined() = emulatorTest {
-    val userId = uniqueMemberId()
-    val mine =
-        listOf(
-            create(richEvent(uniqueOrganizerId()).copy(memberIds = listOf(userId))),
-            // Not the first member of the array, so the query cannot be passing by accident.
-            create(
-                richEvent(uniqueOrganizerId()).copy(memberIds = listOf(uniqueMemberId(), userId))
-            ),
-        )
-    val theirs = create(richEvent(uniqueOrganizerId()))
-
-    val found = repository.getEventsByMember(userId)
-
-    assertEquals(mine.map { it.id }.toSet(), found.map { it.id }.toSet())
-    assertTrue("an event the user never joined leaked in", found.none { it.id == theirs.id })
-    assertTrue(found.all { userId in it.memberIds })
-  }
-
-  @Test
-  fun getEventsByMember_returnsAnEmptyListForAUserWhoJoinedNothing() = emulatorTest {
-    assertEquals(emptyList<Event>(), repository.getEventsByMember(uniqueMemberId()))
-  }
-
   /** Creates [event] through the repository and remembers it for cleanup. */
   private suspend fun create(event: Event): Event {
     auth.signInWithCredential(organizerCredentials.getValue(event.organizerId)).await()
@@ -374,18 +356,9 @@ class FirestoreEventRepositoryTest {
     user.uid
   }
 
-  private fun uniqueMemberId(): String = "member-" + UUID.randomUUID()
-
-  /**
-   * The two members of [richEvent], derived from [organizerId] so that they are unique to the test
-   * that created the event and cannot be matched by another test's member query.
-   */
-  private fun membersOf(organizerId: String): List<String> =
-      listOf("$organizerId-volunteer-1", "$organizerId-volunteer-2")
-
   /**
    * An event exercising every non-trivial mapping: a nested location, two emergency contacts (one
-   * without a role), two members, a non-null image, a non-default status, and three instants.
+   * without a role), a non-null image, a non-default status, and three instants.
    *
    * The instants are whole seconds on purpose: Firestore keeps microseconds, so a sub-microsecond
    * [Instant] would not survive the round trip.
@@ -405,7 +378,6 @@ class FirestoreEventRepositoryTest {
                   EmergencyContact("Site medic", "+41220000001", "Medical"),
                   EmergencyContact("Night lead", "+41220000002"),
               ),
-          memberIds = membersOf(organizerId),
           status = EventStatus.ONGOING,
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )

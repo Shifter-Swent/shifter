@@ -3,11 +3,10 @@ package com.swent.shifter.ui.settings
 
 import android.os.Looper
 import androidx.credentials.ClearCredentialStateRequest
-import androidx.credentials.Credential
 import androidx.credentials.CredentialManager
 import androidx.credentials.exceptions.ClearCredentialUnknownException
-import com.swent.shifter.model.authentication.AuthRepository
-import com.swent.shifter.model.authentication.AuthUser
+import androidx.lifecycle.viewmodel.CreationExtras
+import com.swent.shifter.model.authentication.FakeAuthRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.just
@@ -93,19 +92,19 @@ class SettingsViewModelTest {
     assertNull(viewModel.uiState.value.errorMsg)
   }
 
+  @Test
+  fun factory_createsViewModelOnTheGivenRepository() {
+    val built =
+        SettingsViewModel.factory(repository)
+            .create(SettingsViewModel::class.java, CreationExtras.Empty)
+
+    built.signOut(credentialManager)
+    idle()
+
+    assertEquals(1, repository.signOutCalls)
+    assertTrue(built.uiState.value.signedOut)
+  }
+
   /** Runs the coroutines launched in viewModelScope, which use the main looper. */
   private fun idle() = shadowOf(Looper.getMainLooper()).idle()
-
-  private class FakeAuthRepository : AuthRepository {
-    var signOutResult: Result<Unit> = Result.success(Unit)
-    var signOutCalls = 0
-
-    override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
-        Result.failure(UnsupportedOperationException())
-
-    override fun signOut(): Result<Unit> {
-      signOutCalls++
-      return signOutResult
-    }
-  }
 }

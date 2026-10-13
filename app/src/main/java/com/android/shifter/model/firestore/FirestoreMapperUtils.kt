@@ -71,6 +71,14 @@ internal fun DocumentSnapshot.requireInt(entity: String, field: String): Int {
 }
 
 /**
+ * Reads a count that may not have been set yet: an absent field, or an explicit null, means it has
+ * not. A value that is there is read with the same rules as [requireInt], so a malformed one still
+ * fails loudly rather than passing for "not set".
+ */
+internal fun DocumentSnapshot.optionalInt(entity: String, field: String): Int? =
+    if (get(field) == null) null else requireInt(entity, field)
+
+/**
  * Reads the id of the event this document is nested under, for the entities stored in a
  * subcollection of `/events/{eventId}`. The path is the only place that id is kept, so a document
  * with no parent event is malformed.

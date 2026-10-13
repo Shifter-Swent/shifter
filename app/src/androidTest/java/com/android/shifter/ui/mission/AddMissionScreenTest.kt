@@ -382,6 +382,4 @@ private class SingleEventRepository(private val event: Event) : EventRepository 
   override suspend fun getEventByJoinCode(joinCode: String): Event? = null
 
   override suspend fun getEventsByOrganizer(organizerId: String): List<Event> = emptyList()
-
-  override suspend fun getEventsByMember(userId: String): List<Event> = emptyList()
 }

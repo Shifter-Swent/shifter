@@ -68,6 +68,7 @@ class TeamFirestoreMapperTest {
     assertEquals(teamId, mapped.id)
     assertEquals(eventId, mapped.eventId)
     assertEquals("Logistics", mapped.name)
+    assertEquals("Move the equipment around the site", mapped.description)
     assertEquals("truck", mapped.icon)
     assertEquals(MANAGER_ID, mapped.managerId)
     assertEquals(MEMBERS, mapped.memberIds)
@@ -150,8 +151,8 @@ class TeamFirestoreMapperTest {
 
   @Test
   fun toTeam_keepsTheManagerOutOfMemberIds() = emulatorTest {
-    // managerId already says who leads the team: adding them to the members would double-count them
-    // against volunteersNeeded.
+    // managerId already says who leads the team: adding them to the members would count them
+    // twice, once as the manager and once as one of the volunteers they lead.
     val teamId = writeRawTeam(richTeam().toFirestoreMap())
 
     val mapped = read(teamId).toTeam()
@@ -278,6 +279,36 @@ class TeamFirestoreMapperTest {
   }
 
   @Test
+  fun toTeam_mapsAnAbsentVolunteersNeededToNull() = emulatorTest {
+    // How every team starts: the staffing need is configured on its own, after creation.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.VOLUNTEERS_NEEDED)
+
+    val snapshot = read(teamId)
+
+    assertFalse("the field must really be absent", snapshot.contains(TeamSchema.VOLUNTEERS_NEEDED))
+    assertNull(
+        "a team without a staffing need must stay without one",
+        snapshot.toTeam().volunteersNeeded,
+    )
+  }
+
+  @Test
+  fun toTeam_roundTripsATeamWithoutAVolunteersNeeded() = emulatorTest {
+    // The other half of the optional contract: toFirestoreMap stores it as an explicit null, which
+    // must read back as null just like an absent field.
+    val stored = richTeam().copy(volunteersNeeded = null)
+    val teamId = writeRawTeam(stored.toFirestoreMap())
+
+    val snapshot = read(teamId)
+
+    assertTrue(
+        "the field must be stored as an explicit null rather than omitted",
+        snapshot.contains(TeamSchema.VOLUNTEERS_NEEDED),
+    )
+    assertEquals(stored.copy(id = teamId), snapshot.toTeam())
+  }
+
+  @Test
   fun toTeam_mapsAVolunteersNeededWrittenAsAWholeDouble() = emulatorTest {
     // 12.0 is the same count as 12, so narrowing it loses nothing and is accepted.
     val teamId = writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.VOLUNTEERS_NEEDED to 12.0))
@@ -330,6 +361,15 @@ class TeamFirestoreMapperTest {
     val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.NAME)
 
     assertFailsOnField(teamId, TeamSchema.NAME)
+  }
+
+  @Test
+  fun toTeam_failsLoudlyOnAMissingDescription() = emulatorTest {
+    // A team is created with a description, so a document without one is malformed rather than a
+    // team that happens to have nothing to say.
+    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.DESCRIPTION)
+
+    assertFailsOnField(teamId, TeamSchema.DESCRIPTION)
   }
 
   @Test
@@ -386,6 +426,7 @@ class TeamFirestoreMapperTest {
       Team(
           eventId = eventId,
           name = "Logistics",
+          description = "Move the equipment around the site",
           icon = "truck",
           managerId = MANAGER_ID,
           memberIds = MEMBERS,
