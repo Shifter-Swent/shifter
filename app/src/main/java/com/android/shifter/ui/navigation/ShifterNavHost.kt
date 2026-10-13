@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -40,11 +42,14 @@ import com.swent.shifter.ui.event.EventCreatedContent
 import com.swent.shifter.ui.event.EventCreatedUiState
 import com.swent.shifter.ui.event.JoinEventContent
 import com.swent.shifter.ui.event.JoinEventUiState
-import com.swent.shifter.ui.events.EventTab
-import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.MembershipEventWithdrawer
+import com.swent.shifter.ui.events.MyEventsViewModel
+import com.swent.shifter.ui.events.OrganizerEventsLoader
+import com.swent.shifter.ui.events.StaffEventsLoader
+import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.avatarInitial
-import com.swent.shifter.ui.events.organizer.OrgaEventsContent
-import com.swent.shifter.ui.events.staff.StaffEventsContent
+import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
+import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.mission.AddMissionActions
 import com.swent.shifter.ui.mission.AddMissionContent
@@ -69,6 +74,8 @@ fun ShifterNavHost(
     navController: NavHostController = rememberNavController(),
 ) {
   val auth = repositories.authRepository
+  // Read on every load, so the lists follow the account signed in at that time.
+  val currentUserId = { auth.currentUser()?.uid }
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
@@ -90,13 +97,27 @@ fun ShifterNavHost(
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
       composable<Volunteer.Events> {
-        // No events ViewModel yet: only the selected tab is held here.
-        var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
-        StaffEventsContent(
-            state = MyEventsUiState(selectedTab = selectedTab),
+        val viewModel: StaffEventsViewModel =
+            viewModel(
+                factory =
+                    StaffEventsViewModel.factory(
+                        loader =
+                            StaffEventsLoader(
+                                repositories.eventRepository,
+                                repositories.membershipRequestRepository,
+                                currentUserId,
+                            ),
+                        withdrawer =
+                            MembershipEventWithdrawer(
+                                repositories.membershipRequestRepository,
+                                currentUserId,
+                            ),
+                    )
+            )
+        RefreshOnReturn(viewModel)
+        StaffEventsScreen(
+            viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
-            onTabSelected = { selectedTab = it },
-            onWithdraw = { /* TODO */ },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
@@ -132,12 +153,17 @@ fun ShifterNavHost(
 
     navigation<Organizer>(startDestination = Organizer.Events) {
       composable<Organizer.Events> {
-        // No events ViewModel yet: only the selected tab is held here.
-        var selectedTab by rememberSaveable { mutableStateOf(EventTab.UPCOMING) }
-        OrgaEventsContent(
-            state = MyEventsUiState(selectedTab = selectedTab),
+        val viewModel: MyEventsViewModel =
+            viewModel(
+                factory =
+                    MyEventsViewModel.factory(
+                        OrganizerEventsLoader(repositories.eventRepository, currentUserId)
+                    )
+            )
+        RefreshOnReturn(viewModel)
+        OrgaEventsScreen(
+            viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
-            onTabSelected = { selectedTab = it },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
             onVolunteerViewClick = { nav.enterApp(Volunteer) },
@@ -235,6 +261,20 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
   navigation<T>(startDestination = tab.home) {
     composable<S> { TabPage(tab, nav, content) }
     screens()
+  }
+}
+
+/**
+ * Reloads [viewModel] each time its list comes back on top, so it shows what changed while another
+ * screen was open, such as a request just sent. The first resume is skipped, since the ViewModel
+ * already loads once created.
+ */
+@Composable
+private fun RefreshOnReturn(viewModel: MyEventsViewModel) {
+  // Saveable, as the list leaves the composition while another screen is on top of it.
+  var shownOnce by rememberSaveable { mutableStateOf(false) }
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+    if (shownOnce) viewModel.refresh() else shownOnce = true
   }
 }
 

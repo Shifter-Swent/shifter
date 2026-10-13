@@ -39,11 +39,9 @@ import com.swent.shifter.R
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.ui.components.Pill
+import com.swent.shifter.ui.components.membershipStatusColors
 import com.swent.shifter.ui.theme.ShifterTheme
-import com.swent.shifter.ui.theme.shifter_success
-import com.swent.shifter.ui.theme.shifter_successContainer
-import com.swent.shifter.ui.theme.shifter_warning
-import com.swent.shifter.ui.theme.shifter_warningContainer
 import java.time.Instant
 
 @Composable
@@ -185,38 +183,13 @@ private fun ActionLabel(@StringRes text: Int) {
 /** Where the request stands, in the colors of the matching status of My Events. */
 @Composable
 private fun RequestStatusPill(status: MembershipRequestStatus) {
-  val colors = MaterialTheme.colorScheme
-  val (text, content, container) =
+  val text =
       when (status) {
-        MembershipRequestStatus.PENDING ->
-            Triple(
-                R.string.membership_requests_status_pending,
-                shifter_warning,
-                shifter_warningContainer,
-            )
-        MembershipRequestStatus.ACCEPTED ->
-            Triple(
-                R.string.membership_requests_status_accepted,
-                shifter_success,
-                shifter_successContainer,
-            )
-        MembershipRequestStatus.REJECTED ->
-            Triple(
-                R.string.membership_requests_status_rejected,
-                colors.error,
-                colors.errorContainer,
-            )
+        MembershipRequestStatus.PENDING -> R.string.membership_requests_status_pending
+        MembershipRequestStatus.ACCEPTED -> R.string.membership_requests_status_accepted
+        MembershipRequestStatus.REJECTED -> R.string.membership_requests_status_rejected
       }
-  Text(
-      text = stringResource(text),
-      color = content,
-      fontSize = 11.sp,
-      fontWeight = FontWeight.SemiBold,
-      modifier =
-          Modifier.clip(RoundedCornerShape(20.dp))
-              .background(container)
-              .padding(horizontal = 10.dp, vertical = 4.dp),
-  )
+  Pill(text = stringResource(text), colors = membershipStatusColors(status))
 }
 
 @Preview
