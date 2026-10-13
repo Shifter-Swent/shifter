@@ -68,10 +68,19 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
     update(eventId, teamId) { it.copy(memberIds = it.memberIds - userId) }
   }
 
-  /** Replaces the team in place, so the order teams were created in is preserved. */
+  /**
+   * Replaces the team in place, so the order teams were created in is preserved.
+   *
+   * Throws [NoSuchElementException] when the team does not exist, because the contract says the
+   * write fails there and the backend does: a silent no-op would let a test pass where production
+   * throws.
+   */
   private fun update(eventId: String, teamId: String, change: (Team) -> Team) {
     failure?.let { throw it }
     val index = teams.indexOfFirst { it.eventId == eventId && it.id == teamId }
-    if (index >= 0) teams[index] = change(teams[index])
+    if (index < 0) {
+      throw NoSuchElementException("Team '$teamId' of event '$eventId' does not exist")
+    }
+    teams[index] = change(teams[index])
   }
 }
