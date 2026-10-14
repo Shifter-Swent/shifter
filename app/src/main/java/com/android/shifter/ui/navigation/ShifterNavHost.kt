@@ -32,13 +32,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
-import com.swent.shifter.ui.event.CreateEventContent
-import com.swent.shifter.ui.event.CreateEventUiState
-import com.swent.shifter.ui.event.EventCreatedContent
-import com.swent.shifter.ui.event.EventCreatedUiState
+import com.swent.shifter.ui.event.CreateEventScreen
+import com.swent.shifter.ui.event.CreateEventViewModel
+import com.swent.shifter.ui.event.EventCreatedScreen
+import com.swent.shifter.ui.event.EventCreatedViewModel
 import com.swent.shifter.ui.event.JoinEventScreen
 import com.swent.shifter.ui.event.JoinEventViewModel
 import com.swent.shifter.ui.events.MembershipEventWithdrawer
@@ -175,28 +176,28 @@ fun ShifterNavHost(
         )
       }
       composable<Organizer.CreateEvent> {
-        // No repositories are wired yet: the form only shows and goes back.
-        CreateEventContent(
-            state = CreateEventUiState(),
-            onTitleChange = {},
-            onDescriptionChange = {},
-            onTypeChange = {},
-            onAddressChange = {},
-            onStartAtChange = {},
-            onEndAtChange = {},
-            onSubmit = {
+        CreateEventScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        CreateEventViewModel.factory(repositories.eventRepository, currentUserId)
+                ),
+            onEventCreated = { event ->
               // The form gives way to the code: Back from there returns to the events list.
               nav.backTo(Organizer.Events)
-              nav.navigateTo(Organizer.EventCreated)
+              nav.navigateTo(Organizer.EventCreated(event.id))
             },
             onBack = nav::goBack,
         )
       }
-      composable<Organizer.EventCreated> {
-        // No repositories are wired yet: the code is empty until an event is really created.
-        EventCreatedContent(
-            state = EventCreatedUiState(isLoading = false),
-            onRetry = {},
+      composable<Organizer.EventCreated> { entry ->
+        // The code is read back from the backend, as the route only carries the event's id.
+        val eventId = entry.toRoute<Organizer.EventCreated>().eventId
+        EventCreatedScreen(
+            viewModel =
+                viewModel(
+                    factory = EventCreatedViewModel.factory(repositories.eventRepository, eventId)
+                ),
             onDone = { nav.backTo(Organizer.Events) },
         )
       }

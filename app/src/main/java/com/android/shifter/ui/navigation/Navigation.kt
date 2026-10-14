@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
- *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated
+ *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated(eventId)
  *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
@@ -196,10 +196,11 @@ data object Organizer : App {
     override val title = "Create event"
   }
 
-  /** Shows the join code of the event just created, in place of the creation form. */
+  /** Shows the join code of the event [eventId] just created, in place of the creation form. */
   @Serializable
-  data object EventCreated : Destination {
-    override val title = "Event created"
+  data class EventCreated(val eventId: String) : Destination {
+    override val title
+      get() = "Event created"
   }
 }
 
