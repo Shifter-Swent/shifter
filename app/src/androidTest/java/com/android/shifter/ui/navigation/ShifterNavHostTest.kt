@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -42,6 +43,8 @@ import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -356,6 +359,54 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun addMission_savesTheMissionInTheEventAndReturnsToTheOverview() {
+    val event = createEvent(signIn())
+    val nav = setAppAndGetNavigation()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent(event.id)) }
+    composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
+    // The form reads the event it adds the mission to.
+    waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE)
+        .assertTextContains(event.title)
+
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .performTextInput("Sort the litter")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
+        .performTextInput("Separate glass and plastic")
+    // The start picker opens on the event's start; the end one is moved an hour later.
+    val start = event.startAt.atZone(ZoneId.systemDefault()).toLocalTime()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.END_FIELD).performClick()
+    composeTestRule.onNodeWithContentDescription(dialHour(start.hour + 1)).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    val mission = runBlocking {
+      repositories.missionRepository.getMissionsByEvent(event.id).single()
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    assertEquals("Sort the litter", mission.title)
+    assertEquals(event.startAt, mission.startAt)
+    assertEquals(mission.startAt.plus(Duration.ofHours(1)), mission.endAt)
+  }
+
+  @Test
   fun organizerEvent_peopleTabOpensThePeopleScreenAndBackReturns() {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -503,7 +554,8 @@ class ShifterNavHostTest {
               title = "Beach cleanup",
               description = "Collect the litter left on the beach.",
               type = EventType.NATURE,
-              startAt = now.plus(Duration.ofDays(1)),
+              // On a whole minute, as a mission's time is picked to the minute.
+              startAt = now.plus(Duration.ofDays(1)).truncatedTo(ChronoUnit.MINUTES),
               endAt = now.plus(Duration.ofDays(2)),
               location = EventLocation("Vidy beach, Lausanne"),
               createdAt = now,
@@ -529,6 +581,9 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
   }
+
+  /** How the 24-hour time picker describes [hour] on its dial, in English. */
+  private fun dialHour(hour: Int): String = "${hour % 24} hours"
 
   private fun waitForNode(tag: String) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
