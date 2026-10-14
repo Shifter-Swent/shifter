@@ -170,7 +170,7 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun joinEvent_applyingWithTheCodeSendsTheRequestFindingAgainShowsItAndBackLeaves() {
+  fun joinEvent_applyingShowsTheRequestOnFindingAgainAndTheEventInTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
     composeTestRule.setContent {
@@ -207,6 +207,8 @@ class ShifterNavHostTest {
     closeSoftKeyboard()
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    // The list reloads on return, so the event just applied to shows up in it.
+    waitForNode(MyEventsTestTags.eventCard(event.id))
   }
 
   @Test
