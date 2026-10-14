@@ -80,9 +80,9 @@ fun ShifterNavHost(
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
-  // Returns to sign-in whenever there is no session: signed out, expired, account disabled or
-  // deleted, including a session already gone at launch. exitToSignIn does nothing when already
-  // on sign-in.
+  // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
+  // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
+  // session already gone at launch. exitToSignIn does nothing when already on sign-in.
   LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
 
   NavHost(navController, startDestination = start, modifier = modifier) {

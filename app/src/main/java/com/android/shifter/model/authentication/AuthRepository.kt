@@ -17,7 +17,10 @@ interface AuthRepository {
 
   /**
    * The account of the current session, emitted on collection and again whenever a session opens or
-   * ends, including when it ends outside the app: expired, or the account disabled or deleted.
+   * ends, including when it ends outside the app.
+   *
+   * An account disabled or deleted on the server is reported once the SDK finds it gone, at its
+   * next ID token refresh (within the hour); until then the local session stays.
    */
   val authState: Flow<AuthUser?>
 

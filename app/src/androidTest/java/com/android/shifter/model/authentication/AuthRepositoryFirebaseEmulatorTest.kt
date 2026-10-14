@@ -8,6 +8,7 @@ import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -131,6 +132,22 @@ class AuthRepositoryFirebaseEmulatorTest {
         .first { it == null }
 
     assertEquals(listOf(user, null), states)
+  }
+
+  @Test
+  fun authState_emitsNullOnceTheSdkFindsTheAccountDeletedOnTheServer() = emulatorTest {
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+
+    AuthEmulator.clearAccounts()
+
+    // Not known on the device until the SDK asks the server.
+    assertEquals(user, repository.authState.first())
+    // In production the SDK's own token refresh finds the account gone and signs out (checked on
+    // 2026-10-14), but the emulator answers that refresh with another error, which the SDK does not
+    // treat as a deleted account. A reload gets the same answer from both, so it stands in here.
+    assertTrue(runCatching { auth.currentUser!!.reload().await() }.isFailure)
+    assertNull(repository.authState.first())
   }
 
   /** The credential Credential Manager returns after the user picked the given Google account. */

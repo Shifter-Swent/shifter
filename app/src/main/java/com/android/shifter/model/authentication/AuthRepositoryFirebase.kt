@@ -53,7 +53,8 @@ class AuthRepositoryFirebase(
    *
    * Nothing runs until the flow is collected; each collector then registers its own listener, which
    * Firebase calls once on registration with the current session, then on every sign-in or
-   * sign-out, including a session ending outside the app.
+   * sign-out, including a session ending outside the app: the SDK signs out by itself when a token
+   * refresh or a reload finds the account disabled or deleted on the server.
    */
   override val authState: Flow<AuthUser?> = callbackFlow {
     // Sends the session Firebase reports to the collector, mapped to the app's own type.

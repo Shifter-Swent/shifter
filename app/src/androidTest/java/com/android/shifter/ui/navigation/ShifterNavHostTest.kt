@@ -135,7 +135,7 @@ class ShifterNavHostTest {
   fun sessionEndingOutsideTheApp_returnsToSignIn() {
     signInAndShowApp()
 
-    // As when the session expires or the account is disabled: no screen asked for it.
+    // The session ends without any screen asking for it, as when the SDK finds the account gone.
     AuthEmulator.auth.signOut()
 
     waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
