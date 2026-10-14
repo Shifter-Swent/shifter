@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -26,6 +28,9 @@ import kotlinx.coroutines.launch
  * Only what the form shows, so the screen does not depend on the full team model.
  */
 data class TeamOption(val id: String, val name: String)
+
+/** The [TeamOption] of this team. */
+internal fun Team.toOption() = TeamOption(id = id, name = name)
 
 /**
  * The part of the event the form needs: its name, and the period a mission has to fit in, as local
@@ -78,6 +83,12 @@ enum class MissionFormError(val field: MissionFormField) {
  * State of the mission creation screen.
  *
  * @property event the event the mission is added to, null while it loads or when loading failed.
+ * @property notAllowed whether the user may not add missions to this event, being neither its
+ *   organizer nor the manager of one of its teams. The form is then not shown.
+ * @property teams the teams the user may attach the mission to: every team of the event for its
+ *   organizer, only the teams they manage for a manager.
+ * @property canChooseGeneral whether the mission may belong to no team. Only the organizer may
+ *   create such missions; a manager creates them for a team they manage.
  * @property teamId id of the selected team, or null for "General", the missions of no team.
  * @property errors the current validation errors. Empty until the organizer first tries to submit,
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
@@ -89,7 +100,9 @@ data class AddMissionUiState(
     val event: EventPeriod? = null,
     val isLoadingEvent: Boolean = true,
     val loadFailed: Boolean = false,
+    val notAllowed: Boolean = false,
     val teams: List<TeamOption> = emptyList(),
+    val canChooseGeneral: Boolean = true,
     val title: String = "",
     val description: String = "",
     val teamId: String? = null,
@@ -109,11 +122,12 @@ data class AddMissionUiState(
   }
 
   /**
-   * Whether the form can be submitted: the event is known, nothing is being saved and the mission
-   * has not been created yet, so a second tap before leaving the screen cannot create it twice.
+   * Whether the form can be submitted: the event is known, the user may add missions to it, nothing
+   * is being saved and the mission has not been created yet, so a second tap before leaving the
+   * screen cannot create it twice.
    */
   val canSubmit: Boolean
-    get() = event != null && !isSaving && createdMission == null
+    get() = event != null && !notAllowed && !isSaving && createdMission == null
 
   /** Whether the chosen end time falls on the day after the mission starts. */
   val endsNextDay: Boolean
@@ -135,7 +149,10 @@ data class AddMissionUiState(
  * Holds the mission creation form of the event [eventId], validates it and creates the mission
  * through [missionRepository].
  *
- * @param teams the teams of the event the mission can be attached to, besides "General".
+ * The organizer of the event attaches a mission to any of its teams, or to none ("General"); a
+ * manager only to a team they manage. Anyone else may not add missions.
+ *
+ * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  * @param clock source of the current time, used to stamp [Mission.createdAt]; its zone is the one
  *   the organizer reads and enters times in. Inject a fixed clock in tests.
  */
@@ -143,12 +160,12 @@ class AddMissionViewModel(
     private val eventId: String,
     private val missionRepository: MissionRepository,
     private val eventRepository: EventRepository,
-    // TODO(#86): load the event's teams from TeamRepository instead of injecting them.
-    teams: List<TeamOption> = emptyList(),
+    private val teamRepository: TeamRepository,
+    private val currentUserId: () -> String?,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
 
-  private val _uiState = MutableStateFlow(AddMissionUiState(teams = teams))
+  private val _uiState = MutableStateFlow(AddMissionUiState())
   val uiState: StateFlow<AddMissionUiState> = _uiState.asStateFlow()
 
   /** Becomes true on the first submit, after which errors follow every edit. */
@@ -158,26 +175,48 @@ class AddMissionViewModel(
     loadEvent()
   }
 
-  /** Loads the event the mission belongs to. Called again to retry after a failure. */
+  /**
+   * Loads the event the mission belongs to and the teams the user may attach it to. Called again to
+   * retry after a failure.
+   */
   fun loadEvent() {
     _uiState.update { it.copy(isLoadingEvent = true, loadFailed = false) }
     viewModelScope.launch {
       try {
         val event = eventRepository.getEvent(eventId)
-        val period = event?.let {
-          EventPeriod(
-              title = it.title,
-              start = LocalDateTime.ofInstant(it.startAt, clock.zone),
-              end = LocalDateTime.ofInstant(it.endAt, clock.zone),
-          )
+        if (event == null) {
+          _uiState.update { it.copy(event = null, isLoadingEvent = false, loadFailed = true) }
+          return@launch
         }
+        val userId = currentUserId()
+        val isOrganizer = userId != null && userId == event.organizerId
+        val teams =
+            when {
+              isOrganizer -> teamRepository.getTeamsByEvent(eventId)
+              userId != null -> teamRepository.getTeamsManagedBy(eventId, userId)
+              else -> emptyList()
+            }.map { it.toOption() }
+        val period =
+            EventPeriod(
+                title = event.title,
+                start = LocalDateTime.ofInstant(event.startAt, clock.zone),
+                end = LocalDateTime.ofInstant(event.endAt, clock.zone),
+            )
         _uiState.update {
+          // A manager picks among their own teams, so one of them is selected from the start.
+          val teamId =
+              it.teamId?.takeIf { id -> teams.any { team -> team.id == id } }
+                  ?: if (isOrganizer) null else teams.firstOrNull()?.id
           it.copy(
               event = period,
               isLoadingEvent = false,
-              loadFailed = period == null,
+              loadFailed = false,
+              notAllowed = !isOrganizer && teams.isEmpty(),
+              teams = teams,
+              canChooseGeneral = isOrganizer,
+              teamId = teamId,
               // Most events last a single day, which is then the only one to pick.
-              day = it.day ?: period?.start?.toLocalDate(),
+              day = it.day ?: period.start.toLocalDate(),
           )
         }
       } catch (e: CancellationException) {
@@ -192,9 +231,14 @@ class AddMissionViewModel(
 
   fun onDescriptionChange(description: String) = edit { it.copy(description = description) }
 
-  /** Selects the team [teamId], or "General" when null. An unknown team is ignored. */
+  /**
+   * Selects the team [teamId], or "General" when null. An unknown team is ignored, and so is
+   * "General" when the user may not choose it.
+   */
   fun onTeamChange(teamId: String?) {
-    if (teamId != null && _uiState.value.teams.none { it.id == teamId }) return
+    val form = _uiState.value
+    if (teamId == null && !form.canChooseGeneral) return
+    if (teamId != null && form.teams.none { it.id == teamId }) return
     edit { it.copy(teamId = teamId) }
   }
 
@@ -303,10 +347,20 @@ class AddMissionViewModel(
         eventId: String,
         missionRepository: MissionRepository,
         eventRepository: EventRepository,
-        teams: List<TeamOption> = emptyList(),
+        teamRepository: TeamRepository,
+        currentUserId: () -> String?,
         clock: Clock = Clock.systemDefaultZone(),
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { AddMissionViewModel(eventId, missionRepository, eventRepository, teams, clock) }
+      initializer {
+        AddMissionViewModel(
+            eventId,
+            missionRepository,
+            eventRepository,
+            teamRepository,
+            currentUserId,
+            clock,
+        )
+      }
     }
   }
 }
