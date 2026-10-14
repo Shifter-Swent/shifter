@@ -5,8 +5,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -18,14 +23,16 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The card on its own: what it shows and what it reports. It is given a state and hands back edits,
- * so nothing here knows about [CreateTeamViewModel]; which state follows which edit is the
- * ViewModel's business, and the screen that connects the two is not part of this card.
+ * The card on its own: what it shows, what it reports and what it refuses while saving. Nothing
+ * here knows about [CreateTeamViewModel] — the card is given a state and hands back edits. Which
+ * state follows which edit is the ViewModel's business, tested over the whole form in
+ * [CreateTeamFormTest].
  */
 @RunWith(AndroidJUnit4::class)
 class CreateTeamContentTest {
@@ -36,6 +43,10 @@ class CreateTeamContentTest {
     get() = InstrumentationRegistry.getInstrumentation().targetContext
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  /** Errors sit next to their field rather than inside it, so the unmerged tree finds them. */
+  private fun errorNode(field: TeamFormField) =
+      composeTestRule.onNodeWithTag(CreateTeamFormTestTags.error(field), useUnmergedTree = true)
 
   /** The card over a fixed state, for everything that does not need the state to move. */
   private fun setCard(state: CreateTeamUiState) {
@@ -80,13 +91,19 @@ class CreateTeamContentTest {
         .forEach { node(it).assertIsDisplayed() }
   }
 
-  /** The fields are BasicTextFields, which do not carry their label on their own. */
+  /** The fields are BasicTextFields, which carry neither their label nor their error by default. */
   @Test
-  fun fieldsExposeTheirLabelToAccessibility() {
-    setCard(CreateTeamUiState())
+  fun fieldsExposeTheirLabelAndErrorToAccessibility() {
+    setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY)))
 
     node(CreateTeamFormTestTags.NAME_FIELD)
         .assert(hasContentDescription(context.getString(R.string.create_team_field_name)))
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.Error,
+                context.getString(R.string.create_team_error_name_empty),
+            )
+        )
     node(CreateTeamFormTestTags.DESCRIPTION_FIELD)
         .assert(hasContentDescription(context.getString(R.string.create_team_field_description)))
   }
@@ -139,5 +156,55 @@ class CreateTeamContentTest {
                 )
             )
         )
+  }
+
+  /**
+   * The chosen entry is told apart by its colour alone, so the menu says which one it is; a test
+   * can then ask, rather than compare pixels.
+   */
+  @Test
+  fun theMenuMarksTheChosenIcon_andFollowsANewChoice() {
+    setEditableCard(CreateTeamUiState(icon = TeamIcon.WINE.id))
+
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).assertIsSelected()
+    TeamIcon.entries
+        .filter { it != TeamIcon.WINE }
+        .forEach { node(CreateTeamFormTestTags.iconOption(it)).assertIsNotSelected() }
+
+    // Picking another one closes the menu, which then opens on that one instead.
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK)).performClick()
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK)).assertIsSelected()
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).assertIsNotSelected()
+  }
+
+  @Test
+  fun eachErrorIsShownBesideItsOwnField() {
+    setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY, TeamFormError.ICON_MISSING)))
+
+    errorNode(TeamFormField.NAME)
+        .assertTextEquals(context.getString(R.string.create_team_error_name_empty))
+    errorNode(TeamFormField.ICON)
+        .assertTextEquals(context.getString(R.string.create_team_error_icon_missing))
+    errorNode(TeamFormField.DESCRIPTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun whileSaving_nothingCanBeEdited() {
+    val read = setEditableCard(CreateTeamUiState(name = "Logistics", isSaving = true))
+
+    node(CreateTeamFormTestTags.NAME_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.DESCRIPTION_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.ICON_SELECTOR).assertIsNotEnabled()
+
+    // A disabled selector must not open the catalogue either.
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    TeamIcon.entries.forEach {
+      composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(it)).assertDoesNotExist()
+    }
+    assertNull(read().icon)
   }
 }
