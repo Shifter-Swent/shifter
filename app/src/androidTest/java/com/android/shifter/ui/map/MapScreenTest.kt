@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.map
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -41,6 +44,7 @@ class MapScreenTest {
 
     compose.onNodeWithText("City Marathon").assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.VENUE).assertIsDisplayed()
+    compose.onNodeWithText("Event venue").assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertDoesNotExist()
 
@@ -49,10 +53,38 @@ class MapScreenTest {
   }
 
   @Test
-  fun showsTheSpinnerWhileLoading() {
+  fun showsTheSpinnerWhileLoadingWithNothingToRecenterOn() {
     setContent(MapUiState())
 
     compose.onNodeWithTag(MapScreenTestTags.LOADING).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun recentersOnceLoaded() {
+    setContent(LOADED)
+
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
+  }
+
+  // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
+  // label is checked on its own.
+  @Test
+  fun missionLabelShowsItsCaptionOnlyWhenItHasOne() {
+    compose.setContent {
+      ShifterTheme {
+        Column {
+          MissionLabel(WATER.copy(caption = "NEXT RENDEZVOUS · 10:00"))
+          MissionLabel(WATER.copy(id = "mission-2", title = "Cleanup"))
+        }
+      }
+    }
+
+    compose.onNodeWithText("NEXT RENDEZVOUS · 10:00").assertIsDisplayed()
+    compose.onNodeWithText("Water").assertIsDisplayed()
+    compose.onNodeWithText("Cleanup").assertIsDisplayed()
+    compose.onAllNodesWithText("NEXT RENDEZVOUS", substring = true).assertCountEquals(1)
   }
 
   @Test

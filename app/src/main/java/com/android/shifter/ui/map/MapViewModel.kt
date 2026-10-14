@@ -11,6 +11,7 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
@@ -30,6 +31,9 @@ enum class MapError {
 /** A point the map centres on, in degrees. */
 data class MapPoint(val latitude: Double, val longitude: Double)
 
+/** The next mission the signed-in user is assigned to: its marker, and when it starts. */
+data class NextRendezvous(val markerId: String, val startTime: String)
+
 /**
  * What the map screen shows: the event, a marker for each of its missions that has a location, and
  * the mission tapped last.
@@ -38,6 +42,8 @@ data class MapPoint(val latitude: Double, val longitude: Double)
  * @property center where the camera opens: the venue when it has coordinates, else the first
  *   mission. Null keeps the map's default position.
  * @property selected the marker of the mission tapped last, shown in a card over the map.
+ * @property next the signed-in user's next mission on the map, highlighted; null when they have
+ *   none left.
  */
 data class MapUiState(
     val eventTitle: String = "",
@@ -45,6 +51,7 @@ data class MapUiState(
     val center: MapPoint? = null,
     val markers: List<MapMarker> = emptyList(),
     val selected: MapMarker? = null,
+    val next: NextRendezvous? = null,
     val isLoading: Boolean = true,
     val error: MapError? = null,
 )
@@ -53,12 +60,16 @@ data class MapUiState(
  * Loads the event [eventId] and puts its missions on the map. Missions with no location have no
  * place on it and are left out.
  *
+ * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
+ * @param now the clock telling which missions are over, replaceable in tests.
  * @param zone the time zone the mission hours are shown in, replaceable in tests.
  */
 class MapViewModel(
     private val eventId: String,
     private val eventRepository: EventRepository,
     private val missionRepository: MissionRepository,
+    private val currentUserId: () -> String?,
+    private val now: () -> Instant = Instant::now,
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) : ViewModel() {
 
@@ -79,11 +90,17 @@ class MapViewModel(
           _uiState.update { it.copy(error = MapError.EVENT_NOT_FOUND) }
           return@launch
         }
-        val markers =
+        val missions =
             missionRepository
                 .getMissionsByEvent(eventId)
+                .filter { it.isGeoTimed }
                 .sortedBy { it.startAt }
-                .mapNotNull { it.toMarker() }
+        val markers = missions.mapNotNull { it.toMarker() }
+        val userId = currentUserId()
+        val next =
+            missions
+                .firstOrNull { userId in it.assigneeIds && it.endAt > now() }
+                ?.let { NextRendezvous(it.id, HOURS.format(it.startAt.atZone(zone))) }
         val center =
             event.location.toPoint()
                 ?: markers.firstOrNull()?.let { MapPoint(it.latitude, it.longitude) }
@@ -94,6 +111,7 @@ class MapViewModel(
               center = center,
               markers = markers,
               selected = null,
+              next = next,
           )
         }
       } catch (e: CancellationException) {
@@ -142,8 +160,9 @@ class MapViewModel(
         eventId: String,
         eventRepository: EventRepository,
         missionRepository: MissionRepository,
+        currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { MapViewModel(eventId, eventRepository, missionRepository) }
+      initializer { MapViewModel(eventId, eventRepository, missionRepository, currentUserId) }
     }
   }
 }

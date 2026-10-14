@@ -11,7 +11,7 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
-import java.time.ZoneOffset
+import java.time.ZoneOffset.UTC
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -26,7 +26,10 @@ class MapViewModelTest {
   private val events = FakeEventRepository().apply { this.events += EVENT }
   private val missions = FakeMissionRepository()
 
-  private fun viewModel() = MapViewModel(EVENT.id, events, missions, ZoneOffset.UTC)
+  private var userId: String? = USER
+
+  private fun viewModel() =
+      MapViewModel(EVENT.id, events, missions, { userId }, { DAY.plusSeconds(12 * 3600L) }, UTC)
 
   @Test
   fun load_showsTheEventAndOneMarkerPerLocatedMissionInTimeOrder() = runTest {
@@ -87,6 +90,26 @@ class MapViewModelTest {
   }
 
   @Test
+  fun load_highlightsTheNextMissionTheUserIsAssignedTo() = runTest {
+    // At noon: the morning mission is over, the evening one is not theirs.
+    missions.createMission(mission("Morning", 9, 10, STAND, assignees = listOf(USER)))
+    missions.createMission(mission("Evening", 18, 19, TENT, assignees = listOf("someone")))
+    missions.createMission(mission("Afternoon", 14, 15, TENT, assignees = listOf(USER)))
+
+    assertEquals(NextRendezvous("mission-3", "14:00"), viewModel().uiState.value.next)
+  }
+
+  @Test
+  fun load_hasNoNextRendezvousWithoutAMissionLeftOrAUser() = runTest {
+    missions.createMission(mission("Morning", 9, 10, STAND, assignees = listOf(USER)))
+    assertNull(viewModel().uiState.value.next)
+
+    missions.createMission(mission("Afternoon", 14, 15, TENT, assignees = listOf(USER)))
+    userId = null
+    assertNull(viewModel().uiState.value.next)
+  }
+
+  @Test
   fun selectMarker_showsItsCardAndClearSelectionClosesIt() = runTest {
     missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
     val viewModel = viewModel()
@@ -99,7 +122,13 @@ class MapViewModelTest {
     assertNull(viewModel.uiState.value.selected)
   }
 
-  private fun mission(title: String, startHour: Int, endHour: Int, at: MissionLocation?) =
+  private fun mission(
+      title: String,
+      startHour: Int,
+      endHour: Int,
+      at: MissionLocation?,
+      assignees: List<String> = emptyList(),
+  ) =
       Mission(
           eventId = EVENT.id,
           title = title,
@@ -108,10 +137,12 @@ class MapViewModelTest {
           startAt = DAY.plusSeconds(startHour * 3600L),
           endAt = DAY.plusSeconds(endHour * 3600L),
           location = at,
+          assigneeIds = assignees,
           createdAt = DAY,
       )
 
   private companion object {
+    const val USER = "volunteer"
     val DAY: Instant = Instant.parse("2026-06-01T00:00:00Z")
     val TENT = MissionLocation("Tent", 46.521, 6.571)
     val STAND = MissionLocation("Stand", 46.519, 6.569)

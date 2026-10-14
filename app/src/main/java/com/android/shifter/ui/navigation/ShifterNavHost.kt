@@ -155,6 +155,7 @@ fun ShifterNavHost(
             nav,
             navController,
             repositories,
+            currentUserId,
         )
         tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
             VolunteerTabs.Discussions,
@@ -274,6 +275,7 @@ fun ShifterNavHost(
             nav,
             navController,
             repositories,
+            currentUserId,
         )
         tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
             OrganizerTabs.Discussions,
@@ -307,6 +309,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
     nav: NavigationActions,
     navController: NavHostController,
     repositories: RepositoryProvider,
+    noinline currentUserId: () -> String?,
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
@@ -320,6 +323,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             eventId,
                             repositories.eventRepository,
                             repositories.missionRepository,
+                            currentUserId,
                         )
                 ),
             onBack = { nav.leaveEvent(tab.set) },
