@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -168,6 +169,19 @@ class FirestoreEventRepositoryTest {
         "an event must not carry memberIds: participants live in eventParticipants",
         document.contains("memberIds"),
     )
+  }
+
+  @Test
+  fun createEvent_withAGivenId_overwritesThatEventInsteadOfDuplicatingIt() = emulatorTest {
+    val organizerId = uniqueOrganizerId()
+    val event = richEvent(organizerId).copy(id = "event-" + UUID.randomUUID())
+
+    create(event)
+    val retried = repository.createEvent(event.copy(title = "Retried title"))
+
+    assertEquals(event.id, retried.id)
+    assertEquals("Retried title", repository.getEvent(event.id)?.title)
+    assertEquals(listOf(event.id), repository.getEventsByOrganizer(organizerId).map { it.id })
   }
 
   @Test

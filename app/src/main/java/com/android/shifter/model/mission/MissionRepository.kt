@@ -9,7 +9,12 @@ package com.swent.shifter.model.mission
  */
 interface MissionRepository {
 
-  /** Persists [mission] under its event and returns it with the id the backend assigns. */
+  /**
+   * Persists [mission] under its event and returns it with the id the backend assigns.
+   *
+   * @throws MissionOverlapException when [mission] [conflictsWith][Mission.conflictsWith] a mission
+   *   of the same event; nothing is written then.
+   */
   suspend fun createMission(mission: Mission): Mission
 
   /**
@@ -20,4 +25,11 @@ interface MissionRepository {
 
   /** Returns every mission of the event [eventId], or an empty list when there is none. */
   suspend fun getMissionsByEvent(eventId: String): List<Mission>
+
+  /**
+   * Returns every mission, across all events, whose [Mission.assigneeIds] contains [userId],
+   * earliest [Mission.startAt] first, or an empty list when they have none. Each mission carries
+   * its [Mission.eventId], so a caller interested in one event filters on it.
+   */
+  suspend fun getMissionsAssignedTo(userId: String): List<Mission>
 }

@@ -372,6 +372,10 @@ private class RecordingMissionRepository : MissionRepository {
       }
 
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> = created.toList()
+
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = created.filter {
+    userId in it.assigneeIds
+  }
 }
 
 private class SingleEventRepository(private val event: Event) : EventRepository {

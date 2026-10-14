@@ -95,6 +95,11 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     }
   }
 
+  override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? =
+      translatingErrors {
+        requests(eventId).document(userId).get().await().takeIf { it.exists() }?.toRequestOrThrow()
+      }
+
   override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
       translatingErrors {
         requests(eventId).get().await().documents.map { it.toRequestOrThrow() }

@@ -51,6 +51,13 @@ interface MembershipRequestRepository {
   suspend fun withdraw(eventId: String, userId: String)
 
   /**
+   * Returns the request from [userId] for [eventId], or null if they have not applied. Only the
+   * volunteer themself and the event organizer can read it: security rules deny anyone else with
+   * [MembershipRequestRepositoryException.PermissionDenied].
+   */
+  suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest?
+
+  /**
    * Returns all requests for [eventId], or an empty list if there are none.
    *
    * With Firestore's default persistent cache, an offline query may return cached data, including

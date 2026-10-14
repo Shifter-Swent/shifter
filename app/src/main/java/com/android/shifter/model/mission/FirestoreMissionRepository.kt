@@ -25,10 +25,15 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
    *
    * [Mission.createdAt] is persisted as the caller supplied it: the repository does not invent
    * time, which keeps writes deterministic and testable.
+   *
+   * The overlap check reads the team's missions, then writes: it is not atomic, because the client
+   * SDK cannot run a query inside a transaction. Two organizers creating conflicting missions at
+   * the same moment could both succeed.
    */
   override suspend fun createMission(mission: Mission): Mission {
     // Firestore would also reject an empty id, but with a message that does not say which one.
     require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
+    findConflict(mission)?.let { throw MissionOverlapException(it) }
     val document = missionsOf(mission.eventId).document()
     val persisted = mission.copy(id = document.id)
     document.set(persisted.toFirestoreMap()).await()
@@ -40,4 +45,34 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
 
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> =
       missionsOf(eventId).get().await().documents.map { it.toMission() }
+
+  /**
+   * Queries the `missions` collection group, so one request covers every event. The missions are
+   * sorted here rather than by Firestore: ordering an array-contains query on another field would
+   * need a composite index, and a volunteer only has a handful of missions.
+   */
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> =
+      firestore
+          .collectionGroup(MissionSchema.COLLECTION)
+          .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+          .get()
+          .await()
+          .documents
+          .map { it.toMission() }
+          .sortedBy { it.startAt }
+
+  /**
+   * The first existing mission [mission] conflicts with, or null. Only a GeoTimed mission of a team
+   * can conflict, so only then are that team's missions read.
+   */
+  private suspend fun findConflict(mission: Mission): Mission? {
+    if (!mission.isGeoTimed || mission.teamId == null) return null
+    return missionsOf(mission.eventId)
+        .whereEqualTo(MissionSchema.TEAM_ID, mission.teamId)
+        .get()
+        .await()
+        .documents
+        .map { it.toMission() }
+        .firstOrNull { mission.conflictsWith(it) }
+  }
 }
