@@ -247,8 +247,8 @@ class FirestoreMissionRepositoryTest {
   @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = emulatorTest {
     val uid = signedInUid()
-    val firstEvent = uniqueEventId()
-    val secondEvent = uniqueEventId()
+    val firstEvent = newEvent()
+    val secondEvent = newEvent()
     val late = create(assignedMission(firstEvent, startHour = 15, uid))
     val early = create(assignedMission(secondEvent, startHour = 9, "someone-else", uid))
     create(assignedMission(firstEvent, startHour = 12, "someone-else"))
@@ -262,7 +262,7 @@ class FirestoreMissionRepositoryTest {
 
   @Test
   fun getMissionsAssignedTo_returnsAnEmptyListForAUserWithoutMissions() = emulatorTest {
-    create(assignedMission(uniqueEventId(), startHour = 9, "someone-else"))
+    create(assignedMission(newEvent(), startHour = 9, "someone-else"))
 
     assertEquals(emptyList<Mission>(), repository.getMissionsAssignedTo(signedInUid()))
   }
@@ -271,7 +271,7 @@ class FirestoreMissionRepositoryTest {
   fun getMissionsAssignedTo_isDeniedForTheMissionsOfAnotherUser() = emulatorTest {
     // The collection-group rule only lets a user list the missions they are assigned to.
     val other = "someone-else-" + UUID.randomUUID()
-    create(assignedMission(uniqueEventId(), startHour = 9, other))
+    create(assignedMission(newEvent(), startHour = 9, other))
 
     val failure = runCatching { repository.getMissionsAssignedTo(other) }.exceptionOrNull()
 
