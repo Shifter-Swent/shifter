@@ -170,7 +170,7 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun joinEvent_applyingWithTheCodeSendsTheRequestAndBackLeavesToTheEvents() {
+  fun joinEvent_applyingWithTheCodeSendsTheRequestFindingAgainShowsItAndBackLeaves() {
     val event = createEvent(signIn())
     val volunteer = signIn()
     composeTestRule.setContent {
@@ -193,6 +193,12 @@ class ShifterNavHostTest {
       repositories.membershipRequestRepository.getMembershipRequestsByUId(volunteer.uid)
     }
     assertEquals(MembershipRequestStatus.PENDING, requests[event.id]?.status)
+
+    // Finding the event again shows the request already sent instead of the Apply button.
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
     // The screen's Back returns to the code, then the device Back leaves to the events list. The
     // keyboard is closed first, or the device Back would only close it.

@@ -24,8 +24,8 @@ import org.junit.runner.RunWith
 
 /**
  * The whole join flow on the real screen and view model, with in-memory repositories: a wrong code
- * shows an error, the right one shows the event, the volunteer can go back to the code, and Apply
- * sends the request.
+ * shows an error, the right one shows the event, the volunteer can go back to the code, Apply sends
+ * the request, and finding the event again shows that request.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinEventFlowTest {
@@ -101,6 +101,13 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
     assertEquals(listOf(EVENT.id), sentRequests.map { it.first })
     assertEquals("volunteer-1", sentRequests.single().second.userId)
+
+    // Finding the event again shows the request already sent instead of offering to apply.
+    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+    assertEquals(1, sentRequests.size)
   }
 
   private fun typeCodeAndFind(code: String) {

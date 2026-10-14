@@ -35,7 +35,11 @@ class JoinEventViewModelTest {
   private var userId: String? = UID
   private val viewModel = JoinEventViewModel(events, requests, { userId }, { NOW })
 
-  @Before fun setMain() = Dispatchers.setMain(UnconfinedTestDispatcher())
+  @Before
+  fun setUp() {
+    Dispatchers.setMain(UnconfinedTestDispatcher())
+    coEvery { requests.getMembershipRequest(any(), any()) } returns null
+  }
 
   @After fun resetMain() = Dispatchers.resetMain()
 
@@ -72,6 +76,59 @@ class JoinEventViewModelTest {
 
     assertEquals(JoinEventError.OFFLINE, failWith(EventRepositoryException.Unavailable()))
     assertEquals(JoinEventError.UNEXPECTED, failWith(EventRepositoryException.Unknown()))
+    assertNull(viewModel.uiState.value.event)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun findEvent_showsTheRequestTheVolunteerAlreadySent() {
+    coEvery { requests.getMembershipRequest(EVENT.id, UID) } returns
+        request(MembershipRequestStatus.REJECTED)
+
+    loadEvent()
+
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertEquals(MembershipRequestStatus.REJECTED, viewModel.uiState.value.requestStatus)
+    viewModel.applyToEvent()
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun findEvent_showsTheRequestAgainAfterChangingTheCode() {
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    viewModel.applyToEvent()
+    coEvery { requests.getMembershipRequest(EVENT.id, UID) } returns
+        request(MembershipRequestStatus.PENDING)
+
+    viewModel.changeCode()
+    viewModel.findEvent()
+
+    assertEquals(MembershipRequestStatus.PENDING, viewModel.uiState.value.requestStatus)
+  }
+
+  @Test
+  fun findEvent_doesNotLookForARequestWithoutAUserOrAnEvent() {
+    userId = null
+    loadEvent()
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.requestStatus)
+
+    userId = UID
+    coEvery { events.getEventByJoinCode(any()) } returns null
+    viewModel.findEvent()
+
+    coVerify(exactly = 0) { requests.getMembershipRequest(any(), any()) }
+  }
+
+  @Test
+  fun findEvent_showsAnErrorWhenTheRequestCannotBeLoaded() {
+    coEvery { requests.getMembershipRequest(any(), any()) } throws
+        MembershipRequestRepositoryException.Unavailable()
+
+    loadEvent()
+
+    assertEquals(JoinEventError.OFFLINE, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.event)
     assertFalse(viewModel.uiState.value.isLoading)
   }
@@ -182,6 +239,14 @@ class JoinEventViewModelTest {
     viewModel.onJoinCodeChange("ABC123")
     viewModel.findEvent()
   }
+
+  private fun request(status: MembershipRequestStatus) =
+      MembershipRequest(
+          userId = UID,
+          availability = listOf(AvailabilitySlot(EVENT.startAt, EVENT.endAt)),
+          createdAt = NOW,
+          status = status,
+      )
 
   private companion object {
     const val UID = "volunteer-1"
