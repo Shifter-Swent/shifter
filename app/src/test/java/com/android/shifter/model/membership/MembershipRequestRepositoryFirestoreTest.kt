@@ -131,28 +131,39 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
-  fun rejectAtomicallyUpdatesStatusAndRemovesOnlyApplicantFromParticipantsAndTeam() = runTest {
-    val removal = FieldValue.arrayRemove(request.userId)
-    mockkStatic(FieldValue::class) {
-      every { FieldValue.arrayRemove(request.userId) } returns removal
-      repository.reject("event", request.userId)
-      repository.reject("event", request.userId)
-      verify(exactly = 2) { batch.update(ref, "status", "REJECTED") }
-      verify(exactly = 2) {
-        batch.set(
-            participants,
-            match<Map<String, Any>> {
-              it.keys == setOf("participantIds") && it["participantIds"] === removal
-            },
-            SetOptions.merge(),
-        )
+  fun rejectUpdatesStatusAndRemovesOnlyApplicantFromParticipantsAndTeamInOneTransaction() =
+      runTest {
+        val removal = FieldValue.arrayRemove(request.userId)
+        every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
+        every { transaction.get(team) } returns teamSnapshot(exists = true)
+        mockkStatic(FieldValue::class) {
+          every { FieldValue.arrayRemove(request.userId) } returns removal
+          repository.reject("event", request.userId)
+          verify { transaction.update(ref, "status", "REJECTED") }
+          verify {
+            transaction.set(
+                participants,
+                match<Map<String, Any>> {
+                  it.keys == setOf("participantIds") && it["participantIds"] === removal
+                },
+                SetOptions.merge(),
+            )
+          }
+          verify { transaction.update(team, "memberIds", removal) }
+          verify(exactly = 0) { transaction.delete(any()) }
+          verify(exactly = 0) { batch.commit() }
+        }
       }
-      verify(exactly = 2) { batch.update(team, "memberIds", removal) }
-      verify(exactly = 2) { batch.commit() }
-      verify(exactly = 4) { FieldValue.arrayRemove(request.userId) }
-      verify(exactly = 0) { ref.delete() }
-      verify(exactly = 0) { ref.update(any<String>(), any()) }
-    }
+
+  @Test
+  fun rejectLeavesADeletedTeamAlone() = runTest {
+    every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
+    every { transaction.get(team) } returns teamSnapshot(exists = false)
+
+    repository.reject("event", request.userId)
+
+    verify { transaction.update(ref, "status", "REJECTED") }
+    verify(exactly = 0) { transaction.update(team, any<String>(), any()) }
   }
 
   @Test
@@ -196,6 +207,8 @@ class MembershipRequestRepositoryFirestoreTest {
     val error = FirebaseFirestoreException("missing", Code.NOT_FOUND)
     every { batch.commit() } returns Tasks.forException(error)
     every { ref.update("status", any<String>()) } returns Tasks.forException(error)
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
     for (operation in
         listOf<suspend () -> Unit>(
             { repository.accept("event", request.userId) },
@@ -223,7 +236,9 @@ class MembershipRequestRepositoryFirestoreTest {
   fun decisionsOnAMissingRequestFailWithoutWriting() = runTest {
     val missing = mockk<DocumentSnapshot>()
     every { missing.exists() } returns false
+    every { missing.get(any<String>()) } returns null
     every { ref.get() } returns Tasks.forResult(missing)
+    every { transaction.get(ref) } returns missing
     for (operation in
         listOf<suspend () -> Unit>(
             { repository.accept("event", request.userId) },
@@ -234,6 +249,7 @@ class MembershipRequestRepositoryFirestoreTest {
       assertTrue(failure?.cause is NoSuchElementException)
     }
     verify(exactly = 0) { batch.commit() }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
   }
 
   @Test
@@ -241,10 +257,18 @@ class MembershipRequestRepositoryFirestoreTest {
     val malformed = snapshot(request.copy(id = request.userId))
     every { malformed.get("teamId") } returns null
     every { ref.get() } returns Tasks.forResult(malformed)
-    val failure = runCatching { repository.accept("event", request.userId) }.exceptionOrNull()
-    assertTrue(failure is MembershipRequestRepositoryException.Unknown)
-    assertTrue(failure?.cause is IllegalStateException)
+    every { transaction.get(ref) } returns malformed
+    for (operation in
+        listOf<suspend () -> Unit>(
+            { repository.accept("event", request.userId) },
+            { repository.reject("event", request.userId) },
+        )) {
+      val failure = runCatching { operation() }.exceptionOrNull()
+      assertTrue(failure is MembershipRequestRepositoryException.Unknown)
+      assertTrue(failure?.cause is IllegalStateException)
+    }
     verify(exactly = 0) { batch.commit() }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
   }
 
   @Test
@@ -389,6 +413,9 @@ class MembershipRequestRepositoryFirestoreTest {
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
   }
+
+  private fun teamSnapshot(exists: Boolean): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also { every { it.exists() } returns exists }
 
   /** The volunteer's request, missing when [status] is null, applying to [teamId]. */
   private fun statusSnapshot(status: String?, teamId: String? = null): DocumentSnapshot =

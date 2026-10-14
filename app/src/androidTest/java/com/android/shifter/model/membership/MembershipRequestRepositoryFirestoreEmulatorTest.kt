@@ -117,6 +117,24 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun rejectStillWorksOnceTheRequestedTeamIsDeleted() = emulatorTest {
+    val eventId = event()
+    val pending = apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    team(eventId, TEAM_ID).delete().await()
+
+    repository.reject(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), participantIds(eventId))
+    assertFalse(team(eventId, TEAM_ID).get(Source.SERVER).await().exists())
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.REJECTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+  }
+
+  @Test
   fun rejectionRequiresConsistentStatusAndParticipantRemoval() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)

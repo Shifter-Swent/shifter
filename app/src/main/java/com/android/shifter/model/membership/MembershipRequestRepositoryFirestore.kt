@@ -60,22 +60,40 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun reject(eventId: String, userId: String) {
     translatingErrors {
-      val team = requestedTeam(eventId, userId)
-      val batch = db.batch()
-      batch.update(
-          requests(eventId).document(userId),
-          MembershipRequestSchema.STATUS,
-          MembershipRequestStatus.REJECTED.name,
-      )
-      // Merge also handles rejection before a participants document exists.
-      batch.set(
-          participants(eventId),
-          mapOf(PARTICIPANT_IDS to FieldValue.arrayRemove(userId)),
-          SetOptions.merge(),
-      )
-      // Rejecting an accepted request takes the volunteer out of their team as well.
-      batch.update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
-      batch.commit().await()
+      val request = requests(eventId).document(userId)
+      // A transaction, so the team is left alone only if it is really gone when the write lands. It
+      // returns the request when it cannot be decided, or null once the decision is written.
+      val undecided =
+          db.runTransaction { transaction ->
+                val snapshot = transaction.get(request)
+                val teamId =
+                    (snapshot.get(MembershipRequestSchema.TEAM_ID) as? String)?.takeIf {
+                      it.isNotBlank()
+                    }
+                if (!snapshot.exists() || teamId == null) return@runTransaction snapshot
+                val team = team(eventId, teamId)
+                val teamExists = transaction.get(team).exists()
+                transaction.update(
+                    request,
+                    MembershipRequestSchema.STATUS,
+                    MembershipRequestStatus.REJECTED.name,
+                )
+                // Merge also handles rejection before a participants document exists.
+                transaction.set(
+                    participants(eventId),
+                    mapOf(PARTICIPANT_IDS to FieldValue.arrayRemove(userId)),
+                    SetOptions.merge(),
+                )
+                // Rejecting an accepted request takes the volunteer out of their team as well,
+                // unless
+                // the team was deleted meanwhile: then there is nothing to leave.
+                if (teamExists) {
+                  transaction.update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+                }
+                null
+              }
+              .await()
+      undecided?.let { throw undecidable(it, eventId, userId) }
     }
   }
 
@@ -158,12 +176,28 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
    */
   private suspend fun requestedTeam(eventId: String, userId: String): DocumentReference {
     val snapshot = requests(eventId).document(userId).get().await()
+    if (!snapshot.exists()) throw undecidable(snapshot, eventId, userId)
+    return team(eventId, snapshot.toRequestOrThrow().teamId)
+  }
+
+  /**
+   * Why the request in [snapshot] cannot be decided: it does not exist, or it does not match the
+   * schema. Both are reported as [MembershipRequestRepositoryException.Unknown].
+   */
+  private fun undecidable(
+      snapshot: DocumentSnapshot,
+      eventId: String,
+      userId: String,
+  ): MembershipRequestRepositoryException {
     if (!snapshot.exists()) {
-      throw MembershipRequestRepositoryException.Unknown(
+      return MembershipRequestRepositoryException.Unknown(
           NoSuchElementException("No request from '$userId' for event '$eventId'")
       )
     }
-    return team(eventId, snapshot.toRequestOrThrow().teamId)
+    snapshot.toRequestOrThrow()
+    return MembershipRequestRepositoryException.Unknown(
+        IllegalStateException("Membership request '${snapshot.id}' has no team")
+    )
   }
 
   companion object {
