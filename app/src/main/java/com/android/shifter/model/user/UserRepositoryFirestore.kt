@@ -1,34 +1,49 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
-import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.swent.shifter.model.firestore.optionalInstant
+import com.swent.shifter.model.firestore.requireBoolean
+import com.swent.shifter.model.firestore.requireString
 import kotlinx.coroutines.tasks.await
 
 const val USERS_COLLECTION = "users"
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "User"
 
 /** [UserRepository] backed by the Firestore collection `users/{uid}`. */
 class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepository {
 
   override suspend fun getUser(uid: String): User? = translatingErrors {
-    val snapshot = db.collection(USERS_COLLECTION).document(uid).get().await()
-    snapshot.data?.let { userFromFirestore(uid, it) }
+    db.collection(USERS_COLLECTION)
+        .document(uid)
+        .get()
+        .await()
+        .takeIf { it.exists() }
+        ?.let { userFromFirestoreOrThrow(it) }
   }
 
   override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
       translatingErrors {
         val ref = db.collection(USERS_COLLECTION).document(uid)
         // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
-        db.runTransaction { transaction ->
-              transaction.get(ref).data?.let { userFromFirestore(uid, it) }
-                  ?: User(uid = uid, displayName = displayName, email = email).also {
-                    transaction.set(ref, newUserFields(displayName, email))
-                  }
-            }
-            .await()
+        // It returns the existing profile, mapped once the transaction is over.
+        val existing =
+            db.runTransaction { transaction ->
+                  transaction.get(ref).takeIf { it.exists() }
+                      ?: run {
+                        transaction.set(ref, newUserFields(displayName, email))
+                        null
+                      }
+                }
+                .await()
+        existing?.let { userFromFirestoreOrThrow(it) }
+            ?: User(uid = uid, displayName = displayName, email = email)
       }
 
   companion object {
@@ -46,14 +61,20 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             CREATED_AT to FieldValue.serverTimestamp(),
         )
 
-    /** Maps a `users/{uid}` document to a [User], with safe defaults for missing fields. */
-    fun userFromFirestore(uid: String, data: Map<String, Any?>): User =
+    /**
+     * Maps a `users/{uid}` document to a [User], taking [User.uid] from the document id.
+     *
+     * Throws [IllegalStateException] when a field is missing or has an unexpected type, like the
+     * other mappers: a malformed profile is a schema problem, not an empty one. Only
+     * [User.createdAt] may be absent, while the server timestamp is still pending.
+     */
+    fun userFromFirestore(snapshot: DocumentSnapshot): User =
         User(
-            uid = uid,
-            displayName = data[DISPLAY_NAME] as? String ?: "",
-            email = data[EMAIL] as? String ?: "",
-            locationSharingEnabled = data[LOCATION_SHARING_ENABLED] as? Boolean ?: false,
-            createdAt = (data[CREATED_AT] as? Timestamp)?.toDate(),
+            uid = snapshot.id,
+            displayName = snapshot.requireString(ENTITY, DISPLAY_NAME),
+            email = snapshot.requireString(ENTITY, EMAIL),
+            locationSharingEnabled = snapshot.requireBoolean(ENTITY, LOCATION_SHARING_ENABLED),
+            createdAt = snapshot.optionalInstant(ENTITY, CREATED_AT),
         )
 
     /** Translates a Firestore error into the [UserRepositoryException] callers handle. */
@@ -71,6 +92,19 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
           block()
         } catch (e: FirebaseFirestoreException) {
           throw toRepositoryException(e)
+        }
+
+    /**
+     * Maps a stored profile, reporting one that does not match the schema as
+     * [UserRepositoryException.Unknown]. The [IllegalStateException] is only caught around this
+     * pure call: catching it around an `await()` would also swallow coroutine cancellation, a
+     * subclass of it.
+     */
+    private fun userFromFirestoreOrThrow(snapshot: DocumentSnapshot): User =
+        try {
+          userFromFirestore(snapshot)
+        } catch (e: IllegalStateException) {
+          throw UserRepositoryException.Unknown(e)
         }
   }
 }

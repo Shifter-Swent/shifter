@@ -58,7 +58,7 @@ eventParticipants/{eventId}
 | `displayName` | string | |
 | `email` | string | |
 | `locationSharingEnabled` | bool | Opt-in, always `false` at creation |
-| `createdAt` | timestamp | Set to the server time on creation |
+| `createdAt` | timestamp | Set to the server time on creation. Read as `null` while the write is pending |
 
 ### `events/{eventId}`
 
@@ -176,7 +176,5 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
-- **`User.createdAt`** is still read as a `java.util.Date`, unlike the other models, which use
-  `Instant`.
 - **Offline:** with Firestore's persistent cache, a query made offline returns cached data, which
   can be empty or stale, rather than failing. Transactions need a connection.

@@ -1,7 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
-import java.util.Date
+import java.time.Instant
 
 /**
  * A Shifter user profile, stored in Firestore at `users/{uid}`.
@@ -19,5 +19,5 @@ data class User(
     val displayName: String,
     val email: String,
     val locationSharingEnabled: Boolean = false,
-    val createdAt: Date? = null,
+    val createdAt: Instant? = null,
 )
