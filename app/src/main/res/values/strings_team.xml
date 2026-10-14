@@ -10,4 +10,12 @@
     <string name="create_team_icon_truck">Logistics</string>
     <string name="create_team_icon_wine">Bar</string>
     <string name="create_team_icon_chef_hat">Kitchen</string>
+    <string name="create_team_submit">Create the team</string>
+    <string name="create_team_cancel">Cancel</string>
+    <string name="create_team_error_name_empty">Enter a name</string>
+    <string name="create_team_error_name_too_long">Use at most %1$d characters</string>
+    <string name="create_team_error_icon_missing">Choose an icon</string>
+    <string name="create_team_error_description_empty">Enter a description</string>
+    <string name="create_team_error_description_too_long">Use at most %1$d characters</string>
+    <string name="create_team_error_save_failed">Could not create the team. Try again.</string>
 </resources>

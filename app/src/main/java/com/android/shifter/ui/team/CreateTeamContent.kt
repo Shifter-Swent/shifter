@@ -35,13 +35,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -49,15 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.ShifterTheme
-
-object CreateTeamFormTestTags {
-  const val FORM = "CreateTeamForm"
-  const val NAME_FIELD = "CreateTeamNameField"
-  const val ICON_SELECTOR = "CreateTeamIconSelector"
-  const val DESCRIPTION_FIELD = "CreateTeamDescriptionField"
-
-  fun iconOption(icon: TeamIcon) = "CreateTeamIconOption_${icon.id}"
-}
 
 /** Every edit the team creation form reports, grouped so the form takes a single parameter. */
 data class CreateTeamActions(
@@ -83,6 +78,8 @@ fun CreateTeamContent(
   val colorScheme = MaterialTheme.colorScheme
   // 16dp in the designs, as `large` is; the fields inside use `small`, which is their 8dp.
   val shape = MaterialTheme.shapes.large
+  // Nothing is edited while the team is being saved, so the form cannot drift from what is sent.
+  val editable = !state.isSaving
   Column(
       modifier =
           modifier
@@ -102,12 +99,21 @@ fun CreateTeamContent(
             label = R.string.create_team_field_name,
             imeAction = ImeAction.Next,
             testTag = CreateTeamFormTestTags.NAME_FIELD,
+            error = state.errorFor(TeamFormField.NAME),
+            enabled = editable,
         )
       }
       LabeledField(R.string.create_team_field_icon) {
-        IconSelector(selected = TeamIcon.fromId(state.icon), onIconChange = actions.onIconChange)
+        IconSelector(
+            selected = TeamIcon.fromId(state.icon),
+            onIconChange = actions.onIconChange,
+            error = state.errorFor(TeamFormField.ICON),
+            enabled = editable,
+        )
       }
     }
+    // Under the row rather than under the selector: its 72dp are too narrow for the message.
+    FieldError(state.errorFor(TeamFormField.ICON))
     LabeledField(R.string.create_team_field_description) {
       FormTextField(
           value = state.description,
@@ -115,11 +121,48 @@ fun CreateTeamContent(
           label = R.string.create_team_field_description,
           imeAction = ImeAction.Default,
           testTag = CreateTeamFormTestTags.DESCRIPTION_FIELD,
+          error = state.errorFor(TeamFormField.DESCRIPTION),
+          enabled = editable,
           singleLine = false,
       )
     }
   }
 }
+
+/**
+ * What is wrong with a field, under it, or nothing while it is valid. The form only ever holds
+ * errors once the organizer has tried to submit, which [CreateTeamViewModel] decides.
+ */
+@Composable
+private fun FieldError(error: TeamFormError?) {
+  if (error == null) return
+  Text(
+      text = errorMessage(error),
+      style = FORM_LABEL_STYLE,
+      color = MaterialTheme.colorScheme.error,
+      modifier = Modifier.testTag(CreateTeamFormTestTags.error(error.field)),
+  )
+}
+
+/** The message of [error], with the limit it is about when it has one. */
+@Composable
+private fun errorMessage(error: TeamFormError): String =
+    when (error) {
+      TeamFormError.NAME_EMPTY -> stringResource(R.string.create_team_error_name_empty)
+      TeamFormError.NAME_TOO_LONG ->
+          stringResource(
+              R.string.create_team_error_name_too_long,
+              CreateTeamViewModel.NAME_MAX_LENGTH,
+          )
+      TeamFormError.ICON_MISSING -> stringResource(R.string.create_team_error_icon_missing)
+      TeamFormError.DESCRIPTION_EMPTY ->
+          stringResource(R.string.create_team_error_description_empty)
+      TeamFormError.DESCRIPTION_TOO_LONG ->
+          stringResource(
+              R.string.create_team_error_description_too_long,
+              CreateTeamViewModel.DESCRIPTION_MAX_LENGTH,
+          )
+    }
 
 /** A field of the form: its label, then the field itself. */
 @Composable
@@ -131,17 +174,24 @@ private fun LabeledField(
   Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Text(
         text = stringResource(label),
-        // 11sp regular: `labelSmall` is the 11sp of the theme, but medium and letter-spaced.
-        style =
-            MaterialTheme.typography.labelSmall.copy(
-                fontWeight = FontWeight.Normal,
-                letterSpacing = 0.sp,
-            ),
+        style = FORM_LABEL_STYLE,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     content()
   }
 }
+
+/**
+ * The 11sp regular of the designs, which labels the fields and, in red, says what is wrong with
+ * one. `labelSmall` is the 11sp of the theme, but medium and letter-spaced.
+ */
+private val FORM_LABEL_STYLE: TextStyle
+  @Composable
+  get() =
+      MaterialTheme.typography.labelSmall.copy(
+          fontWeight = FontWeight.Normal,
+          letterSpacing = 0.sp,
+      )
 
 /**
  * A text field of the form, in the compact dark box of the designs. A [BasicTextField] rather than
@@ -155,6 +205,8 @@ private fun FormTextField(
     @StringRes label: Int,
     imeAction: ImeAction,
     testTag: String,
+    error: TeamFormError?,
+    enabled: Boolean,
     singleLine: Boolean = true,
 ) {
   val colorScheme = MaterialTheme.colorScheme
@@ -162,6 +214,7 @@ private fun FormTextField(
   val interactionSource = remember { MutableInteractionSource() }
   val focused by interactionSource.collectIsFocusedAsState()
   val labelText = stringResource(label)
+  val errorText = error?.let { errorMessage(it) }
   // The name is the 14sp medium of the designs, the description their smaller 12sp regular.
   val textStyle =
       if (singleLine) {
@@ -175,38 +228,56 @@ private fun FormTextField(
             color = colorScheme.onSurface,
         )
       }
-  BasicTextField(
-      value = value,
-      onValueChange = onValueChange,
-      singleLine = singleLine,
-      maxLines = if (singleLine) 1 else DESCRIPTION_MAX_LINES,
-      textStyle = textStyle,
-      cursorBrush = SolidColor(colorScheme.primary),
-      keyboardOptions = KeyboardOptions(imeAction = imeAction),
-      interactionSource = interactionSource,
-      // Unlike OutlinedTextField, BasicTextField does not expose its label to TalkBack.
-      modifier =
-          Modifier.fillMaxWidth().testTag(testTag).semantics { contentDescription = labelText },
-      decorationBox = { innerTextField ->
-        Box(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .then(
-                        // The name keeps the height of the row; the description grows with its
-                        // lines, starting from the single line the designs draw.
-                        if (singleLine) Modifier.height(ROW_FIELD_HEIGHT)
-                        else Modifier.heightIn(min = DESCRIPTION_MIN_HEIGHT)
-                    )
-                    .clip(shape)
-                    .background(colorScheme.background)
-                    .border(1.dp, if (focused) colorScheme.primary else colorScheme.outline, shape)
-                    .padding(horizontal = 10.dp, vertical = if (singleLine) 0.dp else 8.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-          innerTextField()
-        }
-      },
-  )
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        singleLine = singleLine,
+        maxLines = if (singleLine) 1 else DESCRIPTION_MAX_LINES,
+        textStyle = textStyle,
+        cursorBrush = SolidColor(colorScheme.primary),
+        keyboardOptions = KeyboardOptions(imeAction = imeAction),
+        interactionSource = interactionSource,
+        // Unlike OutlinedTextField, BasicTextField exposes neither its label nor its error.
+        modifier =
+            Modifier.fillMaxWidth().testTag(testTag).semantics {
+              contentDescription = labelText
+              if (errorText != null) error(errorText)
+            },
+        decorationBox = { innerTextField ->
+          Box(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .then(
+                          // The name keeps the height of the row; the description grows with its
+                          // lines, starting from the single line the designs draw.
+                          if (singleLine) Modifier.height(ROW_FIELD_HEIGHT)
+                          else Modifier.heightIn(min = DESCRIPTION_MIN_HEIGHT)
+                      )
+                      .clip(shape)
+                      .background(colorScheme.background)
+                      .border(1.dp, borderOf(error != null, focused), shape)
+                      .padding(horizontal = 10.dp, vertical = if (singleLine) 0.dp else 8.dp),
+              contentAlignment = Alignment.CenterStart,
+          ) {
+            innerTextField()
+          }
+        },
+    )
+    FieldError(error)
+  }
+}
+
+/** The border of a field: red when it is wrong, blue while it is being typed in, else plain. */
+@Composable
+private fun borderOf(hasError: Boolean, focused: Boolean): Color {
+  val colorScheme = MaterialTheme.colorScheme
+  return when {
+    hasError -> colorScheme.error
+    focused -> colorScheme.primary
+    else -> colorScheme.outline
+  }
 }
 
 /**
@@ -214,13 +285,19 @@ private fun FormTextField(
  * Nothing is drawn next to the chevron until an icon is chosen.
  */
 @Composable
-private fun IconSelector(selected: TeamIcon?, onIconChange: (String) -> Unit) {
+private fun IconSelector(
+    selected: TeamIcon?,
+    onIconChange: (String) -> Unit,
+    error: TeamFormError?,
+    enabled: Boolean,
+) {
   val colorScheme = MaterialTheme.colorScheme
   val shape = MaterialTheme.shapes.small
   var expanded by rememberSaveable { mutableStateOf(false) }
   val description =
       selected?.let { stringResource(R.string.create_team_icon_selected, stringResource(it.label)) }
           ?: stringResource(R.string.create_team_icon_none)
+  val errorText = error?.let { errorMessage(it) }
   Box {
     Row(
         modifier =
@@ -228,10 +305,18 @@ private fun IconSelector(selected: TeamIcon?, onIconChange: (String) -> Unit) {
                 .height(ROW_FIELD_HEIGHT)
                 .clip(shape)
                 .background(colorScheme.primaryContainer)
-                .border(1.dp, colorScheme.primary, shape)
-                .clickable(role = Role.DropdownList) { expanded = true }
+                // Blue as the designs draw it, red only once it is what blocks the submission.
+                .border(
+                    1.dp,
+                    if (error != null) colorScheme.error else colorScheme.primary,
+                    shape,
+                )
+                .clickable(enabled = enabled, role = Role.DropdownList) { expanded = true }
                 .testTag(CreateTeamFormTestTags.ICON_SELECTOR)
-                .semantics { contentDescription = description },
+                .semantics {
+                  contentDescription = description
+                  if (errorText != null) error(errorText)
+                },
         // The glyph, the chevron and their gap are centred in the width of the designs.
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
@@ -281,7 +366,13 @@ private fun IconSelector(selected: TeamIcon?, onIconChange: (String) -> Unit) {
                     leadingIconColor =
                         if (chosen) colorScheme.primary else colorScheme.onSurfaceVariant,
                 ),
-            modifier = Modifier.testTag(CreateTeamFormTestTags.iconOption(icon)),
+            // The colour is the only visual sign of the chosen entry, so it is said out loud too,
+            // which is also what lets a test tell which entry is highlighted.
+            modifier =
+                Modifier.testTag(CreateTeamFormTestTags.iconOption(icon)).semantics {
+                  // Qualified, as the icon the selector shows is `selected` here too.
+                  this.selected = chosen
+                },
         )
       }
     }
