@@ -280,28 +280,27 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun createEvent_submitShowsTheCodeAndDoneReturnsToTheEvents() {
-    openCreateEventForm()
+  fun createEvent_showsTheCodeOfTheSavedEventAndDoneReturnsToTheEvents() {
+    val organizer = openCreateEventForm()
+
+    val event = submitValidEventForm(organizer)
 
     composeTestRule
-        .onNodeWithTag(CreateEventScreenTestTags.SUBMIT_BUTTON)
-        .performScrollTo()
-        .performClick()
-    composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).assertIsDisplayed()
+        .onNodeWithTag(EventCreatedScreenTestTags.EVENT_TITLE)
+        .assertTextEquals(event.title)
+    composeTestRule
+        .onNodeWithTag(EventCreatedScreenTestTags.JOIN_CODE)
+        .assertTextEquals(event.joinCode)
 
     composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+    waitForNode(MyEventsTestTags.eventCard(event.id))
   }
 
   @Test
   fun eventCreated_deviceBackSkipsTheFormAndReturnsToTheEvents() {
-    openCreateEventForm()
-    composeTestRule
-        .onNodeWithTag(CreateEventScreenTestTags.SUBMIT_BUTTON)
-        .performScrollTo()
-        .performClick()
-
-    composeTestRule.onNodeWithTag(EventCreatedScreenTestTags.DONE_BUTTON).assertIsDisplayed()
+    val organizer = openCreateEventForm()
+    submitValidEventForm(organizer)
 
     pressBack()
 
@@ -436,10 +435,37 @@ class ShifterNavHostTest {
         .assertTextEquals(OrganizerEventScreen.Overview.title)
   }
 
-  private fun openCreateEventForm() {
-    signInAndShowApp()
+  /** Signs in and opens the creation form; returns the signed-in organizer. */
+  private fun openCreateEventForm(): AuthUser {
+    val organizer = signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
+    return organizer
+  }
+
+  /**
+   * Fills the creation form, submits it and waits for the join code; returns the event saved in
+   * Firestore, the only one of [organizer].
+   */
+  private fun submitValidEventForm(organizer: AuthUser): Event {
+    fun field(tag: String) = composeTestRule.onNodeWithTag(tag).performScrollTo()
+    field(CreateEventScreenTestTags.TITLE_FIELD).performTextInput("Paléo Festival")
+    field(CreateEventScreenTestTags.DESCRIPTION_FIELD).performTextInput("Open-air festival")
+    field(CreateEventScreenTestTags.typeChip(EventType.MUSIC)).performClick()
+    field(CreateEventScreenTestTags.ADDRESS_FIELD).performTextInput("Nyon")
+    field(CreateEventScreenTestTags.START_FIELD).performTextInput("21/07/2099 14:00")
+    field(CreateEventScreenTestTags.END_FIELD).performTextInput("26/07/2099 23:30")
+    field(CreateEventScreenTestTags.SUBMIT_BUTTON).performClick()
+
+    waitForNode(EventCreatedScreenTestTags.JOIN_CODE)
+    val event = runBlocking {
+      repositories.eventRepository.getEventsByOrganizer(organizer.uid).single()
+    }
+    createdPaths += "events/${event.id}"
+    return event
   }
 
   /**

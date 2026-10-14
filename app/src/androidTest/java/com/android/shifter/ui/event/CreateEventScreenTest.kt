@@ -67,7 +67,8 @@ class CreateEventScreenTest {
       onEventCreated: (Event) -> Unit = {},
       onBack: () -> Unit = {},
   ) {
-    val viewModel = CreateEventViewModel(repository, organizerId = "organizer-1", clock = clock)
+    val viewModel =
+        CreateEventViewModel(repository, currentUserId = { "organizer-1" }, clock = clock)
     composeTestRule.setContent {
       ShifterTheme {
         CreateEventScreen(viewModel, onEventCreated = onEventCreated, onBack = onBack)
@@ -259,7 +260,7 @@ class CreateEventScreenTest {
   @Test
   fun createdEvent_isNotReportedAgainAfterRecreation() {
     var reports = 0
-    val viewModel = CreateEventViewModel(RecordingRepository(), "organizer-1", clock)
+    val viewModel = CreateEventViewModel(RecordingRepository(), { "organizer-1" }, clock)
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
       ShifterTheme { CreateEventScreen(viewModel, onEventCreated = { reports++ }, onBack = {}) }
@@ -311,6 +312,28 @@ class CreateEventScreenTest {
     }
 
     node(CreateEventScreenTestTags.SAVE_ERROR).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun notSignedIn_isShown() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        CreateEventContent(
+            state = CreateEventUiState(notSignedIn = true),
+            onTitleChange = {},
+            onDescriptionChange = {},
+            onTypeChange = {},
+            onAddressChange = {},
+            onStartAtChange = {},
+            onEndAtChange = {},
+            onSubmit = {},
+            onBack = {},
+        )
+      }
+    }
+
+    node(CreateEventScreenTestTags.NOT_SIGNED_IN_ERROR).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
   }
 
   @Test

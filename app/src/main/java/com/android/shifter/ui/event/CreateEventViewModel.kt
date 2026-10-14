@@ -58,6 +58,7 @@ enum class EventFormError(val field: EventFormField) {
  * @property errors the current validation errors. Empty until the organizer first tries to submit,
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
  * @property saveFailed the backend refused or failed the last save, so the event was not created.
+ * @property notSignedIn the last submit found nobody signed in, so nothing was saved.
  * @property saveUnconfirmed the last save timed out, typically offline: the backend has not
  *   confirmed it yet, but it may still create the event once the device is back online.
  * @property createdEvent the persisted event once creation succeeded, null before.
@@ -74,6 +75,7 @@ data class CreateEventUiState(
     val errors: Set<EventFormError> = emptySet(),
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
+    val notSignedIn: Boolean = false,
     val saveUnconfirmed: Boolean = false,
     val createdEvent: Event? = null,
     val createdEventHandled: Boolean = false,
@@ -85,13 +87,14 @@ data class CreateEventUiState(
 /**
  * Holds the event creation form, validates it and creates the event through [repository].
  *
- * @param organizerId id of the signed-in user, who becomes the organizer of the event.
+ * @param currentUserId returns the signed-in user's id, who becomes the organizer of the event, or
+ *   null when nobody is signed in.
  * @param clock source of the current time, used to reject events starting in the past and to stamp
  *   [Event.createdAt]; inject a fixed clock in tests.
  */
 class CreateEventViewModel(
     private val repository: EventRepository,
-    private val organizerId: String,
+    private val currentUserId: () -> String?,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
 
@@ -129,7 +132,12 @@ class CreateEventViewModel(
     submitAttempted = true
     val errors = validate(form)
     if (errors.isNotEmpty()) {
-      _uiState.update { it.copy(errors = errors, saveFailed = false) }
+      _uiState.update { it.copy(errors = errors, saveFailed = false, notSignedIn = false) }
+      return
+    }
+    val organizerId = currentUserId()
+    if (organizerId == null) {
+      _uiState.update { it.copy(errors = emptySet(), saveFailed = false, notSignedIn = true) }
       return
     }
     // Validation guarantees the type and both dates are present and parseable.
@@ -146,7 +154,13 @@ class CreateEventViewModel(
             createdAt = clock.instant(),
         )
     _uiState.update {
-      it.copy(errors = emptySet(), isSaving = true, saveFailed = false, saveUnconfirmed = false)
+      it.copy(
+          errors = emptySet(),
+          isSaving = true,
+          saveFailed = false,
+          notSignedIn = false,
+          saveUnconfirmed = false,
+      )
     }
     viewModelScope.launch {
       try {
@@ -175,7 +189,7 @@ class CreateEventViewModel(
 
   private fun edit(change: (CreateEventUiState) -> CreateEventUiState) {
     _uiState.update { state ->
-      val edited = change(state).copy(saveFailed = false)
+      val edited = change(state).copy(saveFailed = false, notSignedIn = false)
       if (submitAttempted) edited.copy(errors = validate(edited)) else edited
     }
   }
@@ -231,10 +245,10 @@ class CreateEventViewModel(
      */
     fun factory(
         repository: EventRepository,
-        organizerId: String,
+        currentUserId: () -> String?,
         clock: Clock = Clock.systemDefaultZone(),
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { CreateEventViewModel(repository, organizerId, clock) }
+      initializer { CreateEventViewModel(repository, currentUserId, clock) }
     }
 
     /**
