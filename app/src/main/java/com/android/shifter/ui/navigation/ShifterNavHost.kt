@@ -180,12 +180,7 @@ fun ShifterNavHost(
             viewModel =
                 viewModel(
                     factory =
-                        CreateEventViewModel.factory(
-                            repositories.eventRepository,
-                            // Without a session the backend refuses the event, and the form
-                            // shows the failure.
-                            organizerId = currentUserId().orEmpty(),
-                        )
+                        CreateEventViewModel.factory(repositories.eventRepository, currentUserId)
                 ),
             onEventCreated = { event ->
               // The form gives way to the code: Back from there returns to the events list.
