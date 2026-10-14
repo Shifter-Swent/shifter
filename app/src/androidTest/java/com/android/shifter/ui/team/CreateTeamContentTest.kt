@@ -195,6 +195,28 @@ class CreateTeamContentTest {
   }
 
   @Test
+  fun lengthErrors_showTheLimitTheyAreAbout() {
+    setCard(
+        FILLED.copy(errors = setOf(TeamFormError.NAME_TOO_LONG, TeamFormError.DESCRIPTION_TOO_LONG))
+    )
+
+    errorNode(TeamFormField.NAME)
+        .assertTextEquals(
+            context.getString(
+                R.string.create_team_error_name_too_long,
+                CreateTeamViewModel.NAME_MAX_LENGTH,
+            )
+        )
+    errorNode(TeamFormField.DESCRIPTION)
+        .assertTextEquals(
+            context.getString(
+                R.string.create_team_error_description_too_long,
+                CreateTeamViewModel.DESCRIPTION_MAX_LENGTH,
+            )
+        )
+  }
+
+  @Test
   fun whileSaving_nothingCanBeEdited() {
     assertNothingCanBeEdited(setEditableCard(FILLED.copy(isSaving = true)))
   }
