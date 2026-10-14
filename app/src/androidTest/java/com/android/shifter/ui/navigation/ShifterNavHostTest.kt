@@ -1,23 +1,22 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
-import androidx.activity.OnBackPressedDispatcher
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
@@ -57,7 +56,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ShifterNavHostTest {
 
-  @get:Rule val composeTestRule = createComposeRule()
+  @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   /** Every repository on the emulators, so no test reaches the production backend. */
   private val repositories =
@@ -89,9 +88,7 @@ class ShifterNavHostTest {
 
   @Test
   fun signedIn_skipsSignInAndStartsOnVolunteerEvents() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
@@ -99,9 +96,7 @@ class ShifterNavHostTest {
 
   @Test
   fun staffEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
@@ -112,28 +107,54 @@ class ShifterNavHostTest {
 
   @Test
   fun settings_signOutClearsTheSessionAndReturnsToSignIn() {
-    runBlocking { repositories.authRepository.signInWithGoogle(googleCredential()).getOrThrow() }
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    val navController = signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
 
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule
-          .onAllNodesWithTag(SignInScreenTestTags.LOGIN_BUTTON)
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-    }
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
     assertNull(AuthEmulator.auth.currentUser)
+    // Settings and the session listener both react to the sign-out: only one may navigate.
+    composeTestRule.waitForIdle()
+    val signInEntries =
+        navController.currentBackStack.value.count { it.destination.hasRoute<SignedOut.SignIn>() }
+    assertEquals(1, signInEntries)
+  }
+
+  @Test
+  fun sessionAlreadyGoneAtLaunch_returnsToSignIn() {
+    // Started as signed in, but the session ended before the app listened to it.
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
+  }
+
+  @Test
+  fun sessionEndingOutsideTheApp_returnsToSignIn() {
+    signInAndShowApp()
+
+    // The session ends without any screen asking for it, as when the SDK finds the account gone.
+    AuthEmulator.auth.signOut()
+
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
+  }
+
+  @Test
+  fun sessionEndingOutsideTheApp_fromOrganizerMode_returnsToSignIn() {
+    signInAndShowApp()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+
+    AuthEmulator.auth.signOut()
+
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
   }
 
   @Test
   fun staffEvents_switchesToThePastTab() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
 
@@ -142,9 +163,7 @@ class ShifterNavHostTest {
 
   @Test
   fun staffEvents_scanQrOpensJoinEventAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
@@ -155,9 +174,7 @@ class ShifterNavHostTest {
 
   @Test
   fun joinEvent_keepsTheTypedCode() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
@@ -174,10 +191,7 @@ class ShifterNavHostTest {
   fun joinEvent_applyingShowsTheRequestOnFindingAgainAndTheEventInTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
-    lateinit var backDispatcher: OnBackPressedDispatcher
     composeTestRule.setContent {
-      backDispatcher =
-          checkNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
@@ -204,12 +218,10 @@ class ShifterNavHostTest {
     waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
-    // The screen's Back returns to the code, then the device Back leaves to the events list. The
-    // device Back is sent to the dispatcher rather than through Espresso's pressBack(), which waits
-    // for window focus and fails whenever a system dialog takes it on the emulator.
+    // The screen's Back returns to the code, then the device Back leaves to the events list.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
-    composeTestRule.runOnUiThread { backDispatcher.onBackPressed() }
+    pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     // The list reloads on return, so the event just applied to shows up in it.
     waitForNode(MyEventsTestTags.eventCard(event.id))
@@ -234,9 +246,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerView_switchesModesBothWays() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
@@ -247,9 +257,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvents_avatarOpensSettingsAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
@@ -261,9 +269,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvents_createEventOpensTheFormAndBackReturns() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
@@ -304,12 +310,7 @@ class ShifterNavHostTest {
 
   @Test
   fun eventsLists_showTheInitialOfTheSignedInUser() {
-    runBlocking {
-      repositories.authRepository.signInWithGoogle(googleCredential(name = "grace")).getOrThrow()
-    }
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    signInAndShowApp(name = "grace")
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -468,24 +469,10 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Shows the signed-in app and returns its navigation, to open an event without creating one: no
-   * account is signed in, so the lists have no cards.
+   * Shows the signed-in app and returns its navigation, to open an event: the lists have no cards
+   * until an events ViewModel loads them.
    */
-  private fun setAppAndGetNavigation(): NavigationActions {
-    lateinit var navController: NavHostController
-    composeTestRule.setContent {
-      navController = rememberNavController()
-      ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = true,
-            repositories = repositories,
-            navController = navController,
-        )
-      }
-    }
-    composeTestRule.waitForIdle()
-    return NavigationActions(navController)
-  }
+  private fun setAppAndGetNavigation(): NavigationActions = NavigationActions(signInAndShowApp())
 
   /** The real People screen is shown, with its own bottom bar on the People tab. */
   private fun assertPeopleScreenShown() {
@@ -510,6 +497,40 @@ class ShifterNavHostTest {
             .assertTextEquals(tab.home.title)
       }
     }
+  }
+
+  /**
+   * Presses the device Back button through the activity's dispatcher, the way the system delivers
+   * it to `BackHandler` and the NavHost. Espresso's `pressBack()` first waits for the window to
+   * have focus, which a system dialog on the CI emulator can take away, making these tests flaky.
+   */
+  private fun pressBack() {
+    // Like Espresso, let the last action settle so the current screen's BackHandler is set.
+    composeTestRule.waitForIdle()
+    composeTestRule.runOnUiThread {
+      composeTestRule.activity.onBackPressedDispatcher.onBackPressed()
+    }
+    composeTestRule.waitForIdle()
+  }
+
+  /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
+  private fun signInAndShowApp(name: String = "Ada"): NavHostController {
+    runBlocking {
+      repositories.authRepository.signInWithGoogle(googleCredential(name)).getOrThrow()
+    }
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    return navController
   }
 
   /** Signs in a fresh fake Google account, which the app then reads as its current user. */

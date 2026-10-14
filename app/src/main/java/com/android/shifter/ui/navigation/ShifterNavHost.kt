@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import com.swent.shifter.ui.mission.AddMissionUiState
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
+import kotlinx.coroutines.flow.filter
 
 /**
  * The app's navigation graph.
@@ -77,6 +79,11 @@ fun ShifterNavHost(
   val currentUserId = { auth.currentUser()?.uid }
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
+
+  // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
+  // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
+  // session already gone at launch. exitToSignIn does nothing when already on sign-in.
+  LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
