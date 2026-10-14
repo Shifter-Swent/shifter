@@ -65,12 +65,13 @@ data class Mission(
  * shown on the map and to check volunteers in, which both need a point. Coordinates are plain
  * doubles rather than a Firebase GeoPoint, so the domain model carries no backend dependency.
  *
- * @property address the address shown to the volunteers.
+ * @property address the address shown to the volunteers, never blank.
  * @property latitude in degrees, between -90 and 90.
  * @property longitude in degrees, between -180 and 180.
  */
 data class MissionLocation(val address: String, val latitude: Double, val longitude: Double) {
   init {
+    require(address.isNotBlank()) { "Address must not be blank" }
     require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90, but was $latitude" }
     require(longitude in -180.0..180.0) {
       "Longitude must be between -180 and 180, but was $longitude"

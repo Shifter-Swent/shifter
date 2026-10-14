@@ -79,9 +79,16 @@ class MissionTest {
 
   @Test
   fun location_rejectsCoordinatesOutOfRange() {
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation("", 90.1, 0.0) }
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation("", 0.0, -180.1) }
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation("", Double.NaN, 0.0) }
+    assertThrows(IllegalArgumentException::class.java) { MissionLocation("Genève", 90.1, 0.0) }
+    assertThrows(IllegalArgumentException::class.java) { MissionLocation("Genève", 0.0, -180.1) }
+    assertThrows(IllegalArgumentException::class.java) {
+      MissionLocation("Genève", Double.NaN, 0.0)
+    }
+  }
+
+  @Test
+  fun location_rejectsABlankAddress() {
+    assertThrows(IllegalArgumentException::class.java) { MissionLocation(" ", 46.21, 6.14) }
   }
 
   @Test

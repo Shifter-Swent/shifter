@@ -108,7 +108,7 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 | `teamId` | string \| null | `null` means "General": the mission belongs to no team |
 | `volunteersNeeded` | number | Whole number, at least 1 (checked by the app) |
 | `startAt`, `endAt` | timestamp | A mission has its own slot, with no `shiftId`: it may cover only part of a shift |
-| `location` | map \| null | `address` (string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
+| `location` | map \| null | `address` (non-blank string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
 | `assigneeIds` | list of string | |
 | `createdAt` | timestamp | |
 

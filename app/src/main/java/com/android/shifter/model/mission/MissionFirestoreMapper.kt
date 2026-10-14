@@ -98,7 +98,8 @@ private fun MissionLocation.toFirestoreMap(): Map<String, Any?> =
 /**
  * An absent or null field means the mission has no location. A location that is there is mapped in
  * full: half a location would put the mission on the map at a wrong point, or in no place at all,
- * so it is rejected rather than completed with a default, as are coordinates out of range.
+ * so it is rejected rather than completed with a default, as are a blank address and coordinates
+ * out of range.
  *
  * Any [Number] is accepted for the coordinates, because a whole-degree coordinate comes back from
  * Firestore as a Long rather than as a Double.
