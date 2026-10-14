@@ -40,4 +40,19 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
 
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> =
       missionsOf(eventId).get().await().documents.map { it.toMission() }
+
+  /**
+   * Queries the `missions` collection group, so one request covers every event. The missions are
+   * sorted here rather than by Firestore: ordering an array-contains query on another field would
+   * need a composite index, and a volunteer only has a handful of missions.
+   */
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> =
+      firestore
+          .collectionGroup(MissionSchema.COLLECTION)
+          .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+          .get()
+          .await()
+          .documents
+          .map { it.toMission() }
+          .sortedBy { it.startAt }
 }
