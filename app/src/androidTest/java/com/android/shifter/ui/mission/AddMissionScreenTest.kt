@@ -248,6 +248,76 @@ class AddMissionScreenTest {
   }
 
   @Test
+  fun typingTheLocation_isReported() {
+    var address by mutableStateOf("")
+    var latitude by mutableStateOf("")
+    var longitude by mutableStateOf("")
+    composeTestRule.setContent {
+      ShifterTheme {
+        AddMissionContent(
+            loaded.copy(address = address, latitude = latitude, longitude = longitude),
+            AddMissionActions(
+                onAddressChange = { address = it },
+                onLatitudeChange = { latitude = it },
+                onLongitudeChange = { longitude = it },
+            ),
+        )
+      }
+    }
+
+    node(AddMissionScreenTestTags.ADDRESS_FIELD).performScrollTo().performTextInput("Grand Place")
+    node(AddMissionScreenTestTags.LATITUDE_FIELD).performScrollTo().performTextInput("50.63")
+    node(AddMissionScreenTestTags.LONGITUDE_FIELD).performScrollTo().performTextInput("3.06")
+
+    assertEquals("Grand Place", address)
+    assertEquals("50.63", latitude)
+    assertEquals("3.06", longitude)
+  }
+
+  @Test
+  fun locationErrors_areShownUnderTheirFields() {
+    setContent(
+        loaded.copy(
+            errors =
+                setOf(
+                    MissionFormError.ADDRESS_MISSING,
+                    MissionFormError.LATITUDE_INVALID,
+                    MissionFormError.LONGITUDE_INVALID,
+                )
+        )
+    )
+
+    node(AddMissionScreenTestTags.error(MissionFormField.ADDRESS))
+        .performScrollTo()
+        .assertTextEquals("Enter the address")
+    node(AddMissionScreenTestTags.error(MissionFormField.LATITUDE))
+        .performScrollTo()
+        .assertTextEquals("Enter a number between -90 and 90")
+    node(AddMissionScreenTestTags.error(MissionFormField.LONGITUDE))
+        .performScrollTo()
+        .assertTextEquals("Enter a number between -180 and 180")
+  }
+
+  @Test
+  fun aConflict_namesTheMissionInTheWay() {
+    setContent(
+        loaded.copy(
+            conflict =
+                MissionConflict(
+                    title = "Unload the trucks",
+                    start = LocalDateTime.of(eventDay, LocalTime.of(15, 0)),
+                    end = LocalDateTime.of(eventDay, LocalTime.of(16, 0)),
+                )
+        )
+    )
+
+    node(AddMissionScreenTestTags.CONFLICT_ERROR)
+        .performScrollTo()
+        .assertTextContains("\"Unload the trucks\"", substring = true)
+        .assertTextContains("15:00 – 16:00", substring = true)
+  }
+
+  @Test
   fun submitBackAndCancel_areReported() {
     var submitted = 0
     var left = 0
