@@ -1,6 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -15,7 +17,6 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import androidx.test.espresso.Espresso.closeSoftKeyboard
 import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -173,7 +174,10 @@ class ShifterNavHostTest {
   fun joinEvent_applyingShowsTheRequestOnFindingAgainAndTheEventInTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
+    lateinit var backDispatcher: OnBackPressedDispatcher
     composeTestRule.setContent {
+      backDispatcher =
+          checkNotNull(LocalOnBackPressedDispatcherOwner.current).onBackPressedDispatcher
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
@@ -189,10 +193,10 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
 
-    val requests = runBlocking {
-      repositories.membershipRequestRepository.getMembershipRequestsByUId(volunteer.uid)
+    val request = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
     }
-    assertEquals(MembershipRequestStatus.PENDING, requests[event.id]?.status)
+    assertEquals(MembershipRequestStatus.PENDING, request?.status)
 
     // Finding the event again shows the request already sent instead of the Apply button.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
@@ -201,11 +205,11 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
     // The screen's Back returns to the code, then the device Back leaves to the events list. The
-    // keyboard is closed first, or the device Back would only close it.
+    // device Back is sent to the dispatcher rather than through Espresso's pressBack(), which waits
+    // for window focus and fails whenever a system dialog takes it on the emulator.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
-    closeSoftKeyboard()
-    pressBack()
+    composeTestRule.runOnUiThread { backDispatcher.onBackPressed() }
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     // The list reloads on return, so the event just applied to shows up in it.
     waitForNode(MyEventsTestTags.eventCard(event.id))
