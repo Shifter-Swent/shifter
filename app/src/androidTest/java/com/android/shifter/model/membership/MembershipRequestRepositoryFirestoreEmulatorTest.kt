@@ -232,11 +232,13 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     repository.accept(eventId, other.uid)
     signIn(volunteer)
     repository.withdraw(eventId, volunteer.uid)
-    assertEquals(listOf(other.uid), participantIds(eventId))
-    assertEquals(listOf(other.uid), memberIds(eventId, TEAM_ID))
     assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
     assertTrue(repository.getMembershipRequestsByUId(volunteer.uid).isEmpty())
     assertEquals(MembershipRequestStatus.PENDING, apply(eventId, volunteer).status)
+    // Only the organizer may read the participants.
+    signIn(organizer)
+    assertEquals(listOf(other.uid), participantIds(eventId))
+    assertEquals(listOf(other.uid), memberIds(eventId, TEAM_ID))
   }
 
   @Test
@@ -273,6 +275,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     repository.withdraw(eventId, volunteer.uid)
     repository.withdraw(eventId, volunteer.uid)
     assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    signIn(organizer)
     assertFalse(participants(eventId).get(Source.SERVER).await().exists())
   }
 

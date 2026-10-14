@@ -27,7 +27,7 @@ import org.junit.runner.RunWith
 /**
  * Security rules of the `teams`, `shifts` and `missions` subcollections of an event, run against
  * the Firestore emulator: the organizer writes them, the organizer and the accepted participants
- * read them, and nobody else does either.
+ * read them, and nobody else does either. Only the organizer reads the event's participants.
  *
  * Documents are written as raw maps: the rules do not look at their content, and the mappers are
  * covered by their own tests.
@@ -40,6 +40,9 @@ class EventSubcollectionRulesTest {
 
   /** Paths deleted in [cleanUp] through the emulator's admin API, whatever the rules allow. */
   private val paths = mutableSetOf<String>()
+
+  /** Auth accounts deleted in [cleanUp], so the emulator does not keep them between tests. */
+  private val accounts = mutableListOf<Account>()
 
   private lateinit var organizer: Account
   private lateinit var participant: Account
@@ -61,7 +64,14 @@ class EventSubcollectionRulesTest {
     try {
       paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
     } finally {
-      auth.signOut()
+      try {
+        accounts.forEach { account ->
+          signIn(account)
+          checkNotNull(auth.currentUser).delete().await()
+        }
+      } finally {
+        auth.signOut()
+      }
     }
   }
 
@@ -105,6 +115,23 @@ class EventSubcollectionRulesTest {
       assertDenied { document.update("name", "changed").await() }
       assertDenied { newDocument(subcollection).set(mapOf("name" to "mine")).await() }
     }
+  }
+
+  @Test
+  fun onlyTheOrganizerReadsTheParticipants() = emulatorTest {
+    val participants = db.collection("eventParticipants").document(eventId)
+
+    signIn(organizer)
+    assertEquals(
+        listOf(participant.uid),
+        participants.get(Source.SERVER).await().get("participantIds"),
+    )
+
+    signIn(participant)
+    assertDenied { participants.get(Source.SERVER).await() }
+
+    signIn(outsider)
+    assertDenied { participants.get(Source.SERVER).await() }
   }
 
   @Test
@@ -171,7 +198,9 @@ class EventSubcollectionRulesTest {
     val email = "rules-${UUID.randomUUID()}@example.test"
     val password = "test-password-123"
     val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
-    return Account(user.uid, EmailAuthProvider.getCredential(email, password))
+    return Account(user.uid, EmailAuthProvider.getCredential(email, password)).also {
+      accounts += it
+    }
   }
 
   private suspend fun signIn(user: Account) {

@@ -223,7 +223,9 @@ service cloud.firestore {
           && (removed.size() == 0 || hasStatus(removed[0], 'REJECTED'));
       }
 
-      allow read: if signedIn();
+      // Only the organizer lists the participants. isParticipant still works, because get() in
+      // rules ignores them; a volunteer learns they take part from their own request.
+      allow read: if isOrganizer(eventId);
       allow create: if isOrganizer(eventId)
         && request.resource.data.keys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list
