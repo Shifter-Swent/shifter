@@ -3,7 +3,8 @@ package com.swent.shifter.model.mission
 
 /**
  * In-memory [MissionRepository] for unit tests: ids are assigned in creation order, and setting
- * [failure] makes every call throw it, to exercise error handling.
+ * [failure] makes every call throw it, to exercise error handling. Like the real repository, it
+ * refuses a mission that conflicts with one already created.
  */
 class FakeMissionRepository : MissionRepository {
 
@@ -17,6 +18,7 @@ class FakeMissionRepository : MissionRepository {
 
   override suspend fun createMission(mission: Mission): Mission {
     failure?.let { throw it }
+    missions.firstOrNull { mission.conflictsWith(it) }?.let { throw MissionOverlapException(it) }
     val stored = mission.copy(id = "mission-${missions.size + 1}")
     missions += stored
     return stored

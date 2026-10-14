@@ -280,6 +280,91 @@ class FirestoreMissionRepositoryTest {
     )
   }
 
+  @Test
+  fun getMission_roundTripsAGeoTimedMission() = emulatorTest {
+    val eventId = uniqueEventId()
+    val created = create(geoTimed(eventId, startHour = 12, endHour = 13))
+
+    val found = repository.getMission(eventId, created.id)
+
+    assertEquals(created, found)
+    assertEquals(LOCATION, found?.location)
+  }
+
+  @Test
+  fun getMission_mapsAnAbsentLocationToNoLocation() = emulatorTest {
+    // Every mission written before locations existed has no such field.
+    val (eventId, missionId) = writeRawMission { it - MissionSchema.LOCATION }
+
+    assertNull(repository.getMission(eventId, missionId)?.location)
+  }
+
+  @Test
+  fun getMission_failsLoudlyOnAHalfFilledLocation() = emulatorTest {
+    val halfFilled =
+        mapOf(
+            MissionSchema.LocationFields.ADDRESS to LOCATION.address,
+            MissionSchema.LocationFields.LATITUDE to LOCATION.latitude,
+        )
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.LOCATION to halfFilled) }
+
+    assertFailsOnField(eventId, missionId, MissionSchema.LOCATION)
+  }
+
+  @Test
+  fun getMission_failsLoudlyOnACoordinateOutOfRange() = emulatorTest {
+    val outOfRange =
+        mapOf(
+            MissionSchema.LocationFields.ADDRESS to LOCATION.address,
+            MissionSchema.LocationFields.LATITUDE to 91.0,
+            MissionSchema.LocationFields.LONGITUDE to LOCATION.longitude,
+        )
+    val (eventId, missionId) = writeRawMission { it + (MissionSchema.LOCATION to outOfRange) }
+
+    assertFailsOnField(eventId, missionId, MissionSchema.LOCATION)
+  }
+
+  @Test
+  fun createMission_refusesAGeoTimedMissionOverlappingOneOfTheSameTeam() = emulatorTest {
+    val eventId = uniqueEventId()
+    val existing = create(geoTimed(eventId, startHour = 12, endHour = 14))
+
+    val failure = runCatching {
+      create(geoTimed(eventId, startHour = 13, endHour = 15))
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "an overlap must fail with MissionOverlapException, but was: $failure",
+        failure is MissionOverlapException,
+    )
+    assertEquals(existing, (failure as MissionOverlapException).conflictingMission)
+    assertEquals(
+        "nothing must have been written",
+        listOf(existing),
+        repository.getMissionsByEvent(eventId),
+    )
+  }
+
+  @Test
+  fun createMission_acceptsMissionsThatDoNotConflict() = emulatorTest {
+    val eventId = uniqueEventId()
+    val existing = create(geoTimed(eventId, startHour = 12, endHour = 14))
+
+    val accepted =
+        listOf(
+            existing,
+            // Starts exactly when the existing mission ends.
+            create(geoTimed(eventId, startHour = 14, endHour = 15)),
+            // Same slot, but another team, no team, or no location.
+            create(geoTimed(eventId, startHour = 12, endHour = 14).copy(teamId = "team-bar")),
+            create(geoTimed(eventId, startHour = 12, endHour = 14).copy(teamId = null)),
+            create(geoTimed(eventId, startHour = 12, endHour = 14).copy(location = null)),
+        )
+
+    assertEquals(accepted.toSet(), repository.getMissionsByEvent(eventId).toSet())
+  }
+
   /** Creates [mission] through the repository and remembers it for cleanup. */
   private suspend fun create(mission: Mission): Mission =
       repository.createMission(mission).also {
@@ -365,6 +450,18 @@ class FirestoreMissionRepositoryTest {
   /** Each test signs in anonymously, so this uid is new and no other test assigns it. */
   private fun signedInUid(): String = checkNotNull(auth.currentUser).uid
 
+  /** A GeoTimed version of [richMission], from [startHour] to [endHour] on the same day (UTC). */
+  private fun geoTimed(eventId: String, startHour: Int, endHour: Int): Mission {
+    val day = Instant.parse("2026-06-20T00:00:00Z")
+    return richMission(eventId)
+        .copy(
+            startAt = day.plusSeconds(startHour * 3600L),
+            endAt = day.plusSeconds(endHour * 3600L),
+            location = LOCATION,
+            assigneeIds = emptyList(),
+        )
+  }
+
   /** Fails the test instead of hanging when the emulator cannot be reached. */
   private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
     withTimeout(TIMEOUT_MILLIS) { block() }
@@ -372,5 +469,7 @@ class FirestoreMissionRepositoryTest {
 
   private companion object {
     const val TIMEOUT_MILLIS = 20_000L
+
+    val LOCATION = MissionLocation("Rue de Lausanne 1, 1201 Genève", 46.21, 6.14)
   }
 }

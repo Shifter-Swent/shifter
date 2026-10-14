@@ -285,6 +285,19 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun singleReadFindsOwnRequestOnlyForTheVolunteerAndTheOrganizer() = emulatorTest {
+    val eventId = event()
+    signIn(volunteer)
+    assertNull(repository.getMembershipRequest(eventId, volunteer.uid))
+    val sent = apply(eventId, volunteer, listOf("bar"))
+    assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
+    signIn(organizer)
+    assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
+    signIn(account())
+    assertDenied { repository.getMembershipRequest(eventId, volunteer.uid) }
+  }
+
+  @Test
   fun unrelatedUserCannotReadRequestsOrTakeOverEvent() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)

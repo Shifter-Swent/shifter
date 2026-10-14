@@ -23,6 +23,7 @@ import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -199,6 +200,18 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
+  fun singleReadReturnsTheRequestOrNullWhenMissing() = runTest {
+    val stored = request.copy(id = request.userId, status = MembershipRequestStatus.ACCEPTED)
+    every { ref.get() } returns Tasks.forResult(snapshot(stored))
+    assertEquals(stored, repository.getMembershipRequest("event", request.userId))
+
+    val missing = mockk<DocumentSnapshot>()
+    every { missing.exists() } returns false
+    every { ref.get() } returns Tasks.forResult(missing)
+    assertNull(repository.getMembershipRequest("event", request.userId))
+  }
+
+  @Test
   fun eventQueryMapsAllFieldsAndHandlesEmptyResults() = runTest {
     val stored =
         listOf(
@@ -248,6 +261,11 @@ class MembershipRequestRepositoryFirestoreTest {
     val malformed = snapshot(request)
     every { malformed.get("status") } returns "invalid"
     every { result.documents } returns listOf(malformed)
+    every { ref.get() } returns Tasks.forResult(malformed)
+    assertTrue(
+        runCatching { repository.getMembershipRequest("event", request.userId) }.exceptionOrNull()
+            is MembershipRequestRepositoryException.Unknown
+    )
     assertTrue(
         runCatching { repository.getMembershipRequestsByEId("event") }.exceptionOrNull()
             is MembershipRequestRepositoryException.Unknown
@@ -264,6 +282,7 @@ class MembershipRequestRepositoryFirestoreTest {
     every { batch.commit() } returns Tasks.forException(error)
     every { requests.get() } returns Tasks.forException(error)
     every { query.get() } returns Tasks.forException(error)
+    every { ref.get() } returns Tasks.forException(error)
     every { ref.update("status", any<String>()) } returns Tasks.forException(error)
     every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
         Tasks.forException(error)
@@ -272,6 +291,7 @@ class MembershipRequestRepositoryFirestoreTest {
             { repository.apply("event", request) },
             { repository.accept("event", request.userId) },
             { repository.reject("event", request.userId) },
+            { repository.getMembershipRequest("event", request.userId) ?: Unit },
             { repository.getMembershipRequestsByEId("event") },
             { repository.getMembershipRequestsByUId(request.userId) },
         )
