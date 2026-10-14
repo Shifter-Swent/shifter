@@ -45,6 +45,11 @@ class FakeMembershipRequestRepository(var failure: Exception? = null) :
     participants[eventId]?.remove(userId)
   }
 
+  override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? {
+    failure?.let { throw it }
+    return requests[eventId]?.get(userId)
+  }
+
   override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> {
     failure?.let { throw it }
     return requests[eventId]?.values?.toList().orEmpty()

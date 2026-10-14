@@ -39,8 +39,8 @@ import com.swent.shifter.ui.event.CreateEventContent
 import com.swent.shifter.ui.event.CreateEventUiState
 import com.swent.shifter.ui.event.EventCreatedContent
 import com.swent.shifter.ui.event.EventCreatedUiState
-import com.swent.shifter.ui.event.JoinEventContent
-import com.swent.shifter.ui.event.JoinEventUiState
+import com.swent.shifter.ui.event.JoinEventScreen
+import com.swent.shifter.ui.event.JoinEventViewModel
 import com.swent.shifter.ui.events.MembershipEventWithdrawer
 import com.swent.shifter.ui.events.MyEventsViewModel
 import com.swent.shifter.ui.events.OrganizerEventsLoader
@@ -124,14 +124,18 @@ fun ShifterNavHost(
         )
       }
       composable<Volunteer.QrApply> {
-        // No repositories are wired yet: only the typed code is held here, no event is found.
-        var joinCode by rememberSaveable { mutableStateOf("") }
-        JoinEventContent(
-            uiState = JoinEventUiState(joinCode = joinCode),
-            onJoinCodeChange = { joinCode = it },
-            onFindEvent = {},
-            onBack = {},
-            onApply = {},
+        // The screen's own Back returns from the event to the code; the device Back on the code
+        // leaves it, back to the events list.
+        JoinEventScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        JoinEventViewModel.factory(
+                            repositories.eventRepository,
+                            repositories.membershipRequestRepository,
+                            currentUserId,
+                        )
+                )
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
