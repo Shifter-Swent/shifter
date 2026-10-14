@@ -29,6 +29,7 @@
     <string name="create_event_error_start_in_past">The event must start in the future</string>
     <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
     <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="create_event_save_unconfirmed">No connection: the event as last submitted will be created once you are back online. Try again to save your changes and get its join code.</string>
     <string name="event_type_music">Music</string>
     <string name="event_type_market">Market</string>
     <string name="event_type_nature">Nature</string>
@@ -98,4 +99,19 @@
     <string name="settings_title">Settings</string>
     <string name="settings_sign_out">Sign out</string>
     <string name="content_description_back">Back</string>
+
+    <!-- People screen -->
+    <string name="people_title">People</string>
+    <string name="people_tab_participants">Participants</string>
+    <string name="people_tab_requests">Requests</string>
+    <string name="people_participants_placeholder">Participants will appear here.</string>
+
+    <!-- Membership requests -->
+    <string name="membership_requests_empty">No membership requests yet.</string>
+    <string name="membership_requests_retry">Retry</string>
+    <string name="membership_requests_status_pending">Pending</string>
+    <string name="membership_requests_status_accepted">Accepted</string>
+    <string name="membership_requests_status_rejected">Rejected</string>
+    <string name="membership_requests_accept">Accept</string>
+    <string name="membership_requests_reject">Reject</string>
 </resources>

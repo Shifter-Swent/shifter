@@ -1,0 +1,60 @@
+# Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+name: Build APK
+
+# Run the workflow by hand from the Actions tab, e.g. to hand out an installable build for a release
+on:
+  workflow_dispatch:
+
+# The job only reads the repository
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the repository on the runner; it includes app/google-services.json
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # Cache the gradle folder so the dependencies are not downloaded again on every run
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      # Sign with the team's debug key so the APK's SHA-1 matches the one registered in Firebase,
+      # otherwise Google sign-in fails. Gradle uses ~/.android/debug.keystore for debug builds
+      - name: Restore debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "::error::DEBUG_KEYSTORE_BASE64 secret is not set"
+            exit 1
+          fi
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > ~/.android/debug.keystore
+
+      # The debug build is signed with the team's debug key (see above). It installs on devices that
+      # allow sideloading, but cannot update a copy of the app signed with a different key
+      - name: Assemble debug APK
+        run: |
+          ./gradlew assembleDebug --parallel --build-cache
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: shifter-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

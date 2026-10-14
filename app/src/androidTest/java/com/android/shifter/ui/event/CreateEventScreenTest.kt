@@ -60,8 +60,6 @@ class CreateEventScreenTest {
     override suspend fun getEventByJoinCode(joinCode: String): Event? = null
 
     override suspend fun getEventsByOrganizer(organizerId: String): List<Event> = emptyList()
-
-    override suspend fun getEventsByMember(userId: String): List<Event> = emptyList()
   }
 
   private fun setScreen(
@@ -313,6 +311,28 @@ class CreateEventScreenTest {
     }
 
     node(CreateEventScreenTestTags.SAVE_ERROR).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun unconfirmedSave_isShownInsteadOfTheFailure() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        CreateEventContent(
+            state = CreateEventUiState(saveUnconfirmed = true),
+            onTitleChange = {},
+            onDescriptionChange = {},
+            onTypeChange = {},
+            onAddressChange = {},
+            onStartAtChange = {},
+            onEndAtChange = {},
+            onSubmit = {},
+            onBack = {},
+        )
+      }
+    }
+
+    node(CreateEventScreenTestTags.SAVE_UNCONFIRMED).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
   }
 
   @Test

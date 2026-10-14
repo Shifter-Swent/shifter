@@ -85,6 +85,18 @@ class AuthRepositoryFirebaseEmulatorTest {
   }
 
   @Test
+  fun currentUser_returnsTheSignedInUserUntilSignOut() = emulatorTest {
+    assertNull("no session before sign-in", repository.currentUser())
+
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+    assertEquals(user, repository.currentUser())
+
+    repository.signOut().getOrThrow()
+    assertNull(repository.currentUser())
+  }
+
+  @Test
   fun signOut_clearsTheCurrentSession() = emulatorTest {
     repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
 

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
 /**
@@ -13,7 +14,8 @@ interface EventRepository {
 
   /**
    * Persists [event] and returns it with the fields the backend assigns, such as its id and join
-   * code.
+   * code. When [Event.id] is already set, it is kept, so creating the same event again overwrites
+   * it instead of duplicating it.
    */
   suspend fun createEvent(event: Event): Event
 
@@ -25,7 +27,4 @@ interface EventRepository {
 
   /** Returns every event owned by [organizerId], or an empty list when there is none. */
   suspend fun getEventsByOrganizer(organizerId: String): List<Event>
-
-  /** Returns every event [userId] joined, or an empty list when there is none. */
-  suspend fun getEventsByMember(userId: String): List<Event>
 }

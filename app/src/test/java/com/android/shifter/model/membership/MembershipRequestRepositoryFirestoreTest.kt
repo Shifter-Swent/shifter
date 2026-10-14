@@ -23,6 +23,7 @@ import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -148,6 +149,41 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
+  fun withdrawRemovesAParticipantAndDeletesTheRequestInOneTransaction() = runTest {
+    val removal = FieldValue.arrayRemove(request.userId)
+    every { transaction.get(ref) } returns statusSnapshot("ACCEPTED")
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.userId) } returns removal
+      repository.withdraw("event", request.userId)
+      verify { transaction.update(participants, "participantIds", removal) }
+      verify { transaction.delete(ref) }
+    }
+    // The volunteer may not be allowed to read the participants document.
+    verify(exactly = 0) { transaction.get(participants) }
+  }
+
+  @Test
+  fun withdrawOnlyDeletesAPendingOrMissingRequest() = runTest {
+    // A rejected request cannot be withdrawn: the rules deny it, see the emulator tests.
+    for (status in listOf(null, "PENDING")) {
+      every { transaction.get(ref) } returns statusSnapshot(status)
+      repository.withdraw("event", request.userId)
+    }
+    verify(exactly = 2) { transaction.delete(ref) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<String>(), any()) }
+  }
+
+  @Test
+  fun withdrawTranslatesARefusal() = runTest {
+    val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
+    val failure = runCatching { repository.withdraw("event", request.userId) }.exceptionOrNull()
+    assertTrue(failure is MembershipRequestRepositoryException.PermissionDenied)
+    assertSame(error, failure?.cause)
+  }
+
+  @Test
   fun decisionsTranslateMissingRequestFailure() = runTest {
     val error = FirebaseFirestoreException("missing", Code.NOT_FOUND)
     every { batch.commit() } returns Tasks.forException(error)
@@ -161,6 +197,18 @@ class MembershipRequestRepositoryFirestoreTest {
       assertTrue(failure is MembershipRequestRepositoryException.Unknown)
       assertSame(error, failure?.cause)
     }
+  }
+
+  @Test
+  fun singleReadReturnsTheRequestOrNullWhenMissing() = runTest {
+    val stored = request.copy(id = request.userId, status = MembershipRequestStatus.ACCEPTED)
+    every { ref.get() } returns Tasks.forResult(snapshot(stored))
+    assertEquals(stored, repository.getMembershipRequest("event", request.userId))
+
+    val missing = mockk<DocumentSnapshot>()
+    every { missing.exists() } returns false
+    every { ref.get() } returns Tasks.forResult(missing)
+    assertNull(repository.getMembershipRequest("event", request.userId))
   }
 
   @Test
@@ -213,6 +261,11 @@ class MembershipRequestRepositoryFirestoreTest {
     val malformed = snapshot(request)
     every { malformed.get("status") } returns "invalid"
     every { result.documents } returns listOf(malformed)
+    every { ref.get() } returns Tasks.forResult(malformed)
+    assertTrue(
+        runCatching { repository.getMembershipRequest("event", request.userId) }.exceptionOrNull()
+            is MembershipRequestRepositoryException.Unknown
+    )
     assertTrue(
         runCatching { repository.getMembershipRequestsByEId("event") }.exceptionOrNull()
             is MembershipRequestRepositoryException.Unknown
@@ -229,6 +282,7 @@ class MembershipRequestRepositoryFirestoreTest {
     every { batch.commit() } returns Tasks.forException(error)
     every { requests.get() } returns Tasks.forException(error)
     every { query.get() } returns Tasks.forException(error)
+    every { ref.get() } returns Tasks.forException(error)
     every { ref.update("status", any<String>()) } returns Tasks.forException(error)
     every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
         Tasks.forException(error)
@@ -237,6 +291,7 @@ class MembershipRequestRepositoryFirestoreTest {
             { repository.apply("event", request) },
             { repository.accept("event", request.userId) },
             { repository.reject("event", request.userId) },
+            { repository.getMembershipRequest("event", request.userId) ?: Unit },
             { repository.getMembershipRequestsByEId("event") },
             { repository.getMembershipRequestsByUId(request.userId) },
         )
@@ -298,6 +353,10 @@ class MembershipRequestRepositoryFirestoreTest {
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
   }
+
+  /** The volunteer's request, missing when [status] is null. */
+  private fun statusSnapshot(status: String?): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also { every { it.getString("status") } returns status }
 
   private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
     val snapshot = mockk<DocumentSnapshot>()

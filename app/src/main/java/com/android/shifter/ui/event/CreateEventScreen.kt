@@ -4,7 +4,6 @@ package com.swent.shifter.ui.event
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -31,13 +29,9 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Park
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Storefront
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,6 +56,10 @@ import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.ui.components.FieldLabel
+import com.swent.shifter.ui.components.FormHeader
+import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
@@ -75,6 +73,7 @@ object CreateEventScreenTestTags {
   const val SUBMIT_BUTTON = "CreateEventSubmitButton"
   const val SAVING_INDICATOR = "CreateEventSavingIndicator"
   const val SAVE_ERROR = "CreateEventSaveError"
+  const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
 
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
@@ -130,7 +129,16 @@ fun CreateEventContent(
     onSubmit: () -> Unit,
     onBack: () -> Unit,
 ) {
-  Scaffold(topBar = { FormHeader(onBack) }) { padding ->
+  Scaffold(
+      topBar = {
+        FormHeader(
+            backLabel = stringResource(R.string.create_event_back),
+            title = stringResource(R.string.create_event_title),
+            backButtonTestTag = CreateEventScreenTestTags.BACK_BUTTON,
+            onBack = onBack,
+        )
+      }
+  ) { padding ->
     Column(
         modifier =
             Modifier.fillMaxSize()
@@ -144,7 +152,7 @@ fun CreateEventContent(
           style = MaterialTheme.typography.bodySmall,
           color = shifter_mutedText,
       )
-      FormTextField(
+      EventTextField(
           value = state.title,
           onValueChange = onTitleChange,
           label = R.string.create_event_field_title,
@@ -153,7 +161,7 @@ fun CreateEventContent(
           testTag = CreateEventScreenTestTags.TITLE_FIELD,
       )
       TypeSelector(selected = state.type, error = state.errorFor(EventFormField.TYPE), onTypeChange)
-      FormTextField(
+      EventTextField(
           value = state.description,
           onValueChange = onDescriptionChange,
           label = R.string.create_event_field_description,
@@ -167,7 +175,7 @@ fun CreateEventContent(
           style = MaterialTheme.typography.labelSmall,
           color = shifter_mutedText,
       )
-      FormTextField(
+      EventTextField(
           value = state.address,
           onValueChange = onAddressChange,
           label = R.string.create_event_field_address,
@@ -187,83 +195,31 @@ fun CreateEventContent(
         )
       }
 
-      Button(
-          onClick = onSubmit,
-          enabled = !state.isSaving,
-          shape = MaterialTheme.shapes.medium,
-          modifier =
-              Modifier.fillMaxWidth()
-                  .height(48.dp)
-                  .testTag(CreateEventScreenTestTags.SUBMIT_BUTTON),
-      ) {
-        if (state.isSaving) {
-          CircularProgressIndicator(
-              modifier = Modifier.size(24.dp).testTag(CreateEventScreenTestTags.SAVING_INDICATOR),
-              color = MaterialTheme.colorScheme.onPrimary,
-              strokeWidth = 2.dp,
-          )
-        } else {
-          Text(
-              text = stringResource(R.string.create_event_submit),
-              style = MaterialTheme.typography.labelLarge,
-              fontWeight = FontWeight.SemiBold,
-          )
-        }
+      if (state.saveUnconfirmed) {
+        Text(
+            text = stringResource(R.string.create_event_save_unconfirmed),
+            // Not an error: the event is on its way, so it must not read as a failure.
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED),
+        )
       }
+
+      FormPrimaryButton(
+          text = stringResource(R.string.create_event_submit),
+          onClick = onSubmit,
+          testTag = CreateEventScreenTestTags.SUBMIT_BUTTON,
+          enabled = !state.isSaving,
+          isLoading = state.isSaving,
+          loadingIndicatorTestTag = CreateEventScreenTestTags.SAVING_INDICATOR,
+      )
     }
   }
 }
 
-/** Return link to the organizer's events, above the screen title. */
+/** A [FormTextField] showing the error of [field], disabled while the event is saved. */
 @Composable
-private fun FormHeader(onBack: () -> Unit) {
-  Column(
-      modifier =
-          Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.background)
-              .padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Row(
-        modifier =
-            Modifier.clip(MaterialTheme.shapes.small)
-                .clickable(role = Role.Button, onClick = onBack)
-                .testTag(CreateEventScreenTestTags.BACK_BUTTON),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-      Icon(
-          Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-          contentDescription = null,
-          tint = MaterialTheme.colorScheme.primary,
-          modifier = Modifier.size(14.dp),
-      )
-      Text(
-          text = stringResource(R.string.create_event_back),
-          style = MaterialTheme.typography.labelSmall,
-          color = MaterialTheme.colorScheme.primary,
-      )
-    }
-    Text(
-        text = stringResource(R.string.create_event_title),
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-    )
-  }
-}
-
-@Composable
-private fun FieldLabel(text: String) {
-  Text(
-      text = text,
-      style = MaterialTheme.typography.bodySmall,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-  )
-}
-
-@Composable
-private fun FormTextField(
+private fun EventTextField(
     value: String,
     onValueChange: (String) -> Unit,
     @StringRes label: Int,
@@ -273,41 +229,25 @@ private fun FormTextField(
     singleLine: Boolean = true,
 ) {
   val error = state.errorFor(field)
-  val colorScheme = MaterialTheme.colorScheme
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    FieldLabel(stringResource(label))
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        isError = error != null,
-        supportingText =
-            error?.let {
-              {
-                Text(
-                    text = stringResource(it.message),
-                    modifier = Modifier.testTag(CreateEventScreenTestTags.error(field)),
-                )
-              }
-            },
-        singleLine = singleLine,
-        minLines = if (singleLine) 1 else 2,
-        enabled = !state.isSaving,
-        textStyle = MaterialTheme.typography.bodyMedium,
-        shape = MaterialTheme.shapes.medium,
-        colors =
-            OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = colorScheme.surfaceVariant,
-                unfocusedContainerColor = colorScheme.surfaceVariant,
-                disabledContainerColor = colorScheme.surfaceVariant,
-                errorContainerColor = colorScheme.surfaceVariant,
-                unfocusedBorderColor = colorScheme.outline,
-                disabledBorderColor = colorScheme.outline,
-            ),
-        keyboardOptions =
-            KeyboardOptions(imeAction = if (singleLine) ImeAction.Next else ImeAction.Default),
-        modifier = Modifier.fillMaxWidth().testTag(testTag),
-    )
-  }
+  FormTextField(
+      value = value,
+      onValueChange = onValueChange,
+      label = stringResource(label),
+      isError = error != null,
+      enabled = !state.isSaving,
+      testTag = testTag,
+      singleLine = singleLine,
+      minLines = 2,
+      supportingText =
+          error?.let {
+            {
+              Text(
+                  text = stringResource(it.message),
+                  modifier = Modifier.testTag(CreateEventScreenTestTags.error(field)),
+              )
+            }
+          },
+  )
 }
 
 /** Second part of the form: when the event takes place. */

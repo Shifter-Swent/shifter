@@ -16,9 +16,6 @@ import java.time.Instant
  * @property startAt when the event starts, as a time-zone independent instant.
  * @property endAt when the event ends, as a time-zone independent instant.
  * @property emergencyContacts people a volunteer can reach during the event.
- * @property memberIds ids of the volunteers who joined the event, which the volunteer side of "My
- *   events" is built from. An organizer is not a member of their own event: they are found through
- *   [organizerId].
  * @property joinCode the code volunteers enter to join, empty until the backend assigns one.
  * @property status where the event stands in its lifecycle.
  * @property createdAt when the event was first persisted.
@@ -34,7 +31,6 @@ data class Event(
     val endAt: Instant,
     val location: EventLocation,
     val emergencyContacts: List<EmergencyContact> = emptyList(),
-    val memberIds: List<String> = emptyList(),
     val joinCode: String = "",
     val status: EventStatus = EventStatus.PREPARATION,
     val createdAt: Instant,

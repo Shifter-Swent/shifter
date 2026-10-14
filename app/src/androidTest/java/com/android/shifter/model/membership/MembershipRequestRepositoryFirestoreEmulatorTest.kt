@@ -160,7 +160,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun volunteerCannotDecideDeleteOrChangeOwnApplication() = emulatorTest {
+  fun volunteerCannotDecideOrChangeOwnApplication() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     assertDenied { repository.accept(eventId, volunteer.uid) }
@@ -168,12 +168,79 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     assertDenied {
       requestRef(eventId, volunteer).update("preferredTeamIds", listOf("bar")).await()
     }
-    assertDenied { requestRef(eventId, volunteer).delete().await() }
     assertDenied {
       participants(eventId).set(mapOf("participantIds" to listOf(volunteer.uid))).await()
     }
     assertEquals(
         pending,
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+  }
+
+  @Test
+  fun acceptedVolunteerWithdrawsKeepingOtherParticipantsAndCanApplyAgain() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    val other = account()
+    apply(eventId, other)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    repository.accept(eventId, other.uid)
+    signIn(volunteer)
+    repository.withdraw(eventId, volunteer.uid)
+    assertEquals(listOf(other.uid), participantIds(eventId))
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    assertTrue(repository.getMembershipRequestsByUId(volunteer.uid).isEmpty())
+    assertEquals(MembershipRequestStatus.PENDING, apply(eventId, volunteer).status)
+  }
+
+  @Test
+  fun pendingVolunteerWithdrawsWithoutCreatingParticipants() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    repository.withdraw(eventId, volunteer.uid)
+    repository.withdraw(eventId, volunteer.uid)
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    assertFalse(participants(eventId).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun rejectedVolunteerCanNeitherWithdrawNorApplyAgain() = emulatorTest {
+    val eventId = event()
+    val pending = apply(eventId, volunteer)
+    signIn(organizer)
+    repository.reject(eventId, volunteer.uid)
+    signIn(volunteer)
+    assertDenied { repository.withdraw(eventId, volunteer.uid) }
+    assertDenied { requestRef(eventId, volunteer).delete().await() }
+    assertDenied { requestRef(eventId, volunteer).set(pending.toFirestoreMap()).await() }
+    assertEquals(MembershipRequestStatus.REJECTED, apply(eventId, volunteer).status)
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.REJECTED),
+        requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
+    )
+  }
+
+  @Test
+  fun withdrawalNeedsBothWritesAndOnlyTheVolunteerThemself() = emulatorTest {
+    val eventId = event()
+    val pending = apply(eventId, volunteer)
+    val other = account()
+    apply(eventId, other)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    repository.accept(eventId, other.uid)
+    signIn(volunteer)
+    assertDenied { requestRef(eventId, volunteer).delete().await() }
+    assertDenied {
+      participants(eventId).update("participantIds", FieldValue.arrayRemove(volunteer.uid)).await()
+    }
+    assertDenied { repository.withdraw(eventId, other.uid) }
+    signIn(organizer)
+    assertDenied { repository.withdraw(eventId, volunteer.uid) }
+    assertEquals(listOf(volunteer.uid, other.uid), participantIds(eventId))
+    assertEquals(
+        pending.copy(status = MembershipRequestStatus.ACCEPTED),
         requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest(),
     )
   }
@@ -215,6 +282,19 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     assertDenied { participants(eventId).update("note", "unexpected").await() }
     assertDenied { participants(eventId).delete().await() }
     assertEquals(listOf(volunteer.uid), participantIds(eventId))
+  }
+
+  @Test
+  fun singleReadFindsOwnRequestOnlyForTheVolunteerAndTheOrganizer() = emulatorTest {
+    val eventId = event()
+    signIn(volunteer)
+    assertNull(repository.getMembershipRequest(eventId, volunteer.uid))
+    val sent = apply(eventId, volunteer, listOf("bar"))
+    assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
+    signIn(organizer)
+    assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
+    signIn(account())
+    assertDenied { repository.getMembershipRequest(eventId, volunteer.uid) }
   }
 
   @Test

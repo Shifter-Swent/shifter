@@ -7,14 +7,22 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** A request enriched with the profile name needed by its card. */
+data class MembershipRequestItemUIState(
+    val request: MembershipRequest,
+    val displayName: String,
+)
+
 data class MembershipRequestUIState(
-    val requests: List<MembershipRequest> = emptyList(),
+    val requests: List<MembershipRequestItemUIState> = emptyList(),
     val isLoading: Boolean = true,
     val processingRequestIds: Set<String> = emptySet(),
     val errorMsg: String? = null,
@@ -23,6 +31,7 @@ data class MembershipRequestUIState(
 class MembershipRequestVM(
     private val eventId: String,
     private val membershipRequestRepository: MembershipRequestRepository,
+    private val userRepository: UserRepository,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(MembershipRequestUIState(isLoading = false))
   val uiState: StateFlow<MembershipRequestUIState> = _uiState.asStateFlow()
@@ -38,7 +47,18 @@ class MembershipRequestVM(
     viewModelScope.launch {
       try {
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
-        _uiState.update { it.copy(requests = requests) }
+        var profileError: String? = null
+        val items = requests.map { request ->
+          val name =
+              try {
+                userRepository.getUser(request.userId)?.displayName?.takeIf { it.isNotBlank() }
+              } catch (e: UserRepositoryException) {
+                profileError = "Some applicant names could not be loaded. Please try again."
+                null
+              }
+          MembershipRequestItemUIState(request, name ?: "Unknown volunteer")
+        }
+        _uiState.update { it.copy(requests = items, errorMsg = profileError) }
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {
@@ -57,7 +77,7 @@ class MembershipRequestVM(
 
   private fun decide(userId: String, status: MembershipRequestStatus) {
     val state = _uiState.value
-    val request = state.requests.firstOrNull { it.userId == userId } ?: return
+    val request = state.requests.firstOrNull { it.request.userId == userId }?.request ?: return
     if (state.isLoading || request.id in state.processingRequestIds) return
     _uiState.update {
       it.copy(processingRequestIds = it.processingRequestIds + request.id, errorMsg = null)
@@ -72,7 +92,11 @@ class MembershipRequestVM(
         _uiState.update { state ->
           state.copy(
               requests =
-                  state.requests.map { if (it.id == request.id) it.copy(status = status) else it }
+                  state.requests.map {
+                    if (it.request.id == request.id) {
+                      it.copy(request = it.request.copy(status = status))
+                    } else it
+                  }
           )
         }
       } catch (e: MembershipRequestRepositoryException) {

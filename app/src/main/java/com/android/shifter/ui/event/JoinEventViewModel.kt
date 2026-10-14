@@ -35,8 +35,8 @@ enum class JoinEventError {
  * What the join screen shows: the code being typed, the event it found, and where the volunteer's
  * request stands.
  *
- * @property requestStatus the status of the volunteer's request once they applied, null before. A
- *   volunteer who had already applied gets back their existing request, possibly decided.
+ * @property requestStatus the status of the volunteer's request for the event, null while they have
+ *   none. Finding an event they already applied to shows that request, possibly decided.
  */
 data class JoinEventUiState(
     val joinCode: String = "",
@@ -67,16 +67,25 @@ class JoinEventViewModel(
   }
 
   /**
-   * Looks up the event volunteers join with the code typed so far. Join codes are upper-case, so
-   * the code is matched whatever case the volunteer typed it in.
+   * Looks up the event volunteers join with the code typed so far, with the signed-in volunteer's
+   * request for it if they already applied, so they are not offered to apply twice. Join codes are
+   * upper-case, so the code is matched whatever case the volunteer typed it in.
    */
   fun findEvent() {
     val joinCode = _uiState.value.joinCode.trim().uppercase()
     if (joinCode.isEmpty() || _uiState.value.isLoading) return
     launchLoading {
       val event = eventRepository.getEventByJoinCode(joinCode)
+      val userId = currentUserId()
+      val requestStatus =
+          if (event == null || userId == null) null
+          else membershipRequestRepository.getMembershipRequest(event.id, userId)?.status
       _uiState.update {
-        it.copy(event = event, error = if (event == null) JoinEventError.UNKNOWN_CODE else null)
+        it.copy(
+            event = event,
+            requestStatus = requestStatus,
+            error = if (event == null) JoinEventError.UNKNOWN_CODE else null,
+        )
       }
     }
   }

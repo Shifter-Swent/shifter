@@ -66,6 +66,12 @@ service cloud.firestore {
           return signedIn() && request.auth.uid == uid;
         }
 
+        // Whether the volunteer is still a participant once the current commit is applied.
+        function isParticipantAfter() {
+          let participants = /databases/$(database)/documents/eventParticipants/$(eventId);
+          return existsAfter(participants) && uid in getAfter(participants).data.participantIds;
+        }
+
         allow read: if isRequester() || isOrganizer(eventId);
         allow create: if isRequester()
           && exists(/databases/$(database)/documents/events/$(eventId))
@@ -88,7 +94,12 @@ service cloud.firestore {
               || (request.resource.data.status == 'REJECTED'
                 && !(uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
                        .data.participantIds)));
-        allow delete: if false;
+        // A volunteer withdraws by deleting their own pending or accepted request, leaving the
+        // participants in the same commit. A rejected request stays, so the rejection cannot be
+        // undone by applying again.
+        allow delete: if isRequester()
+          && (resource == null || resource.data.status != 'REJECTED')
+          && !isParticipantAfter();
       }
 
       // Rules do not cascade into subcollections, so teams, shifts and missions each need their
@@ -140,10 +151,20 @@ service cloud.firestore {
         && (request.resource.data.participantIds.size() == 0
             || (request.resource.data.participantIds.size() == 1
                 && hasStatus(request.resource.data.participantIds[0], 'ACCEPTED')));
-      allow update: if isOrganizer(eventId)
+      // A volunteer leaves on their own, deleting their request in the same commit.
+      function isWithdrawal() {
+        let previous = resource.data.participantIds;
+        let next = request.resource.data.participantIds;
+        return previous.removeAll(next) == [request.auth.uid]
+          && next.removeAll(previous).size() == 0
+          && !existsAfter(
+               /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
+      }
+
+      allow update: if signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list
-        && validChange();
+        && ((isOrganizer(eventId) && validChange()) || isWithdrawal());
       allow delete: if false;
     }
   }

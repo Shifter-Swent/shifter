@@ -283,6 +283,7 @@ class FirestoreTeamRepositoryTest {
       Team(
           eventId = eventId,
           name = "Logistics",
+          description = "Move the equipment around the site",
           icon = "truck",
           managerId = MANAGER_ID,
           memberIds = listOf(VOLUNTEER_ID),
