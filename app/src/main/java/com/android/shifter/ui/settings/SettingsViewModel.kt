@@ -11,11 +11,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.authentication.AuthRepository
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class SettingsUiState(
     val errorMsg: String? = null,
@@ -41,7 +43,11 @@ class SettingsViewModel(private val repository: AuthRepository) : ViewModel() {
           }
           .onSuccess {
             try {
-              credentialManager.clearCredentialState(ClearCredentialStateRequest())
+              // The auth-state listener leaves this screen as soon as Firebase signs out, which
+              // cancels viewModelScope: the cleanup must still finish.
+              withContext(NonCancellable) {
+                credentialManager.clearCredentialState(ClearCredentialStateRequest())
+              }
             } catch (e: ClearCredentialException) {
               Log.w(TAG, "Could not clear the credential state", e)
             }
