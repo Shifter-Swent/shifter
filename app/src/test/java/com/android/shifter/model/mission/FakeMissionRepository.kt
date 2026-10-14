@@ -33,4 +33,9 @@ class FakeMissionRepository : MissionRepository {
     failure?.let { throw it }
     return missions.filter { it.eventId == eventId }
   }
+
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> {
+    failure?.let { throw it }
+    return missions.filter { userId in it.assigneeIds }.sortedBy { it.startAt }
+  }
 }

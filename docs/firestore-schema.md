@@ -110,7 +110,7 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 | `volunteersNeeded` | number | Whole number, at least 1 (checked by the app) |
 | `startAt`, `endAt` | timestamp | A mission has its own slot, with no `shiftId`: it may cover only part of a shift |
 | `location` | map \| null | `address` (non-blank string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
-| `assigneeIds` | list of string | |
+| `assigneeIds` | list of string | Queried with `array-contains` across all events to list a volunteer's missions |
 | `createdAt` | timestamp | |
 
 Two GeoTimed missions of the same team must not overlap; adjacent slots are allowed. The app checks
@@ -156,6 +156,14 @@ every access to it is denied.
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
+
+Likewise, `/{path=**}/missions/{missionId}` lets a volunteer list the missions whose `assigneeIds`
+contain them, across all events, and nobody else's.
+
+Collection-group queries need a collection-group index on the filtered field, declared in
+`firestore.indexes.json` (`membershipRequests.userId`, `missions.assigneeIds`). The emulator does
+not check indexes, so after changing that file, deploy it with
+`firebase deploy --only firestore:indexes`.
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
 and, in the same commit, remove themself (and only themself) from `eventParticipants`. A request

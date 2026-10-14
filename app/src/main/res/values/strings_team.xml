@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Team creation -->
+    <string name="create_team_field_name">Team name</string>
+    <string name="create_team_field_icon">Icon</string>
+    <string name="create_team_field_description">Short description</string>
+    <string name="create_team_icon_selected">Team icon · %1$s</string>
+    <string name="create_team_icon_none">Choose a team icon</string>
+    <string name="create_team_icon_truck">Logistics</string>
+    <string name="create_team_icon_wine">Bar</string>
+    <string name="create_team_icon_chef_hat">Kitchen</string>
+</resources>

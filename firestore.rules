@@ -126,6 +126,12 @@ service cloud.firestore {
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
+    // Enables a volunteer's collection-group query of the missions they are assigned to, filtered
+    // by assigneeIds, without granting writes.
+    match /{path=**}/missions/{missionId} {
+      allow read: if signedIn() && request.auth.uid in resource.data.assigneeIds;
+    }
+
     match /eventParticipants/{eventId} {
       function hasStatus(uid, status) {
         return uid is string
