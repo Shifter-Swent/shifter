@@ -29,6 +29,7 @@
     <string name="create_event_error_start_in_past">The event must start in the future</string>
     <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
     <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="create_event_save_unconfirmed">No connection: the event as last submitted will be created once you are back online. Try again to save your changes and get its join code.</string>
     <string name="event_type_music">Music</string>
     <string name="event_type_market">Market</string>
     <string name="event_type_nature">Nature</string>
