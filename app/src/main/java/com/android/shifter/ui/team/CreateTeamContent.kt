@@ -78,8 +78,9 @@ fun CreateTeamContent(
   val colorScheme = MaterialTheme.colorScheme
   // 16dp in the designs, as `large` is; the fields inside use `small`, which is their 8dp.
   val shape = MaterialTheme.shapes.large
-  // Nothing is edited while the team is being saved, so the form cannot drift from what is sent.
-  val editable = !state.isSaving
+  // Nothing is edited while the team is being saved, so the form cannot drift from what is sent,
+  // nor once it has been created, when the form is only waiting to be dismissed.
+  val editable = state.isEditable
   Column(
       modifier =
           modifier

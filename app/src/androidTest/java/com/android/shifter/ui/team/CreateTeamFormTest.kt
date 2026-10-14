@@ -214,21 +214,32 @@ class CreateTeamFormTest {
   }
 
   @Test
-  fun afterCreation_reportsItOnceAndRefusesASecondTeam() {
+  fun afterCreation_theFormIsFrozenAndReportsTheTeamOnce() {
     val repository = RecordingTeamRepository()
     var reports = 0
-    setForm(repository, onTeamCreated = { reports++ })
+    var cancelled = 0
+    setForm(repository, onTeamCreated = { reports++ }, onCancel = { cancelled++ })
 
     fillValidForm()
     submit()
     composeTestRule.waitUntil { reports > 0 }
-    // Any recomposition would run the effect again if it were not guarded.
-    node(CreateTeamFormTestTags.NAME_FIELD).performTextInput(" east")
+
+    // The team exists: the form waits to be dismissed, and takes nothing more from the organizer.
+    node(CreateTeamFormTestTags.NAME_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.DESCRIPTION_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.ICON_SELECTOR).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.SUBMIT_BUTTON).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.CANCEL_BUTTON).assertIsNotEnabled()
+
+    // Neither action goes through any more, and the team is reported once; that it stays reported
+    // once through a recomposition is [theCreatedTeam_isNotReportedAgainAfterRecreation].
+    submit()
+    node(CreateTeamFormTestTags.CANCEL_BUTTON).performClick()
     composeTestRule.waitForIdle()
 
     assertEquals(1, reports)
-    node(CreateTeamFormTestTags.SUBMIT_BUTTON).assertIsNotEnabled()
     assertEquals(1, repository.attempts)
+    assertEquals(0, cancelled)
   }
 
   @Test

@@ -121,7 +121,7 @@ fun CreateTeamFormContent(
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       OutlinedButton(
           onClick = onCancel,
-          enabled = !state.isSaving,
+          enabled = state.isEditable,
           shape = MaterialTheme.shapes.medium,
           modifier =
               Modifier.weight(1f)
