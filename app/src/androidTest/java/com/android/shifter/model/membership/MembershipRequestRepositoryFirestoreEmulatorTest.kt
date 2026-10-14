@@ -354,7 +354,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     val eventId = event()
     signIn(volunteer)
     assertNull(repository.getMembershipRequest(eventId, volunteer.uid))
-    val sent = apply(eventId, volunteer, listOf("bar"))
+    val sent = apply(eventId, volunteer)
     assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
     signIn(organizer)
     assertEquals(sent, repository.getMembershipRequest(eventId, volunteer.uid))
