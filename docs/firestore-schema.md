@@ -151,7 +151,7 @@ every access to it is denied.
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer. Only the organizer updates it, and only `status`. No delete |
-| `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
+| `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
