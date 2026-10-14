@@ -9,7 +9,12 @@ package com.swent.shifter.model.mission
  */
 interface MissionRepository {
 
-  /** Persists [mission] under its event and returns it with the id the backend assigns. */
+  /**
+   * Persists [mission] under its event and returns it with the id the backend assigns.
+   *
+   * @throws MissionOverlapException when [mission] [conflictsWith][Mission.conflictsWith] a mission
+   *   of the same event; nothing is written then.
+   */
   suspend fun createMission(mission: Mission): Mission
 
   /**
