@@ -94,6 +94,10 @@ object AddMissionScreenTestTags {
   const val CANCEL_BUTTON = "AddMissionCancelButton"
   const val SAVING_INDICATOR = "AddMissionSavingIndicator"
   const val SAVE_ERROR = "AddMissionSaveError"
+  const val CONFLICT_ERROR = "AddMissionConflictError"
+  const val ADDRESS_FIELD = "AddMissionAddressField"
+  const val LATITUDE_FIELD = "AddMissionLatitudeField"
+  const val LONGITUDE_FIELD = "AddMissionLongitudeField"
 
   fun teamChip(teamId: String) = "AddMissionTeamChip_$teamId"
 
@@ -135,6 +139,9 @@ fun AddMissionScreen(
               onDayChange = viewModel::onDayChange,
               onStartTimeChange = viewModel::onStartTimeChange,
               onEndTimeChange = viewModel::onEndTimeChange,
+              onAddressChange = viewModel::onAddressChange,
+              onLatitudeChange = viewModel::onLatitudeChange,
+              onLongitudeChange = viewModel::onLongitudeChange,
               onSubmit = viewModel::addMission,
               onRetryLoad = viewModel::loadEvent,
               onBack = onBack,
@@ -152,6 +159,9 @@ data class AddMissionActions(
     val onDayChange: (LocalDate) -> Unit = {},
     val onStartTimeChange: (LocalTime) -> Unit = {},
     val onEndTimeChange: (LocalTime) -> Unit = {},
+    val onAddressChange: (String) -> Unit = {},
+    val onLatitudeChange: (String) -> Unit = {},
+    val onLongitudeChange: (String) -> Unit = {},
     val onSubmit: () -> Unit = {},
     val onRetryLoad: () -> Unit = {},
     val onBack: () -> Unit = {},
@@ -220,7 +230,16 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
           onDecrease = actions.onDecreaseVolunteers,
       )
       Schedule(state, editable, actions)
+      Location(state, editable, actions)
 
+      state.conflict?.let { conflict ->
+        Text(
+            text = formatConflict(conflict),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(AddMissionScreenTestTags.CONFLICT_ERROR),
+        )
+      }
       if (state.saveFailed) {
         Text(
             text = stringResource(R.string.add_mission_error_save_failed),
@@ -523,6 +542,47 @@ private fun Schedule(state: AddMissionUiState, enabled: Boolean, actions: AddMis
   }
 }
 
+/**
+ * The optional place of the mission: an address, with the coordinates that put it on the map.
+ * Leaving all three empty adds a mission with no location.
+ */
+@Composable
+private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMissionActions) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    MissionTextField(
+        value = state.address,
+        onValueChange = actions.onAddressChange,
+        label = R.string.add_mission_field_address,
+        error = state.errorFor(MissionFormField.ADDRESS),
+        enabled = enabled,
+        testTag = AddMissionScreenTestTags.ADDRESS_FIELD,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Box(modifier = Modifier.weight(1f)) {
+        MissionTextField(
+            value = state.latitude,
+            onValueChange = actions.onLatitudeChange,
+            label = R.string.add_mission_field_latitude,
+            error = state.errorFor(MissionFormField.LATITUDE),
+            enabled = enabled,
+            testTag = AddMissionScreenTestTags.LATITUDE_FIELD,
+        )
+      }
+      Box(modifier = Modifier.weight(1f)) {
+        MissionTextField(
+            value = state.longitude,
+            onValueChange = actions.onLongitudeChange,
+            label = R.string.add_mission_field_longitude,
+            error = state.errorFor(MissionFormField.LONGITUDE),
+            enabled = enabled,
+            testTag = AddMissionScreenTestTags.LONGITUDE_FIELD,
+        )
+      }
+    }
+    Hint(R.string.add_mission_location_hint)
+  }
+}
+
 /** A read-only field that opens a picker when tapped. */
 @Composable
 private fun PickerField(
@@ -709,6 +769,19 @@ private fun formatPeriod(event: EventPeriod): String =
       )
     }
 
+/** "Overlaps "Bar shift" of the same team (Fri 20 Jun 2025 14:00 – 16:00)." */
+@Composable
+private fun formatConflict(conflict: MissionConflict): String =
+    stringResource(
+        R.string.add_mission_error_conflict,
+        conflict.title,
+        conflict.start.format(DATE_TIME_FORMAT),
+        conflict.end.format(
+            if (conflict.start.toLocalDate() == conflict.end.toLocalDate()) TIME_FORMAT
+            else DATE_TIME_FORMAT
+        ),
+    )
+
 private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM uuuu")
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DATE_TIME_FORMAT: DateTimeFormatter =
@@ -735,6 +808,9 @@ private val MissionFormError.message: Int
         MissionFormError.END_MISSING -> R.string.add_mission_error_end_missing
         MissionFormError.END_NOT_AFTER_START -> R.string.add_mission_error_end_not_after_start
         MissionFormError.OUTSIDE_EVENT -> R.string.add_mission_error_outside_event
+        MissionFormError.ADDRESS_MISSING -> R.string.add_mission_error_address_missing
+        MissionFormError.LATITUDE_INVALID -> R.string.add_mission_error_latitude_invalid
+        MissionFormError.LONGITUDE_INVALID -> R.string.add_mission_error_longitude_invalid
       }
 
 @Preview(showBackground = true)

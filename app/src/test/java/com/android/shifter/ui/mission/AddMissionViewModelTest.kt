@@ -8,6 +8,7 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import java.time.Clock
@@ -596,6 +597,135 @@ class AddMissionViewModelTest {
 
     viewModel.onTitleChange("Sort the donations")
     assertFalse(state.saveFailed)
+  }
+
+  private fun fillLocation(address: String, latitude: String, longitude: String) {
+    viewModel.onAddressChange(address)
+    viewModel.onLatitudeChange(latitude)
+    viewModel.onLongitudeChange(longitude)
+  }
+
+  @Test
+  fun addMission_withoutLocation_createsAMissionThatIsNotGeoTimed() = runTest {
+    openForm()
+    fillValidForm()
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertNull(missions.created.single().location)
+  }
+
+  @Test
+  fun addMission_withLocation_createsAGeoTimedMission() = runTest {
+    openForm()
+    fillValidForm()
+    fillLocation("  Grand Place, Lille ", "50.6366", " 3,0635")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(
+        MissionLocation("Grand Place, Lille", 50.6366, 3.0635),
+        missions.created.single().location,
+    )
+  }
+
+  @Test
+  fun addMission_withPartialLocation_reportsEveryMissingPart() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.onLatitudeChange("50.6")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(
+        setOf(MissionFormError.ADDRESS_MISSING, MissionFormError.LONGITUDE_INVALID),
+        state.errors,
+    )
+    assertTrue(missions.created.isEmpty())
+  }
+
+  @Test
+  fun addMission_withInvalidCoordinates_reportsThem() = runTest {
+    openForm()
+    fillValidForm()
+    fillLocation("Grand Place, Lille", "90.1", "north")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(
+        setOf(MissionFormError.LATITUDE_INVALID, MissionFormError.LONGITUDE_INVALID),
+        state.errors,
+    )
+    assertTrue(missions.created.isEmpty())
+  }
+
+  @Test
+  fun clearingTheLocation_removesItsErrors() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.onAddressChange("Grand Place, Lille")
+    viewModel.addMission()
+    assertTrue(MissionFormError.LATITUDE_INVALID in state.errors)
+
+    viewModel.onAddressChange(" ")
+
+    assertTrue(state.errors.isEmpty())
+  }
+
+  @Test
+  fun addMission_overlappingAMissionOfTheSameTeam_reportsTheConflictAndClearsOnEdit() = runTest {
+    val existing =
+        missions.createMission(
+            Mission(
+                eventId = "event-1",
+                title = "Unload the trucks",
+                description = "Unload the donations.",
+                teamId = "logistics",
+                volunteersNeeded = 2,
+                startAt = eventDay.atTime(15, 0).atZone(zone).toInstant(),
+                endAt = eventDay.atTime(16, 0).atZone(zone).toInstant(),
+                location = MissionLocation("Grand Place, Lille", 50.6366, 3.0635),
+                createdAt = now,
+            )
+        )
+    openForm()
+    fillValidForm()
+    fillLocation("Grand Place, Lille", "50.6366", "3.0635")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(
+        MissionConflict(
+            title = "Unload the trucks",
+            start = LocalDateTime.of(eventDay, LocalTime.of(15, 0)),
+            end = LocalDateTime.of(eventDay, LocalTime.of(16, 0)),
+        ),
+        state.conflict,
+    )
+    assertFalse(state.saveFailed)
+    assertFalse(state.isSaving)
+    assertNull(state.createdMission)
+    assertEquals(listOf(existing), missions.created)
+
+    viewModel.onTeamChange("bar")
+    assertNull(state.conflict)
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertEquals(2, missions.created.size)
+  }
+
+  @Test
+  fun parseCoordinate_acceptsAPointOrACommaWithinTheRange() {
+    assertEquals(46.5, parseCoordinate(" 46.5 ", -90.0..90.0))
+    assertEquals(-6.25, parseCoordinate("-6,25", -90.0..90.0))
+    assertNull(parseCoordinate("", -90.0..90.0))
+    assertNull(parseCoordinate("abc", -90.0..90.0))
+    assertNull(parseCoordinate("-90.5", -90.0..90.0))
   }
 
   @Test

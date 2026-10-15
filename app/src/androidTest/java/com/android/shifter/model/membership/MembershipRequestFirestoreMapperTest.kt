@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.membership
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -69,7 +70,7 @@ class MembershipRequestFirestoreMapperTest {
 
     assertEquals(requestId, mapped.id)
     assertEquals(USER_ID, mapped.userId)
-    assertEquals(listOf(SECOND_TEAM_ID, FIRST_TEAM_ID), mapped.preferredTeamIds)
+    assertEquals(TEAM_ID, mapped.teamId)
     assertEquals(2, mapped.availability.size)
     assertEquals(
         AvailabilitySlot(
@@ -93,49 +94,30 @@ class MembershipRequestFirestoreMapperTest {
   }
 
   @Test
-  fun toMembershipRequest_keepsThePreferenceOrderOfTheTeams() = emulatorTest {
-    // Not alphabetical: the first entry is the team the volunteer wants most.
-    val ordered = listOf("team-zulu", "team-alpha", "team-mike")
-    val requestId = writeRawRequest(richRequest().copy(preferredTeamIds = ordered).toFirestoreMap())
-
-    assertEquals(ordered, read(requestId).toMembershipRequest().preferredTeamIds)
-  }
-
-  @Test
-  fun toMembershipRequest_mapsAbsentPreferredTeamIdsToAnEmptyList() = emulatorTest {
+  fun toMembershipRequest_failsLoudlyOnAnAbsentTeamId() = emulatorTest {
+    // A request applies to exactly one team, so one without a team cannot be decided.
     val requestId =
-        writeRawRequest(richRequest().toFirestoreMap() - MembershipRequestSchema.PREFERRED_TEAM_IDS)
+        writeRawRequest(richRequest().toFirestoreMap() - MembershipRequestSchema.TEAM_ID)
 
-    assertTrue(
-        "a missing preference list must map to an empty list",
-        read(requestId).toMembershipRequest().preferredTeamIds.isEmpty(),
-    )
+    assertFailsOnField(requestId, MembershipRequestSchema.TEAM_ID)
   }
 
   @Test
-  fun toMembershipRequest_failsLoudlyOnAPreferredTeamIdsFieldThatIsNull() = emulatorTest {
-    // The write side always stores an array, so a null is a malformed document rather than a
-    // volunteer with no preference.
+  fun toMembershipRequest_failsLoudlyOnABlankTeamId() = emulatorTest {
     val requestId =
-        writeRawRequest(
-            richRequest().toFirestoreMap() + (MembershipRequestSchema.PREFERRED_TEAM_IDS to null)
-        )
+        writeRawRequest(richRequest().toFirestoreMap() + (MembershipRequestSchema.TEAM_ID to " "))
 
-    assertFailsOnField(requestId, MembershipRequestSchema.PREFERRED_TEAM_IDS)
+    assertFailsOnField(requestId, MembershipRequestSchema.TEAM_ID)
   }
 
   @Test
-  fun toMembershipRequest_roundTripsARequestWithoutAPreferredTeam() = emulatorTest {
-    // A volunteer who applied without picking a team, which is valid, unlike one who declared no
-    // availability.
-    val stored =
-        richRequest().copy(preferredTeamIds = emptyList(), status = MembershipRequestStatus.PENDING)
-    val requestId = writeRawRequest(stored.toFirestoreMap())
-
-    val mapped = read(requestId).toMembershipRequest()
-
-    assertEquals(stored.copy(id = requestId), mapped)
-    assertTrue("an empty preference list must stay empty", mapped.preferredTeamIds.isEmpty())
+  fun membershipRequest_cannotBeConstructedWithoutATeam() {
+    assertThrows(
+        "a request with a blank team must be rejected",
+        IllegalArgumentException::class.java,
+    ) {
+      richRequest().copy(teamId = "")
+    }
   }
 
   @Test
@@ -147,6 +129,7 @@ class MembershipRequestFirestoreMapperTest {
     ) {
       MembershipRequest(
           userId = USER_ID,
+          teamId = TEAM_ID,
           availability = emptyList(),
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
@@ -223,25 +206,21 @@ class MembershipRequestFirestoreMapperTest {
   }
 
   @Test
-  fun toMembershipRequest_failsLoudlyOnAPreferredTeamIdThatIsNotAString() = emulatorTest {
+  fun toMembershipRequest_failsLoudlyOnATeamIdThatIsNotAString() = emulatorTest {
     val requestId =
-        writeRawRequest(
-            richRequest().toFirestoreMap() +
-                (MembershipRequestSchema.PREFERRED_TEAM_IDS to listOf(FIRST_TEAM_ID, 42))
-        )
+        writeRawRequest(richRequest().toFirestoreMap() + (MembershipRequestSchema.TEAM_ID to 42))
 
-    assertFailsOnField(requestId, MembershipRequestSchema.PREFERRED_TEAM_IDS)
+    assertFailsOnField(requestId, MembershipRequestSchema.TEAM_ID)
   }
 
   @Test
-  fun toMembershipRequest_failsLoudlyOnAPreferredTeamIdsFieldThatIsNotAList() = emulatorTest {
+  fun toMembershipRequest_failsLoudlyOnATeamIdThatIsAList() = emulatorTest {
     val requestId =
         writeRawRequest(
-            richRequest().toFirestoreMap() +
-                (MembershipRequestSchema.PREFERRED_TEAM_IDS to FIRST_TEAM_ID)
+            richRequest().toFirestoreMap() + (MembershipRequestSchema.TEAM_ID to listOf(TEAM_ID))
         )
 
-    assertFailsOnField(requestId, MembershipRequestSchema.PREFERRED_TEAM_IDS)
+    assertFailsOnField(requestId, MembershipRequestSchema.TEAM_ID)
   }
 
   @Test
@@ -375,7 +354,7 @@ class MembershipRequestFirestoreMapperTest {
   private fun richRequest() =
       MembershipRequest(
           userId = USER_ID,
-          preferredTeamIds = listOf(SECOND_TEAM_ID, FIRST_TEAM_ID),
+          teamId = TEAM_ID,
           availability =
               listOf(
                   AvailabilitySlot(START_OF_SLOT, Instant.parse("2026-07-21T16:00:00Z")),
@@ -434,8 +413,7 @@ class MembershipRequestFirestoreMapperTest {
 
     const val USER_ID = "user-volunteer-1"
 
-    const val FIRST_TEAM_ID = "team-bar"
-    const val SECOND_TEAM_ID = "team-logistics"
+    const val TEAM_ID = "team-bar"
 
     val START_OF_SLOT: Instant = Instant.parse("2026-07-21T08:00:00Z")
   }
