@@ -14,6 +14,8 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,16 +34,20 @@ enum class JoinEventError {
 }
 
 /**
- * What the join screen shows: the code being typed, the event it found, the team picked in it, and
- * where the volunteer's request stands.
+ * What the join screen shows: the code being typed, the event it found, its teams and the one
+ * picked, and where the volunteer's request stands.
  *
+ * @property teams the teams of [event] the volunteer can apply to, by name. Empty while no event is
+ *   shown, or when the event has no team yet, in which case nobody can apply.
  * @property selectedTeamId the team of [event] the volunteer applies to, null until they pick one.
+ *   Once a request is sent, the team it was sent to.
  * @property requestStatus the status of the volunteer's request for the event, null while they have
  *   none. Finding an event they already applied to shows that request, possibly decided.
  */
 data class JoinEventUiState(
     val joinCode: String = "",
     val event: Event? = null,
+    val teams: List<Team> = emptyList(),
     val selectedTeamId: String? = null,
     val isLoading: Boolean = false,
     val requestStatus: MembershipRequestStatus? = null,
@@ -57,6 +63,7 @@ data class JoinEventUiState(
 class JoinEventViewModel(
     private val eventRepository: EventRepository,
     private val membershipRequestRepository: MembershipRequestRepository,
+    private val teamRepository: TeamRepository,
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
@@ -69,9 +76,10 @@ class JoinEventViewModel(
   }
 
   /**
-   * Looks up the event volunteers join with the code typed so far, with the signed-in volunteer's
-   * request for it if they already applied, so they are not offered to apply twice. Join codes are
-   * upper-case, so the code is matched whatever case the volunteer typed it in.
+   * Looks up the event volunteers join with the code typed so far and its teams, with the signed-in
+   * volunteer's request for it if they already applied, so they are not offered to apply twice and
+   * see the team they applied to. Join codes are upper-case, so the code is matched whatever case
+   * the volunteer typed it in.
    */
   fun findEvent() {
     val joinCode = _uiState.value.joinCode.trim().uppercase()
@@ -79,14 +87,16 @@ class JoinEventViewModel(
     launchLoading {
       val event = eventRepository.getEventByJoinCode(joinCode)
       val userId = currentUserId()
-      val requestStatus =
+      val request =
           if (event == null || userId == null) null
-          else membershipRequestRepository.getMembershipRequest(event.id, userId)?.status
+          else membershipRequestRepository.getMembershipRequest(event.id, userId)
+      val teams = event?.let { teamRepository.getTeamsByEvent(it.id).sortedBy(Team::name) }
       _uiState.update {
         it.copy(
             event = event,
-            selectedTeamId = null,
-            requestStatus = requestStatus,
+            teams = teams.orEmpty(),
+            selectedTeamId = request?.teamId,
+            requestStatus = request?.status,
             error = if (event == null) JoinEventError.UNKNOWN_CODE else null,
         )
       }
@@ -100,18 +110,26 @@ class JoinEventViewModel(
   fun changeCode() {
     if (_uiState.value.isLoading) return
     _uiState.update {
-      it.copy(event = null, selectedTeamId = null, requestStatus = null, error = null)
+      it.copy(
+          event = null,
+          teams = emptyList(),
+          selectedTeamId = null,
+          requestStatus = null,
+          error = null,
+      )
     }
   }
 
   /**
    * Picks the team of the loaded event to apply to, replacing any previous pick. A volunteer
    * belongs to at most one team per event, so there is a single choice. Ignored once the request is
-   * sent, or while it is being sent, so the team shown always matches the request.
+   * sent, or while it is being sent, so the team shown always matches the request, and for a team
+   * the event does not have.
    */
   fun onTeamSelected(teamId: String) {
     val state = _uiState.value
-    if (state.event == null || state.isLoading || state.requestStatus != null) return
+    if (state.isLoading || state.requestStatus != null) return
+    if (state.teams.none { it.id == teamId }) return
     _uiState.update { it.copy(selectedTeamId = teamId) }
   }
 
@@ -171,10 +189,16 @@ class JoinEventViewModel(
     fun factory(
         eventRepository: EventRepository,
         membershipRequestRepository: MembershipRequestRepository,
+        teamRepository: TeamRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
-        JoinEventViewModel(eventRepository, membershipRequestRepository, currentUserId)
+        JoinEventViewModel(
+            eventRepository,
+            membershipRequestRepository,
+            teamRepository,
+            currentUserId,
+        )
       }
     }
   }
