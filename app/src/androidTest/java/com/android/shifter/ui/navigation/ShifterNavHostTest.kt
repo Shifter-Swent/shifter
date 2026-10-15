@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -31,6 +32,7 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
@@ -40,6 +42,7 @@ import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
+import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
@@ -382,7 +385,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
 
-    composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
@@ -401,7 +404,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
-    composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
     // The form reads the event it adds the mission to.
     waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
     composeTestRule
@@ -528,6 +531,98 @@ class ShifterNavHostTest {
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)
+  }
+
+  @Test
+  fun organizerEvent_overviewListsTheMissionsAndFiltersThemByTeam() {
+    val event = createEvent(signIn())
+    val bar = createTeam(event, "Bar")
+    createMission(event, "Serve drinks", bar.id)
+    createMission(event, "Welcome the volunteers", teamId = null)
+    openOrganizerEvent(event)
+
+    waitForNode(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Serve drinks").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Welcome the volunteers").performScrollTo().assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip(bar.id)).performClick()
+    composeTestRule.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
+    composeTestRule.onNodeWithText("Welcome the volunteers").assertDoesNotExist()
+  }
+
+  @Test
+  fun organizerEvent_overviewShowsAMissionAddedWhileTheFormWasOpen() {
+    val event = createEvent(signIn())
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS)
+
+    composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
+    createMission(event, "Set up the stands", teamId = null)
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Set up the stands").fetchSemanticsNodes().isNotEmpty()
+    }
+  }
+
+  /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */
+  private fun openOrganizerEvent(event: Event) {
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread {
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+    }
+  }
+
+  /** Creates a team named [name] in [event]. */
+  private fun createTeam(event: Event, name: String): Team {
+    val team = runBlocking {
+      repositories.teamRepository.createTeam(
+          Team(
+              eventId = event.id,
+              name = name,
+              description = "",
+              icon = "wine",
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/teams/${team.id}")
+    return team
+  }
+
+  /** Creates a mission of [event] titled [title], in the team [teamId] or in no team when null. */
+  private fun createMission(event: Event, title: String, teamId: String?) {
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = title,
+              description = "",
+              teamId = teamId,
+              volunteersNeeded = 1,
+              startAt = event.startAt,
+              endAt = event.startAt.plus(Duration.ofHours(1)),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
   }
 
   /** Signs in and opens the creation form; returns the signed-in organizer. */
