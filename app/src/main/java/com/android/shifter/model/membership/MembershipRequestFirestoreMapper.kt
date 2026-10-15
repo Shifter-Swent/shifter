@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.membership
 
 import com.google.firebase.Timestamp
@@ -18,7 +19,7 @@ internal object MembershipRequestSchema {
   const val COLLECTION = "membershipRequests"
 
   const val USER_ID = "userId"
-  const val PREFERRED_TEAM_IDS = "preferredTeamIds"
+  const val TEAM_ID = "teamId"
   const val AVAILABILITY = "availability"
   const val STATUS = "status"
   const val CREATED_AT = "createdAt"
@@ -34,7 +35,7 @@ internal object MembershipRequestSchema {
 internal fun MembershipRequest.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         MembershipRequestSchema.USER_ID to userId,
-        MembershipRequestSchema.PREFERRED_TEAM_IDS to preferredTeamIds,
+        MembershipRequestSchema.TEAM_ID to teamId,
         MembershipRequestSchema.AVAILABILITY to availability.map { it.toFirestoreMap() },
         MembershipRequestSchema.STATUS to status.name,
         MembershipRequestSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
@@ -60,7 +61,7 @@ internal fun DocumentSnapshot.toMembershipRequest(): MembershipRequest {
   return MembershipRequest(
       id = id,
       userId = requireString(MembershipRequestSchema.USER_ID),
-      preferredTeamIds = requirePreferredTeamIds(),
+      teamId = requireTeamId(),
       availability = requireAvailability(),
       status = requireStatus(),
       createdAt = requireInstant(MembershipRequestSchema.CREATED_AT),
@@ -85,20 +86,12 @@ private fun DocumentSnapshot.requireStatus(): MembershipRequestStatus {
 }
 
 /**
- * Preference only, so an absent field and an empty array both mean "no preferred team". A null is
- * not accepted for it: the write side always stores an array, so a null is a malformed document
- * rather than a volunteer with no preference.
- *
- * The order is the order of preference and is kept as stored. A malformed entry is rejected rather
- * than skipped: dropping one would silently change which team the volunteer asked for first.
+ * Required and non-blank: a request applies to exactly one team, and accepting it adds the
+ * volunteer to that team, so a request without one cannot be decided.
  */
-private fun DocumentSnapshot.requirePreferredTeamIds(): List<String> {
-  if (!contains(MembershipRequestSchema.PREFERRED_TEAM_IDS)) return emptyList()
-  val entries =
-      get(MembershipRequestSchema.PREFERRED_TEAM_IDS) as? List<*>
-          ?: invalid(MembershipRequestSchema.PREFERRED_TEAM_IDS)
-  return entries.map { it as? String ?: invalid(MembershipRequestSchema.PREFERRED_TEAM_IDS) }
-}
+private fun DocumentSnapshot.requireTeamId(): String =
+    requireString(MembershipRequestSchema.TEAM_ID).takeIf { it.isNotBlank() }
+        ?: invalid(MembershipRequestSchema.TEAM_ID)
 
 /**
  * Required, and required to hold at least one slot: an organizer cannot schedule a volunteer who

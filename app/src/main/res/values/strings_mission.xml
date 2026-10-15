@@ -31,6 +31,7 @@
     <string name="add_mission_dialog_confirm">OK</string>
     <string name="add_mission_load_failed">Could not load the event.</string>
     <string name="add_mission_retry">Retry</string>
+    <string name="add_mission_not_allowed">Only the organizer and the team managers can add missions to this event.</string>
     <string name="add_mission_error_title_empty">Enter a name</string>
     <string name="add_mission_error_title_too_long">Use at most 80 characters</string>
     <string name="add_mission_error_description_empty">Enter a description</string>

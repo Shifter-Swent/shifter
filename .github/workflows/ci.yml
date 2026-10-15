@@ -74,6 +74,14 @@ jobs:
         run: |
           chmod +x ./gradlew
 
+      # Restore local.properties (holding MAPS_API_KEY) from the base64-encoded LOCAL_PROPERTIES
+      # secret, so the key never lands in the repository.
+      - name: Decode secrets
+        env:
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          echo "$LOCAL_PROPERTIES" | base64 --decode > ./local.properties
+
       # Check formatting
       - name: KTFmt Check
         run: |

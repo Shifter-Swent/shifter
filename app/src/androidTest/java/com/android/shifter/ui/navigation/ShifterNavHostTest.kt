@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,17 +31,21 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.EventDetailsTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -69,6 +74,9 @@ class ShifterNavHostTest {
 
   /** Documents written by a test, deleted afterwards so the next tests start from a clean state. */
   private val createdPaths = mutableListOf<String>()
+
+  /** The team created with each event, keyed by event id, for volunteers to apply to. */
+  private val teamIds = mutableMapOf<String, String>()
 
   @After
   fun tearDown() {
@@ -188,9 +196,44 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun joinEvent_applyingShowsTheRequestOnFindingAgainAndTheEventInTheList() {
+  fun joinEvent_appliesToTheTeamPicked() {
     val event = createEvent(signIn())
     val volunteer = signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput(event.joinCode)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+
+    val teamId = teamIds.getValue(event.id)
+    waitForNode(JoinEventScreenTestTags.teamOption(teamId))
+    // The team list sits below the event details, out of view on small screens.
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.teamOption(teamId))
+        .performScrollTo()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON)
+        .assertIsEnabled()
+        .performClick()
+
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
+    val request = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
+    }
+    assertEquals(teamId, request?.teamId)
+  }
+
+  @Test
+  fun joinEvent_findingAnAppliedEventShowsTheRequestAndTheEventInTheList() {
+    val event = createEvent(signIn())
+    val volunteer = signIn()
+    applyTo(event, volunteer)
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
@@ -202,28 +245,21 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
     waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
-    // Deleted before its event, as Firestore does not cascade the deletion.
-    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
 
+    // Finding the event shows the request already sent instead of the Apply button.
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
     val request = runBlocking {
       repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
     }
     assertEquals(MembershipRequestStatus.PENDING, request?.status)
-
-    // Finding the event again shows the request already sent instead of the Apply button.
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
     // The screen's Back returns to the code, then the device Back leaves to the events list.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
-    // The list reloads on return, so the event just applied to shows up in it.
+    // The event applied to shows up in the list.
     waitForNode(MyEventsTestTags.eventCard(event.id))
   }
 
@@ -353,6 +389,65 @@ class ShifterNavHostTest {
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)
+  }
+
+  @Test
+  fun addMission_savesTheMissionInTheEventAndReturnsToTheOverview() {
+    // The form is only shown to the organizer, so the app keeps their session.
+    val event = createEvent(signIn())
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
+    composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
+    // The form reads the event it adds the mission to.
+    waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE)
+        .assertTextContains(event.title)
+
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .performTextInput("Sort the litter")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
+        .performTextInput("Separate glass and plastic")
+    // The event's team is offered, as the form loads it from the team repository.
+    val teamId = teamIds.getValue(event.id)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.teamChip(teamId))
+        .performScrollTo()
+        .performClick()
+    // The start picker opens on the event's start; the end one is moved an hour later.
+    val start = event.startAt.atZone(ZoneId.systemDefault()).toLocalTime()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.END_FIELD).performClick()
+    composeTestRule.onNodeWithContentDescription(dialHour(start.hour + 1)).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    val mission = runBlocking {
+      repositories.missionRepository.getMissionsByEvent(event.id).single()
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    assertEquals("Sort the litter", mission.title)
+    assertEquals(teamId, mission.teamId)
+    assertEquals(event.startAt, mission.startAt)
+    assertEquals(mission.startAt.plus(Duration.ofHours(1)), mission.endAt)
   }
 
   @Test
@@ -489,12 +584,15 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
     tabs.all.forEach { tab ->
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      if (tab == OrganizerTabs.People) {
-        assertPeopleScreenShown()
-      } else {
-        composeTestRule
-            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-            .assertTextEquals(tab.home.title)
+      when (tab) {
+        OrganizerTabs.People -> assertPeopleScreenShown()
+        VolunteerTabs.Map,
+        OrganizerTabs.Map ->
+            composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
+        else ->
+            composeTestRule
+                .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+                .assertTextEquals(tab.home.title)
       }
     }
   }
@@ -548,7 +646,8 @@ class ShifterNavHostTest {
               title = "Beach cleanup",
               description = "Collect the litter left on the beach.",
               type = EventType.NATURE,
-              startAt = now.plus(Duration.ofDays(1)),
+              // On a whole minute, as a mission's time is picked to the minute.
+              startAt = now.plus(Duration.ofDays(1)).truncatedTo(ChronoUnit.MINUTES),
               endAt = now.plus(Duration.ofDays(2)),
               location = EventLocation("Vidy beach, Lausanne"),
               createdAt = now,
@@ -556,6 +655,21 @@ class ShifterNavHostTest {
       )
     }
     createdPaths += "events/${event.id}"
+    // Volunteers apply to a team of the event, so every event gets one.
+    val team = runBlocking {
+      repositories.teamRepository.createTeam(
+          Team(
+              eventId = event.id,
+              name = "Litter pickers",
+              description = "Walk the beach and collect the litter.",
+              icon = "trash",
+              createdAt = now,
+          )
+      )
+    }
+    teamIds[event.id] = team.id
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/teams/${team.id}")
     return event
   }
 
@@ -566,6 +680,7 @@ class ShifterNavHostTest {
           event.id,
           MembershipRequest(
               userId = volunteer.uid,
+              teamId = teamIds.getValue(event.id),
               availability = listOf(AvailabilitySlot(event.startAt, event.endAt)),
               createdAt = Instant.now(),
           ),
@@ -574,6 +689,9 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
   }
+
+  /** How the 24-hour time picker describes [hour] on its dial, in English. */
+  private fun dialHour(hour: Int): String = "${hour % 24} hours"
 
   private fun waitForNode(tag: String) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {

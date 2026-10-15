@@ -1,7 +1,6 @@
 <resources>
     <string name="app_name">Shifter</string>
     <string name="title_activity_main">MainActivity</string>
-    <string name="title_activity_second">SecondActivity</string>
 
     <!-- Event creation -->
     <string name="create_event_title">Create an event</string>
@@ -80,6 +79,8 @@
     <string name="join_event_code_label">Join code</string>
     <string name="join_event_find">Find event</string>
     <string name="join_event_apply">Apply</string>
+    <string name="join_event_choose_team">Choose your team</string>
+    <string name="join_event_no_teams">This event has no team yet, so you cannot apply to it.</string>
     <string name="join_event_status_pending">● Request sent, pending approval</string>
     <string name="join_event_status_accepted">● You are part of this event</string>
     <string name="join_event_status_rejected">● Your request was declined</string>
