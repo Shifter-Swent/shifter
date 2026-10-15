@@ -152,8 +152,8 @@ every access to it is denied.
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
-| `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams`, `shifts`, `missions` | Any signed-in user | **Temporary**: any signed-in user |
+| `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
+| `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only, except a volunteer leaving their team when they withdraw (see below; temporary, until #208). Nothing is allowed under an event that does not exist |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
@@ -174,8 +174,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 ## Known gaps
 
-- **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
-  the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
+- **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
+  write them; malformed documents are caught by the mappers. Team managers have no write access
+  yet: only the organizer edits these subcollections.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
 - **`User.createdAt`** is still read as a `java.util.Date`, unlike the other models, which use
