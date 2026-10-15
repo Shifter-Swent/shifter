@@ -1,7 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
-import java.util.Date
+import java.time.Instant
 
 /**
  * In-memory [UserRepository] for ViewModel unit tests. Set [failure] to make every call throw it.
@@ -20,7 +20,7 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User {
     failure?.let { throw it }
     return users.getOrPut(uid) {
-      User(uid = uid, displayName = displayName, email = email, createdAt = Date())
+      User(uid = uid, displayName = displayName, email = email, createdAt = Instant.now())
     }
   }
 }

@@ -18,10 +18,11 @@ import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_S
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
-import java.util.Date
+import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -41,16 +42,23 @@ class UserRepositoryFirestoreTest {
     every { collection.document(UID) } returns ref
     every { ref.get() } returns Tasks.forResult(snapshot)
     every { transaction.get(ref) } returns snapshot
+    every { snapshot.id } returns UID
     // Runs the transaction body synchronously against the mocked transaction.
-    every { db.runTransaction(any<Transaction.Function<User>>()) } answers
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<User>>().apply(transaction))
+          Tasks.forResult(firstArg<Transaction.Function<DocumentSnapshot?>>().apply(transaction))
         }
+  }
+
+  /** Makes [snapshot] an existing document holding [fields], or a missing one when null. */
+  private fun stored(fields: Map<String, Any?>?) {
+    every { snapshot.exists() } returns (fields != null)
+    every { snapshot.get(any<String>()) } answers { fields?.get(firstArg()) }
   }
 
   @Test
   fun getOrCreateUser_createsProfileWhenAbsent() = runTest {
-    every { snapshot.data } returns null
+    stored(null)
 
     val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com")
 
@@ -60,12 +68,13 @@ class UserRepositoryFirestoreTest {
 
   @Test
   fun getOrCreateUser_returnsExistingProfileWithoutOverwritingIt() = runTest {
-    every { snapshot.data } returns
+    stored(
         mapOf(
             DISPLAY_NAME to "Ada L.",
             EMAIL to "ada@example.com",
             LOCATION_SHARING_ENABLED to true,
         )
+    )
 
     val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com")
 
@@ -76,12 +85,24 @@ class UserRepositoryFirestoreTest {
   @Test
   fun getOrCreateUser_translatesFirestoreErrors() = runTest {
     val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
-    every { db.runTransaction(any<Transaction.Function<User>>()) } returns Tasks.forException(error)
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(error)
 
     val thrown = runCatching { repository.getOrCreateUser(UID, "Ada", "a@b.c") }.exceptionOrNull()
 
     assertTrue(thrown is UserRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
+  }
+
+  @Test
+  fun getOrCreateUser_reportsMalformedProfileAsUnknown() = runTest {
+    stored(mapOf(DISPLAY_NAME to "Ada", LOCATION_SHARING_ENABLED to false))
+
+    val thrown = runCatching { repository.getOrCreateUser(UID, "Ada", "a@b.c") }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    assertTrue(thrown!!.cause is IllegalStateException)
+    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test
@@ -96,16 +117,28 @@ class UserRepositoryFirestoreTest {
 
   @Test
   fun getUser_returnsNullWhenDocumentMissing() = runTest {
-    every { snapshot.data } returns null
+    stored(null)
 
     assertNull(repository.getUser(UID))
   }
 
   @Test
   fun getUser_returnsMappedUserWhenDocumentExists() = runTest {
-    every { snapshot.data } returns mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com")
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
 
     assertEquals(User(UID, "Ada", "ada@example.com"), repository.getUser(UID))
+  }
+
+  @Test
+  fun getUser_reportsMalformedProfileAsUnknown() = runTest {
+    stored(mapOf(DISPLAY_NAME to "Ada", EMAIL to 42, LOCATION_SHARING_ENABLED to false))
+
+    val thrown = runCatching { repository.getUser(UID) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    assertTrue(thrown!!.cause is IllegalStateException)
   }
 
   @Test
@@ -121,26 +154,55 @@ class UserRepositoryFirestoreTest {
 
   @Test
   fun userFromFirestore_mapsAllFields() {
-    val date = Date(1_700_000_000_000)
-    val data =
+    val createdAt = Instant.ofEpochSecond(1_700_000_000, 123_000)
+    stored(
         mapOf(
             DISPLAY_NAME to "Ada",
             EMAIL to "ada@example.com",
             LOCATION_SHARING_ENABLED to true,
-            CREATED_AT to Timestamp(date),
+            CREATED_AT to Timestamp(createdAt.epochSecond, createdAt.nano),
         )
+    )
 
-    val user = UserRepositoryFirestore.userFromFirestore(UID, data)
+    val user = UserRepositoryFirestore.userFromFirestore(snapshot)
 
-    assertEquals(User(UID, "Ada", "ada@example.com", true, date), user)
+    assertEquals(User(UID, "Ada", "ada@example.com", true, createdAt), user)
   }
 
   @Test
-  fun userFromFirestore_usesDefaultsForMissingOrMistypedFields() {
-    val user =
-        UserRepositoryFirestore.userFromFirestore(UID, mapOf(LOCATION_SHARING_ENABLED to "yes"))
+  fun userFromFirestore_leavesCreatedAtNullWhileTheServerTimestampIsPending() {
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
 
-    assertEquals(User(UID, "", "", false, null), user)
+    assertNull(UserRepositoryFirestore.userFromFirestore(snapshot).createdAt)
+  }
+
+  @Test
+  fun userFromFirestore_failsOnMissingOrMistypedFields() {
+    val valid =
+        mapOf(
+            DISPLAY_NAME to "Ada",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+            CREATED_AT to Timestamp(1_700_000_000, 0),
+        )
+    val malformed =
+        listOf(
+            valid - DISPLAY_NAME,
+            valid - EMAIL,
+            valid - LOCATION_SHARING_ENABLED,
+            valid + (EMAIL to 42),
+            valid + (LOCATION_SHARING_ENABLED to "yes"),
+            valid + (CREATED_AT to "2024-01-01"),
+        )
+
+    malformed.forEach { fields ->
+      stored(fields)
+      assertThrows(IllegalStateException::class.java) {
+        UserRepositoryFirestore.userFromFirestore(snapshot)
+      }
+    }
   }
 
   @Test
