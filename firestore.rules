@@ -118,8 +118,23 @@ service cloud.firestore {
       // own block. The organizer builds them; the organizer and the participants read them.
       // Reads do not depend on the documents' content, so whole-subcollection queries are allowed.
       match /teams/{teamId} {
+        // A volunteer who withdraws leaves their team on their own: they remove only themself
+        // from memberIds and delete their request in the same commit. Temporary: remove with #208,
+        // once only pending requests can be withdrawn.
+        function isWithdrawal() {
+          let previous = resource.data.get('memberIds', []);
+          let next = request.resource.data.get('memberIds', []);
+          return signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+            && previous.removeAll(next) == [request.auth.uid]
+            && next.removeAll(previous).size() == 0
+            && !existsAfter(
+                 /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
+        }
+
         allow read: if canReadEventContent(eventId);
         allow write: if isOrganizer(eventId);
+        allow update: if isWithdrawal();
       }
 
       match /shifts/{shiftId} {

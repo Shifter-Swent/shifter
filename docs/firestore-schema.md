@@ -153,7 +153,7 @@ every access to it is denied.
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
+| `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only, except a volunteer leaving their team when they withdraw (see below; temporary, until #208). Nothing is allowed under an event that does not exist |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
