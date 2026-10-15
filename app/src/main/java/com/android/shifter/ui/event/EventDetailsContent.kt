@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
@@ -66,15 +67,20 @@ object EventDetailsTestTags {
  * Places and "Organized by" are not shown yet: the event has no capacity field, and organizer
  * profiles cannot be read by other users.
  *
+ * @param teams the teams of [event], of which the volunteer picks the one they apply to.
+ * @param selectedTeamId the team picked; Apply stays disabled until there is one.
  * @param requestStatus the status of the volunteer's request once sent, shown in place of Apply.
  */
 @Composable
 fun EventDetailsContent(
     event: Event,
+    teams: List<Team>,
+    selectedTeamId: String?,
     isLoading: Boolean,
     requestStatus: MembershipRequestStatus?,
     error: JoinEventError?,
     onBack: () -> Unit,
+    onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -125,13 +131,19 @@ fun EventDetailsContent(
             modifier = Modifier.testTag(EventDetailsTestTags.DESCRIPTION),
         )
       }
+      TeamSelector(
+          teams = teams,
+          selectedTeamId = selectedTeamId,
+          enabled = !isLoading && requestStatus == null,
+          onTeamSelected = onTeamSelected,
+      )
       IconLabel(
           Icons.Outlined.Info,
           stringResource(R.string.event_details_approval_notice),
           colors.onSurfaceVariant,
       )
     }
-    ApplyBar(isLoading, requestStatus, error, onApply)
+    ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply)
   }
 }
 
@@ -228,12 +240,16 @@ private fun IconLabel(icon: ImageVector, text: String, color: Color) {
   }
 }
 
-/** Apply pinned to the bottom, replaced by the request's status once it is sent. */
+/**
+ * Apply pinned to the bottom, enabled once [canApply], and replaced by the request's status once it
+ * is sent.
+ */
 @Composable
 private fun ApplyBar(
     isLoading: Boolean,
     requestStatus: MembershipRequestStatus?,
     error: JoinEventError?,
+    canApply: Boolean,
     onApply: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -254,6 +270,7 @@ private fun ApplyBar(
                   stringResource(R.string.join_event_apply),
                   onApply,
                   JoinEventScreenTestTags.APPLY_BUTTON,
+                  canApply,
               )
         }
       }
