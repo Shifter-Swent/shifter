@@ -381,6 +381,12 @@ class ShifterNavHostTest {
     composeTestRule
         .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
         .performTextInput("Separate glass and plastic")
+    // The event's team is offered, as the form loads it from the team repository.
+    val teamId = teamIds.getValue(event.id)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.teamChip(teamId))
+        .performScrollTo()
+        .performClick()
     // The start picker opens on the event's start; the end one is moved an hour later.
     val start = event.startAt.atZone(ZoneId.systemDefault()).toLocalTime()
     composeTestRule
@@ -406,6 +412,7 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
     assertEquals("Sort the litter", mission.title)
+    assertEquals(teamId, mission.teamId)
     assertEquals(event.startAt, mission.startAt)
     assertEquals(mission.startAt.plus(Duration.ofHours(1)), mission.endAt)
   }
