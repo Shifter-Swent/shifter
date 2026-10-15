@@ -75,10 +75,12 @@ class AddMissionScreenTest {
   }
 
   @Test
-  fun whileTheEventLoads_showsAProgressAndCannotSubmit() {
+  fun whileTheEventLoads_showsAProgressHidesTheTeamsAndCannotSubmit() {
     setContent(AddMissionUiState())
 
     node(AddMissionScreenTestTags.LOADING_INDICATOR).assertIsDisplayed()
+    // A manager must not see "General" selected before their team replaces it.
+    node(AddMissionScreenTestTags.GENERAL_CHIP).assertDoesNotExist()
     node(AddMissionScreenTestTags.SUBMIT_BUTTON).performScrollTo().assertIsNotEnabled()
   }
 

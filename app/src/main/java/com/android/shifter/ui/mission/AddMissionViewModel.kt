@@ -115,8 +115,9 @@ enum class MissionFormError(val field: MissionFormField) {
  *   one of [address], [latitude] or [longitude] is filled, and then all three are required.
  * @property latitude the latitude of the optional location, as typed.
  * @property longitude the longitude of the optional location, as typed.
- * @property errors the current validation errors. Empty until the organizer first tries to submit,
- *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
+ * @property errors the current validation errors. Empty until the organizer or a manager first
+ *   tries to submit, so an untouched form is not shown in red; from then on it is kept up to date
+ *   on every edit.
  * @property conflict the mission of the same team the last submit overlapped, null otherwise.
  * @property createdMission the persisted mission once creation succeeded, null before.
  * @property createdMissionHandled whether the screen already reacted to [createdMission], e.g. by
@@ -163,7 +164,7 @@ data class AddMissionUiState(
   val endsNextDay: Boolean
     get() = startTime != null && endTime != null && endTime.isBefore(startTime)
 
-  /** Whether the organizer started to give a location, which then has to be complete. */
+  /** Whether the user started to give a location, which then has to be complete. */
   val hasLocation: Boolean
     get() = address.isNotBlank() || latitude.isNotBlank() || longitude.isNotBlank()
 
@@ -186,9 +187,13 @@ data class AddMissionUiState(
  * The organizer of the event attaches a mission to any of its teams, or to none ("General"); a
  * manager only to a team they manage. Anyone else may not add missions.
  *
+ * The rules let only the organizer and the event's accepted participants read its teams. A manager
+ * promoted from the members of a team is one, but nothing enforces it: a manager who is not a
+ * participant only sees the load error, until #160 lets managers read the teams they manage.
+ *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  * @param clock source of the current time, used to stamp [Mission.createdAt]; its zone is the one
- *   the organizer reads and enters times in. Inject a fixed clock in tests.
+ *   the organizer or manager reads and enters times in. Inject a fixed clock in tests.
  */
 class AddMissionViewModel(
     private val eventId: String,

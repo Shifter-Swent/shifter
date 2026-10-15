@@ -216,13 +216,16 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
           testTag = AddMissionScreenTestTags.DESCRIPTION_FIELD,
           singleLine = false,
       )
-      TeamSelector(
-          teams = state.teams,
-          canChooseGeneral = state.canChooseGeneral,
-          selectedId = state.teamId,
-          enabled = editable,
-          onTeamChange = actions.onTeamChange,
-      )
+      // The teams load with the event: until then, a manager would see "General" selected.
+      if (state.event != null) {
+        TeamSelector(
+            teams = state.teams,
+            canChooseGeneral = state.canChooseGeneral,
+            selectedId = state.teamId,
+            enabled = editable,
+            onTeamChange = actions.onTeamChange,
+        )
+      }
       VolunteersStepper(
           count = state.volunteersNeeded,
           enabled = editable,
