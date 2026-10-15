@@ -2,7 +2,10 @@
 package com.swent.shifter.ui.people
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
@@ -116,12 +119,27 @@ class ParticipantsViewModel(
     it.copy(groups = emptyList(), error = error)
   }
 
-  private companion object {
+  companion object {
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(
+        eventId: String,
+        membershipRequestRepository: MembershipRequestRepository,
+        teamRepository: TeamRepository,
+        userRepository: UserRepository,
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer {
+        ParticipantsViewModel(eventId, membershipRequestRepository, teamRepository, userRepository)
+      }
+    }
+
     /**
      * Puts each participant in the first team that has them as its manager or among its members, or
      * in a last group of no team.
      */
-    fun group(
+    private fun group(
         participantIds: List<String>,
         teams: List<Team>,
         names: Map<String, String?>,

@@ -22,11 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.UnderlinedTab
 import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.membership.MembershipRequestUIState
@@ -36,13 +36,22 @@ import com.swent.shifter.ui.navigation.Tab
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_tabInactive
 
-/** People navigation shell. Participants content will be added separately. */
+/**
+ * The organizer's People tab: the event's participants by team, and the requests to join it.
+ *
+ * @param onReloadParticipants reloads the participants, on retry and whenever the organizer comes
+ *   back to their tab, so a request accepted meanwhile shows its volunteer.
+ * @param onParticipantClick called with a participant and their team when their card is tapped.
+ */
 @Composable
 fun PeopleScreen(
     uiState: MembershipRequestUIState,
     onAccept: (String) -> Unit,
     onReject: (String) -> Unit,
     onRetry: () -> Unit,
+    participants: ParticipantsUiState,
+    onReloadParticipants: () -> Unit,
+    onParticipantClick: (ParticipantItem, Team) -> Unit,
     onNavigate: (Tab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -62,15 +71,17 @@ fun PeopleScreen(
                   stringResource(R.string.people_tab_requests),
               ),
           selected = selectedTab,
-          onSelect = { selectedTab = it },
+          onSelect = {
+            if (it == PARTICIPANTS_TAB && selectedTab != PARTICIPANTS_TAB) onReloadParticipants()
+            selectedTab = it
+          },
       )
-      if (selectedTab == 0) {
-        Text(
-            text = stringResource(R.string.people_participants_placeholder),
-            color = colors.onSurfaceVariant,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
+      if (selectedTab == PARTICIPANTS_TAB) {
+        ParticipantsList(
+            participants,
+            onReloadParticipants,
+            onParticipantClick,
+            Modifier.weight(1f),
         )
       } else {
         MembershipRequestsScreen(uiState, onAccept, onReject, onRetry, Modifier.weight(1f))
@@ -130,8 +141,21 @@ private fun OrganizerNavigationBar(onNavigate: (Tab) -> Unit) {
   }
 }
 
+private const val PARTICIPANTS_TAB = 0
+
 @Preview
 @Composable
 private fun PeopleScreenPreview() {
-  ShifterTheme { PeopleScreen(MembershipRequestUIState(isLoading = false), {}, {}, {}, {}) }
+  ShifterTheme {
+    PeopleScreen(
+        uiState = MembershipRequestUIState(isLoading = false),
+        onAccept = {},
+        onReject = {},
+        onRetry = {},
+        participants = ParticipantsUiState(),
+        onReloadParticipants = {},
+        onParticipantClick = { _, _ -> },
+        onNavigate = {},
+    )
+  }
 }
