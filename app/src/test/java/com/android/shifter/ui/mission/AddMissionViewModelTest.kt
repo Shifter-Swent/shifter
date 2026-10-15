@@ -9,6 +9,8 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -41,13 +43,17 @@ class AddMissionViewModelTest {
   private val clock = Clock.fixed(now, zone)
 
   private val eventDay = LocalDate.of(2027, 6, 20)
+  private val organizerId = "organizer-1"
+  private val managerId = "manager-1"
+
+  /** The teams of the event, as the organizer sees them. Only Logistics has [managerId]. */
   private val teams = listOf(TeamOption("logistics", "Logistics"), TeamOption("bar", "Bar"))
 
   /** Local Food Drive, 20 June 2027 from 10:00 to 18:00 in Zurich. */
   private val event =
       Event(
           id = "event-1",
-          organizerId = "organizer-1",
+          organizerId = organizerId,
           title = "Local Food Drive",
           description = "Collect food for the local food bank",
           type = EventType.FOOD,
@@ -59,13 +65,26 @@ class AddMissionViewModelTest {
 
   private lateinit var missions: FakeMissionRepository
   private lateinit var events: StubEventRepository
+  private lateinit var teamRepository: FakeTeamRepository
   private lateinit var viewModel: AddMissionViewModel
+
+  /** Who is signed in; the organizer unless a test says otherwise. */
+  private var userId: String? = organizerId
 
   @Before
   fun setUp() {
     Dispatchers.setMain(dispatcher)
     missions = FakeMissionRepository()
     events = StubEventRepository(event)
+    teamRepository =
+        FakeTeamRepository(
+            listOf(
+                team("logistics", "Logistics", event.id, managerId = managerId),
+                team("bar", "Bar", event.id),
+                // Managed by the same manager, but in another event.
+                team("stage", "Stage", "event-2", managerId = managerId),
+            )
+        )
   }
 
   @After
@@ -75,9 +94,23 @@ class AddMissionViewModelTest {
 
   /** Creates the ViewModel and lets it load the event. */
   private fun TestScope.openForm(eventId: String = event.id) {
-    viewModel = AddMissionViewModel(eventId, missions, events, teams, clock)
+    viewModel = newViewModel(eventId)
     advanceUntilIdle()
   }
+
+  private fun newViewModel(eventId: String = event.id) =
+      AddMissionViewModel(eventId, missions, events, teamRepository, { userId }, clock)
+
+  private fun team(id: String, name: String, eventId: String, managerId: String? = null) =
+      Team(
+          id = id,
+          eventId = eventId,
+          name = name,
+          description = "",
+          icon = "",
+          managerId = managerId,
+          createdAt = now,
+      )
 
   private fun fillValidForm() {
     viewModel.onTitleChange("  Sort the food donations ")
@@ -112,7 +145,7 @@ class AddMissionViewModelTest {
 
   @Test
   fun beforeTheEventLoads_theFormCannotBeSubmitted() = runTest {
-    viewModel = AddMissionViewModel(event.id, missions, events, teams, clock)
+    viewModel = newViewModel()
 
     assertTrue(state.isLoadingEvent)
     assertFalse(state.canSubmit)
@@ -174,6 +207,104 @@ class AddMissionViewModelTest {
 
     viewModel.onTeamChange(null)
     assertNull(state.teamId)
+  }
+
+  @Test
+  fun theOrganizer_choosesAmongEveryTeamOfTheEventOrGeneral() = runTest {
+    openForm()
+
+    assertEquals(teams, state.teams)
+    assertTrue(state.canChooseGeneral)
+    assertNull(state.teamId)
+    assertFalse(state.notAllowed)
+  }
+
+  @Test
+  fun aManager_choosesOnlyAmongTheTeamsTheyManage_withOneSelected() = runTest {
+    userId = managerId
+    openForm()
+
+    assertEquals(listOf(TeamOption("logistics", "Logistics")), state.teams)
+    assertFalse(state.canChooseGeneral)
+    assertEquals("logistics", state.teamId)
+    assertFalse(state.notAllowed)
+    assertTrue(state.canSubmit)
+  }
+
+  @Test
+  fun aManager_cannotSwitchToGeneralOrToATeamTheyDoNotManage() = runTest {
+    userId = managerId
+    openForm()
+
+    viewModel.onTeamChange(null)
+    viewModel.onTeamChange("bar")
+
+    assertEquals("logistics", state.teamId)
+  }
+
+  @Test
+  fun aManager_createsTheMissionForTheirTeam() = runTest {
+    userId = managerId
+    openForm()
+    viewModel.onTitleChange("Unload the truck")
+    viewModel.onDescriptionChange("Bring the crates to the storage room.")
+    viewModel.onStartTimeChange(LocalTime.of(11, 0))
+    viewModel.onEndTimeChange(LocalTime.of(12, 0))
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals("logistics", missions.created.single().teamId)
+  }
+
+  @Test
+  fun aUserWhoIsNeitherOrganizerNorManager_isNotAllowed() = runTest {
+    userId = "volunteer-1"
+    openForm()
+
+    assertTrue(state.notAllowed)
+    assertFalse(state.loadFailed)
+    assertTrue(state.teams.isEmpty())
+    assertFalse(state.canSubmit)
+    viewModel.onTitleChange("Sneaky")
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertTrue(missions.created.isEmpty())
+  }
+
+  @Test
+  fun nobodySignedIn_isNotAllowed() = runTest {
+    userId = null
+    openForm()
+
+    assertTrue(state.notAllowed)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun failingToLoadTheTeams_failsToLoad_andRetryingRecovers() = runTest {
+    teamRepository.failure = IllegalStateException("offline")
+    openForm()
+    assertTrue(state.loadFailed)
+    assertFalse(state.canSubmit)
+
+    teamRepository.failure = null
+    viewModel.loadEvent()
+    advanceUntilIdle()
+
+    assertFalse(state.loadFailed)
+    assertEquals(teams, state.teams)
+  }
+
+  @Test
+  fun retrying_keepsTheSelectedTeamWhenItIsStillOffered() = runTest {
+    openForm()
+    viewModel.onTeamChange("bar")
+
+    viewModel.loadEvent()
+    advanceUntilIdle()
+
+    assertEquals("bar", state.teamId)
   }
 
   @Test
@@ -443,7 +574,7 @@ class AddMissionViewModelTest {
   @Test
   fun factory_createsAViewModelForTheEvent() = runTest {
     viewModel =
-        AddMissionViewModel.factory(event.id, missions, events, teams, clock)
+        AddMissionViewModel.factory(event.id, missions, events, teamRepository, { userId }, clock)
             .create(AddMissionViewModel::class.java, CreationExtras.Empty)
     advanceUntilIdle()
 
