@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -161,6 +162,8 @@ private fun TeamBar(group: ParticipantGroup) {
       modifier =
           Modifier.fillMaxWidth()
               .padding(top = 4.dp)
+              // One node, so the bar reads, and is found, as its whole text.
+              .semantics(mergeDescendants = true) {}
               .testTag(ParticipantsListTestTags.teamBar(group.team?.id)),
   ) {
     HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.width(16.dp))
@@ -199,6 +202,8 @@ private fun ParticipantCard(participant: ParticipantItem, onClick: (() -> Unit)?
                   else Modifier
               )
               .padding(16.dp)
+              // One node even when it cannot be tapped, like the cards that can.
+              .semantics(mergeDescendants = true) {}
               .testTag(ParticipantsListTestTags.participantCard(participant.userId)),
   ) {
     Text(
