@@ -51,9 +51,14 @@ class UserRepositoryFirestoreEmulatorTest {
   fun getOrCreateUser_returnsExistingProfileWithoutOverwritingIt() = runTest {
     repository.getOrCreateUser(uid, "Ada", "ada@example.com")
     val createdAt = repository.getUser(uid)!!.createdAt
-    db.collection(USERS_COLLECTION)
-        .document(uid)
-        .update(mapOf(DISPLAY_NAME to "Ada L.", LOCATION_SHARING_ENABLED to true))
+    // A new name goes to both profiles in one commit, as the rules require.
+    db.batch()
+        .update(
+            db.collection(USERS_COLLECTION).document(uid),
+            mapOf(DISPLAY_NAME to "Ada L.", LOCATION_SHARING_ENABLED to true),
+        )
+        .update(publicProfile(uid), DISPLAY_NAME, "Ada L.")
+        .commit()
         .await()
 
     val user = repository.getOrCreateUser(uid, "Ada", "ada@example.com")
@@ -61,6 +66,56 @@ class UserRepositoryFirestoreEmulatorTest {
     assertEquals("Ada L.", user.displayName)
     assertTrue(user.locationSharingEnabled)
     assertEquals(createdAt, user.createdAt)
+  }
+
+  @Test
+  fun getOrCreateUser_createsThePublicProfileThatOtherUsersRead() = runTest {
+    repository.getOrCreateUser(uid, "Ada", "ada@example.com")
+
+    signInAsAnotherUser()
+
+    assertEquals(PublicProfile(uid, "Ada"), repository.getPublicProfile(uid))
+    assertNull(repository.getPublicProfile("nobody"))
+  }
+
+  @Test
+  fun getOrCreateUser_givesAProfileFromBeforePublicProfilesItsPublicProfile() = runTest {
+    db.collection(USERS_COLLECTION)
+        .document(uid)
+        .set(UserRepositoryFirestore.newUserFields("Ada", "ada@example.com"))
+        .await()
+    assertNull(repository.getPublicProfile(uid))
+
+    repository.getOrCreateUser(uid, "Ada", "ada@example.com")
+
+    assertEquals(PublicProfile(uid, "Ada"), repository.getPublicProfile(uid))
+  }
+
+  @Test
+  fun rules_forbidListingPublicProfiles() = runTest {
+    repository.getOrCreateUser(uid, "Ada", "ada@example.com")
+
+    assertDenied { db.collection(PUBLIC_PROFILES_COLLECTION).get().await() }
+  }
+
+  @Test
+  fun rules_keepThePublicProfileTheNameOfItsOwner() = runTest {
+    db.collection(USERS_COLLECTION)
+        .document(uid)
+        .set(UserRepositoryFirestore.newUserFields("Ada", "ada@example.com"))
+        .await()
+
+    assertDenied { publicProfile(uid).set(mapOf(DISPLAY_NAME to "Eve")).await() }
+    assertDenied { publicProfile(uid).set(mapOf(DISPLAY_NAME to "Ada", "email" to "x")).await() }
+    assertDenied { publicProfile("someone-else").set(mapOf(DISPLAY_NAME to "Ada")).await() }
+    publicProfile(uid).set(mapOf(DISPLAY_NAME to "Ada")).await()
+    // Renaming one profile without the other would make them disagree.
+    assertDenied {
+      db.collection(USERS_COLLECTION).document(uid).update(DISPLAY_NAME, "Ada L.").await()
+    }
+    assertDenied { publicProfile(uid).update(DISPLAY_NAME, "Ada L.").await() }
+    assertDenied { publicProfile(uid).delete().await() }
+    assertEquals(PublicProfile(uid, "Ada"), repository.getPublicProfile(uid))
   }
 
   @Test
@@ -83,5 +138,21 @@ class UserRepositoryFirestoreEmulatorTest {
     } catch (e: FirebaseFirestoreException) {
       assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, e.code)
     }
+  }
+
+  private fun publicProfile(uid: String) = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
+
+  private suspend fun signInAsAnotherUser() {
+    auth.signOut()
+    auth.signInAnonymously().await()
+  }
+
+  private suspend fun assertDenied(block: suspend () -> Unit) {
+    val failure = runCatching { block() }.exceptionOrNull()
+    assertTrue(
+        "expected a permission denial, but was: $failure",
+        (failure as? FirebaseFirestoreException)?.code ==
+            FirebaseFirestoreException.Code.PERMISSION_DENIED,
+    )
   }
 }

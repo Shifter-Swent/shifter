@@ -42,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -179,4 +180,6 @@ private object PreviewUserRepository : UserRepository {
 
   override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
       throw UnsupportedOperationException("Preview")
+
+  override suspend fun getPublicProfile(uid: String): PublicProfile? = null
 }
