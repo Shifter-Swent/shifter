@@ -315,6 +315,8 @@ class CreateTeamViewModelTest {
     assertEquals(teams.teams.single(), state.createdTeam)
     assertFalse(state.isSaving)
     assertFalse(state.saveFailed)
+    // The team exists: the form is done, and waits to be taken away rather than edited.
+    assertFalse(state.isEditable)
   }
 
   @Test
@@ -351,6 +353,7 @@ class CreateTeamViewModelTest {
     assertFalse(state.isSaving)
     assertNull(state.createdTeam)
     assertTrue(state.canSubmit)
+    assertTrue(state.isEditable)
 
     teams.failure = null
     submit()
