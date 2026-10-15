@@ -25,7 +25,7 @@ import org.junit.runner.RunWith
 /**
  * The whole join flow on the real screen and view model, with in-memory repositories: a wrong code
  * shows an error, the right one shows the event, the volunteer can go back to the code, Apply sends
- * the request, and finding the event again shows that request.
+ * the request for the team picked, and finding the event again shows that request.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinEventFlowTest {
@@ -96,11 +96,14 @@ class JoinEventFlowTest {
         .assertTextContains(EVENT.joinCode.lowercase())
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
+    // The screen has no team picker yet, so the team is picked through the view model.
+    composeTestRule.runOnIdle { viewModel.onTeamSelected(TEAM_ID) }
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
     assertEquals(listOf(EVENT.id), sentRequests.map { it.first })
     assertEquals("volunteer-1", sentRequests.single().second.userId)
+    assertEquals(TEAM_ID, sentRequests.single().second.teamId)
 
     // Finding the event again shows the request already sent instead of offering to apply.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
@@ -118,6 +121,7 @@ class JoinEventFlowTest {
   }
 
   private companion object {
+    const val TEAM_ID = "team-a"
     val EVENT =
         Event(
             id = "event-1",

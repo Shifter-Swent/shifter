@@ -134,13 +134,47 @@ class JoinEventViewModelTest {
   }
 
   @Test
-  fun changeCode_leavesTheEventAndKeepsTheCode() {
+  fun changeCode_leavesTheEventAndItsTeamAndKeepsTheCode() {
     loadEvent()
 
     viewModel.changeCode()
 
     assertNull(viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.selectedTeamId)
     assertEquals("ABC123", viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun findEvent_clearsTheTeamPickedInThePreviousEvent() {
+    loadEvent()
+
+    viewModel.findEvent()
+
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.selectedTeamId)
+  }
+
+  @Test
+  fun onTeamSelected_keepsOnlyTheLastPick() {
+    loadEvent(team = null)
+
+    viewModel.onTeamSelected("team-a")
+    viewModel.onTeamSelected("team-b")
+
+    assertEquals("team-b", viewModel.uiState.value.selectedTeamId)
+  }
+
+  @Test
+  fun onTeamSelected_isIgnoredWithoutAnEventOrOnceApplied() {
+    viewModel.onTeamSelected(TEAM_ID)
+    assertNull(viewModel.uiState.value.selectedTeamId)
+
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    viewModel.applyToEvent()
+    viewModel.onTeamSelected("team-b")
+
+    assertEquals(TEAM_ID, viewModel.uiState.value.selectedTeamId)
   }
 
   @Test
@@ -169,6 +203,7 @@ class JoinEventViewModelTest {
     val expected =
         MembershipRequest(
             userId = UID,
+            teamId = TEAM_ID,
             availability = listOf(AvailabilitySlot(EVENT.startAt, EVENT.endAt)),
             createdAt = NOW,
         )
@@ -199,6 +234,17 @@ class JoinEventViewModelTest {
     viewModel.applyToEvent()
     viewModel.applyToEvent()
     coVerify(exactly = 1) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun apply_doesNothingUntilATeamIsPicked() {
+    loadEvent(team = null)
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+
+    viewModel.applyToEvent()
+
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+    assertNull(viewModel.uiState.value.requestStatus)
   }
 
   @Test
@@ -234,15 +280,18 @@ class JoinEventViewModelTest {
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
-  private fun loadEvent() {
+  /** Finds [EVENT], then picks [team] in it unless it is null. */
+  private fun loadEvent(team: String? = TEAM_ID) {
     coEvery { events.getEventByJoinCode(any()) } returns EVENT
     viewModel.onJoinCodeChange("ABC123")
     viewModel.findEvent()
+    team?.let(viewModel::onTeamSelected)
   }
 
   private fun request(status: MembershipRequestStatus) =
       MembershipRequest(
           userId = UID,
+          teamId = TEAM_ID,
           availability = listOf(AvailabilitySlot(EVENT.startAt, EVENT.endAt)),
           createdAt = NOW,
           status = status,
@@ -250,6 +299,7 @@ class JoinEventViewModelTest {
 
   private companion object {
     const val UID = "volunteer-1"
+    const val TEAM_ID = "team-a"
     val NOW: Instant = Instant.ofEpochSecond(600)
     val EVENT =
         Event(

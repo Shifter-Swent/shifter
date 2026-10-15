@@ -59,33 +59,45 @@ service cloud.firestore {
           return existsAfter(participants) && uid in getAfter(participants).data.participantIds;
         }
 
+        // Whether the volunteer is a member of the team they applied to once the current commit is
+        // applied. An absent memberIds field reads as an empty list, like in the app.
+        function isTeamMemberAfter() {
+          let team = /databases/$(database)/documents/events/$(eventId)/teams/$(resource.data.teamId);
+          return existsAfter(team) && uid in getAfter(team).data.get('memberIds', []);
+        }
+
         allow read: if isRequester() || isOrganizer(eventId);
         allow create: if isRequester()
           && exists(/databases/$(database)/documents/events/$(eventId))
           && request.resource.data.keys().hasOnly(
-               ['userId', 'preferredTeamIds', 'availability', 'status', 'createdAt'])
+               ['userId', 'teamId', 'availability', 'status', 'createdAt'])
           && request.resource.data.userId == uid
           && request.resource.data.status == 'PENDING'
-          && request.resource.data.preferredTeamIds is list
+          // A volunteer applies to exactly one team, which must belong to the event.
+          && request.resource.data.teamId is string
+          && exists(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
           && request.resource.data.createdAt is timestamp;
 
-        // Decisions must agree with participation after the same commit.
+        // Decisions must agree with participation and team membership after the same commit.
         allow update: if isOrganizer(eventId)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
           && request.resource.data.status in ['ACCEPTED', 'REJECTED']
           && ((request.resource.data.status == 'ACCEPTED'
                 && uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
-                     .data.participantIds)
+                     .data.participantIds
+                && isTeamMemberAfter())
               || (request.resource.data.status == 'REJECTED'
                 && !(uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
-                       .data.participantIds)));
+                       .data.participantIds)
+                && !isTeamMemberAfter()));
         // A volunteer withdraws by deleting their own pending or accepted request, leaving the
-        // participants in the same commit. A rejected request stays, so the rejection cannot be
-        // undone by applying again.
+        // participants and their team in the same commit. A rejected request stays, so the
+        // rejection cannot be undone by applying again.
         allow delete: if isRequester()
-          && (resource == null || resource.data.status != 'REJECTED')
+          && (resource == null
+              || (resource.data.status != 'REJECTED' && !isTeamMemberAfter()))
           && !isParticipantAfter();
       }
 
