@@ -115,7 +115,7 @@ fun MapContent(
         }
       }
       val nextCaption =
-          uiState.next?.let { stringResource(R.string.map_next_rendezvous, it.startTime) }
+          uiState.next?.let { stringResource(R.string.map_next_mission, it.startTime) }
       ShifterMap(
           markers =
               uiState.markers.map {
@@ -168,7 +168,7 @@ fun MapContent(
 
 /**
  * A mission as drawn on the map: a card with its name and hours above a pin. A [MapMarker.caption]
- * is shown above the name and highlights the card and the pin, as for the next rendezvous.
+ * is shown above the name and highlights the card and the pin, as for the next mission.
  */
 @Composable
 internal fun MissionLabel(marker: MapMarker) {

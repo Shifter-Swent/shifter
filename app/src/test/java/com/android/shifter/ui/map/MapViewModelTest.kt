@@ -96,11 +96,11 @@ class MapViewModelTest {
     missions.createMission(mission("Evening", 18, 19, TENT, assignees = listOf("someone")))
     missions.createMission(mission("Afternoon", 14, 15, TENT, assignees = listOf(USER)))
 
-    assertEquals(NextRendezvous("mission-3", "14:00"), viewModel().uiState.value.next)
+    assertEquals(NextMission("mission-3", "14:00"), viewModel().uiState.value.next)
   }
 
   @Test
-  fun load_hasNoNextRendezvousWithoutAMissionLeftOrAUser() = runTest {
+  fun load_hasNoNextMissionWithoutAMissionLeftOrAUser() = runTest {
     missions.createMission(mission("Morning", 9, 10, STAND, assignees = listOf(USER)))
     assertNull(viewModel().uiState.value.next)
 

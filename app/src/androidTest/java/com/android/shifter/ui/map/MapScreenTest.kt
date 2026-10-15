@@ -75,16 +75,16 @@ class MapScreenTest {
     compose.setContent {
       ShifterTheme {
         Column {
-          MissionLabel(WATER.copy(caption = "NEXT RENDEZVOUS · 10:00"))
+          MissionLabel(WATER.copy(caption = "NEXT MISSION · 10:00"))
           MissionLabel(WATER.copy(id = "mission-2", title = "Cleanup"))
         }
       }
     }
 
-    compose.onNodeWithText("NEXT RENDEZVOUS · 10:00").assertIsDisplayed()
+    compose.onNodeWithText("NEXT MISSION · 10:00").assertIsDisplayed()
     compose.onNodeWithText("Water").assertIsDisplayed()
     compose.onNodeWithText("Cleanup").assertIsDisplayed()
-    compose.onAllNodesWithText("NEXT RENDEZVOUS", substring = true).assertCountEquals(1)
+    compose.onAllNodesWithText("NEXT MISSION", substring = true).assertCountEquals(1)
   }
 
   @Test

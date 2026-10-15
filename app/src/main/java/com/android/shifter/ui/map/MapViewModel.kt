@@ -32,7 +32,7 @@ enum class MapError {
 data class MapPoint(val latitude: Double, val longitude: Double)
 
 /** The next mission the signed-in user is assigned to: its marker, and when it starts. */
-data class NextRendezvous(val markerId: String, val startTime: String)
+data class NextMission(val markerId: String, val startTime: String)
 
 /**
  * What the map screen shows: the event, a marker for each of its missions that has a location, and
@@ -51,7 +51,7 @@ data class MapUiState(
     val center: MapPoint? = null,
     val markers: List<MapMarker> = emptyList(),
     val selected: MapMarker? = null,
-    val next: NextRendezvous? = null,
+    val next: NextMission? = null,
     val isLoading: Boolean = true,
     val error: MapError? = null,
 )
@@ -100,7 +100,7 @@ class MapViewModel(
         val next =
             missions
                 .firstOrNull { userId in it.assigneeIds && it.endAt > now() }
-                ?.let { NextRendezvous(it.id, HOURS.format(it.startAt.atZone(zone))) }
+                ?.let { NextMission(it.id, HOURS.format(it.startAt.atZone(zone))) }
         val center =
             event.location.toPoint()
                 ?: markers.firstOrNull()?.let { MapPoint(it.latitude, it.longitude) }
