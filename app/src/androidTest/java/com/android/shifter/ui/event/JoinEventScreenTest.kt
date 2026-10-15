@@ -3,6 +3,8 @@ package com.swent.shifter.ui.event
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,6 +15,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -50,13 +53,49 @@ class JoinEventScreenTest {
   fun showsTheEventNameAndAppliesOnClick() {
     var applyClicks = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT), onApply = { applyClicks++ })
+      content(
+          uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"),
+          onApply = { applyClicks++ },
+      )
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals("Lakeside")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
 
     assertEquals(1, applyClicks)
+  }
+
+  @Test
+  fun picksATeamAndKeepsApplyDisabledUntilThen() {
+    val picked = mutableListOf<String>()
+    composeTestRule.setContent {
+      content(
+          uiState = JoinEventUiState(event = EVENT, teams = TEAMS),
+          onTeamSelected = { picked += it },
+      )
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("welcome")).performClick()
+
+    assertEquals(listOf("welcome"), picked)
+  }
+
+  @Test
+  fun showsThePickedTeamAsSelected() {
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertIsSelected()
+  }
+
+  @Test
+  fun tellsWhenTheEventHasNoTeam() {
+    composeTestRule.setContent { content(uiState = JoinEventUiState(event = EVENT)) }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.NO_TEAMS).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
   }
 
   @Test
@@ -121,8 +160,9 @@ class JoinEventScreenTest {
       onJoinCodeChange: (String) -> Unit = {},
       onFindEvent: () -> Unit = {},
       onBack: () -> Unit = {},
+      onTeamSelected: (String) -> Unit = {},
       onApply: () -> Unit = {},
-  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onApply)
+  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onTeamSelected, onApply)
 
   private companion object {
     val EVENT =
@@ -137,5 +177,16 @@ class JoinEventScreenTest {
             location = EventLocation("Lausanne"),
             createdAt = Instant.ofEpochSecond(500),
         )
+    val TEAMS =
+        listOf("welcome" to "Welcome", "bar" to "Bar").map { (id, name) ->
+          Team(
+              id = id,
+              eventId = EVENT.id,
+              name = name,
+              description = "",
+              icon = "star",
+              createdAt = Instant.ofEpochSecond(500),
+          )
+        }
   }
 }

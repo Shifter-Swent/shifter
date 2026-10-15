@@ -3,6 +3,7 @@ package com.swent.shifter.model.mission
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.EventSchema
@@ -242,6 +243,44 @@ class FirestoreMissionRepositoryTest {
   }
 
   @Test
+  fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = emulatorTest {
+    val uid = signedInUid()
+    val firstEvent = uniqueEventId()
+    val secondEvent = uniqueEventId()
+    val late = create(assignedMission(firstEvent, startHour = 15, uid))
+    val early = create(assignedMission(secondEvent, startHour = 9, "someone-else", uid))
+    create(assignedMission(firstEvent, startHour = 12, "someone-else"))
+    create(assignedMission(secondEvent, startHour = 10))
+
+    val found = repository.getMissionsAssignedTo(uid)
+
+    // Equality covers the event id, which the query takes from each document's path.
+    assertEquals(listOf(early, late), found)
+  }
+
+  @Test
+  fun getMissionsAssignedTo_returnsAnEmptyListForAUserWithoutMissions() = emulatorTest {
+    create(assignedMission(uniqueEventId(), startHour = 9, "someone-else"))
+
+    assertEquals(emptyList<Mission>(), repository.getMissionsAssignedTo(signedInUid()))
+  }
+
+  @Test
+  fun getMissionsAssignedTo_isDeniedForTheMissionsOfAnotherUser() = emulatorTest {
+    // The collection-group rule only lets a user list the missions they are assigned to.
+    val other = "someone-else-" + UUID.randomUUID()
+    create(assignedMission(uniqueEventId(), startHour = 9, other))
+
+    val failure = runCatching { repository.getMissionsAssignedTo(other) }.exceptionOrNull()
+
+    assertTrue(
+        "listing another user's missions must be denied, but was: $failure",
+        (failure as? FirebaseFirestoreException)?.code ==
+            FirebaseFirestoreException.Code.PERMISSION_DENIED,
+    )
+  }
+
+  @Test
   fun getMission_roundTripsAGeoTimedMission() = emulatorTest {
     val eventId = uniqueEventId()
     val created = create(geoTimed(eventId, startHour = 12, endHour = 13))
@@ -398,6 +437,18 @@ class FirestoreMissionRepositoryTest {
           assigneeIds = listOf("$eventId-staff-1", "$eventId-staff-2"),
           createdAt = Instant.parse("2026-05-02T08:15:00Z"),
       )
+
+  /** A mission of [eventId] from [startHour] to the next hour, assigned to [assigneeIds]. */
+  private fun assignedMission(eventId: String, startHour: Int, vararg assigneeIds: String) =
+      richMission(eventId)
+          .copy(
+              startAt = Instant.parse("2026-06-20T00:00:00Z").plusSeconds(startHour * 3600L),
+              endAt = Instant.parse("2026-06-20T00:00:00Z").plusSeconds((startHour + 1) * 3600L),
+              assigneeIds = assigneeIds.toList(),
+          )
+
+  /** Each test signs in anonymously, so this uid is new and no other test assigns it. */
+  private fun signedInUid(): String = checkNotNull(auth.currentUser).uid
 
   /** A GeoTimed version of [richMission], from [startHour] to [endHour] on the same day (UTC). */
   private fun geoTimed(eventId: String, startHour: Int, endHour: Int): Mission {

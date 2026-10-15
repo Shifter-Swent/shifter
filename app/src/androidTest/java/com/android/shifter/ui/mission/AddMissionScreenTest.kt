@@ -24,6 +24,8 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
 import java.time.Instant
@@ -73,10 +75,12 @@ class AddMissionScreenTest {
   }
 
   @Test
-  fun whileTheEventLoads_showsAProgressAndCannotSubmit() {
+  fun whileTheEventLoads_showsAProgressHidesTheTeamsAndCannotSubmit() {
     setContent(AddMissionUiState())
 
     node(AddMissionScreenTestTags.LOADING_INDICATOR).assertIsDisplayed()
+    // A manager must not see "General" selected before their team replaces it.
+    node(AddMissionScreenTestTags.GENERAL_CHIP).assertDoesNotExist()
     node(AddMissionScreenTestTags.SUBMIT_BUTTON).performScrollTo().assertIsNotEnabled()
   }
 
@@ -92,6 +96,23 @@ class AddMissionScreenTest {
     node(AddMissionScreenTestTags.RETRY_BUTTON).performClick()
 
     assertEquals(true, retried)
+  }
+
+  @Test
+  fun whenTheUserMayNotAddMissions_saysSoInsteadOfTheForm() {
+    setContent(loaded.copy(notAllowed = true, teams = emptyList()))
+
+    node(AddMissionScreenTestTags.NOT_ALLOWED).assertIsDisplayed()
+    node(AddMissionScreenTestTags.TITLE_FIELD).assertDoesNotExist()
+    node(AddMissionScreenTestTags.SUBMIT_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun whenGeneralCannotBeChosen_onlyTheTeamsAreOffered() {
+    setContent(loaded.copy(teams = teams.take(1), canChooseGeneral = false, teamId = "logistics"))
+
+    node(AddMissionScreenTestTags.GENERAL_CHIP).assertDoesNotExist()
+    node(AddMissionScreenTestTags.teamChip("logistics")).assertIsSelected()
   }
 
   @Test
@@ -248,6 +269,76 @@ class AddMissionScreenTest {
   }
 
   @Test
+  fun typingTheLocation_isReported() {
+    var address by mutableStateOf("")
+    var latitude by mutableStateOf("")
+    var longitude by mutableStateOf("")
+    composeTestRule.setContent {
+      ShifterTheme {
+        AddMissionContent(
+            loaded.copy(address = address, latitude = latitude, longitude = longitude),
+            AddMissionActions(
+                onAddressChange = { address = it },
+                onLatitudeChange = { latitude = it },
+                onLongitudeChange = { longitude = it },
+            ),
+        )
+      }
+    }
+
+    node(AddMissionScreenTestTags.ADDRESS_FIELD).performScrollTo().performTextInput("Grand Place")
+    node(AddMissionScreenTestTags.LATITUDE_FIELD).performScrollTo().performTextInput("50.63")
+    node(AddMissionScreenTestTags.LONGITUDE_FIELD).performScrollTo().performTextInput("3.06")
+
+    assertEquals("Grand Place", address)
+    assertEquals("50.63", latitude)
+    assertEquals("3.06", longitude)
+  }
+
+  @Test
+  fun locationErrors_areShownUnderTheirFields() {
+    setContent(
+        loaded.copy(
+            errors =
+                setOf(
+                    MissionFormError.ADDRESS_MISSING,
+                    MissionFormError.LATITUDE_INVALID,
+                    MissionFormError.LONGITUDE_INVALID,
+                )
+        )
+    )
+
+    node(AddMissionScreenTestTags.error(MissionFormField.ADDRESS))
+        .performScrollTo()
+        .assertTextEquals("Enter the address")
+    node(AddMissionScreenTestTags.error(MissionFormField.LATITUDE))
+        .performScrollTo()
+        .assertTextEquals("Enter a number between -90 and 90")
+    node(AddMissionScreenTestTags.error(MissionFormField.LONGITUDE))
+        .performScrollTo()
+        .assertTextEquals("Enter a number between -180 and 180")
+  }
+
+  @Test
+  fun aConflict_namesTheMissionInTheWay() {
+    setContent(
+        loaded.copy(
+            conflict =
+                MissionConflict(
+                    title = "Unload the trucks",
+                    start = LocalDateTime.of(eventDay, LocalTime.of(15, 0)),
+                    end = LocalDateTime.of(eventDay, LocalTime.of(16, 0)),
+                )
+        )
+    )
+
+    node(AddMissionScreenTestTags.CONFLICT_ERROR)
+        .performScrollTo()
+        .assertTextContains("\"Unload the trucks\"", substring = true)
+        .assertTextContains("15:00 – 16:00", substring = true)
+  }
+
+  @Test
   fun submitBackAndCancel_areReported() {
     var submitted = 0
     var left = 0
@@ -283,7 +374,8 @@ class AddMissionScreenTest {
             eventId = "event-1",
             missionRepository = missions,
             eventRepository = SingleEventRepository(event),
-            teams = teams,
+            teamRepository = EventTeams(teams.map { team(it, event.id) }),
+            currentUserId = { event.organizerId },
             clock = Clock.fixed(now, zone),
         )
     var added by mutableStateOf<Mission?>(null)
@@ -338,6 +430,8 @@ class AddMissionScreenTest {
             eventId = "event-1",
             missionRepository = RecordingMissionRepository(),
             eventRepository = SingleEventRepository(event),
+            teamRepository = EventTeams(emptyList()),
+            currentUserId = { event.organizerId },
             clock = Clock.fixed(now, zone),
         )
     var reports = 0
@@ -372,6 +466,10 @@ private class RecordingMissionRepository : MissionRepository {
       }
 
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> = created.toList()
+
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = created.filter {
+    userId in it.assigneeIds
+  }
 }
 
 private class SingleEventRepository(private val event: Event) : EventRepository {
@@ -382,4 +480,47 @@ private class SingleEventRepository(private val event: Event) : EventRepository 
   override suspend fun getEventByJoinCode(joinCode: String): Event? = null
 
   override suspend fun getEventsByOrganizer(organizerId: String): List<Event> = emptyList()
+}
+
+/** A [TeamOption] as the [Team] of [eventId] it stands for. */
+private fun team(option: TeamOption, eventId: String) =
+    Team(
+        id = option.id,
+        eventId = eventId,
+        name = option.name,
+        description = "",
+        icon = "",
+        createdAt = Instant.EPOCH,
+    )
+
+/** The teams of one event; the screen only reads them, and writes are not expected. */
+private class EventTeams(private val teams: List<Team>) : TeamRepository {
+  override suspend fun createTeam(team: Team): Team = throw UnsupportedOperationException()
+
+  override suspend fun getTeam(eventId: String, teamId: String): Team? = teams.firstOrNull {
+    it.eventId == eventId && it.id == teamId
+  }
+
+  override suspend fun getTeamsByEvent(eventId: String): List<Team> = teams.filter {
+    it.eventId == eventId
+  }
+
+  override suspend fun getTeamsOfMember(eventId: String, userId: String): List<Team> =
+      teams.filter {
+        it.eventId == eventId && userId in it.memberIds
+      }
+
+  override suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team> =
+      teams.filter {
+        it.eventId == eventId && it.managerId == userId
+      }
+
+  override suspend fun setManager(eventId: String, teamId: String, managerId: String?) =
+      throw UnsupportedOperationException()
+
+  override suspend fun addMember(eventId: String, teamId: String, userId: String) =
+      throw UnsupportedOperationException()
+
+  override suspend fun removeMember(eventId: String, teamId: String, userId: String) =
+      throw UnsupportedOperationException()
 }

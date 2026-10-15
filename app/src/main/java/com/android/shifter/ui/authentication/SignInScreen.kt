@@ -45,6 +45,8 @@ import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.ui.theme.ShifterTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 object SignInScreenTestTags {
   const val APP_NAME = "APP_NAME"
@@ -165,6 +167,8 @@ private object PreviewAuthRepository : AuthRepository {
       Result.failure(UnsupportedOperationException("Preview"))
 
   override fun currentUser(): AuthUser? = null
+
+  override val authState: Flow<AuthUser?> = flowOf(null)
 
   override fun signOut(): Result<Unit> = Result.success(Unit)
 }

@@ -37,6 +37,11 @@ Writing them down also helps the human team agree on how we build.
 - Commit with an imperative subject of at most 50 characters, capitalized (e.g. `Add user authentication`). Add a body wrapped at 72 characters when the subject is not enough.
 - **Acknowledge your contributors** at the top of the file: credit the AI that wrote it with a `Co-authored-by` line. 
 
+## Naming
+
+- Follow the [Naming conventions](https://github.com/Shifter-Swent/shifter/wiki/Naming-conventions) of the wiki.
+- Test functions are named `method_behavior`, or `method_condition_expected` when a condition matters (e.g. `addMission_withValidForm_createsTheMission`).
+
 ## Packages names
 
 - Only add files in android.shifter, do no create a new package swent.shifter, do not modify existing files about packages names.

@@ -29,6 +29,7 @@
     <string name="create_event_error_start_in_past">The event must start in the future</string>
     <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
     <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="create_event_error_not_signed_in">You must be signed in to create an event</string>
     <string name="create_event_save_unconfirmed">No connection: the event as last submitted will be created once you are back online. Try again to save your changes and get its join code.</string>
     <string name="event_type_music">Music</string>
     <string name="event_type_market">Market</string>
@@ -79,6 +80,8 @@
     <string name="join_event_code_label">Join code</string>
     <string name="join_event_find">Find event</string>
     <string name="join_event_apply">Apply</string>
+    <string name="join_event_choose_team">Choose your team</string>
+    <string name="join_event_no_teams">This event has no team yet, so you cannot apply to it.</string>
     <string name="join_event_status_pending">● Request sent, pending approval</string>
     <string name="join_event_status_accepted">● You are part of this event</string>
     <string name="join_event_status_rejected">● Your request was declined</string>

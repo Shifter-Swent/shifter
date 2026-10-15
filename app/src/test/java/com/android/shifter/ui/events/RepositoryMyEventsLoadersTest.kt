@@ -36,6 +36,7 @@ class RepositoryMyEventsLoadersTest {
       MembershipRequest(
           id = "volunteer",
           userId = "volunteer",
+          teamId = "bar",
           availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600))),
           status = status,
           createdAt = Instant.EPOCH,

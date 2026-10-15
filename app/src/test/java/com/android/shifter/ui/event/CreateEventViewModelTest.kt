@@ -39,7 +39,7 @@ class CreateEventViewModelTest {
   fun setUp() {
     Dispatchers.setMain(dispatcher)
     repository = FakeEventRepository()
-    viewModel = CreateEventViewModel(repository, organizerId = "organizer-1", clock = clock)
+    viewModel = CreateEventViewModel(repository, currentUserId = { "organizer-1" }, clock = clock)
   }
 
   @After
@@ -302,7 +302,7 @@ class CreateEventViewModelTest {
 
   @Test
   fun factory_createsViewModelWithGivenDependencies() = runTest {
-    val factory = CreateEventViewModel.factory(repository, organizerId = "organizer-2", clock)
+    val factory = CreateEventViewModel.factory(repository, currentUserId = { "organizer-2" }, clock)
     viewModel = factory.create(CreateEventViewModel::class.java, CreationExtras.Empty)
 
     fillValidForm()
@@ -380,6 +380,50 @@ class CreateEventViewModelTest {
     assertEquals(firstAttempt.id, saved.id)
     assertEquals(saved, state.createdEvent)
     assertFalse(state.saveUnconfirmed)
+  }
+
+  @Test
+  fun createEvent_withoutSession_reportsItAndSavesNothing() = runTest {
+    var userId: String? = null
+    viewModel = CreateEventViewModel(repository, currentUserId = { userId }, clock = clock)
+    fillValidForm()
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(state.notSignedIn)
+    assertFalse(state.saveFailed)
+    assertFalse(state.isSaving)
+    assertTrue(repository.events.isEmpty())
+
+    // The id is read on each submit, so signing in afterwards is enough to retry.
+    userId = "organizer-1"
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertFalse(state.notSignedIn)
+    assertEquals("organizer-1", repository.events.single().organizerId)
+  }
+
+  @Test
+  fun createEvent_withInvalidFormAndNoSession_reportsOnlyTheForm() {
+    viewModel = CreateEventViewModel(repository, currentUserId = { null }, clock = clock)
+
+    viewModel.createEvent()
+
+    assertFalse(state.notSignedIn)
+    assertTrue(state.errors.isNotEmpty())
+  }
+
+  @Test
+  fun editingAfterNoSession_clearsTheError() = runTest {
+    viewModel = CreateEventViewModel(repository, currentUserId = { null }, clock = clock)
+    fillValidForm()
+    viewModel.createEvent()
+
+    viewModel.onTitleChange("Paléo")
+
+    assertFalse(state.notSignedIn)
   }
 
   @Test
