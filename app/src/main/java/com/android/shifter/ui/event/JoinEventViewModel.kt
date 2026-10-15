@@ -32,15 +32,17 @@ enum class JoinEventError {
 }
 
 /**
- * What the join screen shows: the code being typed, the event it found, and where the volunteer's
- * request stands.
+ * What the join screen shows: the code being typed, the event it found, the team picked in it, and
+ * where the volunteer's request stands.
  *
+ * @property selectedTeamId the team of [event] the volunteer applies to, null until they pick one.
  * @property requestStatus the status of the volunteer's request for the event, null while they have
  *   none. Finding an event they already applied to shows that request, possibly decided.
  */
 data class JoinEventUiState(
     val joinCode: String = "",
     val event: Event? = null,
+    val selectedTeamId: String? = null,
     val isLoading: Boolean = false,
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
@@ -83,6 +85,7 @@ class JoinEventViewModel(
       _uiState.update {
         it.copy(
             event = event,
+            selectedTeamId = null,
             requestStatus = requestStatus,
             error = if (event == null) JoinEventError.UNKNOWN_CODE else null,
         )
@@ -96,22 +99,38 @@ class JoinEventViewModel(
    */
   fun changeCode() {
     if (_uiState.value.isLoading) return
-    _uiState.update { it.copy(event = null, requestStatus = null, error = null) }
+    _uiState.update {
+      it.copy(event = null, selectedTeamId = null, requestStatus = null, error = null)
+    }
   }
 
   /**
-   * Applies to the loaded event. Until the volunteer can enter their hours, the request declares
-   * the whole event as their availability.
+   * Picks the team of the loaded event to apply to, replacing any previous pick. A volunteer
+   * belongs to at most one team per event, so there is a single choice. Ignored once the request is
+   * sent, or while it is being sent, so the team shown always matches the request.
+   */
+  fun onTeamSelected(teamId: String) {
+    val state = _uiState.value
+    if (state.event == null || state.isLoading || state.requestStatus != null) return
+    _uiState.update { it.copy(selectedTeamId = teamId) }
+  }
+
+  /**
+   * Applies to the selected team of the loaded event; does nothing until a team is selected. Until
+   * the volunteer can enter their hours, the request declares the whole event as their
+   * availability.
    */
   fun applyToEvent() {
     val state = _uiState.value
     val event = state.event ?: return
+    val teamId = state.selectedTeamId ?: return
     if (state.isLoading || state.requestStatus != null) return
     val userId = currentUserId() ?: return showError(JoinEventError.NOT_SIGNED_IN)
     launchLoading {
       val request =
           MembershipRequest(
               userId = userId,
+              teamId = teamId,
               availability = listOf(AvailabilitySlot(event.startAt, event.endAt)),
               createdAt = now(),
           )

@@ -73,6 +73,7 @@ object CreateEventScreenTestTags {
   const val SUBMIT_BUTTON = "CreateEventSubmitButton"
   const val SAVING_INDICATOR = "CreateEventSavingIndicator"
   const val SAVE_ERROR = "CreateEventSaveError"
+  const val NOT_SIGNED_IN_ERROR = "CreateEventNotSignedInError"
   const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
 
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
@@ -192,6 +193,15 @@ fun CreateEventContent(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_ERROR),
+        )
+      }
+
+      if (state.notSignedIn) {
+        Text(
+            text = stringResource(R.string.create_event_error_not_signed_in),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.NOT_SIGNED_IN_ERROR),
         )
       }
 

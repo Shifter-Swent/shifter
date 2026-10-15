@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
 import org.junit.Assert.assertEquals
@@ -19,6 +20,8 @@ class NavigationRoutesTest {
           Volunteer.QrApply,
           Organizer.Events,
           Organizer.ProfileSettings,
+          Organizer.CreateEvent,
+          Organizer.EventCreated("e3"),
       )
 
   @Test

@@ -48,6 +48,7 @@ class EventSubcollectionRulesTest {
   private lateinit var participant: Account
   private lateinit var outsider: Account
   private lateinit var eventId: String
+  private lateinit var teamId: String
 
   @Before
   fun setUp() = emulatorTest {
@@ -84,7 +85,7 @@ class EventSubcollectionRulesTest {
       document.update("name", "updated").await()
 
       assertEquals("updated", document.get(Source.SERVER).await().getString("name"))
-      assertEquals(1, collection(subcollection).get(Source.SERVER).await().size())
+      assertTrue(document.id in ids(subcollection))
       document.delete().await()
     }
   }
@@ -96,7 +97,7 @@ class EventSubcollectionRulesTest {
 
     documents.forEach { (subcollection, document) ->
       assertTrue(document.get(Source.SERVER).await().exists())
-      assertEquals(1, collection(subcollection).get(Source.SERVER).await().size())
+      assertTrue(document.id in ids(subcollection))
       assertDenied { document.update("name", "changed").await() }
       assertDenied { document.delete().await() }
       assertDenied { newDocument(subcollection).set(mapOf("name" to "mine")).await() }
@@ -147,13 +148,17 @@ class EventSubcollectionRulesTest {
     }
   }
 
-  /** Creates the event, owned by [organizer]. */
+  /** Creates the event, owned by [organizer], with the team its volunteers apply to. */
   private suspend fun event(): String {
     signIn(organizer)
     val event = db.collection(EventSchema.COLLECTION).document()
     paths += event.path
     paths += "eventParticipants/${event.id}"
     event.set(mapOf(EventSchema.ORGANIZER_ID to organizer.uid)).await()
+    val team = event.collection("teams").document()
+    paths += team.path
+    team.set(mapOf("memberIds" to emptyList<String>())).await()
+    teamId = team.id
     return event.id
   }
 
@@ -166,6 +171,7 @@ class EventSubcollectionRulesTest {
         eventId,
         MembershipRequest(
             userId = user.uid,
+            teamId = teamId,
             availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600))),
             createdAt = Instant.EPOCH,
         ),
@@ -181,6 +187,9 @@ class EventSubcollectionRulesTest {
 
   private fun collection(subcollection: String, eventId: String = this.eventId) =
       db.collection(EventSchema.COLLECTION).document(eventId).collection(subcollection)
+
+  private suspend fun ids(subcollection: String): List<String> =
+      collection(subcollection).get(Source.SERVER).await().documents.map { it.id }
 
   private fun newDocument(subcollection: String): DocumentReference =
       collection(subcollection).document().also { paths += it.path }

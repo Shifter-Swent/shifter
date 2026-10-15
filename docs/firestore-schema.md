@@ -84,7 +84,7 @@ eventParticipants/{eventId}
 | `description` | string | What the team does, written when it is created |
 | `icon` | string | Icon identifier |
 | `managerId` | string \| null | `null` until the organizer appoints a manager |
-| `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer may be in several teams |
+| `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer belongs to at most one team per event: the one their accepted request names |
 | `volunteersNeeded` | number \| null | Whole number. `null` until the staffing need is set: it is not asked for when the team is created |
 | `checkInZone` | map \| null | `latitude`, `longitude`, `radiusMeters`, all required when the zone is set |
 | `createdAt` | timestamp | |
@@ -124,7 +124,7 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 | Field | Type | Notes |
 |---|---|---|
 | `userId` | string | Same as the document id |
-| `preferredTeamIds` | list of string | Teams the volunteer would like to join |
+| `teamId` | string | The team of the same event the volunteer applies to. Cannot change once sent |
 | `availability` | list of maps | `startAt`, `endAt` (timestamp); at least one slot |
 | `status` | string | `PENDING`, then `ACCEPTED` or `REJECTED` |
 | `createdAt` | timestamp | |
@@ -135,9 +135,10 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 |---|---|---|
 | `participantIds` | list of string | uids of the volunteers whose request is `ACCEPTED` |
 
-Accepting or rejecting a request updates the request and this document in the same batch. The rules
-check that they agree (see below). A volunteer who withdraws deletes their request and leaves this
-document in the same transaction, so they can apply again later.
+Accepting or rejecting a request updates the request, this document and the `memberIds` of the
+requested team in the same batch. The rules check that they agree (see below). A volunteer who
+withdraws deletes their request and leaves this document and their team in the same transaction, so
+they can apply again later.
 
 ## Security rules
 
@@ -150,7 +151,7 @@ every access to it is denied.
 |---|---|---|
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
-| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer. Only the organizer updates it, and only `status`. No delete |
+| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams`, `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 
@@ -166,7 +167,8 @@ not check indexes, so after changing that file, deploy it with
 `firebase deploy --only firestore:indexes`.
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
-and, in the same commit, remove themself (and only themself) from `eventParticipants`. A request
+and, in the same commit, remove themself (and only themself) from `eventParticipants` and from their
+team. A request
 can only be deleted once its volunteer is no longer a participant, and never once it is
 `REJECTED`, so a volunteer cannot undo a rejection by applying again.
 

@@ -17,8 +17,11 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import io.mockk.slot
 import io.mockk.verify
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -139,6 +142,32 @@ class AuthRepositoryFirebaseTest {
     every { auth.currentUser } returns null
 
     assertNull(repository.currentUser())
+  }
+
+  @Test
+  fun authState_relaysEachListenerCallThenRemovesTheListener() = runBlocking {
+    val user = mockk<FirebaseUser>()
+    every { user.uid } returns "uid-1"
+    every { user.email } returns "ada@example.com"
+    every { user.displayName } returns "Ada"
+    val listener = slot<FirebaseAuth.AuthStateListener>()
+    // Like Firebase, call the listener on registration, then once more as the session ends.
+    every { auth.addAuthStateListener(capture(listener)) } answers
+        {
+          every { auth.currentUser } returns user
+          listener.captured.onAuthStateChanged(auth)
+          every { auth.currentUser } returns null
+          listener.captured.onAuthStateChanged(auth)
+        }
+    every { auth.removeAuthStateListener(any()) } just runs
+
+    val states = repository.authState.take(2).toList()
+
+    assertEquals(
+        listOf(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"), null),
+        states,
+    )
+    verify(exactly = 1) { auth.removeAuthStateListener(listener.captured) }
   }
 
   @Test

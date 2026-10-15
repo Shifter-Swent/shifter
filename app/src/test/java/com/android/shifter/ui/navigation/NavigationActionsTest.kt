@@ -202,6 +202,48 @@ class NavigationActionsTest {
     verify { navController.navigate(VolunteerTabs.Map, any<NavOptionsBuilder.() -> Unit>()) }
   }
 
+  @Test
+  fun exitToSignIn_fromTheApp_entersSignedOut() {
+    val graph = mockk<NavGraph>()
+    every { graph.id } returns 42
+    every { navController.graph } returns graph
+    stubCurrentDestinationIn(SignedOut, inside = false)
+
+    nav.exitToSignIn()
+
+    val options = optionsOf(SignedOut)
+    assertEquals(42, options.popUpToId)
+    assertTrue(options.isPopUpToInclusive())
+  }
+
+  @Test
+  fun exitToSignIn_whenAlreadySignedOut_doesNothing() {
+    stubCurrentDestinationIn(SignedOut, inside = true)
+
+    nav.exitToSignIn()
+
+    verify(exactly = 0) { navController.navigate(any<Any>(), any<NavOptionsBuilder.() -> Unit>()) }
+  }
+
+  @Test
+  fun exitToSignIn_withoutCurrentScreen_entersSignedOut() {
+    val graph = mockk<NavGraph>()
+    every { graph.id } returns 42
+    every { navController.graph } returns graph
+
+    nav.exitToSignIn()
+
+    verify { navController.navigate(SignedOut, any<NavOptionsBuilder.() -> Unit>()) }
+  }
+
+  private fun stubCurrentDestinationIn(route: Any, inside: Boolean) {
+    val destination = mockk<NavDestination>(relaxed = true)
+    every { destination.parent } returns null
+    every { navController.currentDestination } returns destination
+    mockkObject(NavDestination.Companion)
+    every { with(NavDestination.Companion) { destination.hasRoute(route::class) } } returns inside
+  }
+
   private fun stubCurrentState(state: Lifecycle.State) {
     val entry = mockk<NavBackStackEntry>()
     every { entry.lifecycle.currentState } returns state

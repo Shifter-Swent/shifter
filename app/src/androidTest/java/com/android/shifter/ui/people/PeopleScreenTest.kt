@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.people
 
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +28,7 @@ class PeopleScreenTest {
           MembershipRequest(
               id = "alice",
               userId = "alice",
+              teamId = "bar",
               availability =
                   listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600))),
               createdAt = Instant.EPOCH,

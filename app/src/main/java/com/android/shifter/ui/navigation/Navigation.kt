@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
- *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated
+ *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated(eventId)
  *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
@@ -196,10 +196,11 @@ data object Organizer : App {
     override val title = "Create event"
   }
 
-  /** Shows the join code of the event just created, in place of the creation form. */
+  /** Shows the join code of the event [eventId] just created, in place of the creation form. */
   @Serializable
-  data object EventCreated : Destination {
-    override val title = "Event created"
+  data class EventCreated(val eventId: String) : Destination {
+    override val title
+      get() = "Event created"
   }
 }
 
@@ -330,6 +331,14 @@ open class NavigationActions(private val navController: NavHostController) {
     }
   }
 
+  /**
+   * Returns to sign-in when the session ends, unless already signed out: Settings navigates there
+   * itself after signing out, and entering it twice would recreate the sign-in screen.
+   */
+  open fun exitToSignIn() {
+    if (!isInApp(SignedOut)) enterApp(SignedOut)
+  }
+
   /** Opens an event on top of its events list, replacing any event already open. */
   open fun enterEvent(event: EventMode) {
     // Clear by route class so tabs absent from the current graph are harmless.
@@ -371,6 +380,10 @@ open class NavigationActions(private val navController: NavHostController) {
   open fun backTo(destination: Destination) {
     navController.popBackStack(destination, inclusive = false)
   }
+
+  /** Whether the current screen belongs to [app]. */
+  private fun isInApp(app: App): Boolean =
+      navController.currentDestination?.hierarchy?.any { it.hasRoute(app::class) } == true
 
   private fun isOnTab(tab: Tab): Boolean =
       navController.currentDestination?.hierarchy?.any { it.hasRoute(tab::class) } == true
