@@ -38,6 +38,7 @@ import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.EventDetailsTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -583,12 +584,15 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
     tabs.all.forEach { tab ->
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      if (tab == OrganizerTabs.People) {
-        assertPeopleScreenShown()
-      } else {
-        composeTestRule
-            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-            .assertTextEquals(tab.home.title)
+      when (tab) {
+        OrganizerTabs.People -> assertPeopleScreenShown()
+        VolunteerTabs.Map,
+        OrganizerTabs.Map ->
+            composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
+        else ->
+            composeTestRule
+                .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+                .assertTextEquals(tab.home.title)
       }
     }
   }
