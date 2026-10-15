@@ -79,6 +79,7 @@ object AddMissionScreenTestTags {
   const val LOADING_INDICATOR = "AddMissionLoadingIndicator"
   const val LOAD_ERROR = "AddMissionLoadError"
   const val RETRY_BUTTON = "AddMissionRetryButton"
+  const val NOT_ALLOWED = "AddMissionNotAllowed"
   const val TITLE_FIELD = "AddMissionTitleField"
   const val DESCRIPTION_FIELD = "AddMissionDescriptionField"
   const val GENERAL_CHIP = "AddMissionTeamChip_General"
@@ -104,7 +105,7 @@ object AddMissionScreenTestTags {
 }
 
 /**
- * Lets an organizer add a mission to an event.
+ * Lets the organizer of an event, or the manager of one of its teams, add a mission to it.
  *
  * @param onMissionAdded called once with the persisted mission, e.g. to go back to the management
  *   screen and confirm it.
@@ -189,6 +190,15 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
       EventContext(state, actions.onRetryLoad)
+      if (state.notAllowed) {
+        Text(
+            text = stringResource(R.string.add_mission_not_allowed),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(AddMissionScreenTestTags.NOT_ALLOWED),
+        )
+        return@Column
+      }
       MissionTextField(
           value = state.title,
           onValueChange = actions.onTitleChange,
@@ -206,7 +216,16 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
           testTag = AddMissionScreenTestTags.DESCRIPTION_FIELD,
           singleLine = false,
       )
-      TeamSelector(state.teams, state.teamId, editable, actions.onTeamChange)
+      // The teams load with the event: until then, a manager would see "General" selected.
+      if (state.event != null) {
+        TeamSelector(
+            teams = state.teams,
+            canChooseGeneral = state.canChooseGeneral,
+            selectedId = state.teamId,
+            enabled = editable,
+            onTeamChange = actions.onTeamChange,
+        )
+      }
       VolunteersStepper(
           count = state.volunteersNeeded,
           enabled = editable,
@@ -333,10 +352,11 @@ private fun MissionTextField(
   }
 }
 
-/** "General" followed by the teams of the event; exactly one is selected. */
+/** "General", when [canChooseGeneral], followed by [teams]; exactly one is selected. */
 @Composable
 private fun TeamSelector(
     teams: List<TeamOption>,
+    canChooseGeneral: Boolean,
     selectedId: String?,
     enabled: Boolean,
     onTeamChange: (String?) -> Unit,
@@ -347,13 +367,15 @@ private fun TeamSelector(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-      TeamChip(
-          label = stringResource(R.string.add_mission_team_general),
-          selected = selectedId == null,
-          enabled = enabled,
-          onClick = { onTeamChange(null) },
-          testTag = AddMissionScreenTestTags.GENERAL_CHIP,
-      )
+      if (canChooseGeneral) {
+        TeamChip(
+            label = stringResource(R.string.add_mission_team_general),
+            selected = selectedId == null,
+            enabled = enabled,
+            onClick = { onTeamChange(null) },
+            testTag = AddMissionScreenTestTags.GENERAL_CHIP,
+        )
+      }
       teams.forEach { team ->
         TeamChip(
             label = team.name,
@@ -364,7 +386,7 @@ private fun TeamSelector(
         )
       }
     }
-    Hint(R.string.add_mission_team_hint)
+    if (canChooseGeneral) Hint(R.string.add_mission_team_hint)
   }
 }
 

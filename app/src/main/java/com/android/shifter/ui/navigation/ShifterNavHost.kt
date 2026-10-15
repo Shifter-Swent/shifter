@@ -52,9 +52,8 @@ import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.membership.MembershipRequestUIState
-import com.swent.shifter.ui.mission.AddMissionActions
-import com.swent.shifter.ui.mission.AddMissionContent
-import com.swent.shifter.ui.mission.AddMissionUiState
+import com.swent.shifter.ui.mission.AddMissionScreen
+import com.swent.shifter.ui.mission.AddMissionViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
@@ -141,6 +140,7 @@ fun ShifterNavHost(
                         JoinEventViewModel.factory(
                             repositories.eventRepository,
                             repositories.membershipRequestRepository,
+                            repositories.teamRepository,
                             currentUserId,
                         )
                 )
@@ -221,11 +221,30 @@ fun ShifterNavHost(
               }
             },
         ) {
-          composable<OrganizerEventScreen.AddMission> {
-            // No repositories are wired yet: the form only shows and goes back.
-            AddMissionContent(
-                state = AddMissionUiState(isLoadingEvent = false),
-                actions = AddMissionActions(onBack = nav::goBack),
+          composable<OrganizerEventScreen.AddMission> { entry ->
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            AddMissionScreen(
+                viewModel =
+                    viewModel(
+                        factory =
+                            AddMissionViewModel.factory(
+                                eventId,
+                                repositories.missionRepository,
+                                repositories.eventRepository,
+                                repositories.teamRepository,
+                                currentUserId,
+                            )
+                    ),
+                // Back to the event's overview, the mission saved.
+                onMissionAdded = { nav.goBack() },
+                onBack = nav::goBack,
             )
           }
         }

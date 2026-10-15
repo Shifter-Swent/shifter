@@ -3,6 +3,7 @@
 package com.swent.shifter.ui.event
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -16,6 +17,8 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -24,8 +27,8 @@ import org.junit.runner.RunWith
 
 /**
  * The whole join flow on the real screen and view model, with in-memory repositories: a wrong code
- * shows an error, the right one shows the event, the volunteer can go back to the code, Apply sends
- * the request for the team picked, and finding the event again shows that request.
+ * shows an error, the right one shows the event, the volunteer can go back to the code, picks a
+ * team, Apply sends the request for it, and finding the event again shows that request.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinEventFlowTest {
@@ -74,7 +77,8 @@ class JoinEventFlowTest {
 
   @Test
   fun wrongCodeShowsAnErrorThenRightCodeLetsTheVolunteerApply() {
-    val viewModel = JoinEventViewModel(events, requests, { "volunteer-1" })
+    val teams = FakeTeamRepository(listOf(TEAM))
+    val viewModel = JoinEventViewModel(events, requests, teams, { "volunteer-1" })
     composeTestRule.setContent { JoinEventScreen(viewModel) }
 
     typeCodeAndFind("WRONG1")
@@ -96,14 +100,15 @@ class JoinEventFlowTest {
         .assertTextContains(EVENT.joinCode.lowercase())
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
-    // The screen has no team picker yet, so the team is picked through the view model.
-    composeTestRule.runOnIdle { viewModel.onTeamSelected(TEAM_ID) }
+    // Apply waits for a team to be picked.
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption(TEAM.id)).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
     assertEquals(listOf(EVENT.id), sentRequests.map { it.first })
     assertEquals("volunteer-1", sentRequests.single().second.userId)
-    assertEquals(TEAM_ID, sentRequests.single().second.teamId)
+    assertEquals(TEAM.id, sentRequests.single().second.teamId)
 
     // Finding the event again shows the request already sent instead of offering to apply.
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
@@ -121,7 +126,6 @@ class JoinEventFlowTest {
   }
 
   private companion object {
-    const val TEAM_ID = "team-a"
     val EVENT =
         Event(
             id = "event-1",
@@ -133,6 +137,15 @@ class JoinEventFlowTest {
             endAt = Instant.ofEpochSecond(2_000),
             location = EventLocation("Lausanne"),
             joinCode = "ABC123",
+            createdAt = Instant.ofEpochSecond(500),
+        )
+    val TEAM =
+        Team(
+            id = "team-a",
+            eventId = EVENT.id,
+            name = "Welcome",
+            description = "Greet the festival-goers.",
+            icon = "star",
             createdAt = Instant.ofEpochSecond(500),
         )
   }

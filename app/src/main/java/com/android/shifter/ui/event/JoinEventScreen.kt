@@ -33,6 +33,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.membershipStatusColors
@@ -48,6 +49,9 @@ object JoinEventScreenTestTags {
   const val APPLY_BUTTON = "JoinEventApplyButton"
   const val APPLIED_MESSAGE = "JoinEventAppliedMessage"
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
+  const val NO_TEAMS = "JoinEventNoTeams"
+
+  fun teamOption(teamId: String) = "JoinEventTeam_$teamId"
 }
 
 /** The join screen wired to [viewModel]. */
@@ -59,13 +63,15 @@ fun JoinEventScreen(viewModel: JoinEventViewModel) {
       onJoinCodeChange = viewModel::onJoinCodeChange,
       onFindEvent = viewModel::findEvent,
       onBack = viewModel::changeCode,
+      onTeamSelected = viewModel::onTeamSelected,
       onApply = viewModel::applyToEvent,
   )
 }
 
 /**
  * Joining in two steps: the volunteer types the event's join code, then sees the details of the
- * event it found and applies to it. Back, on screen or on the device, returns to the code.
+ * event it found, picks one of its teams and applies to it. Back, on screen or on the device,
+ * returns to the code.
  */
 @Composable
 fun JoinEventContent(
@@ -73,6 +79,7 @@ fun JoinEventContent(
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
     onBack: () -> Unit,
+    onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
 ) {
   val event = uiState.event
@@ -88,10 +95,13 @@ fun JoinEventContent(
       BackHandler(onBack = onBack)
       EventDetailsContent(
           event = event,
+          teams = uiState.teams,
+          selectedTeamId = uiState.selectedTeamId,
           isLoading = uiState.isLoading,
           requestStatus = uiState.requestStatus,
           error = uiState.error,
           onBack = onBack,
+          onTeamSelected = onTeamSelected,
           onApply = onApply,
       )
     }
@@ -196,13 +206,22 @@ private fun JoinEventError.messageRes(): Int =
 @Preview(name = "Step 1: join code")
 @Composable
 private fun JoinEventCodePreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}, {}) }
+  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}, {}, {}) }
 }
 
 @Preview(name = "Step 2: event details and Apply")
 @Composable
 private fun JoinEventApplyPreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(event = PREVIEW_EVENT), {}, {}, {}, {}) }
+  ShifterTheme {
+    JoinEventContent(
+        JoinEventUiState(event = PREVIEW_EVENT, teams = PREVIEW_TEAMS, selectedTeamId = "welcome"),
+        {},
+        {},
+        {},
+        {},
+        {},
+    )
+  }
 }
 
 @Preview(name = "Step 2: request sent")
@@ -210,7 +229,13 @@ private fun JoinEventApplyPreview() {
 private fun JoinEventAppliedPreview() {
   ShifterTheme {
     JoinEventContent(
-        JoinEventUiState(event = PREVIEW_EVENT, requestStatus = MembershipRequestStatus.PENDING),
+        JoinEventUiState(
+            event = PREVIEW_EVENT,
+            teams = PREVIEW_TEAMS,
+            selectedTeamId = "welcome",
+            requestStatus = MembershipRequestStatus.PENDING,
+        ),
+        {},
         {},
         {},
         {},
@@ -231,4 +256,24 @@ private val PREVIEW_EVENT =
         endAt = Instant.parse("2026-06-22T15:00:00Z"),
         location = EventLocation("Associations House"),
         createdAt = Instant.EPOCH,
+    )
+
+private val PREVIEW_TEAMS =
+    listOf(
+        Team(
+            id = "welcome",
+            eventId = "event",
+            name = "Welcome desk",
+            description = "Greet donors and explain where each donation goes.",
+            icon = "handshake",
+            createdAt = Instant.EPOCH,
+        ),
+        Team(
+            id = "sorting",
+            eventId = "event",
+            name = "Sorting",
+            description = "Sort the collected items by category.",
+            icon = "box",
+            createdAt = Instant.EPOCH,
+        ),
     )
