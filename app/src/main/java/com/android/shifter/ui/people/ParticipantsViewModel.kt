@@ -107,7 +107,7 @@ class ParticipantsViewModel(
    */
   private suspend fun name(userId: String): String? =
       try {
-        userRepository.getUser(userId)?.displayName?.takeIf { it.isNotBlank() }
+        userRepository.getPublicProfile(userId)?.displayName?.takeIf { it.isNotBlank() }
       } catch (e: UserRepositoryException) {
         null
       }

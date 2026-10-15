@@ -13,6 +13,7 @@ field names, next to its mapper in `model/<entity>/`. This page explains how the
 
 ```
 users/{uid}
+publicProfiles/{uid}
 events/{eventId}
   ├── teams/{teamId}
   ├── shifts/{shiftId}
@@ -23,7 +24,8 @@ eventParticipants/{eventId}
 
 | Path | What it holds | Schema object |
 |---|---|---|
-| `users/{uid}` | A user's profile, keyed by their Firebase Auth uid | `UserRepositoryFirestore` |
+| `users/{uid}` | A user's private profile, keyed by their Firebase Auth uid | `UserRepositoryFirestore` |
+| `publicProfiles/{uid}` | What any signed-in user may see of a user | `UserRepositoryFirestore` |
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
@@ -37,7 +39,8 @@ eventParticipants/{eventId}
   read from the document path. Storing them as fields would create a second source of truth that
   could contradict the path.
 - **References are ids only.** A manager, member or assignee is stored as a `users/{uid}` id. No
-  profile data (name, email) is copied, because it would go stale.
+  profile data (name, email) is copied, because it would go stale. To show another user, read their
+  `publicProfiles/{uid}`.
 - **Instants are Firestore `Timestamp`s** with microsecond precision. Time slots are named
   `startAt` / `endAt` everywhere.
 - **Enums are stored by name** (`"PENDING"`, `"MUSIC"`…).
@@ -59,6 +62,18 @@ eventParticipants/{eventId}
 | `email` | string | |
 | `locationSharingEnabled` | bool | Opt-in, always `false` at creation |
 | `createdAt` | timestamp | Set to the server time on creation. Read as `null` while the write is pending |
+
+Only its owner reads it: what others may see of a user lives in their public profile.
+
+### `publicProfiles/{uid}`
+
+Created on sign-in, in the same transaction as `users/{uid}`, and on the next sign-in for a profile
+created before public profiles existed. It never holds sensitive data: an email or a phone number
+stays in `users/{uid}`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `displayName` | string | Always the one of `users/{uid}` (checked by the rules) |
 
 ### `events/{eventId}`
 
@@ -149,7 +164,8 @@ every access to it is denied.
 
 | Path | Read | Write |
 |---|---|---|
-| `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change. No delete |
+| `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change; a new `displayName` must be written to the public profile in the same commit. No delete |
+| `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
@@ -176,6 +192,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 - **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
   the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
+- **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
+  so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
   to remove them explicitly.
 - **Offline:** with Firestore's persistent cache, a query made offline returns cached data, which

@@ -32,6 +32,8 @@ class UserRepositoryFirestoreTest {
   private val db = mockk<FirebaseFirestore>()
   private val ref = mockk<DocumentReference>()
   private val snapshot = mockk<DocumentSnapshot>()
+  private val publicRef = mockk<DocumentReference>()
+  private val publicSnapshot = mockk<DocumentSnapshot>()
   private val transaction = mockk<Transaction>(relaxed = true)
   private val repository = UserRepositoryFirestore(db)
 
@@ -43,6 +45,14 @@ class UserRepositoryFirestoreTest {
     every { ref.get() } returns Tasks.forResult(snapshot)
     every { transaction.get(ref) } returns snapshot
     every { snapshot.id } returns UID
+    val publicProfiles = mockk<CollectionReference>()
+    every { db.collection(PUBLIC_PROFILES_COLLECTION) } returns publicProfiles
+    every { publicProfiles.document(UID) } returns publicRef
+    every { publicRef.get() } returns Tasks.forResult(publicSnapshot)
+    every { transaction.get(publicRef) } returns publicSnapshot
+    every { publicSnapshot.id } returns UID
+    // Signed in before: the public profile already exists, unless a test removes it.
+    storedPublicProfile(mapOf(DISPLAY_NAME to "Ada"))
     // Runs the transaction body synchronously against the mocked transaction.
     every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } answers
         {
@@ -56,14 +66,40 @@ class UserRepositoryFirestoreTest {
     every { snapshot.get(any<String>()) } answers { fields?.get(firstArg()) }
   }
 
+  /** Makes [publicSnapshot] an existing public profile holding [fields], or a missing one. */
+  private fun storedPublicProfile(fields: Map<String, Any?>?) {
+    every { publicSnapshot.exists() } returns (fields != null)
+    every { publicSnapshot.get(any<String>()) } answers { fields?.get(firstArg()) }
+  }
+
   @Test
-  fun getOrCreateUser_createsProfileWhenAbsent() = runTest {
+  fun getOrCreateUser_createsProfileAndPublicProfileWhenAbsent() = runTest {
     stored(null)
+    storedPublicProfile(null)
 
     val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com")
 
     assertEquals(User(UID, "Ada", "ada@example.com"), user)
     verify { transaction.set(ref, UserRepositoryFirestore.newUserFields("Ada", "ada@example.com")) }
+    verify { transaction.set(publicRef, UserRepositoryFirestore.publicProfileFields("Ada")) }
+  }
+
+  @Test
+  fun getOrCreateUser_givesAnExistingProfileItsMissingPublicProfile() = runTest {
+    // Created before public profiles existed, under a name changed since.
+    stored(
+        mapOf(
+            DISPLAY_NAME to "Ada L.",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+        )
+    )
+    storedPublicProfile(null)
+
+    repository.getOrCreateUser(UID, "Ada", "ada@example.com")
+
+    verify { transaction.set(publicRef, UserRepositoryFirestore.publicProfileFields("Ada L.")) }
+    verify(exactly = 0) { transaction.set(ref, any()) }
   }
 
   @Test
@@ -139,6 +175,43 @@ class UserRepositoryFirestoreTest {
 
     assertTrue(thrown is UserRepositoryException.Unknown)
     assertTrue(thrown!!.cause is IllegalStateException)
+  }
+
+  @Test
+  fun getPublicProfile_returnsNullWhenDocumentMissing() = runTest {
+    storedPublicProfile(null)
+
+    assertNull(repository.getPublicProfile(UID))
+  }
+
+  @Test
+  fun getPublicProfile_returnsMappedProfileWhenDocumentExists() = runTest {
+    assertEquals(PublicProfile(UID, "Ada"), repository.getPublicProfile(UID))
+  }
+
+  @Test
+  fun getPublicProfile_reportsMalformedProfileAsUnknown() = runTest {
+    storedPublicProfile(mapOf(DISPLAY_NAME to 42))
+
+    val thrown = runCatching { repository.getPublicProfile(UID) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    assertTrue(thrown!!.cause is IllegalStateException)
+  }
+
+  @Test
+  fun getPublicProfile_translatesFirestoreErrors() = runTest {
+    val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
+    every { publicRef.get() } returns Tasks.forException(error)
+
+    val thrown = runCatching { repository.getPublicProfile(UID) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun publicProfileFields_holdOnlyTheName() {
+    assertEquals(mapOf(DISPLAY_NAME to "Ada"), UserRepositoryFirestore.publicProfileFields("Ada"))
   }
 
   @Test

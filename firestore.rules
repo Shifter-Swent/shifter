@@ -22,12 +22,33 @@ service cloud.firestore {
         && request.resource.data.locationSharingEnabled == false
         && request.resource.data.createdAt == request.time;
 
+      // A new name is also written to the public profile in the same commit, so the two never
+      // disagree.
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'locationSharingEnabled'])
         && request.resource.data.displayName is string
-        && request.resource.data.locationSharingEnabled is bool;
+        && request.resource.data.locationSharingEnabled is bool
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName'])
+            || getAfter(/databases/$(database)/documents/publicProfiles/$(uid)).data.displayName
+                 == request.resource.data.displayName);
 
+      allow delete: if false;
+    }
+
+    // publicProfiles/{uid}: what any signed-in user may see of a user, for now their name. Read one
+    // at a time only: a uid cannot be guessed, while listing would let anyone collect every name.
+    match /publicProfiles/{uid} {
+      // Only the name, and the one of the private profile after the same commit.
+      function matchesPrivateProfile() {
+        return request.resource.data.keys().hasOnly(['displayName'])
+          && request.resource.data.displayName
+               == getAfter(/databases/$(database)/documents/users/$(uid)).data.displayName;
+      }
+
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if signedIn() && request.auth.uid == uid && matchesPrivateProfile();
       allow delete: if false;
     }
 
