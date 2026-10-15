@@ -141,6 +141,7 @@ fun ShifterNavHost(
                         JoinEventViewModel.factory(
                             repositories.eventRepository,
                             repositories.membershipRequestRepository,
+                            repositories.teamRepository,
                             currentUserId,
                         )
                 )
