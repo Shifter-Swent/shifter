@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,9 +54,10 @@ import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.map.MapScreen
 import com.swent.shifter.ui.map.MapViewModel
-import com.swent.shifter.ui.membership.MembershipRequestUIState
+import com.swent.shifter.ui.membership.MembershipRequestVM
 import com.swent.shifter.ui.mission.AddMissionScreen
 import com.swent.shifter.ui.mission.AddMissionViewModel
+import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
@@ -256,15 +258,45 @@ fun ShifterNavHost(
           }
         }
         navigation<OrganizerTabs.People>(startDestination = OrganizerTabs.People.home) {
-          composable<OrganizerEventScreen.People> {
+          composable<OrganizerEventScreen.People> { entry ->
             BackHandler { nav.backTo(Organizer.Events) }
-            // No repositories are wired yet: the requests list is empty and its buttons do nothing.
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            val requests: MembershipRequestVM =
+                viewModel(
+                    factory =
+                        MembershipRequestVM.factory(
+                            eventId,
+                            repositories.membershipRequestRepository,
+                            repositories.userRepository,
+                        )
+                )
+            val participants: ParticipantsViewModel =
+                viewModel(
+                    factory =
+                        ParticipantsViewModel.factory(
+                            eventId,
+                            repositories.membershipRequestRepository,
+                            repositories.teamRepository,
+                            repositories.userRepository,
+                        )
+                )
             // PeopleScreen draws its own bottom bar, so it is not wrapped in a TabPage.
             PeopleScreen(
-                uiState = MembershipRequestUIState(isLoading = false),
-                onAccept = {},
-                onReject = {},
-                onRetry = {},
+                uiState = requests.uiState.collectAsState().value,
+                onAccept = requests::accept,
+                onReject = requests::reject,
+                onRetry = requests::loadRequests,
+                participants = participants.uiState.collectAsState().value,
+                onReloadParticipants = participants::load,
+                // Appointing a team's manager comes with the next task.
+                onParticipantClick = { _, _ -> },
                 onNavigate = nav::switchTab,
             )
           }

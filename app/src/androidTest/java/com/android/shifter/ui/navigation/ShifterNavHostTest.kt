@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -40,6 +41,7 @@ import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
+import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
@@ -471,6 +473,50 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerPeople_acceptingARequestShowsTheVolunteerUnderTheirTeam() {
+    val organizerAccount = googleCredential()
+    val organizer = signIn(organizerAccount)
+    val event = createEvent(organizer)
+    val volunteer = signIn()
+    applyTo(event, volunteer)
+    // Created by the acceptance, and deleted before the event like the request.
+    createdPaths.add(0, "eventParticipants/${event.id}")
+    signIn(organizerAccount)
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread {
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+    }
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+
+    composeTestRule.onNodeWithText("Requests").performClick()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Accept").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Accept").performClick()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Accepted").fetchSemanticsNodes().isNotEmpty()
+    }
+
+    // Coming back to the participants reloads them, with the volunteer just accepted.
+    composeTestRule.onNodeWithText("Participants").performClick()
+    waitForNode(ParticipantsListTestTags.participantCard(volunteer.uid))
+    composeTestRule
+        .onNodeWithTag(ParticipantsListTestTags.teamBar(teamIds.getValue(event.id)))
+        .assertTextContains("· 1", substring = true)
+  }
+
+  @Test
   fun staffEvents_showTheAppliedEventAndWithdrawRemovesIt() {
     val organizer = signIn()
     val event = createEvent(organizer)
@@ -631,10 +677,14 @@ class ShifterNavHostTest {
     return navController
   }
 
-  /** Signs in a fresh fake Google account, which the app then reads as its current user. */
-  private fun signIn(): AuthUser = runBlocking {
-    repositories.authRepository.signInWithGoogle(googleCredential()).getOrThrow()
-  }
+  /**
+   * Signs in [account], a fresh fake Google account by default, which the app then reads as its
+   * current user. Signing in the same account again returns to the same user.
+   */
+  private fun signIn(account: GoogleIdTokenCredential = googleCredential()): AuthUser =
+      runBlocking {
+        repositories.authRepository.signInWithGoogle(account).getOrThrow()
+      }
 
   /** Creates an upcoming event organized by [organizer], who must be the signed-in user. */
   private fun createEvent(organizer: AuthUser): Event {

@@ -2,7 +2,10 @@
 package com.swent.shifter.ui.membership
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
@@ -115,4 +118,18 @@ class MembershipRequestVM(
             "The membership service is unavailable. Please try again."
         is MembershipRequestRepositoryException.Unknown -> "Something went wrong. Please try again."
       }
+
+  companion object {
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments.
+     */
+    fun factory(
+        eventId: String,
+        membershipRequestRepository: MembershipRequestRepository,
+        userRepository: UserRepository,
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer { MembershipRequestVM(eventId, membershipRequestRepository, userRepository) }
+    }
+  }
 }

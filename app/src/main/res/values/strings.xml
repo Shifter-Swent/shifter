@@ -106,7 +106,18 @@
     <string name="people_title">People</string>
     <string name="people_tab_participants">Participants</string>
     <string name="people_tab_requests">Requests</string>
-    <string name="people_participants_placeholder">Participants will appear here.</string>
+
+    <!-- Participants -->
+    <string name="participants_empty">No teams or participants yet.</string>
+    <string name="participants_team_empty">No participants yet.</string>
+    <string name="participants_team_bar">%1$s · %2$d</string>
+    <string name="participants_no_team">No team</string>
+    <string name="participants_unknown_volunteer">Unknown volunteer</string>
+    <string name="participants_manager">Manager</string>
+    <string name="participants_retry">Retry</string>
+    <string name="participants_error_offline">You are offline, try again later</string>
+    <string name="participants_error_permission_denied">You cannot see the participants of this event</string>
+    <string name="participants_error_unexpected">Something went wrong, try again</string>
 
     <!-- Membership requests -->
     <string name="membership_requests_empty">No membership requests yet.</string>

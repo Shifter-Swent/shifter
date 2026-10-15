@@ -44,11 +44,14 @@ class PeopleScreenTest {
     compose.setContent {
       MaterialTheme {
         PeopleScreen(
-            MembershipRequestUIState(requests = listOf(item), isLoading = false),
-            { accepted = it },
-            { rejected = it },
-            {},
-            { destination = it },
+            uiState = MembershipRequestUIState(requests = listOf(item), isLoading = false),
+            onAccept = { accepted = it },
+            onReject = { rejected = it },
+            onRetry = {},
+            participants = ParticipantsUiState(),
+            onReloadParticipants = {},
+            onParticipantClick = { _, _ -> },
+            onNavigate = { destination = it },
         )
       }
     }
@@ -65,6 +68,38 @@ class PeopleScreenTest {
     compose.runOnIdle { assertEquals(OrganizerTabs.Overview, destination) }
     compose.onNodeWithText("Participants").performClick()
     compose.onNodeWithText("Alice Martin").assertDoesNotExist()
+  }
+
+  @Test
+  fun participantsTab_showsTheParticipantsAndReloadsThemOnlyWhenComingBack() {
+    var reloads = 0
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants =
+                ParticipantsUiState(
+                    groups =
+                        listOf(ParticipantGroup(null, listOf(ParticipantItem("bob", "Bob", false))))
+                ),
+            onReloadParticipants = { reloads++ },
+            onParticipantClick = { _, _ -> },
+            onNavigate = {},
+        )
+      }
+    }
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).assertIsDisplayed()
+    compose.onNodeWithText("Participants").performClick()
+    compose.runOnIdle { assertEquals(0, reloads) }
+
+    compose.onNodeWithText("Requests").performClick()
+    compose.onNodeWithText("Participants").performClick()
+
+    compose.runOnIdle { assertEquals(1, reloads) }
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).assertIsDisplayed()
   }
 
   @Test
