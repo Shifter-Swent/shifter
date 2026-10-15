@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
@@ -27,7 +28,8 @@ import org.junit.runner.RunWith
 /**
  * Security rules of the `teams`, `shifts` and `missions` subcollections of an event, run against
  * the Firestore emulator: the organizer writes them, the organizer and the accepted participants
- * read them, and nobody else does either. Only the organizer reads the event's participants.
+ * read them, and nobody else does either. Only the organizer reads the event's participants, and a
+ * volunteer leaves their team only by withdrawing.
  *
  * Documents are written as raw maps: the rules do not look at their content, and the mappers are
  * covered by their own tests.
@@ -132,6 +134,23 @@ class EventSubcollectionRulesTest {
 
     signIn(outsider)
     assertDenied { participants.get(Source.SERVER).await() }
+  }
+
+  @Test
+  fun aParticipantLeavesTheirTeamOnlyByWithdrawing() = emulatorTest {
+    val team = collection("teams").document(teamId)
+
+    signIn(outsider)
+    assertDenied { team.update("memberIds", FieldValue.arrayRemove(participant.uid)).await() }
+
+    signIn(participant)
+    // Their request still exists, and they may not change anyone else's membership.
+    assertDenied { team.update("memberIds", FieldValue.arrayRemove(participant.uid)).await() }
+    assertDenied { team.update("memberIds", FieldValue.arrayUnion(outsider.uid)).await() }
+    MembershipRequestRepositoryFirestore(db).withdraw(eventId, participant.uid)
+
+    signIn(organizer)
+    assertEquals(emptyList<String>(), team.get(Source.SERVER).await().get("memberIds"))
   }
 
   @Test
