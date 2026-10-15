@@ -5,6 +5,7 @@
 package com.swent.shifter.model.authentication
 
 import androidx.credentials.Credential
+import kotlinx.coroutines.flow.Flow
 
 /** Defines the authentication operations required by the UI layer. */
 interface AuthRepository {
@@ -13,6 +14,15 @@ interface AuthRepository {
 
   /** The account of the session restored at launch or opened since, `null` when signed out. */
   fun currentUser(): AuthUser?
+
+  /**
+   * The account of the current session, emitted on collection and again whenever a session opens or
+   * ends, including when it ends outside the app.
+   *
+   * An account disabled or deleted on the server is reported once the SDK finds it gone, at its
+   * next ID token refresh (within the hour); until then the local session stays.
+   */
+  val authState: Flow<AuthUser?>
 
   /** Signs out the current user. */
   fun signOut(): Result<Unit>

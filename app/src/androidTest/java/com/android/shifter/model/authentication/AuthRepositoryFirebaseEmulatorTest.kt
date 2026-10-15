@@ -5,7 +5,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -104,6 +107,47 @@ class AuthRepositoryFirebaseEmulatorTest {
 
     assertTrue(result.isSuccess)
     assertNull(auth.currentUser)
+  }
+
+  @Test
+  fun authState_emitsTheCurrentSessionOnCollection() = emulatorTest {
+    assertNull("no session before sign-in", repository.authState.first())
+
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+
+    assertEquals(user, repository.authState.first())
+  }
+
+  @Test
+  fun authState_emitsNullWhenTheSessionEndsWhileCollecting() = emulatorTest {
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+    val states = mutableListOf<AuthUser?>()
+
+    // End the session from outside the repository once the listener has reported it.
+    repository.authState
+        .onEach { states += it }
+        .onEach { if (it != null) auth.signOut() }
+        .first { it == null }
+
+    assertEquals(listOf(user, null), states)
+  }
+
+  @Test
+  fun authState_emitsNullOnceTheSdkFindsTheAccountDeletedOnTheServer() = emulatorTest {
+    val user =
+        repository.signInWithGoogle(googleCredential(uniqueSubject(), uniqueEmail())).getOrThrow()
+
+    AuthEmulator.clearAccounts()
+
+    // Not known on the device until the SDK asks the server.
+    assertEquals(user, repository.authState.first())
+    // In production the SDK's own token refresh finds the account gone and signs out (checked on
+    // 2026-10-14), but the emulator answers that refresh with another error, which the SDK does not
+    // treat as a deleted account. A reload gets the same answer from both, so it stands in here.
+    assertTrue(runCatching { auth.currentUser!!.reload().await() }.isFailure)
+    assertNull(repository.authState.first())
   }
 
   /** The credential Credential Manager returns after the user picked the given Google account. */

@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,10 +37,10 @@ import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
-import com.swent.shifter.ui.event.CreateEventContent
-import com.swent.shifter.ui.event.CreateEventUiState
-import com.swent.shifter.ui.event.EventCreatedContent
-import com.swent.shifter.ui.event.EventCreatedUiState
+import com.swent.shifter.ui.event.CreateEventScreen
+import com.swent.shifter.ui.event.CreateEventViewModel
+import com.swent.shifter.ui.event.EventCreatedScreen
+import com.swent.shifter.ui.event.EventCreatedViewModel
 import com.swent.shifter.ui.event.JoinEventScreen
 import com.swent.shifter.ui.event.JoinEventViewModel
 import com.swent.shifter.ui.events.MembershipEventWithdrawer
@@ -56,6 +57,7 @@ import com.swent.shifter.ui.mission.AddMissionViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
+import kotlinx.coroutines.flow.filter
 
 /**
  * The app's navigation graph.
@@ -76,6 +78,11 @@ fun ShifterNavHost(
   val currentUserId = { auth.currentUser()?.uid }
   val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn, wasOrganizer = false) }
+
+  // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
+  // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
+  // session already gone at launch. exitToSignIn does nothing when already on sign-in.
+  LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
@@ -175,28 +182,28 @@ fun ShifterNavHost(
         )
       }
       composable<Organizer.CreateEvent> {
-        // No repositories are wired yet: the form only shows and goes back.
-        CreateEventContent(
-            state = CreateEventUiState(),
-            onTitleChange = {},
-            onDescriptionChange = {},
-            onTypeChange = {},
-            onAddressChange = {},
-            onStartAtChange = {},
-            onEndAtChange = {},
-            onSubmit = {
+        CreateEventScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        CreateEventViewModel.factory(repositories.eventRepository, currentUserId)
+                ),
+            onEventCreated = { event ->
               // The form gives way to the code: Back from there returns to the events list.
               nav.backTo(Organizer.Events)
-              nav.navigateTo(Organizer.EventCreated)
+              nav.navigateTo(Organizer.EventCreated(event.id))
             },
             onBack = nav::goBack,
         )
       }
-      composable<Organizer.EventCreated> {
-        // No repositories are wired yet: the code is empty until an event is really created.
-        EventCreatedContent(
-            state = EventCreatedUiState(isLoading = false),
-            onRetry = {},
+      composable<Organizer.EventCreated> { entry ->
+        // The code is read back from the backend, as the route only carries the event's id.
+        val eventId = entry.toRoute<Organizer.EventCreated>().eventId
+        EventCreatedScreen(
+            viewModel =
+                viewModel(
+                    factory = EventCreatedViewModel.factory(repositories.eventRepository, eventId)
+                ),
             onDone = { nav.backTo(Organizer.Events) },
         )
       }

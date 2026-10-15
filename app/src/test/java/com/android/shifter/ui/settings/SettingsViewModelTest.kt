@@ -5,6 +5,8 @@ import android.os.Looper
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.authentication.FakeAuthRepository
 import io.mockk.coEvery
@@ -12,6 +14,7 @@ import io.mockk.coVerify
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -69,6 +72,31 @@ class SettingsViewModelTest {
 
     assertTrue(viewModel.uiState.value.signedOut)
     assertNull(viewModel.uiState.value.errorMsg)
+  }
+
+  @Test
+  fun signOut_clearsTheCredentialsEvenIfTheScreenIsLeftMeanwhile() {
+    // The auth-state listener leaves Settings as soon as Firebase signs out, which clears this
+    // ViewModel while Credential Manager is still working.
+    val clearing = CompletableDeferred<Unit>()
+    var cleared = false
+    coEvery { credentialManager.clearCredentialState(any<ClearCredentialStateRequest>()) } coAnswers
+        {
+          clearing.await()
+          cleared = true
+        }
+    val store = ViewModelStore()
+    val leftViewModel =
+        ViewModelProvider(store, SettingsViewModel.factory(repository))[
+            SettingsViewModel::class.java]
+
+    leftViewModel.signOut(credentialManager)
+    idle()
+    store.clear()
+    clearing.complete(Unit)
+    idle()
+
+    assertTrue(cleared)
   }
 
   @Test

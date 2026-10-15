@@ -2,16 +2,21 @@
 package com.swent.shifter.model.authentication
 
 import androidx.credentials.Credential
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * In-memory [AuthRepository] for ViewModel unit tests, so they never touch Firebase.
  *
  * A successful [signInWithGoogle] opens a session for the returned user and a successful [signOut]
- * closes it, so [currentUser] follows the calls like the real repository does.
+ * closes it, so [currentUser] and [authState] follow the calls like the real repository does.
  *
  * @param signedInUser The account of the session restored at launch, `null` when signed out.
  */
-class FakeAuthRepository(private var signedInUser: AuthUser? = null) : AuthRepository {
+class FakeAuthRepository(signedInUser: AuthUser? = null) : AuthRepository {
+
+  private val session = MutableStateFlow(signedInUser)
 
   /** What [signInWithGoogle] returns. */
   var signInResult: Result<AuthUser> = Result.failure(IllegalStateException("No result configured"))
@@ -29,13 +34,20 @@ class FakeAuthRepository(private var signedInUser: AuthUser? = null) : AuthRepos
 
   override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {
     receivedCredential = credential
-    return signInResult.onSuccess { signedInUser = it }
+    return signInResult.onSuccess { session.value = it }
   }
 
-  override fun currentUser(): AuthUser? = signedInUser
+  override fun currentUser(): AuthUser? = session.value
+
+  override val authState: StateFlow<AuthUser?> = session.asStateFlow()
+
+  /** Ends the session without [signOut], as when it expires or the account is deleted. */
+  fun endSession() {
+    session.value = null
+  }
 
   override fun signOut(): Result<Unit> {
     signOutCalls++
-    return signOutResult.onSuccess { signedInUser = null }
+    return signOutResult.onSuccess { session.value = null }
   }
 }

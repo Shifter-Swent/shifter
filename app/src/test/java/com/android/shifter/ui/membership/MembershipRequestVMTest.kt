@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.membership
 
 import com.swent.shifter.model.membership.AvailabilitySlot
@@ -264,6 +265,7 @@ class MembershipRequestVMTest {
       MembershipRequest(
           id = uid,
           userId = uid,
+          teamId = "bar",
           availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600))),
           createdAt = Instant.EPOCH,
       )

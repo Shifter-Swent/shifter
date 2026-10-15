@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
+<!-- "chef-hat" from the Shifter Figma (Lucide). Tinted from Compose. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:pathData="M6,13.87A4,4,0,0,1,7.41,6a5.11,5.11,0,0,1,1.05,-1.54a5,5,0,0,1,7.08,0A5.11,5.11,0,0,1,16.59,6A4,4,0,0,1,18,13.87V21H6ZM6,17h12"
+      android:strokeColor="#FFFFFFFF"
+      android:strokeWidth="2"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round" />
+</vector>
