@@ -31,8 +31,18 @@ enum class MapError {
 /** A point the map centres on, in degrees. */
 data class MapPoint(val latitude: Double, val longitude: Double)
 
-/** The next mission the signed-in user is assigned to: its marker, and when it starts. */
-data class NextMission(val markerId: String, val startTime: String)
+/**
+ * The next mission the signed-in user is assigned to: its marker and its hours.
+ *
+ * @property isOngoing whether it has already started, in which case the screen says until when it
+ *   runs rather than when it starts.
+ */
+data class NextMission(
+    val markerId: String,
+    val startTime: String,
+    val endTime: String,
+    val isOngoing: Boolean,
+)
 
 /**
  * What the map screen shows: the event, a marker for each of its missions that has a location, and
@@ -97,10 +107,18 @@ class MapViewModel(
                 .sortedBy { it.startAt }
         val markers = missions.mapNotNull { it.toMarker() }
         val userId = currentUserId()
+        val now = now()
         val next =
             missions
-                .firstOrNull { userId in it.assigneeIds && it.endAt > now() }
-                ?.let { NextMission(it.id, HOURS.format(it.startAt.atZone(zone))) }
+                .firstOrNull { userId in it.assigneeIds && it.endAt > now }
+                ?.let {
+                  NextMission(
+                      markerId = it.id,
+                      startTime = HOURS.format(it.startAt.atZone(zone)),
+                      endTime = HOURS.format(it.endAt.atZone(zone)),
+                      isOngoing = it.startAt <= now,
+                  )
+                }
         val center =
             event.location.toPoint()
                 ?: markers.firstOrNull()?.let { MapPoint(it.latitude, it.longitude) }

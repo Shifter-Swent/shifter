@@ -96,7 +96,22 @@ class MapViewModelTest {
     missions.createMission(mission("Evening", 18, 19, TENT, assignees = listOf("someone")))
     missions.createMission(mission("Afternoon", 14, 15, TENT, assignees = listOf(USER)))
 
-    assertEquals(NextMission("mission-3", "14:00"), viewModel().uiState.value.next)
+    assertEquals(
+        NextMission("mission-3", "14:00", "15:00", isOngoing = false),
+        viewModel().uiState.value.next,
+    )
+  }
+
+  @Test
+  fun load_keepsHighlightingTheMissionTheUserIsDoingAsOngoing() = runTest {
+    // At noon, the user is in the middle of it.
+    missions.createMission(mission("Lunch", 11, 13, STAND, assignees = listOf(USER)))
+    missions.createMission(mission("Afternoon", 14, 15, TENT, assignees = listOf(USER)))
+
+    assertEquals(
+        NextMission("mission-1", "11:00", "13:00", isOngoing = true),
+        viewModel().uiState.value.next,
+    )
   }
 
   @Test

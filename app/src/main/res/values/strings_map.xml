@@ -3,6 +3,7 @@
     <string name="map_back">My Events</string>
     <string name="map_venue_caption">Event venue</string>
     <string name="map_next_mission">NEXT MISSION · %1$s</string>
+    <string name="map_ongoing_mission">NOW · until %1$s</string>
     <string name="map_recenter">Recenter the map</string>
     <string name="map_no_missions">No mission has a place on the map yet.</string>
     <string name="map_error_not_found">This event no longer exists.</string>

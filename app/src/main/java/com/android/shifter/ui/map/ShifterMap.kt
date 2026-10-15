@@ -28,6 +28,9 @@ object ShifterMapTestTags {
 internal val DEFAULT_CENTER = LatLng(46.5191, 6.5668)
 internal const val DEFAULT_ZOOM = 13f
 
+/** Keeps a highlighted marker above the others, whose labels may overlap it. */
+private const val HIGHLIGHTED_Z_INDEX = 1f
+
 /** The callers draw their own controls, such as a recenter button, over the map. */
 private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false)
 
@@ -37,7 +40,8 @@ private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarE
  *
  * The map is drawn in the app's dark style. Without [markerContent], each marker is the default
  * pin, whose title and info pop up when tapped; with it, each marker is drawn by [markerContent],
- * anchored by its bottom centre. Either way, a tap centres the camera on the marker.
+ * anchored by its bottom centre. Either way, a tap centres the camera on the marker, and a
+ * [MapMarker.highlighted] marker is drawn above the others.
  */
 @Composable
 fun ShifterMap(
@@ -63,11 +67,13 @@ fun ShifterMap(
       // Keyed so each marker keeps its own state when the list changes.
       key(marker.id) {
         val state = rememberUpdatedMarkerState(LatLng(marker.latitude, marker.longitude))
+        val zIndex = if (marker.highlighted) HIGHLIGHTED_Z_INDEX else 0f
         if (markerContent == null) {
           Marker(
               state = state,
               title = marker.title,
               snippet = marker.info,
+              zIndex = zIndex,
               onClick = {
                 onMarkerClick(marker)
                 false
@@ -78,6 +84,7 @@ fun ShifterMap(
           MarkerComposable(
               marker,
               state = state,
+              zIndex = zIndex,
               onClick = {
                 onMarkerClick(marker)
                 false

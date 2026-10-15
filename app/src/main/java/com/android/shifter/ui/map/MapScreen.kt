@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormHeader
@@ -51,7 +52,6 @@ object MapScreenTestTags {
   const val MISSION_CARD = "MapMissionCard"
   const val CLOSE_CARD_BUTTON = "MapCloseCardButton"
   const val RECENTER_BUTTON = "MapRecenterButton"
-  const val MISSION_LABEL = "MapMissionLabel"
 }
 
 /** Zoom the camera opens at once the event is loaded: close enough to tell missions apart. */
@@ -70,7 +70,11 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
   )
 }
 
-/** Stateless map screen: the event's title and venue above a map of its missions. */
+/**
+ * Stateless map screen: the event's title and venue above a map of its missions.
+ *
+ * @param cameraPositionState the camera of the map, which tests pass to check where it points.
+ */
 @Composable
 fun MapContent(
     uiState: MapUiState,
@@ -78,6 +82,9 @@ fun MapContent(
     onMarkerClick: (MapMarker) -> Unit,
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
+    cameraPositionState: CameraPositionState = rememberCameraPositionState {
+      position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
+    },
 ) {
   Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
     FormHeader(
@@ -105,21 +112,24 @@ fun MapContent(
       }
     }
     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-      val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
-      }
       LaunchedEffect(uiState.center) {
         uiState.center?.let {
           cameraPositionState.position =
               CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), EVENT_ZOOM)
         }
       }
+      val next = uiState.next
       val nextCaption =
-          uiState.next?.let { stringResource(R.string.map_next_mission, it.startTime) }
+          when {
+            next == null -> null
+            next.isOngoing -> stringResource(R.string.map_ongoing_mission, next.endTime)
+            else -> stringResource(R.string.map_next_mission, next.startTime)
+          }
       ShifterMap(
           markers =
               uiState.markers.map {
-                if (it.id == uiState.next?.markerId) it.copy(caption = nextCaption) else it
+                if (it.id == next?.markerId) it.copy(caption = nextCaption, highlighted = true)
+                else it
               },
           onMarkerClick = onMarkerClick,
           modifier = Modifier.fillMaxSize(),
@@ -168,13 +178,13 @@ fun MapContent(
 
 /**
  * A mission as drawn on the map: a card with its name and hours above a pin. A [MapMarker.caption]
- * is shown above the name and highlights the card and the pin, as for the next mission.
+ * is shown above the name, and a [MapMarker.highlighted] marker, such as the next mission, has its
+ * card and pin in the accent colour.
  */
 @Composable
 internal fun MissionLabel(marker: MapMarker) {
-  val accent = if (marker.caption != null) shifter_warning else MaterialTheme.colorScheme.primary
+  val accent = if (marker.highlighted) shifter_warning else MaterialTheme.colorScheme.primary
   Column(
-      modifier = Modifier.testTag(MapScreenTestTags.MISSION_LABEL),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     Surface(
@@ -183,7 +193,7 @@ internal fun MissionLabel(marker: MapMarker) {
         border =
             BorderStroke(
                 1.dp,
-                if (marker.caption != null) accent else MaterialTheme.colorScheme.outline,
+                if (marker.highlighted) accent else MaterialTheme.colorScheme.outline,
             ),
     ) {
       Column(
