@@ -21,11 +21,6 @@
             android:name="org.apache.http.legacy"
             android:required="false" />
         <activity
-            android:name=".SecondActivity"
-            android:exported="false"
-            android:label="@string/title_activity_second"
-            android:theme="@style/Theme.Shifter" />
-        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/title_activity_main"
