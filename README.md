@@ -80,4 +80,4 @@ Their QR code, as a fallback
 Check-ins and location updates are queued on the device and synchronized with Firebase automatically when the connection returns. Managers keep their last known view of the team map. Posts whose data is out of date are marked as such, so a manager can tell a confirmed gap from missing information. Lateness alerts and reassignments resume as soon as the manager or the volunteer is back online.
 
 ## Figma
-Shifter Figma's model : https://www.figma.com/make/a5LSzNh9e0em1xIsjy1nIF/Shifter
+Shifter Figma's model : https://www.figma.com/design/mO0rO29TWFRdEhGfm0NPDT/Shifter-Design?node-id=0-1&p=f&t=4mvO2RjgYud93Dya-0
