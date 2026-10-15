@@ -116,6 +116,9 @@ sonar {
         "sonar.androidLint.reportPaths",
         "${project.layout.buildDirectory.get()}/reports/lint-results-debug.xml",
     )
+    // Compose previews are tooling: the IDE renders them and no test runs them, so they would
+    // only ever count as uncovered. They live in their own *Previews.kt files to be left out here.
+    property("sonar.coverage.exclusions", "**/*Previews.kt")
     // Paths to JaCoCo XML coverage report files.
     property(
         "sonar.coverage.jacoco.xmlReportPaths",

@@ -7,7 +7,7 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
-import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
@@ -39,10 +39,10 @@ class MembershipRequestVMTest {
   @Before
   fun setUp() {
     Dispatchers.setMain(dispatcher)
-    coEvery { userRepository.getUser(any()) } answers
+    coEvery { userRepository.getPublicProfile(any()) } answers
         {
           val uid = firstArg<String>()
-          User(uid = uid, displayName = "$uid Smith", email = "$uid@example.com")
+          PublicProfile(uid = uid, displayName = "$uid Smith")
         }
     coEvery { repository.getMembershipRequestsByEId("event") } returns requests
     coEvery { repository.accept("event", any()) } returns Unit
@@ -64,8 +64,8 @@ class MembershipRequestVMTest {
         assertEquals(items(requests), vm.uiState.value.requests)
         assertFalse(vm.uiState.value.isLoading)
         coVerify(exactly = 1) { repository.getMembershipRequestsByEId("event") }
-        coVerify(exactly = 1) { userRepository.getUser("alice") }
-        coVerify(exactly = 1) { userRepository.getUser("bob") }
+        coVerify(exactly = 1) { userRepository.getPublicProfile("alice") }
+        coVerify(exactly = 1) { userRepository.getPublicProfile("bob") }
       }
 
   @Test
@@ -206,8 +206,8 @@ class MembershipRequestVMTest {
   @Test
   fun missingAndBlankProfilesUseFallbackNames() =
       runTest(dispatcher) {
-        coEvery { userRepository.getUser("alice") } returns null
-        coEvery { userRepository.getUser("bob") } returns User("bob", "  ", "bob@example.com")
+        coEvery { userRepository.getPublicProfile("alice") } returns null
+        coEvery { userRepository.getPublicProfile("bob") } returns PublicProfile("bob", "  ")
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         assertEquals(requests, vm.uiState.value.requests.map { it.request })
@@ -222,7 +222,7 @@ class MembershipRequestVMTest {
   @Test
   fun profileErrorsKeepRequestsAndOtherNamesAndAllowRetry() =
       runTest(dispatcher) {
-        coEvery { userRepository.getUser("alice") } throws
+        coEvery { userRepository.getPublicProfile("alice") } throws
             UserRepositoryException.PermissionDenied()
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
@@ -236,8 +236,8 @@ class MembershipRequestVMTest {
         vm.accept("alice")
         advanceUntilIdle()
         assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].request.status)
-        coEvery { userRepository.getUser("alice") } returns
-            User("alice", "Alice Smith", "alice@example.com")
+        coEvery { userRepository.getPublicProfile("alice") } returns
+            PublicProfile("alice", "Alice Smith")
         vm.loadRequests()
         advanceUntilIdle()
         assertEquals("Alice Smith", vm.uiState.value.requests[0].displayName)
@@ -249,7 +249,7 @@ class MembershipRequestVMTest {
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
-        coEvery { userRepository.getUser("bob") } throws CancellationException()
+        coEvery { userRepository.getPublicProfile("bob") } throws CancellationException()
         vm.loadRequests()
         advanceUntilIdle()
         assertEquals(items(requests), vm.uiState.value.requests)

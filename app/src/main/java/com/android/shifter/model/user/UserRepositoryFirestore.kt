@@ -13,10 +13,17 @@ import kotlinx.coroutines.tasks.await
 
 const val USERS_COLLECTION = "users"
 
+const val PUBLIC_PROFILES_COLLECTION = "publicProfiles"
+
 /** Names this entity in the failure a malformed document raises. */
 private const val ENTITY = "User"
 
-/** [UserRepository] backed by the Firestore collection `users/{uid}`. */
+private const val PUBLIC_PROFILE_ENTITY = "PublicProfile"
+
+/**
+ * [UserRepository] backed by the Firestore collections `users/{uid}`, which only its owner reads,
+ * and `publicProfiles/{uid}`, which any signed-in user may read one at a time.
+ */
 class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepository {
 
   override suspend fun getUser(uid: String): User? = translatingErrors {
@@ -31,20 +38,37 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
   override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
       translatingErrors {
         val ref = db.collection(USERS_COLLECTION).document(uid)
+        val publicRef = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
         // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
         // It returns the existing profile, mapped once the transaction is over.
         val existing =
             db.runTransaction { transaction ->
-                  transaction.get(ref).takeIf { it.exists() }
-                      ?: run {
-                        transaction.set(ref, newUserFields(displayName, email))
-                        null
-                      }
+                  // A transaction reads everything before it writes.
+                  val stored = transaction.get(ref).takeIf { it.exists() }
+                  val hasPublicProfile = transaction.get(publicRef).exists()
+                  if (stored == null) transaction.set(ref, newUserFields(displayName, email))
+                  // The rules require the public name to be the private one. A malformed private
+                  // profile gets no public profile: mapping it below reports it anyway.
+                  val name =
+                      if (stored == null) displayName else stored.get(DISPLAY_NAME) as? String
+                  if (!hasPublicProfile && name != null) {
+                    transaction.set(publicRef, publicProfileFields(name))
+                  }
+                  stored
                 }
                 .await()
         existing?.let { userFromFirestoreOrThrow(it) }
             ?: User(uid = uid, displayName = displayName, email = email)
       }
+
+  override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
+    db.collection(PUBLIC_PROFILES_COLLECTION)
+        .document(uid)
+        .get()
+        .await()
+        .takeIf { it.exists() }
+        ?.let { publicProfileFromFirestoreOrThrow(it) }
+  }
 
   companion object {
     const val DISPLAY_NAME = "displayName"
@@ -59,6 +83,20 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             EMAIL to email,
             LOCATION_SHARING_ENABLED to false,
             CREATED_AT to FieldValue.serverTimestamp(),
+        )
+
+    /** Fields of a public profile: only what any signed-in user may see. */
+    fun publicProfileFields(displayName: String): Map<String, Any> =
+        mapOf(DISPLAY_NAME to displayName)
+
+    /**
+     * Maps a `publicProfiles/{uid}` document to a [PublicProfile], taking its uid from the document
+     * id. Throws [IllegalStateException] when the name is missing or not a string.
+     */
+    fun publicProfileFromFirestore(snapshot: DocumentSnapshot): PublicProfile =
+        PublicProfile(
+            uid = snapshot.id,
+            displayName = snapshot.requireString(PUBLIC_PROFILE_ENTITY, DISPLAY_NAME),
         )
 
     /**
@@ -103,6 +141,14 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     private fun userFromFirestoreOrThrow(snapshot: DocumentSnapshot): User =
         try {
           userFromFirestore(snapshot)
+        } catch (e: IllegalStateException) {
+          throw UserRepositoryException.Unknown(e)
+        }
+
+    /** Like [userFromFirestoreOrThrow], for a public profile. */
+    private fun publicProfileFromFirestoreOrThrow(snapshot: DocumentSnapshot): PublicProfile =
+        try {
+          publicProfileFromFirestore(snapshot)
         } catch (e: IllegalStateException) {
           throw UserRepositoryException.Unknown(e)
         }

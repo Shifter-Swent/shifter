@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Organizer management of an event -->
+    <string name="overview_add_mission">Add mission</string>
+    <string name="overview_progress_title">Event progress</string>
+    <string name="overview_progress_count">%1$d / %2$d missions completed</string>
+    <string name="overview_progress_percent">%1$d%%</string>
+    <string name="overview_progress_scope">All teams · Overall total</string>
+    <string name="overview_filter_all">All</string>
+    <string name="overview_missions_all">Missions · All teams (%1$d)</string>
+    <string name="overview_missions_team">Missions · %1$s (%2$d)</string>
+    <string name="overview_team_general">General</string>
+    <string name="overview_team_unknown">Unknown team</string>
+    <string name="overview_no_missions">No missions yet. Add the first one above.</string>
+    <string name="overview_no_team_missions">No missions in this team yet.</string>
+    <string name="overview_load_failed">Could not load the missions.</string>
+    <string name="overview_retry">Retry</string>
+    <string name="overview_notification_title">Send a notification</string>
+    <string name="overview_notification_scope">Scope: all teams</string>
+    <string name="overview_notification_action">Write the message →</string>
+</resources>

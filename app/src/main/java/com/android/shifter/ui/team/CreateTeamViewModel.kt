@@ -59,11 +59,18 @@ data class CreateTeamUiState(
   fun errorFor(field: TeamFormField): TeamFormError? = errors.firstOrNull { it.field == field }
 
   /**
-   * Whether the form can be submitted: nothing is being saved and the team has not been created
-   * yet, so a second tap before leaving the screen cannot create it twice.
+   * Whether the organizer can still work on the form: nothing is being saved and the team has not
+   * been created yet, after which the form only waits for the screen to take it away.
+   */
+  val isEditable: Boolean
+    get() = !isSaving && createdTeam == null
+
+  /**
+   * Whether the form can be submitted, which is while it is still editable: a second tap before
+   * leaving the screen cannot create the team twice.
    */
   val canSubmit: Boolean
-    get() = !isSaving && createdTeam == null
+    get() = isEditable
 }
 
 /**

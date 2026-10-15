@@ -40,7 +40,7 @@ Writing them down also helps the human team agree on how we build.
 ## Naming
 
 - Follow the [Naming conventions](https://github.com/Shifter-Swent/shifter/wiki/Naming-conventions) of the wiki.
-- Test functions are named `method_behavior`, or `method_condition_expected` when a condition matters (e.g. `addMission_withValidForm_createsTheMission`).
+- Test functions are named `method_behavior`, or `method_condition_expected` when a condition matters (e.g. `addMission_withValidForm_createsTheMission`). For a screen or a flow, the first part names the action or the situation (e.g. `submit_withEmptyTitle_showsTheError`, `loading_showsTheSpinner`).
 
 ## Packages names
 

@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** A request enriched with the profile name needed by its card. */
+/** A request enriched with the public profile name needed by its card. */
 data class MembershipRequestItemUIState(
     val request: MembershipRequest,
     val displayName: String,
@@ -54,7 +54,9 @@ class MembershipRequestVM(
         val items = requests.map { request ->
           val name =
               try {
-                userRepository.getUser(request.userId)?.displayName?.takeIf { it.isNotBlank() }
+                userRepository.getPublicProfile(request.userId)?.displayName?.takeIf {
+                  it.isNotBlank()
+                }
               } catch (e: UserRepositoryException) {
                 profileError = "Some applicant names could not be loaded. Please try again."
                 null

@@ -5,8 +5,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -16,16 +21,20 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The card on its own: what it shows and what it reports. It is given a state and hands back edits,
- * so nothing here knows about [CreateTeamViewModel]; which state follows which edit is the
- * ViewModel's business, and the screen that connects the two is not part of this card.
+ * The card on its own: what it shows, what it reports and what it refuses while saving. Nothing
+ * here knows about [CreateTeamViewModel] — the card is given a state and hands back edits. Which
+ * state follows which edit is the ViewModel's business, tested over the whole form in
+ * [CreateTeamFormTest].
  */
 @RunWith(AndroidJUnit4::class)
 class CreateTeamContentTest {
@@ -36,6 +45,10 @@ class CreateTeamContentTest {
     get() = InstrumentationRegistry.getInstrumentation().targetContext
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  /** Errors sit next to their field rather than inside it, so the unmerged tree finds them. */
+  private fun errorNode(field: TeamFormField) =
+      composeTestRule.onNodeWithTag(CreateTeamFormTestTags.error(field), useUnmergedTree = true)
 
   /** The card over a fixed state, for everything that does not need the state to move. */
   private fun setCard(state: CreateTeamUiState) {
@@ -80,13 +93,19 @@ class CreateTeamContentTest {
         .forEach { node(it).assertIsDisplayed() }
   }
 
-  /** The fields are BasicTextFields, which do not carry their label on their own. */
+  /** The fields are BasicTextFields, which carry neither their label nor their error by default. */
   @Test
-  fun fieldsExposeTheirLabelToAccessibility() {
-    setCard(CreateTeamUiState())
+  fun fieldsExposeTheirLabelAndErrorToAccessibility() {
+    setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY)))
 
     node(CreateTeamFormTestTags.NAME_FIELD)
         .assert(hasContentDescription(context.getString(R.string.create_team_field_name)))
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.Error,
+                context.getString(R.string.create_team_error_name_empty),
+            )
+        )
     node(CreateTeamFormTestTags.DESCRIPTION_FIELD)
         .assert(hasContentDescription(context.getString(R.string.create_team_field_description)))
   }
@@ -138,6 +157,104 @@ class CreateTeamContentTest {
                     context.getString(R.string.create_team_icon_wine),
                 )
             )
+        )
+  }
+
+  /**
+   * The chosen entry is told apart by its colour alone, so the menu says which one it is; a test
+   * can then ask, rather than compare pixels.
+   */
+  @Test
+  fun theMenuMarksTheChosenIcon_andFollowsANewChoice() {
+    setEditableCard(CreateTeamUiState(icon = TeamIcon.WINE.id))
+
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).assertIsSelected()
+    TeamIcon.entries
+        .filter { it != TeamIcon.WINE }
+        .forEach { node(CreateTeamFormTestTags.iconOption(it)).assertIsNotSelected() }
+
+    // Picking another one closes the menu, which then opens on that one instead.
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK)).performClick()
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK)).assertIsSelected()
+    node(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).assertIsNotSelected()
+  }
+
+  @Test
+  fun eachErrorIsShownBesideItsOwnField() {
+    setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY, TeamFormError.ICON_MISSING)))
+
+    errorNode(TeamFormField.NAME)
+        .assertTextEquals(context.getString(R.string.create_team_error_name_empty))
+    errorNode(TeamFormField.ICON)
+        .assertTextEquals(context.getString(R.string.create_team_error_icon_missing))
+    errorNode(TeamFormField.DESCRIPTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun lengthErrors_showTheLimitTheyAreAbout() {
+    setCard(
+        FILLED.copy(errors = setOf(TeamFormError.NAME_TOO_LONG, TeamFormError.DESCRIPTION_TOO_LONG))
+    )
+
+    errorNode(TeamFormField.NAME)
+        .assertTextEquals(
+            context.resources.getQuantityString(
+                R.plurals.create_team_error_too_long,
+                CreateTeamViewModel.NAME_MAX_LENGTH,
+                CreateTeamViewModel.NAME_MAX_LENGTH,
+            )
+        )
+    errorNode(TeamFormField.DESCRIPTION)
+        .assertTextEquals(
+            context.resources.getQuantityString(
+                R.plurals.create_team_error_too_long,
+                CreateTeamViewModel.DESCRIPTION_MAX_LENGTH,
+                CreateTeamViewModel.DESCRIPTION_MAX_LENGTH,
+            )
+        )
+  }
+
+  @Test
+  fun whileSaving_nothingCanBeEdited() {
+    assertNothingCanBeEdited(setEditableCard(FILLED.copy(isSaving = true)))
+  }
+
+  /** Once the team exists the card is closed too, until the screen takes it away. */
+  @Test
+  fun afterCreation_nothingCanBeEdited() {
+    assertNothingCanBeEdited(setEditableCard(FILLED.copy(createdTeam = CREATED_TEAM)))
+  }
+
+  /** Nothing goes in through the card: no typing, and the catalogue does not even open. */
+  private fun assertNothingCanBeEdited(read: () -> CreateTeamUiState) {
+    node(CreateTeamFormTestTags.NAME_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.DESCRIPTION_FIELD).assertIsNotEnabled()
+    node(CreateTeamFormTestTags.ICON_SELECTOR).assertIsNotEnabled()
+
+    // A disabled selector must not open the catalogue either.
+    node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    TeamIcon.entries.forEach {
+      composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(it)).assertDoesNotExist()
+    }
+    assertNull(read().icon)
+  }
+
+  private companion object {
+    val FILLED = CreateTeamUiState(name = "Logistics")
+
+    /** A team as the ViewModel reports it once the backend has stored it. */
+    val CREATED_TEAM =
+        Team(
+            id = "team-1",
+            eventId = "event-1",
+            name = "Logistics",
+            description = "Set up the site and bring in the equipment.",
+            icon = TeamIcon.TRUCK.id,
+            createdAt = Instant.EPOCH,
         )
   }
 }
