@@ -1,7 +1,6 @@
 <resources>
     <string name="app_name">Shifter</string>
     <string name="title_activity_main">MainActivity</string>
-    <string name="title_activity_second">SecondActivity</string>
 
     <!-- Event creation -->
     <string name="create_event_title">Create an event</string>
