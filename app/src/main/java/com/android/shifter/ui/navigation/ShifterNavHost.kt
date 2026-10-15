@@ -305,6 +305,9 @@ fun ShifterNavHost(
                             repositories.userRepository,
                         )
                 )
+            // Shows the requests and participants that changed while another tab was on top.
+            RefreshOnReturn(requests::loadRequests)
+            RefreshOnReturn(participants::load)
             // PeopleScreen draws its own bottom bar, so it is not wrapped in a TabPage.
             PeopleScreen(
                 uiState = requests.uiState.collectAsState().value,
