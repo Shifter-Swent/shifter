@@ -206,8 +206,15 @@ class ShifterNavHostTest {
 
     val teamId = teamIds.getValue(event.id)
     waitForNode(JoinEventScreenTestTags.teamOption(teamId))
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption(teamId)).performClick()
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+    // The team list sits below the event details, out of view on small screens.
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.teamOption(teamId))
+        .performScrollTo()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON)
+        .assertIsEnabled()
+        .performClick()
 
     waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
     // Deleted before its event, as Firestore does not cascade the deletion.
