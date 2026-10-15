@@ -33,6 +33,21 @@ internal fun DocumentSnapshot.requireInstant(entity: String, field: String): Ins
     (get(field) as? Timestamp)?.toInstant() ?: invalidField(entity, field)
 
 /**
+ * Reads an instant that may not be known yet: an absent or null field means it is not, as for a
+ * server timestamp whose write is still pending. A present value of another type is rejected.
+ */
+internal fun DocumentSnapshot.optionalInstant(entity: String, field: String): Instant? =
+    when (val value = get(field)) {
+      null -> null
+      is Timestamp -> value.toInstant()
+      else -> invalidField(entity, field)
+    }
+
+/** Reads a required boolean, failing when it is absent or of another type. */
+internal fun DocumentSnapshot.requireBoolean(entity: String, field: String): Boolean =
+    get(field) as? Boolean ?: invalidField(entity, field)
+
+/**
  * Reads an optional string: an absent or null field means the entity has no value for it, so both
  * map to null. A present value of another type is rejected like a wrongly typed required field,
  * because mapping it to null would turn a schema problem into "there is nothing here".

@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -23,6 +24,17 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
+
+    // The Maps key lives in local.properties (never committed). Without it the map stays grey,
+    // but the app still builds and runs, e.g. on CI.
+    val localProperties = Properties()
+    rootProject
+        .file("local.properties")
+        .takeIf { it.exists() }
+        ?.inputStream()
+        ?.use { localProperties.load(it) }
+    manifestPlaceholders["MAPS_API_KEY"] =
+        localProperties.getProperty("MAPS_API_KEY") ?: "DEFAULT_API_KEY"
   }
 
   buildTypes {
@@ -131,6 +143,8 @@ dependencies {
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   implementation(libs.kotlinx.coroutines.play.services)
+  implementation(libs.maps.compose)
+  implementation(libs.play.services.maps)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
