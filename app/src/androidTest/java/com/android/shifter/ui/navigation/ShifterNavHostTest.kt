@@ -42,8 +42,8 @@ import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
-import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
+import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration

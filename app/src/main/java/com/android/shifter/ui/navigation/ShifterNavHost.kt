@@ -57,9 +57,9 @@ import com.swent.shifter.ui.map.MapViewModel
 import com.swent.shifter.ui.membership.MembershipRequestVM
 import com.swent.shifter.ui.mission.AddMissionScreen
 import com.swent.shifter.ui.mission.AddMissionViewModel
-import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.overview.OrganizerOverviewScreen
 import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
+import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
