@@ -192,11 +192,36 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun joinEvent_appliesToTheTeamPicked() {
+    val event = createEvent(signIn())
+    val volunteer = signIn()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput(event.joinCode)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+
+    val teamId = teamIds.getValue(event.id)
+    waitForNode(JoinEventScreenTestTags.teamOption(teamId))
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption(teamId)).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
+    val request = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
+    }
+    assertEquals(teamId, request?.teamId)
+  }
+
+  @Test
   fun joinEvent_findingAnAppliedEventShowsTheRequestAndTheEventInTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
-    // The Join screen has no team picker yet, so the request is sent directly, for the event's
-    // team.
     applyTo(event, volunteer)
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
