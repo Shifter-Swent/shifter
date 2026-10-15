@@ -237,6 +237,8 @@ fun ShifterNavHost(
                                 eventId,
                                 repositories.missionRepository,
                                 repositories.eventRepository,
+                                repositories.teamRepository,
+                                currentUserId,
                             )
                     ),
                 // Back to the event's overview, the mission saved.

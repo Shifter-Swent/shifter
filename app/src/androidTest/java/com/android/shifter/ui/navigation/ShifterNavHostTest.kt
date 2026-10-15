@@ -360,10 +360,14 @@ class ShifterNavHostTest {
 
   @Test
   fun addMission_savesTheMissionInTheEventAndReturnsToTheOverview() {
+    // The form is only shown to the organizer, so the app keeps their session.
     val event = createEvent(signIn())
-    val nav = setAppAndGetNavigation()
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
-    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent(event.id)) }
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
     composeTestRule.onNodeWithTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON).performClick()
     // The form reads the event it adds the mission to.
     waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
