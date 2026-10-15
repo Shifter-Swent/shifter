@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -27,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -54,6 +54,8 @@ import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.mission.AddMissionScreen
 import com.swent.shifter.ui.mission.AddMissionViewModel
+import com.swent.shifter.ui.overview.OrganizerOverviewScreen
+import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
@@ -212,13 +214,29 @@ fun ShifterNavHost(
         tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(
             OrganizerTabs.Overview,
             nav,
-            content = {
-              Button(
-                  onClick = { nav.navigateTo(OrganizerEventScreen.AddMission) },
-                  modifier = Modifier.testTag(ShifterNavHostTestTags.ADD_MISSION_BUTTON),
-              ) {
-                Text(OrganizerEventScreen.AddMission.title)
-              }
+            content = { entry ->
+              val eventId =
+                  remember(entry) {
+                    navController
+                        .getBackStackEntry<OrganizerEvent>()
+                        .toRoute<OrganizerEvent>()
+                        .eventId
+                  }
+              val viewModel: OrganizerOverviewViewModel =
+                  viewModel(
+                      factory =
+                          OrganizerOverviewViewModel.factory(
+                              eventId,
+                              repositories.missionRepository,
+                              repositories.teamRepository,
+                          )
+                  )
+              // Shows the missions added while the creation form was on top.
+              RefreshOnReturn(viewModel::refresh)
+              OrganizerOverviewScreen(
+                  viewModel = viewModel,
+                  onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
+              )
             },
         ) {
           composable<OrganizerEventScreen.AddMission> { entry ->
@@ -274,16 +292,16 @@ fun ShifterNavHost(
 
 /**
  * Registers [tab] as its own graph, so it keeps its own back stack: its home screen, showing
- * [content] under its title, and the [screens] opened on top of it.
+ * [content], given its back stack entry, under its title, and the [screens] opened on top of it.
  */
 private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
     tab: Tab,
     nav: NavigationActions,
-    noinline content: @Composable () -> Unit = {},
+    noinline content: @Composable (NavBackStackEntry) -> Unit = {},
     crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
   navigation<T>(startDestination = tab.home) {
-    composable<S> { TabPage(tab, nav, content) }
+    composable<S> { entry -> TabPage(tab, nav) { content(entry) } }
     screens()
   }
 }
@@ -294,16 +312,14 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
  * already loads once created.
  */
 @Composable
-private fun RefreshOnReturn(viewModel: MyEventsViewModel) {
+private fun RefreshOnReturn(viewModel: MyEventsViewModel) = RefreshOnReturn(viewModel::refresh)
+
+/** Calls [refresh] each time the screen comes back on top, but not when it is first shown. */
+@Composable
+private fun RefreshOnReturn(refresh: () -> Unit) {
   // Saveable, as the list leaves the composition while another screen is on top of it.
   var shownOnce by rememberSaveable { mutableStateOf(false) }
-  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-    if (shownOnce) viewModel.refresh() else shownOnce = true
-  }
-}
-
-object ShifterNavHostTestTags {
-  const val ADD_MISSION_BUTTON = "AddMissionButton"
+  LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (shownOnce) refresh() else shownOnce = true }
 }
 
 /**
