@@ -51,6 +51,8 @@ import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
+import com.swent.shifter.ui.map.MapScreen
+import com.swent.shifter.ui.map.MapViewModel
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.mission.AddMissionScreen
 import com.swent.shifter.ui.mission.AddMissionViewModel
@@ -148,7 +150,12 @@ fun ShifterNavHost(
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
         tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
-        tab<VolunteerTabs.Map, VolunteerEventScreen.Map>(VolunteerTabs.Map, nav)
+        mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(
+            VolunteerTabs.Map,
+            nav,
+            navController,
+            repositories,
+        )
         tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
             VolunteerTabs.Discussions,
             nav,
@@ -262,7 +269,12 @@ fun ShifterNavHost(
             )
           }
         }
-        tab<OrganizerTabs.Map, OrganizerEventScreen.Map>(OrganizerTabs.Map, nav)
+        mapTab<OrganizerTabs.Map, OrganizerEventScreen.Map, OrganizerEvent>(
+            OrganizerTabs.Map,
+            nav,
+            navController,
+            repositories,
+        )
         tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
             OrganizerTabs.Discussions,
             nav,
@@ -283,8 +295,45 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
     crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
   navigation<T>(startDestination = tab.home) {
-    composable<S> { TabPage(tab, nav, content) }
+    composable<S> { TabPage(tab, nav) { PlaceholderPage(tab.home, content = content) } }
     screens()
+  }
+}
+
+/** Registers the Map [tab] of the event open in the graph [E], showing its missions on a map. */
+private inline fun <reified T : Tab, reified S : Destination, reified E : EventMode> NavGraphBuilder
+    .mapTab(
+    tab: Tab,
+    nav: NavigationActions,
+    navController: NavHostController,
+    repositories: RepositoryProvider,
+) {
+  navigation<T>(startDestination = tab.home) {
+    composable<S> { entry ->
+      val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
+      TabPage(tab, nav) {
+        MapScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        MapViewModel.factory(
+                            eventId,
+                            repositories.eventRepository,
+                            repositories.missionRepository,
+                        )
+                ),
+            onBack = { nav.leaveEvent(tab.set) },
+        )
+      }
+    }
+  }
+}
+
+/** Goes back from an event to the list of events it was opened from. */
+private fun NavigationActions.leaveEvent(set: TabSet) {
+  when (set) {
+    VolunteerTabs -> backTo(Volunteer.Events)
+    OrganizerTabs -> backTo(Organizer.Events)
   }
 }
 
@@ -330,15 +379,10 @@ private fun PlaceholderPage(
   }
 }
 
-/** A tab of an event, with the bottom bar listing the other tabs of the same event. */
+/** A tab of an event showing [content], with the bottom bar listing the other tabs of the event. */
 @Composable
-private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit = {}) {
-  BackHandler {
-    when (current.set) {
-      VolunteerTabs -> nav.backTo(Volunteer.Events)
-      OrganizerTabs -> nav.backTo(Organizer.Events)
-    }
-  }
+private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit) {
+  BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
       bottomBar = {
         NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
@@ -354,6 +398,6 @@ private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable (
         }
       }
   ) { padding ->
-    Box(modifier = Modifier.padding(padding)) { PlaceholderPage(current.home, content = content) }
+    Box(modifier = Modifier.padding(padding)) { content() }
   }
 }

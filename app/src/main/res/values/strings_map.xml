@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="map_back">My Events</string>
+    <string name="map_no_missions">No mission has a place on the map yet.</string>
+    <string name="map_error_not_found">This event no longer exists.</string>
+    <string name="map_error_offline">You are offline. Check your connection and try again.</string>
+    <string name="map_error_unexpected">The map could not be loaded.</string>
+    <string name="map_retry">Retry</string>
+    <string name="map_close">Close</string>
+</resources>
