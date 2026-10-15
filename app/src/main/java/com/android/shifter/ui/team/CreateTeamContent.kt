@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -150,20 +151,18 @@ private fun FieldError(error: TeamFormError?) {
 private fun errorMessage(error: TeamFormError): String =
     when (error) {
       TeamFormError.NAME_EMPTY -> stringResource(R.string.create_team_error_name_empty)
-      TeamFormError.NAME_TOO_LONG ->
-          stringResource(
-              R.string.create_team_error_name_too_long,
-              CreateTeamViewModel.NAME_MAX_LENGTH,
-          )
+      TeamFormError.NAME_TOO_LONG -> tooLongMessage(CreateTeamViewModel.NAME_MAX_LENGTH)
       TeamFormError.ICON_MISSING -> stringResource(R.string.create_team_error_icon_missing)
       TeamFormError.DESCRIPTION_EMPTY ->
           stringResource(R.string.create_team_error_description_empty)
       TeamFormError.DESCRIPTION_TOO_LONG ->
-          stringResource(
-              R.string.create_team_error_description_too_long,
-              CreateTeamViewModel.DESCRIPTION_MAX_LENGTH,
-          )
+          tooLongMessage(CreateTeamViewModel.DESCRIPTION_MAX_LENGTH)
     }
+
+/** The length message of a field, about the [limit] characters it allows. */
+@Composable
+private fun tooLongMessage(limit: Int): String =
+    pluralStringResource(R.plurals.create_team_error_too_long, limit, limit)
 
 /** A field of the form: its label, then the field itself. */
 @Composable

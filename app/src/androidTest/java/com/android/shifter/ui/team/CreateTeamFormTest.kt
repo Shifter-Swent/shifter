@@ -170,8 +170,9 @@ class CreateTeamFormTest {
 
     errorNode(TeamFormField.NAME)
         .assertTextEquals(
-            context.getString(
-                R.string.create_team_error_name_too_long,
+            context.resources.getQuantityString(
+                R.plurals.create_team_error_too_long,
+                CreateTeamViewModel.NAME_MAX_LENGTH,
                 CreateTeamViewModel.NAME_MAX_LENGTH,
             )
         )
