@@ -44,6 +44,13 @@ class ParticipantsListTest {
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
+  /** The badge, which the card merges into itself, so it is only its own node unmerged. */
+  private fun badge(userId: String) =
+      composeTestRule.onNodeWithTag(
+          ParticipantsListTestTags.managerBadge(userId),
+          useUnmergedTree = true,
+      )
+
   @Test
   fun groups_showEachTeamBarThenItsParticipantsWithTheManagerBadge() {
     setList(
@@ -59,9 +66,9 @@ class ParticipantsListTest {
 
     node(ParticipantsListTestTags.teamBar("bar")).assertTextContains("Bar · 2")
     node(ParticipantsListTestTags.participantCard("alice")).assertTextContains("Alice Martin")
-    node(ParticipantsListTestTags.managerBadge("alice")).assertIsDisplayed()
+    badge("alice").assertIsDisplayed()
     node(ParticipantsListTestTags.participantCard("bob")).assertTextContains("Bob Rossi")
-    node(ParticipantsListTestTags.managerBadge("bob")).assertDoesNotExist()
+    badge("bob").assertDoesNotExist()
     node(ParticipantsListTestTags.teamBar("logistics")).assertTextContains("Logistics · 0")
     node(ParticipantsListTestTags.noParticipants("logistics")).assertIsDisplayed()
     node(ParticipantsListTestTags.teamBar(null)).assertTextContains("No team · 1")
