@@ -63,6 +63,9 @@ import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
+import com.swent.shifter.ui.team.TeamSetupMode
+import com.swent.shifter.ui.team.TeamSetupScreen
+import com.swent.shifter.ui.team.TeamSetupViewModel
 import kotlinx.coroutines.flow.filter
 
 /**
@@ -202,11 +205,29 @@ fun ShifterNavHost(
                         CreateEventViewModel.factory(repositories.eventRepository, currentUserId)
                 ),
             onEventCreated = { event ->
-              // The form gives way to the code: Back from there returns to the events list.
+              // The form gives way to the teams of the event it just saved. Dropping the form
+              // first means Back from there returns to the events list instead of to a form that
+              // would create a second event.
               nav.backTo(Organizer.Events)
-              nav.navigateTo(Organizer.EventCreated(event.id))
+              nav.navigateTo(Organizer.TeamSetup(event.id))
             },
             onBack = nav::goBack,
+        )
+      }
+      composable<Organizer.TeamSetup> { entry ->
+        val eventId = entry.toRoute<Organizer.TeamSetup>().eventId
+        TeamSetupScreen(
+            viewModel =
+                viewModel(
+                    factory = TeamSetupViewModel.factory(eventId, repositories.teamRepository)
+                ),
+            // The event is saved either way: both ways out of here lead forward, never back to
+            // the form, and neither deletes it.
+            onBack = { nav.backTo(Organizer.Events) },
+            onProceed = {
+              nav.backTo(Organizer.Events)
+              nav.navigateTo(Organizer.EventCreated(eventId))
+            },
         )
       }
       composable<Organizer.EventCreated> { entry ->
@@ -246,6 +267,7 @@ fun ShifterNavHost(
               OrganizerOverviewScreen(
                   viewModel = viewModel,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
+                  onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
               )
             },
         ) {
@@ -273,6 +295,26 @@ fun ShifterNavHost(
                 // Back to the event's overview, the mission saved.
                 onMissionAdded = { nav.goBack() },
                 onBack = nav::goBack,
+            )
+          }
+          composable<OrganizerEventScreen.ManageTeams> { entry ->
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            TeamSetupScreen(
+                viewModel =
+                    viewModel(
+                        factory = TeamSetupViewModel.factory(eventId, repositories.teamRepository)
+                    ),
+                // Both ways out return to the Overview, which reloads and lists the new teams.
+                onBack = nav::goBack,
+                onProceed = { nav.goBack() },
+                mode = TeamSetupMode.MANAGEMENT,
             )
           }
         }

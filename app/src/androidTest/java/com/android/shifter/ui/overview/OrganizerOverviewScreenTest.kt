@@ -130,6 +130,30 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
+  fun manageTeamsReportsItsClickWithoutTouchingTheFilters() {
+    var manageClicks = 0
+    var selected: String? = "untouched"
+    show(
+        loaded,
+        OrganizerOverviewActions(
+            onManageTeams = { manageClicks++ },
+            onSelectTeam = { selected = it },
+        ),
+    )
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    compose.runOnIdle {
+      assertEquals(1, manageClicks)
+      // The teams are a filter here too, and opening their management selects none of them.
+      assertEquals("untouched", selected)
+    }
+  }
+
+  @Test
   fun anEventWithoutMissionsInvitesToAddOne() {
     show(OrganizerOverviewUiState(isLoading = false, teams = teams))
 
