@@ -16,6 +16,14 @@
     <string name="create_team_error_icon_missing">Choose an icon</string>
     <string name="create_team_error_description_empty">Enter a description</string>
     <string name="create_team_error_save_failed">Could not create the team. Try again.</string>
+    <!-- Team setup, the step of the event creation flow the teams are created in. The header
+         reuses the back label and the title of the event creation screen it follows. -->
+    <string name="team_setup_section_title">Team creation</string>
+    <string name="team_setup_subtitle">Organize the teams of your event.</string>
+    <string name="team_setup_add_another">Add another team</string>
+    <string name="team_setup_proceed">Create my event</string>
+    <string name="team_setup_load_error">Could not load the teams of the event.</string>
+    <string name="team_setup_retry">Retry</string>
     <!-- Shared by the name and the description: both only carry their own limit. -->
     <plurals name="create_team_error_too_long">
         <item quantity="one">Use at most %1$d character</item>
