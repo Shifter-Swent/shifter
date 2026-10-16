@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,6 +44,13 @@ import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.membershipStatusColors
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+
+/** Tags of the requests list, per request: the volunteer's id identifies it within an event. */
+object MembershipRequestsTestTags {
+  fun status(userId: String) = "MembershipRequestStatus_$userId"
+
+  fun acceptButton(userId: String) = "MembershipRequestAccept_$userId"
+}
 
 @Composable
 fun MembershipRequestsScreen(
@@ -142,7 +150,10 @@ fun MembershipRequestCard(
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f),
       )
-      RequestStatusPill(item.request.status)
+      RequestStatusPill(
+          item.request.status,
+          Modifier.testTag(MembershipRequestsTestTags.status(item.request.userId)),
+      )
     }
     if (item.request.status == MembershipRequestStatus.PENDING) {
       val buttonShape = RoundedCornerShape(14.dp)
@@ -156,7 +167,10 @@ fun MembershipRequestCard(
                     containerColor = colors.primary,
                     contentColor = colors.onPrimary,
                 ),
-            modifier = Modifier.weight(1f).height(40.dp),
+            modifier =
+                Modifier.weight(1f)
+                    .height(40.dp)
+                    .testTag(MembershipRequestsTestTags.acceptButton(item.request.userId)),
         ) {
           ActionLabel(R.string.membership_requests_accept)
         }
@@ -182,14 +196,14 @@ private fun ActionLabel(@StringRes text: Int) {
 
 /** Where the request stands, in the colors of the matching status of My Events. */
 @Composable
-private fun RequestStatusPill(status: MembershipRequestStatus) {
+private fun RequestStatusPill(status: MembershipRequestStatus, modifier: Modifier = Modifier) {
   val text =
       when (status) {
         MembershipRequestStatus.PENDING -> R.string.membership_requests_status_pending
         MembershipRequestStatus.ACCEPTED -> R.string.membership_requests_status_accepted
         MembershipRequestStatus.REJECTED -> R.string.membership_requests_status_rejected
       }
-  Pill(text = stringResource(text), colors = membershipStatusColors(status))
+  Pill(text = stringResource(text), colors = membershipStatusColors(status), modifier = modifier)
 }
 
 @Preview

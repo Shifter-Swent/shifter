@@ -22,8 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -74,6 +76,8 @@ import kotlinx.coroutines.flow.filter
  * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
  * @param repositories The repositories the screens' ViewModels are built from. It has no default,
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
+ * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
+ *   passes one that answers with a fake account, as the system picker cannot be driven.
  */
 @Composable
 fun ShifterNavHost(
@@ -81,6 +85,10 @@ fun ShifterNavHost(
     repositories: RepositoryProvider,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    credentialManager: CredentialManager =
+        LocalContext.current.let { context ->
+          remember(context) { CredentialManager.create(context) }
+        },
 ) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
@@ -99,6 +107,7 @@ fun ShifterNavHost(
         SignInScreen(
             authViewModel =
                 viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
+            credentialManager = credentialManager,
             onSignedIn = { nav.enterApp(Volunteer) },
         )
       }
@@ -137,6 +146,7 @@ fun ShifterNavHost(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
             viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            credentialManager = credentialManager,
         )
       }
       composable<Volunteer.QrApply> {
@@ -195,6 +205,7 @@ fun ShifterNavHost(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
             viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            credentialManager = credentialManager,
         )
       }
       composable<Organizer.CreateEvent> {
