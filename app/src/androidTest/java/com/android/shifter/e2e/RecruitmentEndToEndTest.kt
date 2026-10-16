@@ -198,8 +198,15 @@ class RecruitmentEndToEndTest {
 
     click(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON)
     waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
+    // The event title can join the merged tree after the form, so wait for it in the unmerged one.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(AddMissionScreenTestTags.EVENT_TITLE, useUnmergedTree = true)
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
     composeTestRule
-        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE)
+        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE, useUnmergedTree = true)
         .assertTextContains(event.title)
     addMissionForTeam(team.id, "Set up the stage")
 
