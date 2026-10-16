@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -34,8 +35,10 @@ import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.membership.MembershipRequestsTestTags
+import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.ShifterNavHost
+import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.people.PeopleScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
@@ -43,6 +46,7 @@ import com.swent.shifter.ui.team.CreateTeamFormTestTags
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.team.TeamSetupScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Duration
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -57,8 +61,9 @@ import org.junit.runner.RunWith
  *
  * An organizer signs in, creates an event and its team, and reads its join code. A volunteer then
  * signs in on the same phone, finds the event by that code and applies to the team. The organizer
- * comes back, accepts the request and sees the volunteer among the team's participants, and the
- * volunteer finally sees the event confirmed in My Events.
+ * comes back, adds a mission for the team from the event's Overview, accepts the request and sees
+ * the volunteer among the team's participants, and the volunteer finally sees the event confirmed
+ * in My Events.
  *
  * Everything goes through the screens and the production repositories, on the Auth and Firestore
  * emulators. Only the Google account picker is replaced, as the system one cannot be driven: it
@@ -182,11 +187,42 @@ class RecruitmentEndToEndTest {
         .assertTextEquals(badge(R.string.my_events_badge_pending_approval))
     signOut()
 
-    // ── 3. The organizer accepts the request and finds the volunteer in the team ──
+    // ── 3. The organizer plans a mission for the team on the event's Overview ──
     signInAs(organizer)
     click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
     waitForNode(MyEventsTestTags.eventAction(event.id))
     click(MyEventsTestTags.eventAction(event.id))
+    waitForNode(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS)
+    // The team created in Team Setup is offered as a filter of the event's missions.
+    waitForNode(OrganizerOverviewScreenTestTags.teamChip(team.id))
+
+    click(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON)
+    waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE)
+        .assertTextContains(event.title)
+    addMissionForTeam(team.id, "Set up the stage")
+
+    // Saving the mission returns to the Overview, which lists it among the missions to do.
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
+    val mission = runBlocking {
+      repositories.missionRepository.getMissionsByEvent(event.id).single()
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    assertEquals("Set up the stage", mission.title)
+    assertEquals(team.id, mission.teamId)
+    assertEquals(event.startAt, mission.startAt)
+    assertEquals(mission.startAt.plus(Duration.ofHours(1)), mission.endAt)
+    waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.PROGRESS_COUNT)
+        .assertTextEquals(context.getString(R.string.overview_progress_count, 0, 1))
+    // Filtering on its team still shows it.
+    click(OrganizerOverviewScreenTestTags.teamChip(team.id))
+    waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
+
+    // ── 4. The organizer accepts the request and finds the volunteer in the team ──
     click(OrganizerTabs.People.testTag)
     click(PeopleScreenTestTags.REQUESTS_TAB)
 
@@ -212,7 +248,7 @@ class RecruitmentEndToEndTest {
     backTo(MyEventsTestTags.ORGANIZER_SCREEN)
     signOut()
 
-    // ── 4. The volunteer sees the event confirmed ──
+    // ── 5. The volunteer sees the event confirmed ──
     signInAs(volunteer)
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
@@ -252,9 +288,39 @@ class RecruitmentEndToEndTest {
     field(CreateEventScreenTestTags.DESCRIPTION_FIELD).performTextInput("Open-air festival")
     field(CreateEventScreenTestTags.typeChip(EventType.MUSIC)).performClick()
     field(CreateEventScreenTestTags.ADDRESS_FIELD).performTextInput("Nyon")
-    field(CreateEventScreenTestTags.START_FIELD).performTextInput("21/07/2099 14:00")
+    field(CreateEventScreenTestTags.START_FIELD).performTextInput("21/07/2099 $EVENT_START_HOUR:00")
     field(CreateEventScreenTestTags.END_FIELD).performTextInput("26/07/2099 23:30")
     field(CreateEventScreenTestTags.SUBMIT_BUTTON).performClick()
+  }
+
+  /**
+   * Fills the mission form for [teamId], from the event's start to an hour later, and saves it. The
+   * start picker opens on the event's start; the end one is moved an hour later on its dial.
+   */
+  private fun addMissionForTeam(teamId: String, title: String) {
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).performTextInput(title)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
+        .performTextInput("Build the stage before the first concert")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.teamChip(teamId))
+        .performScrollTo()
+        .performClick()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performClick()
+    click(AddMissionScreenTestTags.PICKER_CONFIRM)
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.END_FIELD).performClick()
+    // The 24-hour picker names each hour of its dial "<hour> hours", in English.
+    composeTestRule
+        .onNodeWithContentDescription("${(EVENT_START_HOUR + 1) % 24} hours")
+        .performClick()
+    click(AddMissionScreenTestTags.PICKER_CONFIRM)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
   }
 
   /** Fills the open team form with a team called [name] and creates it. */
@@ -340,5 +406,7 @@ class RecruitmentEndToEndTest {
   private companion object {
     const val TIMEOUT_MILLIS = 20_000L
     const val MAX_BACK_PRESSES = 4
+    /** Hour the event starts at, which the mission's time pickers open on. */
+    const val EVENT_START_HOUR = 14
   }
 }
