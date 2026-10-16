@@ -36,6 +36,12 @@ import com.swent.shifter.ui.navigation.Tab
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_tabInactive
 
+/** Tags of the People screen's own tabs, which switch between participants and requests. */
+object PeopleScreenTestTags {
+  const val PARTICIPANTS_TAB = "PeopleParticipantsTab"
+  const val REQUESTS_TAB = "PeopleRequestsTab"
+}
+
 /**
  * The organizer's People tab: the event's participants by team, and the requests to join it.
  *
@@ -105,6 +111,7 @@ private fun PeopleTopBar() {
 /** Underlined tabs followed by the full-width divider, like the My Events tabs. */
 @Composable
 private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+  val tags = listOf(PeopleScreenTestTags.PARTICIPANTS_TAB, PeopleScreenTestTags.REQUESTS_TAB)
   UnderlinedTabRow {
     labels.forEachIndexed { index, label ->
       UnderlinedTab(
@@ -112,6 +119,7 @@ private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> U
           isSelected = index == selected,
           onClick = { onSelect(index) },
           width = 150.dp,
+          modifier = Modifier.testTag(tags[index]),
       )
     }
   }
