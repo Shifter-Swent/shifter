@@ -14,6 +14,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -112,11 +113,12 @@ class TeamSetupScreenTest {
   }
 
   /** Renders [state] as it is, for a state no interaction can reach reliably. */
-  private fun show(state: TeamSetupUiState) {
+  private fun show(state: TeamSetupUiState, mode: TeamSetupMode = TeamSetupMode.CREATION) {
     composeTestRule.setContent {
       ShifterTheme {
         TeamSetupContent(
             state = state,
+            mode = mode,
             onBack = {},
             onProceed = {},
             onRetry = {},
@@ -323,6 +325,34 @@ class TeamSetupScreenTest {
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.BACK_BUTTON).performClick()
 
     assertEquals(listOf("back"), events)
+  }
+
+  @Test
+  fun creationModeAsksToCreateTheEventAndWaitsForATeam() {
+    show(TeamSetupUiState(isLoading = false))
+
+    composeTestRule
+        .onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON)
+        .assertTextEquals(context.getString(R.string.team_setup_proceed))
+        .assertIsNotEnabled()
+    composeTestRule.onNodeWithText(context.getString(R.string.create_event_title)).assertExists()
+  }
+
+  @Test
+  fun managementModeIsDoneAndNeedsNoTeamToLeave() {
+    show(TeamSetupUiState(isLoading = false), TeamSetupMode.MANAGEMENT)
+
+    // The event exists already, so leaving its teams is never blocked.
+    composeTestRule
+        .onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON)
+        .assertTextEquals(context.getString(R.string.team_setup_done))
+        .assertIsEnabled()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.team_setup_manage_title))
+        .assertExists()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.create_event_title))
+        .assertDoesNotExist()
   }
 
   @Test

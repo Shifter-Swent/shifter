@@ -3,6 +3,7 @@
 <resources>
     <!-- Organizer management of an event -->
     <string name="overview_add_mission">Add mission</string>
+    <string name="overview_manage_teams">Manage teams</string>
     <string name="overview_progress_title">Event progress</string>
     <string name="overview_progress_count">%1$d / %2$d missions completed</string>
     <string name="overview_progress_percent">%1$d%%</string>

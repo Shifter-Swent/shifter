@@ -19,11 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,6 +49,7 @@ import kotlin.math.roundToInt
 object OrganizerOverviewScreenTestTags {
   const val SCREEN = "OrganizerOverviewScreen"
   const val ADD_MISSION_BUTTON = "OrganizerOverviewAddMissionButton"
+  const val MANAGE_TEAMS_BUTTON = "OrganizerOverviewManageTeamsButton"
   const val PROGRESS_PERCENT = "OrganizerOverviewProgressPercent"
   const val PROGRESS_COUNT = "OrganizerOverviewProgressCount"
   const val ALL_TEAMS_CHIP = "OrganizerOverviewTeamChip_All"
@@ -67,15 +70,21 @@ object OrganizerOverviewScreenTestTags {
  * filtered by team.
  *
  * @param onAddMission called to open the mission creation form.
+ * @param onManageTeams called to open the teams of the event.
  */
 @Composable
-fun OrganizerOverviewScreen(viewModel: OrganizerOverviewViewModel, onAddMission: () -> Unit) {
+fun OrganizerOverviewScreen(
+    viewModel: OrganizerOverviewViewModel,
+    onAddMission: () -> Unit,
+    onManageTeams: () -> Unit = {},
+) {
   val uiState by viewModel.uiState.collectAsState()
   OrganizerOverviewContent(
       state = uiState,
       actions =
           OrganizerOverviewActions(
               onAddMission = onAddMission,
+              onManageTeams = onManageTeams,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
           ),
@@ -85,6 +94,7 @@ fun OrganizerOverviewScreen(viewModel: OrganizerOverviewViewModel, onAddMission:
 /** Every interaction of the management screen, grouped so it takes a single parameter. */
 data class OrganizerOverviewActions(
     val onAddMission: () -> Unit = {},
+    val onManageTeams: () -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
     // TODO: open the notification composer once notifications exist.
@@ -103,6 +113,7 @@ fun OrganizerOverviewContent(state: OrganizerOverviewUiState, actions: Organizer
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     AddMissionButton(actions.onAddMission)
+    ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
@@ -129,6 +140,25 @@ private fun AddMissionButton(onClick: () -> Unit) {
     Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(20.dp))
     Text(
         text = stringResource(R.string.overview_add_mission),
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 8.dp).weight(1f),
+    )
+  }
+}
+
+@Composable
+private fun ManageTeamsButton(onClick: () -> Unit) {
+  OutlinedButton(
+      onClick = onClick,
+      shape = RoundedCornerShape(14.dp),
+      modifier =
+          Modifier.fillMaxWidth()
+              .height(48.dp)
+              .testTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON),
+  ) {
+    Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(20.dp))
+    Text(
+        text = stringResource(R.string.overview_manage_teams),
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(start = 8.dp).weight(1f),
     )

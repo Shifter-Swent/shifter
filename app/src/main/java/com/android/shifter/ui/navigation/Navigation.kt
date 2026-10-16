@@ -22,8 +22,8 @@ import kotlinx.serialization.Serializable
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
  * Organizer
- *   ├── Events (OR-00), ProfileSettings, CreateEvent → EventCreated(eventId)
- *   └── OrganizerEvent(eventId): Overview (+ AddMission), People, Map, Discussions
+ *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
+ *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map, Discussions
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -196,6 +196,17 @@ data object Organizer : App {
     override val title = "Create event"
   }
 
+  /**
+   * Teams of the event [eventId] just created, in place of the creation form: the event is already
+   * saved, so Back from here returns to the events list rather than to a form that would save it
+   * again.
+   */
+  @Serializable
+  data class TeamSetup(val eventId: String) : Destination {
+    override val title
+      get() = "Team setup"
+  }
+
   /** Shows the join code of the event [eventId] just created, in place of the creation form. */
   @Serializable
   data class EventCreated(val eventId: String) : Destination {
@@ -281,6 +292,14 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object AddMission : OrganizerEventScreen {
     override val title = "Add mission"
+    override val tab
+      get() = OrganizerTabs.Overview
+  }
+
+  /** Teams of an event that already exists, opened on top of its Overview. */
+  @Serializable
+  data object ManageTeams : OrganizerEventScreen {
+    override val title = "Manage teams"
     override val tab
       get() = OrganizerTabs.Overview
   }

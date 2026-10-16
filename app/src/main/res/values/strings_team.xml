@@ -22,6 +22,10 @@
     <string name="team_setup_subtitle">Organize the teams of your event.</string>
     <string name="team_setup_add_another">Add another team</string>
     <string name="team_setup_proceed">Create my event</string>
+    <!-- Team management, the same step reopened from an event that already exists. -->
+    <string name="team_setup_manage_back">Overview</string>
+    <string name="team_setup_manage_title">Manage teams</string>
+    <string name="team_setup_done">Done</string>
     <string name="team_setup_load_error">Could not load the teams of the event.</string>
     <string name="team_setup_retry">Retry</string>
     <!-- Shared by the name and the description: both only carry their own limit. -->

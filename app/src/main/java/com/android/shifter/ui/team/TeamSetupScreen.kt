@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,34 @@ object TeamSetupScreenTestTags {
 }
 
 /**
+ * What the step is used for, which changes its labels and what moving on waits for.
+ *
+ * @property requiresTeam whether moving on waits for a team: creating the event does, since its
+ *   volunteers pick one when they apply; leaving management again does not.
+ */
+enum class TeamSetupMode(
+    @get:StringRes val backLabel: Int,
+    @get:StringRes val title: Int,
+    @get:StringRes val proceedLabel: Int,
+    val requiresTeam: Boolean,
+) {
+  /** Part of the event creation flow, between the form and the join code. */
+  CREATION(
+      R.string.create_event_back,
+      R.string.create_event_title,
+      R.string.team_setup_proceed,
+      requiresTeam = true,
+  ),
+  /** Reopened later from the event's Overview, the event long since created. */
+  MANAGEMENT(
+      R.string.team_setup_manage_back,
+      R.string.team_setup_manage_title,
+      R.string.team_setup_done,
+      requiresTeam = false,
+  ),
+}
+
+/**
  * The teams step of the organizer's event creation flow: the teams of the event, one form to add
  * the next, and the way on to its join code.
  *
@@ -65,13 +94,15 @@ object TeamSetupScreenTestTags {
  * own as it is created.
  *
  * @param onBack called from the header, to leave the flow.
- * @param onProceed called once the organizer is done adding teams, which needs at least one.
+ * @param onProceed called once the organizer is done adding teams, which in
+ *   [TeamSetupMode.CREATION] needs at least one.
  */
 @Composable
 fun TeamSetupScreen(
     viewModel: TeamSetupViewModel,
     onBack: () -> Unit,
     onProceed: () -> Unit,
+    mode: TeamSetupMode = TeamSetupMode.CREATION,
 ) {
   val state by viewModel.uiState.collectAsState()
   val newTeamFactory = remember(viewModel) { viewModel.newTeamFactory() }
@@ -85,6 +116,7 @@ fun TeamSetupScreen(
 
   TeamSetupContent(
       state = state,
+      mode = mode,
       onBack = onBack,
       onProceed = onProceed,
       onRetry = viewModel::refresh,
@@ -118,6 +150,7 @@ fun TeamSetupScreen(
 @Composable
 fun TeamSetupContent(
     state: TeamSetupUiState,
+    mode: TeamSetupMode = TeamSetupMode.CREATION,
     onBack: () -> Unit,
     onProceed: () -> Unit,
     onRetry: () -> Unit,
@@ -127,14 +160,15 @@ fun TeamSetupContent(
   Scaffold(
       topBar = {
         FormHeader(
-            backLabel = stringResource(R.string.create_event_back),
-            title = stringResource(R.string.create_event_title),
+            backLabel = stringResource(mode.backLabel),
+            title = stringResource(mode.title),
             backButtonTestTag = TeamSetupScreenTestTags.BACK_BUTTON,
             onBack = onBack,
         )
       },
       bottomBar = {
         BottomActions(
+            mode = mode,
             canProceed = state.canProceed,
             onAddAnotherTeam = onAddAnotherTeam,
             onProceed = onProceed,
@@ -263,6 +297,7 @@ private fun LoadError(onRetry: () -> Unit) {
  */
 @Composable
 private fun BottomActions(
+    mode: TeamSetupMode,
     canProceed: Boolean,
     onAddAnotherTeam: () -> Unit,
     onProceed: () -> Unit,
@@ -292,10 +327,10 @@ private fun BottomActions(
       )
     }
     FormPrimaryButton(
-        text = stringResource(R.string.team_setup_proceed),
+        text = stringResource(mode.proceedLabel),
         onClick = onProceed,
         testTag = TeamSetupScreenTestTags.PROCEED_BUTTON,
-        enabled = canProceed,
+        enabled = canProceed || !mode.requiresTeam,
     )
   }
 }
