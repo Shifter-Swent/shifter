@@ -459,6 +459,72 @@ class ShifterNavHostTest {
     waitForNode(OrganizerOverviewScreenTestTags.teamChip(teamId))
   }
 
+  /**
+   * An organizer creates an event and two teams through the real forms, then a volunteer finds the
+   * event by its code and applies to one of those very teams. The other tests take one side at a
+   * time, over teams seeded by hand; this is the one that shows the two halves meet.
+   */
+  @Test
+  fun teamsCreatedByTheOrganizerAreTheOnesAVolunteerAppliesTo() {
+    val navController = signInAndShowApp(name = "Olga")
+    val organizer = checkNotNull(repositories.authRepository.currentUser())
+
+    // ── The organizer creates the event, then its teams, through the forms ──
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
+    val event = submitValidEventForm(organizer)
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.SECTION_TITLE).assertIsDisplayed()
+
+    val logistics = createTeamInSetup(event, "Logistics")
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.ADD_ANOTHER_BUTTON).performClick()
+    val bar = createTeamInSetup(event, "Bar")
+
+    // Both teams belong to this event, and nothing created a third.
+    val teams = runBlocking { repositories.teamRepository.getTeamsByEvent(event.id) }
+    assertEquals(setOf("Logistics", "Bar"), teams.map { it.name }.toSet())
+    assertEquals(listOf(event.id, event.id), teams.map { it.eventId })
+
+    proceedFromTeamSetup()
+    composeTestRule
+        .onNodeWithTag(EventCreatedScreenTestTags.JOIN_CODE)
+        .assertTextEquals(event.joinCode)
+
+    // ── A volunteer takes over the session and applies with that code ──
+    val volunteer = signIn()
+    composeTestRule.waitForIdle()
+    composeTestRule.runOnUiThread { NavigationActions(navController).enterApp(Volunteer) }
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .performTextInput(event.joinCode)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+
+    // Both teams the organizer just made are offered, and neither belongs to another event.
+    waitForNode(JoinEventScreenTestTags.teamOption(logistics))
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption(bar)).assertExists()
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.teamOption(bar))
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
+    // Found under this event, so the request hangs where it belongs; the event is its path, not
+    // one of its fields.
+    val request = runBlocking {
+      repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
+    }
+    assertEquals(bar, request?.teamId)
+    assertEquals(volunteer.uid, request?.userId)
+    assertEquals(MembershipRequestStatus.PENDING, request?.status)
+  }
+
   @Test
   fun eventsLists_showTheInitialOfTheSignedInUser() {
     signInAndShowApp(name = "grace")

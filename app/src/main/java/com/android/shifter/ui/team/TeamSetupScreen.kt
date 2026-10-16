@@ -157,6 +157,8 @@ fun TeamSetupContent(
     onAddAnotherTeam: () -> Unit,
     form: (@Composable () -> Unit)?,
 ) {
+  // The first load failed and left nothing to show: the error takes the place of the teams.
+  val teamsUnknown = state.loadFailed && state.teams.isEmpty()
   Scaffold(
       topBar = {
         FormHeader(
@@ -170,6 +172,9 @@ fun TeamSetupContent(
         BottomActions(
             mode = mode,
             canProceed = state.canProceed,
+            // A first load that failed leaves the teams unknown, and a team added over them could
+            // repeat one the event already has.
+            canAddTeam = !teamsUnknown,
             onAddAnotherTeam = onAddAnotherTeam,
             onProceed = onProceed,
         )
@@ -190,7 +195,7 @@ fun TeamSetupContent(
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
               CircularProgressIndicator(Modifier.testTag(TeamSetupScreenTestTags.LOADING_INDICATOR))
             }
-        state.loadFailed && state.teams.isEmpty() -> LoadError(onRetry)
+        teamsUnknown -> LoadError(onRetry)
         else -> {
           SectionHeading()
           state.teams.forEach { team -> key(team.id) { SavedTeamCard(team) } }
@@ -299,6 +304,7 @@ private fun LoadError(onRetry: () -> Unit) {
 private fun BottomActions(
     mode: TeamSetupMode,
     canProceed: Boolean,
+    canAddTeam: Boolean,
     onAddAnotherTeam: () -> Unit,
     onProceed: () -> Unit,
 ) {
@@ -314,6 +320,7 @@ private fun BottomActions(
   ) {
     OutlinedButton(
         onClick = onAddAnotherTeam,
+        enabled = canAddTeam,
         shape = MaterialTheme.shapes.medium,
         modifier =
             Modifier.fillMaxWidth()

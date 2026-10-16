@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -166,6 +167,47 @@ class TeamSetupScreenTest {
 
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.savedTeam("t1")).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.LOAD_ERROR).assertExists()
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun aFailedFirstLoadOffersNoTeamToBeAdded() {
+    // Nothing is known about the event's teams, so adding one could repeat what it already has.
+    show(TeamSetupUiState(isLoading = false, loadFailed = true))
+
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.LOAD_ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.ADD_ANOTHER_BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
+  fun aFailedRefreshStillLetsAnotherTeamBeAdded() {
+    // The teams of an earlier load are still listed, so there is something to add to.
+    show(TeamSetupUiState(isLoading = false, loadFailed = true, teams = listOf(team("t1", "Logi"))))
+
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.ADD_ANOTHER_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun aFinishedFormDoesNotComeBackAfterTheScreenIsRecreated() {
+    val teams = FakeTeams()
+    val restoration = StateRestorationTester(composeTestRule)
+    restoration.setContent {
+      ShifterTheme {
+        TeamSetupScreen(
+            viewModel = remember { TeamSetupViewModel(eventId, teams) },
+            onBack = {},
+            onProceed = {},
+        )
+      }
+    }
+    createTeam("Logistics")
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.savedTeam("team-1")).assertIsDisplayed()
+
+    restoration.emulateSavedInstanceStateRestore()
+
+    // The team is still there, and the form that created it does not open itself again.
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.savedTeam("team-1")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.ACTIVE_FORM).assertDoesNotExist()
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).assertIsEnabled()
   }
 
