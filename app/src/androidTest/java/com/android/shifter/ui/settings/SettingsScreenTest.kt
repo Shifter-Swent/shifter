@@ -34,7 +34,7 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun displaysHeaderAndSignOut() {
+  fun opening_displaysHeaderAndSignOut() {
     setScreen()
 
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()

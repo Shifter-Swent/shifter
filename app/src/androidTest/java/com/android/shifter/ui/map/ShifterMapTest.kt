@@ -18,7 +18,7 @@ class ShifterMapTest {
   // Tapping a marker happens inside the native map view, which Compose tests can't reach. The
   // missions screen will test what a tap does through its ViewModel.
   @Test
-  fun mapIsDisplayedWithMarkers() {
+  fun map_isDisplayedWithMarkers() {
     val markers =
         listOf(
             MapMarker("epfl", 46.5191, 6.5668, "EPFL", "Rolex Learning Center"),

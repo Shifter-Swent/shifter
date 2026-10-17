@@ -50,7 +50,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun createTeamStoresTheTeamUnderItsEventWithAGeneratedId() = emulatorTest {
+  fun createTeam_storesTheTeamUnderItsEventWithAGeneratedId() = emulatorTest {
     val created = create(richTeam(uniqueEventId()))
 
     assertTrue("the generated id must not be empty", created.id.isNotEmpty())
@@ -59,7 +59,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun getTeamReturnsTheStoredTeam() = emulatorTest {
+  fun getTeam_returnsTheStoredTeam() = emulatorTest {
     val eventId = uniqueEventId()
     val created = create(richTeam(eventId))
 
@@ -67,12 +67,12 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun getTeamReturnsNullForAnUnknownId() = emulatorTest {
+  fun getTeam_withUnknownId_returnsNull() = emulatorTest {
     assertNull(repository.getTeam(uniqueEventId(), "missing-" + UUID.randomUUID()))
   }
 
   @Test
-  fun createTeamRejectsATeamWithoutAnEvent() = emulatorTest {
+  fun createTeam_withoutAnEvent_isRejected() = emulatorTest {
     val failure = runCatching { repository.createTeam(richTeam(eventId = "")) }.exceptionOrNull()
 
     assertTrue(
@@ -82,7 +82,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun createTeamRejectsAManagerListedAmongTheMembers() = emulatorTest {
+  fun createTeam_withManagerAmongTheMembers_isRejected() = emulatorTest {
     val eventId = uniqueEventId()
     val team = richTeam(eventId).copy(memberIds = listOf(MANAGER_ID, VOLUNTEER_ID))
 
@@ -96,7 +96,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun getTeamsByEventReturnsOnlyTheTeamsOfThatEvent() = emulatorTest {
+  fun getTeamsByEvent_returnsOnlyTheTeamsOfThatEvent() = emulatorTest {
     val eventId = uniqueEventId()
     val mine =
         listOf(
@@ -112,14 +112,14 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun getTeamsByEventReturnsAnEmptyListForAnEventWithoutTeams() = emulatorTest {
+  fun getTeamsByEvent_withoutTeams_returnsAnEmptyList() = emulatorTest {
     // A fresh id no team was ever created under, so "no teams" cannot be confused with "the other
     // tests' teams were cleaned up".
     assertEquals(emptyList<Team>(), repository.getTeamsByEvent(uniqueEventId()))
   }
 
   @Test
-  fun getTeamsOfMemberReturnsOnlyTheTeamsTheVolunteerBelongsTo() = emulatorTest {
+  fun getTeamsOfMember_returnsOnlyTheTeamsTheVolunteerBelongsTo() = emulatorTest {
     val eventId = uniqueEventId()
     val mine =
         listOf(
@@ -139,7 +139,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun getTeamsManagedByReturnsOnlyTheTeamsThatUserManages() = emulatorTest {
+  fun getTeamsManagedBy_returnsOnlyTheTeamsThatUserManages() = emulatorTest {
     val eventId = uniqueEventId()
     val mine = create(richTeam(eventId).copy(managerId = MANAGER_ID))
     create(richTeam(eventId).copy(managerId = "other-manager"))
@@ -151,7 +151,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun setManagerAppointsSomeoneOutsideTheTeam() = emulatorTest {
+  fun setManager_withSomeoneOutsideTheTeam_appointsThem() = emulatorTest {
     val team = create(richTeam(uniqueEventId()).copy(managerId = null))
 
     repository.setManager(team.eventId, team.id, "new-manager")
@@ -160,7 +160,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun setManagerPromotesAMemberAndTakesThemOutOfTheMembers() = emulatorTest {
+  fun setManager_withAMember_promotesThemOutOfTheMembers() = emulatorTest {
     val team =
         create(
             richTeam(uniqueEventId())
@@ -177,7 +177,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun setManagerWithNullLeavesTheTeamWithoutAManager() = emulatorTest {
+  fun setManager_withNull_leavesTheTeamWithoutAManager() = emulatorTest {
     val team = create(richTeam(uniqueEventId()))
 
     repository.setManager(team.eventId, team.id, null)
@@ -186,7 +186,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun addMemberAppendsTheVolunteerOnlyOnce() = emulatorTest {
+  fun addMember_appendsTheVolunteerOnlyOnce() = emulatorTest {
     val team = create(richTeam(uniqueEventId()).copy(memberIds = listOf(OTHER_VOLUNTEER_ID)))
 
     repository.addMember(team.eventId, team.id, VOLUNTEER_ID)
@@ -196,7 +196,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun addMemberRejectsTheManagerOfTheTeam() = emulatorTest {
+  fun addMember_withTheManagerOfTheTeam_isRejected() = emulatorTest {
     val team = create(richTeam(uniqueEventId()))
 
     val failure = runCatching {
@@ -212,7 +212,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun removeMemberRemovesOnlyThatVolunteer() = emulatorTest {
+  fun removeMember_removesOnlyThatVolunteer() = emulatorTest {
     val team =
         create(richTeam(uniqueEventId()).copy(memberIds = listOf(VOLUNTEER_ID, OTHER_VOLUNTEER_ID)))
 
@@ -224,7 +224,7 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun membershipWritesFailOnAMissingTeamWithoutCreatingIt() = emulatorTest {
+  fun membershipWrites_onAMissingTeam_failWithoutCreatingIt() = emulatorTest {
     val eventId = uniqueEventId()
     val teamId = "missing-" + UUID.randomUUID()
     // Remembered in case a write wrongly creates the team.

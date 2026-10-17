@@ -94,7 +94,7 @@ class CreateEventScreenTest {
   }
 
   @Test
-  fun displaysEveryFormField() {
+  fun opening_displaysEveryFormField() {
     setScreen(RecordingRepository())
 
     listOf(

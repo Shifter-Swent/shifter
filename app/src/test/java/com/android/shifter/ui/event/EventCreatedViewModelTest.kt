@@ -55,7 +55,7 @@ class EventCreatedViewModelTest {
       )
 
   @Test
-  fun isLoadingUntilTheEventArrives() = runTest {
+  fun init_isLoadingUntilTheEventArrives() = runTest {
     val event = createdEvent()
 
     val viewModel = EventCreatedViewModel(repository, event.id)
@@ -64,7 +64,7 @@ class EventCreatedViewModelTest {
   }
 
   @Test
-  fun showsTheStoredJoinCodeAndTitle() = runTest {
+  fun init_showsTheStoredJoinCodeAndTitle() = runTest {
     val event = createdEvent()
 
     val viewModel = EventCreatedViewModel(repository, event.id)
