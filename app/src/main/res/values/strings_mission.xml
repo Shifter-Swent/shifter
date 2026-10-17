@@ -13,7 +13,7 @@
     <string name="add_mission_team_general">General</string>
     <string name="add_mission_team_hint">General = no team.</string>
     <string name="add_mission_field_volunteers">Staff needed</string>
-    <string name="add_mission_volunteers_hint">Positive whole number · min. 1 · Nobody assigned yet.</string>
+    <string name="add_mission_volunteers_hint">Positive whole number · min. 1 · Not below the people assigned.</string>
     <string name="add_mission_decrease_volunteers">Decrease staff needed</string>
     <string name="add_mission_increase_volunteers">Increase staff needed</string>
     <string name="add_mission_field_day">Day</string>
@@ -46,4 +46,12 @@
     <string name="add_mission_error_longitude_invalid">Enter a number between -180 and 180</string>
     <string name="add_mission_error_conflict">Overlaps \"%1$s\" of the same team (%2$s – %3$s). Change the time slot or the team.</string>
     <string name="add_mission_error_save_failed">Could not add the mission. Try again.</string>
+
+    <!-- Assigning people to a mission -->
+    <string name="assignee_picker_label">Assigned people (optional)</string>
+    <string name="assignee_picker_count">%1$d/%2$d assigned</string>
+    <string name="assignee_picker_empty">Nobody to assign yet.</string>
+    <string name="assignee_picker_load_failed">Could not load the people to assign.</string>
+    <string name="assignee_picker_retry">Retry</string>
+    <string name="assignee_picker_unknown">Unnamed volunteer</string>
 </resources>
