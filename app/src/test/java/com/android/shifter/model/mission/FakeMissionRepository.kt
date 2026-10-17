@@ -38,4 +38,22 @@ class FakeMissionRepository : MissionRepository {
     failure?.let { throw it }
     return missions.filter { userId in it.assigneeIds }.sortedBy { it.startAt }
   }
+
+  override suspend fun updateAssignees(
+      eventId: String,
+      missionId: String,
+      assigneeIds: List<String>,
+  ) {
+    failure?.let { throw it }
+    require(assigneeIds.size == assigneeIds.toSet().size) {
+      "A mission cannot list the same assignee twice"
+    }
+    val index = missions.indexOfFirst { it.eventId == eventId && it.id == missionId }
+    check(index >= 0) { "Mission '$missionId' of event '$eventId' does not exist" }
+    val mission = missions[index]
+    require(assigneeIds.size <= mission.volunteersNeeded) {
+      "A mission needing ${mission.volunteersNeeded} volunteers cannot have ${assigneeIds.size} assignees"
+    }
+    missions[index] = mission.copy(assigneeIds = assigneeIds)
+  }
 }
