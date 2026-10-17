@@ -32,4 +32,15 @@ interface MissionRepository {
    * its [Mission.eventId], so a caller interested in one event filters on it.
    */
   suspend fun getMissionsAssignedTo(userId: String): List<Mission>
+
+  /**
+   * Replaces the [Mission.assigneeIds] of the mission identified by [missionId] in the event
+   * [eventId] with [assigneeIds], in the given order. An empty list leaves the mission with nobody
+   * assigned.
+   *
+   * Throws [IllegalArgumentException] when [assigneeIds] lists someone twice or holds more people
+   * than the mission's [Mission.volunteersNeeded]; nothing is written then. Fails when the mission
+   * does not exist.
+   */
+  suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
 }
