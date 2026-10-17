@@ -71,6 +71,27 @@ class AddMissionViewModelTest {
   /** Who is signed in; the organizer unless a test says otherwise. */
   private var userId: String? = organizerId
 
+  /** Who may be assigned, by team id, null standing for "General". */
+  private val candidatesByTeam =
+      mapOf(
+          "logistics" to
+              listOf(
+                  AssigneeOption("ana", "Ana"),
+                  AssigneeOption("ben", "Ben"),
+                  AssigneeOption("cleo", "Cléo"),
+              ),
+          "bar" to listOf(AssigneeOption("dan", "Dan")),
+          null to listOf(AssigneeOption("eva", "Eva")),
+      )
+
+  /** Thrown by every load of the candidates when set. */
+  private var candidatesFailure: Exception? = null
+
+  private val candidates = AssigneeCandidates { _, teamId ->
+    candidatesFailure?.let { throw it }
+    candidatesByTeam[teamId].orEmpty()
+  }
+
   @Before
   fun setUp() {
     Dispatchers.setMain(dispatcher)
@@ -99,7 +120,7 @@ class AddMissionViewModelTest {
   }
 
   private fun newViewModel(eventId: String = event.id) =
-      AddMissionViewModel(eventId, missions, events, teamRepository, { userId }, clock)
+      AddMissionViewModel(eventId, missions, events, teamRepository, candidates, { userId }, clock)
 
   private fun team(id: String, name: String, eventId: String, managerId: String? = null) =
       Team(
@@ -572,9 +593,134 @@ class AddMissionViewModelTest {
   }
 
   @Test
+  fun openingTheForm_loadsWhoMayBeAssignedToTheSelectedTeam() = runTest {
+    openForm()
+
+    // The organizer starts on "General".
+    assertEquals(listOf(AssigneeOption("eva", "Eva")), state.assignees.candidates)
+    assertFalse(state.assignees.isLoading)
+
+    userId = managerId
+    openForm()
+
+    // A manager starts on the team they manage.
+    assertEquals(listOf("ana", "ben", "cleo"), state.assignees.candidates.map { it.id })
+  }
+
+  @Test
+  fun changingTheTeam_clearsTheSelectionAndLoadsItsCandidates() = runTest {
+    openForm()
+    viewModel.onTeamChange("logistics")
+    advanceUntilIdle()
+    viewModel.onToggleAssignee("ana")
+    assertEquals(listOf("ana"), state.assignees.selectedIds)
+
+    viewModel.onTeamChange("bar")
+    assertTrue("the new team's candidates are loading", state.assignees.isLoading)
+    advanceUntilIdle()
+
+    assertEquals(emptyList<String>(), state.assignees.selectedIds)
+    assertEquals(listOf(AssigneeOption("dan", "Dan")), state.assignees.candidates)
+  }
+
+  @Test
+  fun selectingTheSameTeamAgain_keepsTheSelection() = runTest {
+    openForm()
+    viewModel.onTeamChange("logistics")
+    advanceUntilIdle()
+    viewModel.onToggleAssignee("ana")
+
+    viewModel.onTeamChange("logistics")
+    advanceUntilIdle()
+
+    assertEquals(listOf("ana"), state.assignees.selectedIds)
+  }
+
+  @Test
+  fun toggleAssignee_picksNoMorePeopleThanNeeded() = runTest {
+    openForm()
+    viewModel.onTeamChange("logistics")
+    advanceUntilIdle()
+
+    viewModel.onToggleAssignee("ana")
+    viewModel.onToggleAssignee("ben")
+    assertEquals("one person is needed", listOf("ana"), state.assignees.selectedIds)
+
+    viewModel.onIncreaseVolunteers()
+    viewModel.onToggleAssignee("ben")
+    viewModel.onToggleAssignee("ana")
+    assertEquals(listOf("ben"), state.assignees.selectedIds)
+  }
+
+  @Test
+  fun decreaseVolunteers_neverGoesBelowThePeopleAssigned() = runTest {
+    openForm()
+    viewModel.onTeamChange("logistics")
+    advanceUntilIdle()
+    repeat(2) { viewModel.onIncreaseVolunteers() }
+    viewModel.onToggleAssignee("ana")
+    viewModel.onToggleAssignee("ben")
+
+    repeat(3) { viewModel.onDecreaseVolunteers() }
+
+    assertEquals(2, state.volunteersNeeded)
+    assertEquals(2, state.minVolunteers)
+  }
+
+  @Test
+  fun addMission_savesThePeoplePicked() = runTest {
+    openForm()
+    fillValidForm()
+    advanceUntilIdle()
+    viewModel.onToggleAssignee("cleo")
+    viewModel.onToggleAssignee("ana")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(listOf("cleo", "ana"), missions.created.single().assigneeIds)
+  }
+
+  @Test
+  fun addMission_withNobodyPicked_savesAMissionWithoutAssignees() = runTest {
+    openForm()
+    fillValidForm()
+    advanceUntilIdle()
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(emptyList<String>(), missions.created.single().assigneeIds)
+  }
+
+  @Test
+  fun candidatesFailure_isReportedAndCanBeRetried() = runTest {
+    candidatesFailure = IllegalStateException("offline")
+    openForm()
+
+    assertTrue(state.assignees.loadFailed)
+    assertFalse(state.assignees.isLoading)
+
+    candidatesFailure = null
+    viewModel.retryLoadAssignees()
+    advanceUntilIdle()
+
+    assertFalse(state.assignees.loadFailed)
+    assertEquals(listOf(AssigneeOption("eva", "Eva")), state.assignees.candidates)
+  }
+
+  @Test
   fun factory_createsAViewModelForTheEvent() = runTest {
     viewModel =
-        AddMissionViewModel.factory(event.id, missions, events, teamRepository, { userId }, clock)
+        AddMissionViewModel.factory(
+                event.id,
+                missions,
+                events,
+                teamRepository,
+                candidates,
+                { userId },
+                clock,
+            )
             .create(AddMissionViewModel::class.java, CreationExtras.Empty)
     advanceUntilIdle()
 

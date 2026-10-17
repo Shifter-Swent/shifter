@@ -136,6 +136,8 @@ fun AddMissionScreen(
               onTeamChange = viewModel::onTeamChange,
               onIncreaseVolunteers = viewModel::onIncreaseVolunteers,
               onDecreaseVolunteers = viewModel::onDecreaseVolunteers,
+              onToggleAssignee = viewModel::onToggleAssignee,
+              onRetryAssignees = viewModel::retryLoadAssignees,
               onDayChange = viewModel::onDayChange,
               onStartTimeChange = viewModel::onStartTimeChange,
               onEndTimeChange = viewModel::onEndTimeChange,
@@ -156,6 +158,8 @@ data class AddMissionActions(
     val onTeamChange: (String?) -> Unit = {},
     val onIncreaseVolunteers: () -> Unit = {},
     val onDecreaseVolunteers: () -> Unit = {},
+    val onToggleAssignee: (String) -> Unit = {},
+    val onRetryAssignees: () -> Unit = {},
     val onDayChange: (LocalDate) -> Unit = {},
     val onStartTimeChange: (LocalTime) -> Unit = {},
     val onEndTimeChange: (LocalTime) -> Unit = {},
@@ -228,10 +232,21 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
       }
       VolunteersStepper(
           count = state.volunteersNeeded,
+          minimum = state.minVolunteers,
           enabled = editable,
           onIncrease = actions.onIncreaseVolunteers,
           onDecrease = actions.onDecreaseVolunteers,
       )
+      // Who may be assigned depends on the team, known once the event has loaded.
+      if (state.event != null) {
+        AssigneePicker(
+            selection = state.assignees,
+            limit = state.volunteersNeeded,
+            enabled = editable,
+            onToggle = actions.onToggleAssignee,
+            onRetry = actions.onRetryAssignees,
+        )
+      }
       Schedule(state, editable, actions)
       Location(state, editable, actions)
 
@@ -425,10 +440,14 @@ private fun TeamChip(
   }
 }
 
-/** How many people the mission needs, changed one at a time and never below one. */
+/**
+ * How many people the mission needs, changed one at a time and never below [minimum]: one, or the
+ * number of people already assigned.
+ */
 @Composable
 private fun VolunteersStepper(
     count: Int,
+    minimum: Int,
     enabled: Boolean,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
@@ -449,7 +468,7 @@ private fun VolunteersStepper(
     ) {
       StepperButton(
           onClick = onDecrease,
-          enabled = enabled && count > AddMissionUiState.MIN_VOLUNTEERS,
+          enabled = enabled && count > minimum,
           description = R.string.add_mission_decrease_volunteers,
           testTag = AddMissionScreenTestTags.DECREASE_VOLUNTEERS,
           isIncrease = false,
