@@ -81,7 +81,7 @@ class CreateTeamContentTest {
   }
 
   @Test
-  fun displaysNameIconAndDescription() {
+  fun opening_displaysNameIconAndDescription() {
     setCard(CreateTeamUiState())
 
     listOf(
@@ -95,7 +95,7 @@ class CreateTeamContentTest {
 
   /** The fields are BasicTextFields, which carry neither their label nor their error by default. */
   @Test
-  fun fieldsExposeTheirLabelAndErrorToAccessibility() {
+  fun fields_exposeTheirLabelAndErrorToAccessibility() {
     setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY)))
 
     node(CreateTeamFormTestTags.NAME_FIELD)
@@ -111,7 +111,7 @@ class CreateTeamContentTest {
   }
 
   @Test
-  fun typingGoesThroughTheCardIntoTheState() {
+  fun typing_goesThroughTheCardIntoTheState() {
     val read = setEditableCard()
 
     node(CreateTeamFormTestTags.NAME_FIELD).performTextInput("Bar")
@@ -123,7 +123,7 @@ class CreateTeamContentTest {
 
   /** Over the catalogue itself, so that offering one more icon does not break this. */
   @Test
-  fun theSelectorDisplaysAllAvailableIcons() {
+  fun iconSelector_displaysAllAvailableIcons() {
     setCard(CreateTeamUiState())
 
     node(CreateTeamFormTestTags.ICON_SELECTOR).performClick()
@@ -184,7 +184,7 @@ class CreateTeamContentTest {
   }
 
   @Test
-  fun eachErrorIsShownBesideItsOwnField() {
+  fun errors_areShownBesideTheirOwnField() {
     setCard(CreateTeamUiState(errors = setOf(TeamFormError.NAME_EMPTY, TeamFormError.ICON_MISSING)))
 
     errorNode(TeamFormField.NAME)

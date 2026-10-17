@@ -41,7 +41,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun showsTheProgressOfTheWholeEvent() {
+  fun loaded_showsTheProgressOfTheWholeEvent() {
     show(loaded.copy(selectedTeamId = "bar"))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.PROGRESS_PERCENT).assertTextEquals("50%")
@@ -51,7 +51,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun listsEveryMissionWithItsTeamWhenAllIsSelected() {
+  fun selectingAll_listsEveryMissionWithItsTeam() {
     show(loaded)
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).assertIsSelected()
@@ -69,7 +69,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun aMissionOfAnUnknownTeamIsNotShownAsGeneral() {
+  fun missionOfAnUnknownTeam_isNotShownAsGeneral() {
     show(
         loaded.copy(
             missions = listOf(OverviewMission("m5", "Guard the entrance", "deleted", false))
@@ -81,7 +81,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun listsOnlyTheMissionsOfTheSelectedTeam() {
+  fun selectingATeam_listsOnlyItsMissions() {
     show(loaded.copy(selectedTeamId = "bar"))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("bar")).assertIsSelected()
@@ -95,7 +95,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun chipsReportTheSelectedTeam() {
+  fun chips_reportTheSelectedTeam() {
     val selected = mutableListOf<String?>()
     show(loaded, OrganizerOverviewActions(onSelectTeam = { selected += it }))
 
@@ -106,7 +106,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun addMissionAndNotificationReportTheirClick() {
+  fun addMissionAndNotification_reportTheirClick() {
     var addClicks = 0
     var notificationClicks = 0
     show(
@@ -130,7 +130,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun manageTeamsReportsItsClickWithoutTouchingTheFilters() {
+  fun manageTeams_reportsItsClickWithoutTouchingTheFilters() {
     var manageClicks = 0
     var selected: String? = "untouched"
     show(
@@ -154,7 +154,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun anEventWithoutMissionsInvitesToAddOne() {
+  fun eventWithoutMissions_invitesToAddOne() {
     show(OrganizerOverviewUiState(isLoading = false, teams = teams))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.PROGRESS_PERCENT).assertTextEquals("0%")
@@ -164,7 +164,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun aTeamWithoutMissionsSaysSo() {
+  fun teamWithoutMissions_saysSo() {
     show(loaded.copy(missions = missions.filter { it.teamId != "bar" }, selectedTeamId = "bar"))
 
     compose
@@ -173,7 +173,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun showsALoadingIndicatorUntilTheFirstLoad() {
+  fun loading_showsALoadingIndicatorUntilTheFirstLoad() {
     show(OrganizerOverviewUiState())
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.LOADING_INDICATOR).assertIsDisplayed()
@@ -183,7 +183,7 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun aFailedLoadOffersToRetry() {
+  fun failedLoad_offersToRetry() {
     var retried = false
     show(
         OrganizerOverviewUiState(isLoading = false, loadFailed = true),

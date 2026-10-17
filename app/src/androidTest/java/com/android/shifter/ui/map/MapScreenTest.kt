@@ -44,7 +44,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun showsTheEventAboveTheMapAndBackLeaves() {
+  fun loaded_showsTheEventAboveTheMapAndBackLeaves() {
     setContent(LOADED)
 
     compose.onNodeWithText("City Marathon").assertIsDisplayed()
@@ -58,7 +58,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun showsTheSpinnerWhileLoadingWithNothingToRecenterOn() {
+  fun loading_showsTheSpinnerWithNothingToRecenterOn() {
     setContent(MapUiState())
 
     compose.onNodeWithTag(MapScreenTestTags.LOADING).assertIsDisplayed()
@@ -92,7 +92,7 @@ class MapScreenTest {
   // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
   // label is checked on its own.
   @Test
-  fun missionLabelShowsItsCaptionOnlyWhenItHasOne() {
+  fun missionLabel_showsItsCaptionOnlyWhenItHasOne() {
     compose.setContent {
       ShifterTheme {
         Column {
@@ -109,7 +109,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun showsTheSelectedMissionAndClosesIt() {
+  fun selectingAMission_showsItAndClosesIt() {
     setContent(LOADED.copy(selected = WATER))
 
     compose.onNodeWithTag(MapScreenTestTags.MISSION_CARD).assertIsDisplayed()
@@ -120,14 +120,14 @@ class MapScreenTest {
   }
 
   @Test
-  fun saysWhenNoMissionHasAPlace() {
+  fun noMissionWithAPlace_saysSo() {
     setContent(LOADED.copy(markers = emptyList()))
 
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertIsDisplayed()
   }
 
   @Test
-  fun offersToRetryAfterAnError() {
+  fun error_offersToRetry() {
     setContent(LOADED.copy(error = MapError.OFFLINE))
 
     compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()
@@ -136,7 +136,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun doesNotRetryAnEventThatNoLongerExists() {
+  fun missingEvent_isNotRetried() {
     setContent(MapUiState(isLoading = false, error = MapError.EVENT_NOT_FOUND))
 
     compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()

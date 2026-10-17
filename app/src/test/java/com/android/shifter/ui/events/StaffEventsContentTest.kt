@@ -56,7 +56,7 @@ class StaffEventsContentTest {
   }
 
   @Test
-  fun showsTheHeaderAndTheUpcomingCards() {
+  fun opening_showsTheHeaderAndTheUpcomingCards() {
     setContent(MyEventsUiState(upcoming = upcoming, past = past))
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.TITLE).assertTextEquals("My Events")
@@ -69,7 +69,7 @@ class StaffEventsContentTest {
   }
 
   @Test
-  fun cardsShowTheirStatusAndFooter() {
+  fun cards_showTheirStatusAndFooter() {
     setContent(MyEventsUiState(upcoming = upcoming))
 
     composeTestRule

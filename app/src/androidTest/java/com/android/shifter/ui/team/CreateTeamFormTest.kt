@@ -121,7 +121,7 @@ class CreateTeamFormTest {
   // ---------------------------------------------------------------- initial state
 
   @Test
-  fun startsEmptyWithBothActionsAndNoError() {
+  fun opening_startsEmptyWithBothActionsAndNoError() {
     setForm(RecordingTeamRepository())
 
     node(CreateTeamFormTestTags.NAME_FIELD).assertTextEquals("")
