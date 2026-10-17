@@ -22,38 +22,38 @@ class MissionTest {
   }
 
   @Test
-  fun overlappingSlotsOfTheSameTeamConflict() {
+  fun conflictsWith_overlappingSlotsOfTheSameTeam_returnsTrue() {
     assertConflict(true, geoTimed(10, 12), geoTimed(11, 13))
   }
 
   @Test
-  fun slotsWithTheSameStartOrTheSameEndConflict() {
+  fun conflictsWith_sameStartOrSameEnd_returnsTrue() {
     assertConflict(true, geoTimed(10, 12), geoTimed(10, 11))
     assertConflict(true, geoTimed(10, 12), geoTimed(11, 12))
   }
 
   @Test
-  fun aSlotInsideAnotherConflicts() {
+  fun conflictsWith_slotInsideAnother_returnsTrue() {
     assertConflict(true, geoTimed(9, 14), geoTimed(10, 11))
   }
 
   @Test
-  fun adjacentSlotsDoNotConflict() {
+  fun conflictsWith_adjacentSlots_returnsFalse() {
     assertConflict(false, geoTimed(10, 11), geoTimed(11, 12))
   }
 
   @Test
-  fun separateSlotsDoNotConflict() {
+  fun conflictsWith_separateSlots_returnsFalse() {
     assertConflict(false, geoTimed(10, 11), geoTimed(12, 13))
   }
 
   @Test
-  fun missionsOfDifferentTeamsDoNotConflict() {
+  fun conflictsWith_differentTeams_returnsFalse() {
     assertConflict(false, geoTimed(10, 12), geoTimed(10, 12).copy(teamId = "team-bar"))
   }
 
   @Test
-  fun missionsOfNoTeamDoNotConflict() {
+  fun conflictsWith_noTeam_returnsFalse() {
     assertConflict(
         false,
         geoTimed(10, 12).copy(teamId = null),
@@ -62,12 +62,12 @@ class MissionTest {
   }
 
   @Test
-  fun aMissionWithoutLocationDoesNotConflict() {
+  fun conflictsWith_missionWithoutLocation_returnsFalse() {
     assertConflict(false, geoTimed(10, 12), geoTimed(10, 12).copy(location = null))
   }
 
   @Test
-  fun missionsOfDifferentEventsDoNotConflict() {
+  fun conflictsWith_differentEvents_returnsFalse() {
     assertConflict(false, geoTimed(10, 12), geoTimed(10, 12).copy(eventId = "event-2"))
   }
 

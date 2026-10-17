@@ -86,14 +86,14 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun startsLoading() {
+  fun init_startsLoading() {
     viewModel = OrganizerOverviewViewModel(eventId, missions, teams)
 
     assertTrue(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun loadsTheEventsTeamsAndItsMissionsByStartTime() = runTest {
+  fun init_loadsTheEventsTeamsAndItsMissionsByStartTime() = runTest {
     addMission("Serve drinks", "bar", hour = 3)
     addMission("Set up", "logistics", hour = 1)
     addMission("Welcome", null, hour = 2)
@@ -116,7 +116,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun aMissionOfAnUnknownTeamHasNoTeamName() = runTest {
+  fun teamName_ofAnUnknownTeam_isNull() = runTest {
     addMission("Orphan", "deleted", hour = 1)
 
     open()
@@ -127,7 +127,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun selectingATeamListsOnlyItsMissions() = runTest {
+  fun selectTeam_listsOnlyItsMissions() = runTest {
     addMission("Set up", "logistics", hour = 1)
     addMission("Serve drinks", "bar", hour = 2)
     addMission("Welcome", null, hour = 3)
@@ -141,7 +141,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun selectingAllListsEveryMissionAgain() = runTest {
+  fun selectTeam_withAll_listsEveryMissionAgain() = runTest {
     addMission("Set up", "logistics", hour = 1)
     addMission("Serve drinks", "bar", hour = 2)
     open()
@@ -154,7 +154,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun selectingAnUnknownTeamIsIgnored() = runTest {
+  fun selectTeam_withUnknownTeam_isIgnored() = runTest {
     open()
     viewModel.selectTeam("bar")
 
@@ -164,7 +164,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun theProgressCoversEveryMissionWhateverTheFilter() = runTest {
+  fun progress_coversEveryMissionWhateverTheFilter() = runTest {
     addMission("Set up", "logistics", hour = 1)
     addMission("Serve drinks", "bar", hour = 2)
     open()
@@ -179,7 +179,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun theProgressOfCompletedMissionsIsTheirShare() {
+  fun progress_ofCompletedMissions_isTheirShare() {
     val state =
         OrganizerOverviewUiState(
             missions =
@@ -196,7 +196,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun anEventWithoutMissionsHasNoProgress() = runTest {
+  fun eventWithoutMissions_hasNoProgress() = runTest {
     open()
 
     assertEquals(0f, viewModel.uiState.value.progress)
@@ -204,7 +204,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun aFailedLoadIsReportedAndRetrySucceeds() = runTest {
+  fun failedLoad_isReportedAndRetrySucceeds() = runTest {
     addMission("Set up", "logistics", hour = 1)
     missions.failure = IllegalStateException("offline")
     open()
@@ -221,7 +221,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun aFailedRefreshKeepsWhatWasShown() = runTest {
+  fun refresh_onFailure_keepsWhatWasShown() = runTest {
     addMission("Set up", "logistics", hour = 1)
     open()
 
@@ -236,7 +236,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun refreshShowsAMissionAddedSince() = runTest {
+  fun refresh_showsAMissionAddedSince() = runTest {
     open()
 
     addMission("Set up", "logistics", hour = 1)
@@ -247,7 +247,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun refreshDropsTheFilterOfARemovedTeam() = runTest {
+  fun refresh_dropsTheFilterOfARemovedTeam() = runTest {
     open()
     viewModel.selectTeam("bar")
 
@@ -259,7 +259,7 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun factoryCreatesAViewModelLoadingTheEvent() = runTest {
+  fun factory_createsAViewModelLoadingTheEvent() = runTest {
     addMission("Set up", "logistics", hour = 1)
 
     viewModel =

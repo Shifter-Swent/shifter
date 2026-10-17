@@ -10,7 +10,7 @@ import org.junit.Test
 class EventPeriodFormatTest {
 
   @Test
-  fun showsTheDayOnceForAOneDayEvent() {
+  fun formatEventPeriod_forAOneDayEvent_showsTheDayOnce() {
     assertEquals(
         "Mon 22 Jun · 09:30 – 17:00",
         format("2026-06-22T09:30:00Z", "2026-06-22T17:00:00Z"),
@@ -18,7 +18,7 @@ class EventPeriodFormatTest {
   }
 
   @Test
-  fun showsBothDaysForAMultiDayEvent() {
+  fun formatEventPeriod_forAMultiDayEvent_showsBothDays() {
     assertEquals(
         "21 Jul 12:00 – 26 Jul 21:30",
         format("2026-07-21T12:00:00Z", "2026-07-26T21:30:00Z"),
@@ -26,7 +26,7 @@ class EventPeriodFormatTest {
   }
 
   @Test
-  fun showsTheYearWhenItIsNotTheCurrentOne() {
+  fun formatEventPeriod_inAnotherYear_showsTheYear() {
     assertEquals(
         "Tue 22 Jun 2027 · 09:30 – 17:00",
         format("2027-06-22T09:30:00Z", "2027-06-22T17:00:00Z"),
