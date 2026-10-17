@@ -16,7 +16,7 @@ import org.junit.Test
 class FirestoreEventRepositoryErrorTest {
 
   @Test
-  fun firestoreErrorsAreTranslated() = runTest {
+  fun toRepositoryException_translatesFirestoreErrors() = runTest {
     fun map(code: Code) =
         FirestoreEventRepository.toRepositoryException(FirebaseFirestoreException("", code))
     assertTrue(map(Code.PERMISSION_DENIED) is EventRepositoryException.PermissionDenied)
