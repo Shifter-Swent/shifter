@@ -465,7 +465,7 @@ class ShifterNavHostTest {
    * time, over teams seeded by hand; this is the one that shows the two halves meet.
    */
   @Test
-  fun teamsCreatedByTheOrganizerAreTheOnesAVolunteerAppliesTo() {
+  fun teamsCreatedByTheOrganizer_areTheOnesAVolunteerAppliesTo() {
     val navController = signInAndShowApp(name = "Olga")
     val organizer = checkNotNull(repositories.authRepository.currentUser())
 

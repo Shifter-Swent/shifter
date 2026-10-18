@@ -55,7 +55,7 @@ class MembershipRequestVMTest {
   }
 
   @Test
-  fun initiallyLoadsAndPreventsOverlappingLoads() =
+  fun loadRequests_initiallyLoadsAndPreventsOverlappingLoads() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         assertTrue(vm.uiState.value.isLoading)
@@ -69,7 +69,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun loadFailureKeepsDataAndCanBeClearedAndRetried() =
+  fun loadRequests_onFailure_keepsDataAndCanBeClearedAndRetried() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
@@ -90,7 +90,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun acceptsAndRejectsWithoutRemovingRequests() =
+  fun acceptAndReject_doNotRemoveRequests() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
@@ -114,7 +114,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun simultaneousDecisionsPreserveBothResultsAndBlockDoubleClicksAndReload() =
+  fun simultaneousDecisions_preserveBothResultsAndBlockDoubleClicksAndReload() =
       runTest(dispatcher) {
         val alice = CompletableDeferred<Unit>()
         val bob = CompletableDeferred<Unit>()
@@ -145,7 +145,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun decisionsDuringReloadAndUnknownUsersAreIgnored() =
+  fun decisions_duringReloadOrForUnknownUsers_areIgnored() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
@@ -159,7 +159,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun decisionErrorsKeepStatusReleaseButtonsAndAllowRetry() =
+  fun decisions_onError_keepStatusReleaseButtonsAndAllowRetry() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
@@ -185,7 +185,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun cancellationDoesNotBecomeAnErrorAndReleasesBusyState() =
+  fun cancellation_doesNotBecomeAnErrorAndReleasesBusyState() =
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } throws CancellationException()
         val vm = MembershipRequestVM("event", repository, userRepository)
@@ -204,7 +204,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun missingAndBlankProfilesUseFallbackNames() =
+  fun loadRequests_withMissingOrBlankProfiles_usesFallbackNames() =
       runTest(dispatcher) {
         coEvery { userRepository.getPublicProfile("alice") } returns null
         coEvery { userRepository.getPublicProfile("bob") } returns PublicProfile("bob", "  ")
@@ -220,7 +220,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun profileErrorsKeepRequestsAndOtherNamesAndAllowRetry() =
+  fun loadRequests_onProfileError_keepsRequestsAndOtherNamesAndAllowsRetry() =
       runTest(dispatcher) {
         coEvery { userRepository.getPublicProfile("alice") } throws
             UserRepositoryException.PermissionDenied()
@@ -245,7 +245,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun profileCancellationKeepsPreviousDataAndReleasesLoading() =
+  fun loadRequests_onProfileCancellation_keepsPreviousDataAndReleasesLoading() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()

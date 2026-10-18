@@ -50,7 +50,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun acceptCreatesParticipantsAndPreservesOtherParticipantsWithoutDuplicates() = emulatorTest {
+  fun accept_createsParticipantsAndPreservesOthersWithoutDuplicates() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
@@ -74,7 +74,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun decisionsCanBeReversedWithoutLosingRequestsOrOtherParticipants() = emulatorTest {
+  fun decisions_canBeReversedWithoutLosingRequestsOrOtherParticipants() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     val other = account()
@@ -101,7 +101,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rejectPendingCreatesEmptyParticipantsAndPreservesRejectedRequest() = emulatorTest {
+  fun reject_withPendingRequest_createsEmptyParticipantsAndPreservesTheRequest() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
@@ -117,7 +117,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rejectStillWorksOnceTheRequestedTeamIsDeleted() = emulatorTest {
+  fun reject_onceTheRequestedTeamIsDeleted_stillWorks() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
@@ -135,7 +135,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rejectionRequiresConsistentStatusAndParticipantRemoval() = emulatorTest {
+  fun reject_requiresConsistentStatusAndParticipantRemoval() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
@@ -161,7 +161,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun missingRequestDoesNotCreateParticipants() = emulatorTest {
+  fun decisions_onAMissingRequest_doNotCreateParticipants() = emulatorTest {
     val eventId = event()
     signIn(organizer)
     for (decision in
@@ -180,7 +180,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun queriesFindOwnRequestsAcrossEventsAndOrganizerCanListEventRequests() = emulatorTest {
+  fun queries_findOwnRequestsAcrossEventsAndLetTheOrganizerListEventRequests() = emulatorTest {
     val first = event()
     val second = event()
     val unrelated = event()
@@ -201,7 +201,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun volunteerCannotDecideOrChangeOwnApplication() = emulatorTest {
+  fun volunteer_cannotDecideOrChangeOwnApplication() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     assertDenied { repository.accept(eventId, volunteer.uid) }
@@ -217,7 +217,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun acceptedVolunteerWithdrawsKeepingOtherParticipantsAndCanApplyAgain() = emulatorTest {
+  fun withdraw_whenAccepted_keepsOtherParticipantsAndAllowsApplyingAgain() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     val other = account()
@@ -235,7 +235,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun pendingVolunteerWithdrawsWithoutCreatingParticipants() = emulatorTest {
+  fun withdraw_whenPending_createsNoParticipants() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     repository.withdraw(eventId, volunteer.uid)
@@ -245,7 +245,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rejectedVolunteerCanNeitherWithdrawNorApplyAgain() = emulatorTest {
+  fun withdrawAndApply_whenRejected_areDenied() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     signIn(organizer)
@@ -262,7 +262,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun withdrawalNeedsBothWritesAndOnlyTheVolunteerThemself() = emulatorTest {
+  fun withdraw_needsBothWritesAndOnlyTheVolunteerThemself() = emulatorTest {
     val eventId = event()
     val pending = apply(eventId, volunteer)
     val other = account()
@@ -295,7 +295,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun organizerCannotAlterRequestFieldsResetStatusOrDeleteRequest() = emulatorTest {
+  fun organizer_cannotAlterRequestFieldsResetStatusOrDeleteRequest() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     signIn(organizer)
@@ -309,7 +309,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun acceptanceRequiresBothWritesAndCannotAddUnacceptedUsers() = emulatorTest {
+  fun accept_requiresBothWritesAndCannotAddUnacceptedUsers() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     signIn(organizer)
@@ -350,7 +350,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun singleReadFindsOwnRequestOnlyForTheVolunteerAndTheOrganizer() = emulatorTest {
+  fun getMembershipRequest_findsTheRequestOnlyForTheVolunteerAndTheOrganizer() = emulatorTest {
     val eventId = event()
     signIn(volunteer)
     assertNull(repository.getMembershipRequest(eventId, volunteer.uid))
@@ -363,7 +363,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun unrelatedUserCannotReadRequestsOrTakeOverEvent() = emulatorTest {
+  fun unrelatedUser_cannotReadRequestsOrTakeOverEvent() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     val other = account()
@@ -383,7 +383,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun createValidatesOwnerEventStatusAndFields() = emulatorTest {
+  fun create_validatesOwnerEventStatusAndFields() = emulatorTest {
     val eventId = event()
     signIn(volunteer)
     assertDenied { repository.apply(eventId, request(organizer)) }
@@ -410,7 +410,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun signedOutUsersCannotReadOrWrite() = emulatorTest {
+  fun signedOutUser_cannotReadOrWrite() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     signIn(organizer)
@@ -424,7 +424,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun applyStoresPendingRequestForEventFoundByJoinCode() = emulatorTest {
+  fun apply_storesPendingRequestForEventFoundByJoinCode() = emulatorTest {
     signIn(organizer)
     val events = FirestoreEventRepository(db)
     val event =
@@ -453,7 +453,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun applyReturnsExistingPendingRequestWithoutChangingItsTeam() = emulatorTest {
+  fun apply_withExistingPendingRequest_returnsItWithoutChangingItsTeam() = emulatorTest {
     val eventId = event()
     val first = apply(eventId, volunteer)
     val second = repository.apply(eventId, request(volunteer, OTHER_TEAM_ID))

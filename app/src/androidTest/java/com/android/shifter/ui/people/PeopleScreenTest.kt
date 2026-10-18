@@ -37,7 +37,7 @@ class PeopleScreenTest {
       )
 
   @Test
-  fun tabsShowRequestsAndButtonsSendApplicantUid() {
+  fun tabs_showRequestsAndButtonsSendApplicantUid() {
     var accepted: String? = null
     var rejected: String? = null
     var destination: Tab? = null
@@ -103,7 +103,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun processingRequestDisablesBothActions() {
+  fun processingRequest_disablesBothActions() {
     compose.setContent {
       MaterialTheme {
         MembershipRequestsScreen(
@@ -123,7 +123,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun decidedRequestsRemainVisibleWithTheirStatus() {
+  fun decidedRequests_remainVisibleWithTheirStatus() {
     compose.setContent {
       MaterialTheme {
         MembershipRequestsScreen(
@@ -160,7 +160,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun emptyListAndProfileErrorHaveVisibleFeedback() {
+  fun emptyListAndProfileError_haveVisibleFeedback() {
     var retried = false
     compose.setContent {
       MaterialTheme {
@@ -178,7 +178,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun emptyListShowsEmptyMessage() {
+  fun emptyList_showsEmptyMessage() {
     compose.setContent {
       MaterialTheme {
         MembershipRequestsScreen(MembershipRequestUIState(isLoading = false), {}, {}, {})
