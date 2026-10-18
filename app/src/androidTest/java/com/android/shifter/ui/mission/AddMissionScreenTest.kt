@@ -65,7 +65,7 @@ class AddMissionScreenTest {
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
   @Test
-  fun showsTheEventAndItsPeriod() {
+  fun opening_showsTheEventAndItsPeriod() {
     setContent(loaded)
 
     node(AddMissionScreenTestTags.EVENT_TITLE).assertTextEquals("Local Food Drive")
