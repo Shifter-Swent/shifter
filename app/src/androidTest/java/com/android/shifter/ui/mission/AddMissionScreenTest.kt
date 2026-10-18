@@ -193,7 +193,7 @@ class AddMissionScreenTest {
     )
 
     node(AddMissionScreenTestTags.DECREASE_VOLUNTEERS).performScrollTo().assertIsNotEnabled()
-    node(AssigneePickerTestTags.COUNT).assertTextEquals("2/2 assigned")
+    node(AssigneePickerTestTags.COUNT).assertTextEquals("Assigned: 2/2")
     node(AssigneePickerTestTags.option("ben")).performScrollTo().performClick()
 
     assertEquals(listOf("ben"), toggled)

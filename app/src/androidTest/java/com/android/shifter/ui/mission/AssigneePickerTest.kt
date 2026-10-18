@@ -48,10 +48,10 @@ class AssigneePickerTest {
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
   @Test
-  fun showsTheCandidatesWhoIsPickedAndTheCount() {
+  fun opening_showsTheCandidatesWhoIsPickedAndTheCount() {
     setContent(AssigneeSelection(candidates = candidates, selectedIds = listOf("ben")))
 
-    node(AssigneePickerTestTags.COUNT).assertTextEquals("1/2 assigned")
+    node(AssigneePickerTestTags.COUNT).assertTextEquals("Assigned: 1/2")
     node(AssigneePickerTestTags.option("ana")).assertIsOff()
     node(AssigneePickerTestTags.option("ben")).assertIsOn()
     composeTestRule.onNodeWithText("Unnamed volunteer").assertIsDisplayed()

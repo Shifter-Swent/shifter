@@ -386,7 +386,7 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_endingBeforeItStarts_endsTheNextDay_andMustStillFitTheEvent() = runTest {
+  fun addMission_endingBeforeItStarts_endsTheNextDayWithinTheEvent() = runTest {
     openForm()
     fillValidForm()
     viewModel.onStartTimeChange(LocalTime.of(17, 0))
