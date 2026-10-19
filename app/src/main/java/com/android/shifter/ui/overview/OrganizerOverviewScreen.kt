@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.mission.AssigneePicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import kotlin.math.roundToInt
@@ -59,10 +61,18 @@ object OrganizerOverviewScreenTestTags {
   const val RETRY_BUTTON = "OrganizerOverviewRetryButton"
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
+  const val ASSIGN_DIALOG = "OrganizerOverviewAssignDialog"
+  const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
+  const val ASSIGN_CANCEL = "OrganizerOverviewAssignCancel"
+  const val ASSIGN_ERROR = "OrganizerOverviewAssignError"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
 
   fun mission(missionId: String) = "OrganizerOverviewMission_$missionId"
+
+  fun assignedCount(missionId: String) = "OrganizerOverviewAssignedCount_$missionId"
+
+  fun assignButton(missionId: String) = "OrganizerOverviewAssignButton_$missionId"
 }
 
 /**
@@ -87,6 +97,11 @@ fun OrganizerOverviewScreen(
               onManageTeams = onManageTeams,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
+              onAssign = viewModel::openAssign,
+              onToggleAssignee = viewModel::toggleAssignee,
+              onRetryAssignees = viewModel::retryAssignees,
+              onSaveAssignees = viewModel::saveAssignees,
+              onDismissAssign = viewModel::dismissAssign,
           ),
   )
 }
@@ -99,6 +114,11 @@ data class OrganizerOverviewActions(
     val onRetry: () -> Unit = {},
     // TODO: open the notification composer once notifications exist.
     val onSendNotification: () -> Unit = {},
+    val onAssign: (String) -> Unit = {},
+    val onToggleAssignee: (String) -> Unit = {},
+    val onRetryAssignees: () -> Unit = {},
+    val onSaveAssignees: () -> Unit = {},
+    val onDismissAssign: () -> Unit = {},
 )
 
 /** Stateless form of [OrganizerOverviewScreen]: renders [state] and reports every interaction. */
@@ -117,9 +137,10 @@ fun OrganizerOverviewContent(state: OrganizerOverviewUiState, actions: Organizer
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
-    Missions(state)
+    Missions(state, actions.onAssign)
     NotificationCard(actions.onSendNotification)
   }
+  state.assigning?.let { AssignDialog(it, actions) }
 }
 
 @Composable
@@ -295,7 +316,7 @@ private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, test
 
 /** The missions of the selected team, under a header naming it and counting them. */
 @Composable
-private fun Missions(state: OrganizerOverviewUiState) {
+private fun Missions(state: OrganizerOverviewUiState, onAssign: (String) -> Unit) {
   val missions = state.visibleMissions
   val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -312,7 +333,8 @@ private fun Missions(state: OrganizerOverviewUiState) {
         modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER),
     )
     when {
-      missions.isNotEmpty() -> missions.forEach { MissionRow(it, state.teamName(it.teamId)) }
+      missions.isNotEmpty() ->
+          missions.forEach { MissionRow(it, state.teamName(it.teamId)) { onAssign(it.id) } }
       state.isLoading ->
           CircularProgressIndicator(
               modifier =
@@ -335,34 +357,103 @@ private fun Missions(state: OrganizerOverviewUiState) {
 }
 
 @Composable
-private fun MissionRow(mission: OverviewMission, teamName: String?) {
+private fun MissionRow(mission: OverviewMission, teamName: String?, onAssign: () -> Unit) {
   // TODO: show whether the mission is to do, in progress or completed once missions have a status.
-  Column(
+  Row(
       modifier =
           Modifier.fillMaxWidth()
               .clip(MaterialTheme.shapes.medium)
               .background(MaterialTheme.colorScheme.surfaceVariant)
-              .padding(horizontal = 14.dp, vertical = 10.dp)
+              .padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
               .testTag(OrganizerOverviewScreenTestTags.mission(mission.id)),
-      verticalArrangement = Arrangement.spacedBy(2.dp),
+      verticalAlignment = Alignment.CenterVertically,
   ) {
-    Text(
-        text = mission.title,
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurface,
-    )
-    Text(
-        text =
-            when {
-              mission.teamId == null -> stringResource(R.string.overview_team_general)
-              // Its team was not found, e.g. deleted: not shown as General, which means no team.
-              else -> teamName ?: stringResource(R.string.overview_team_unknown)
-            },
-        style = MaterialTheme.typography.labelSmall,
-        color = shifter_mutedText,
-    )
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Text(
+          text = mission.title,
+          style = MaterialTheme.typography.bodyMedium,
+          fontWeight = FontWeight.SemiBold,
+          color = MaterialTheme.colorScheme.onSurface,
+      )
+      Text(
+          text =
+              when {
+                mission.teamId == null -> stringResource(R.string.overview_team_general)
+                // Its team was not found, e.g. deleted: not shown as General, which means no team.
+                else -> teamName ?: stringResource(R.string.overview_team_unknown)
+              },
+          style = MaterialTheme.typography.labelSmall,
+          color = shifter_mutedText,
+      )
+      Text(
+          text =
+              stringResource(
+                  R.string.assignee_picker_count,
+                  mission.assigneeIds.size,
+                  mission.volunteersNeeded,
+              ),
+          style = MaterialTheme.typography.labelSmall,
+          color = shifter_mutedText,
+          modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.assignedCount(mission.id)),
+      )
+    }
+    TextButton(
+        onClick = onAssign,
+        modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.assignButton(mission.id)),
+    ) {
+      Text(stringResource(R.string.overview_assign), fontWeight = FontWeight.SemiBold)
+    }
   }
+}
+
+/** Edits who is assigned to the mission of [assigning]; nothing is stored until Save. */
+@Composable
+private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActions) {
+  AlertDialog(
+      onDismissRequest = actions.onDismissAssign,
+      modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_DIALOG),
+      title = { Text(assigning.title) },
+      text = {
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          AssigneePicker(
+              selection = assigning.selection,
+              limit = assigning.limit,
+              enabled = !assigning.isSaving,
+              onToggle = actions.onToggleAssignee,
+              onRetry = actions.onRetryAssignees,
+          )
+          if (assigning.saveFailed) {
+            Text(
+                text = stringResource(R.string.overview_assign_failed),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_ERROR),
+            )
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(
+            onClick = actions.onSaveAssignees,
+            // Saving before the candidates are known could not show who is picked.
+            enabled = !assigning.isSaving && !assigning.selection.isLoading,
+            modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE),
+        ) {
+          Text(stringResource(R.string.overview_assign_save))
+        }
+      },
+      dismissButton = {
+        TextButton(
+            onClick = actions.onDismissAssign,
+            modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL),
+        ) {
+          Text(stringResource(R.string.overview_assign_cancel))
+        }
+      },
+  )
 }
 
 /** Sends a notification to every team of the event. */

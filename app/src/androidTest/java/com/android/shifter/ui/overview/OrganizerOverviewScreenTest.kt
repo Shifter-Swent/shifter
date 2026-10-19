@@ -2,6 +2,8 @@
 package com.swent.shifter.ui.overview
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +12,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.mission.AssigneeOption
+import com.swent.shifter.ui.mission.AssigneePickerTestTags
+import com.swent.shifter.ui.mission.AssigneeSelection
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -196,4 +201,84 @@ class OrganizerOverviewScreenTest {
 
     compose.runOnIdle { assertTrue(retried) }
   }
+
+  @Test
+  fun missionRow_showsTheAssignedCount() {
+    show(
+        loaded.copy(
+            missions = listOf(OverviewMission("m1", "Set up", "logistics", false, 3, listOf("ana")))
+        )
+    )
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.assignedCount("m1"))
+        .assertTextEquals("Assigned: 1/3")
+  }
+
+  @Test
+  fun tappingAssign_reportsTheMission() {
+    val opened = mutableListOf<String>()
+    show(loaded, OrganizerOverviewActions(onAssign = { opened += it }))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.assignButton("m2"))
+        .performScrollTo()
+        .performClick()
+
+    compose.runOnIdle { assertEquals(listOf("m2"), opened) }
+  }
+
+  @Test
+  fun assignDialog_showsThePickerAndReportsItsActions() {
+    val toggled = mutableListOf<String>()
+    var saves = 0
+    var dismissals = 0
+    show(
+        loaded.copy(assigning = assigning()),
+        OrganizerOverviewActions(
+            onToggleAssignee = { toggled += it },
+            onSaveAssignees = { saves++ },
+            onDismissAssign = { dismissals++ },
+        ),
+    )
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_DIALOG).assertIsDisplayed()
+    compose.onNodeWithTag(AssigneePickerTestTags.option("ana")).assertIsOn()
+    compose.onNodeWithTag(AssigneePickerTestTags.option("ben")).performClick()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).performClick()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL).performClick()
+
+    compose.runOnIdle {
+      assertEquals(listOf("ben"), toggled)
+      assertEquals(1, saves)
+      assertEquals(1, dismissals)
+    }
+  }
+
+  @Test
+  fun assignDialog_onSaveFailure_showsTheError() {
+    show(loaded.copy(assigning = assigning().copy(saveFailed = true)))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_ERROR).assertIsDisplayed()
+  }
+
+  @Test
+  fun assignDialog_whileSaving_disablesSave() {
+    show(loaded.copy(assigning = assigning().copy(isSaving = true)))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
+  }
+
+  /** Mission "m1" being assigned, its candidates loaded and Ana picked. */
+  private fun assigning() =
+      AssignState(
+          missionId = "m1",
+          title = "Set up the collection",
+          limit = 2,
+          selection =
+              AssigneeSelection(
+                  candidates = listOf(AssigneeOption("ana", "Ana"), AssigneeOption("ben", "Ben")),
+                  selectedIds = listOf("ana"),
+              ),
+      )
 }
