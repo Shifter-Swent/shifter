@@ -65,7 +65,7 @@ class FirestoreMissionAssigneesTest {
   }
 
   @Test
-  fun updateAssignees_withAnEmptyListLeavesNobodyAssigned() = emulatorTest {
+  fun updateAssignees_withAnEmptyList_leavesNobodyAssigned() = emulatorTest {
     val created = create(mission(volunteersNeeded = 2, "user-1", "user-2"))
 
     repository.updateAssignees(created.eventId, created.id, emptyList())

@@ -9,13 +9,41 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers the contract of [FakeMissionRepository.getMissionsAssignedTo] and
- * [FakeMissionRepository.updateAssignees], so the ViewModels tested with the fake behave as with
- * the Firestore repository.
+ * Covers the assignee rules of [FakeMissionRepository.createMission], and the contract of
+ * [FakeMissionRepository.getMissionsAssignedTo] and [FakeMissionRepository.updateAssignees], so the
+ * ViewModels tested with the fake behave as with the Firestore repository.
  */
 class FakeMissionRepositoryTest {
 
   private val repository = FakeMissionRepository()
+
+  @Test
+  fun createMission_withAnAssigneeListedTwice_isRejected() = runTest {
+    val failure = runCatching {
+      repository.createMission(
+          mission("event-1", startHour = 9, "user-1", "user-1").copy(volunteersNeeded = 2)
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals("A mission cannot list the same assignee twice", failure?.message)
+    assertTrue(repository.created.isEmpty())
+  }
+
+  @Test
+  fun createMission_withMoreAssigneesThanNeeded_isRejected() = runTest {
+    val failure = runCatching {
+      repository.createMission(
+          mission("event-1", startHour = 9, "user-1", "user-2").copy(volunteersNeeded = 1)
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals("A mission needing 1 volunteers cannot have 2 assignees", failure?.message)
+    assertTrue(repository.created.isEmpty())
+  }
 
   @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = runTest {
@@ -61,7 +89,7 @@ class FakeMissionRepositoryTest {
   }
 
   @Test
-  fun updateAssignees_withAnEmptyListLeavesNobodyAssigned() = runTest {
+  fun updateAssignees_withAnEmptyList_leavesNobodyAssigned() = runTest {
     val created = repository.createMission(mission("event-1", startHour = 9, "user-1"))
 
     repository.updateAssignees("event-1", created.id, emptyList())
@@ -122,12 +150,13 @@ class FakeMissionRepositoryTest {
     )
   }
 
+  /** A mission needing just enough volunteers for [assigneeIds], and at least one. */
   private fun mission(eventId: String, startHour: Int, vararg assigneeIds: String) =
       Mission(
           eventId = eventId,
           title = "Mission at $startHour",
           description = "",
-          volunteersNeeded = 1,
+          volunteersNeeded = maxOf(1, assigneeIds.size),
           startAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds(startHour * 3600L),
           endAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds((startHour + 1) * 3600L),
           assigneeIds = assigneeIds.toList(),

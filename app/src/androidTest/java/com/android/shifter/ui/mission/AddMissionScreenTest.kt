@@ -181,6 +181,25 @@ class AddMissionScreenTest {
   }
 
   @Test
+  fun stepper_cannotGoBelowThePeopleAssigned_andThePickerReportsTaps() {
+    val toggled = mutableListOf<String>()
+    val people = listOf(AssigneeOption("ana", "Ana"), AssigneeOption("ben", "Ben"))
+    setContent(
+        loaded.copy(
+            volunteersNeeded = 2,
+            assignees = AssigneeSelection(candidates = people, selectedIds = listOf("ana", "ben")),
+        ),
+        AddMissionActions(onToggleAssignee = { toggled += it }),
+    )
+
+    node(AddMissionScreenTestTags.DECREASE_VOLUNTEERS).performScrollTo().assertIsNotEnabled()
+    node(AssigneePickerTestTags.COUNT).assertTextEquals("Assigned: 2/2")
+    node(AssigneePickerTestTags.option("ben")).performScrollTo().performClick()
+
+    assertEquals(listOf("ben"), toggled)
+  }
+
+  @Test
   fun pickingTimes_reportsThem() {
     val starts = mutableListOf<LocalTime>()
     val ends = mutableListOf<LocalTime>()
@@ -375,6 +394,9 @@ class AddMissionScreenTest {
             missionRepository = missions,
             eventRepository = SingleEventRepository(event),
             teamRepository = EventTeams(teams.map { team(it, event.id) }),
+            assigneeCandidates = { _, teamId ->
+              if (teamId == "logistics") listOf(AssigneeOption("ana", "Ana")) else emptyList()
+            },
             currentUserId = { event.organizerId },
             clock = Clock.fixed(now, zone),
         )
@@ -386,6 +408,7 @@ class AddMissionScreenTest {
     node(AddMissionScreenTestTags.TITLE_FIELD).performTextInput("Sort the donations")
     node(AddMissionScreenTestTags.DESCRIPTION_FIELD).performTextInput("Check the dates")
     node(AddMissionScreenTestTags.teamChip("logistics")).performScrollTo().performClick()
+    node(AssigneePickerTestTags.option("ana")).performScrollTo().performClick()
     // The start picker opens on the event start, 10:00, and the end one on the chosen start.
     node(AddMissionScreenTestTags.START_FIELD).performScrollTo().performClick()
     node(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
@@ -405,6 +428,7 @@ class AddMissionScreenTest {
     val mission = added!!
     assertEquals("Sort the donations", mission.title)
     assertEquals("logistics", mission.teamId)
+    assertEquals(listOf("ana"), mission.assigneeIds)
     assertEquals(eventDay.atTime(11, 30).atZone(zone).toInstant(), mission.endAt)
     assertEquals(listOf(mission), missions.created)
   }
@@ -431,6 +455,7 @@ class AddMissionScreenTest {
             missionRepository = RecordingMissionRepository(),
             eventRepository = SingleEventRepository(event),
             teamRepository = EventTeams(emptyList()),
+            assigneeCandidates = { _, _ -> emptyList() },
             currentUserId = { event.organizerId },
             clock = Clock.fixed(now, zone),
         )

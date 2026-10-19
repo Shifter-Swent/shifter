@@ -18,6 +18,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,6 +112,8 @@ enum class MissionFormError(val field: MissionFormField) {
  * @property canChooseGeneral whether the mission may belong to no team. Only the organizer may
  *   create such missions; a manager creates them for a team they manage.
  * @property teamId id of the selected team, or null for "General", the missions of no team.
+ * @property assignees who may be assigned to the mission and who is picked, reloaded and cleared
+ *   whenever the team changes. Never more people than [volunteersNeeded].
  * @property address the address of the optional location, as typed. The location is set as soon as
  *   one of [address], [latitude] or [longitude] is filled, and then all three are required.
  * @property latitude the latitude of the optional location, as typed.
@@ -134,6 +137,7 @@ data class AddMissionUiState(
     val description: String = "",
     val teamId: String? = null,
     val volunteersNeeded: Int = MIN_VOLUNTEERS,
+    val assignees: AssigneeSelection = AssigneeSelection(),
     val day: LocalDate? = null,
     val startTime: LocalTime? = null,
     val endTime: LocalTime? = null,
@@ -159,6 +163,10 @@ data class AddMissionUiState(
    */
   val canSubmit: Boolean
     get() = event != null && !notAllowed && !isSaving && createdMission == null
+
+  /** The lowest need the stepper may go down to: one, or the number of people already assigned. */
+  val minVolunteers: Int
+    get() = maxOf(MIN_VOLUNTEERS, assignees.selectedIds.size)
 
   /** Whether the chosen end time falls on the day after the mission starts. */
   val endsNextDay: Boolean
@@ -191,6 +199,7 @@ data class AddMissionUiState(
  * promoted from the members of a team is one, but nothing enforces it: a manager who is not a
  * participant only sees the load error, until #160 lets managers read the teams they manage.
  *
+ * @param assigneeCandidates finds who may be assigned to the mission of the selected team.
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  * @param clock source of the current time, used to stamp [Mission.createdAt]; its zone is the one
  *   the organizer or manager reads and enters times in. Inject a fixed clock in tests.
@@ -200,6 +209,7 @@ class AddMissionViewModel(
     private val missionRepository: MissionRepository,
     private val eventRepository: EventRepository,
     private val teamRepository: TeamRepository,
+    private val assigneeCandidates: AssigneeCandidates,
     private val currentUserId: () -> String?,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
@@ -209,6 +219,9 @@ class AddMissionViewModel(
 
   /** Becomes true on the first submit, after which errors follow every edit. */
   private var submitAttempted = false
+
+  /** Loads the candidates of the selected team; replaced when the team changes. */
+  private var candidatesJob: Job? = null
 
   init {
     loadEvent()
@@ -258,6 +271,7 @@ class AddMissionViewModel(
               day = it.day ?: period.start.toLocalDate(),
           )
         }
+        if (!_uiState.value.notAllowed) loadCandidates()
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
@@ -279,13 +293,23 @@ class AddMissionViewModel(
     if (teamId == null && !form.canChooseGeneral) return
     if (teamId != null && form.teams.none { it.id == teamId }) return
     edit { it.copy(teamId = teamId) }
+    // The people picked belong to the previous team, so the selection starts over.
+    if (teamId != form.teamId) loadCandidates()
   }
+
+  /** Picks or unpicks the candidate [id], never more people than the mission needs. */
+  fun onToggleAssignee(id: String) = edit {
+    it.copy(assignees = it.assignees.toggle(id, it.volunteersNeeded))
+  }
+
+  /** Loads the candidates of the selected team again, after a failure. */
+  fun retryLoadAssignees() = loadCandidates()
 
   fun onIncreaseVolunteers() = edit { it.copy(volunteersNeeded = it.volunteersNeeded + 1) }
 
-  /** Lowers the need by one, never below [AddMissionUiState.MIN_VOLUNTEERS]. */
+  /** Lowers the need by one, never below [AddMissionUiState.minVolunteers]. */
   fun onDecreaseVolunteers() = edit {
-    it.copy(volunteersNeeded = maxOf(AddMissionUiState.MIN_VOLUNTEERS, it.volunteersNeeded - 1))
+    it.copy(volunteersNeeded = maxOf(it.minVolunteers, it.volunteersNeeded - 1))
   }
 
   fun onDayChange(day: LocalDate) = edit { it.copy(day = day) }
@@ -327,6 +351,7 @@ class AddMissionViewModel(
             startAt = startAt.atZone(clock.zone).toInstant(),
             endAt = endAt.atZone(clock.zone).toInstant(),
             location = form.toLocation(),
+            assigneeIds = form.assignees.selectedIds,
             createdAt = clock.instant(),
         )
     _uiState.update {
@@ -355,6 +380,27 @@ class AddMissionViewModel(
   /** Records that the screen reacted to [AddMissionUiState.createdMission]. */
   fun onMissionAddedHandled() {
     _uiState.update { it.copy(createdMissionHandled = true) }
+  }
+
+  /**
+   * Clears the selection and loads who may be assigned to a mission of the selected team. A load
+   * still running for a previous team is cancelled, so its result never lands on the new one.
+   */
+  private fun loadCandidates() {
+    candidatesJob?.cancel()
+    val teamId = _uiState.value.teamId
+    _uiState.update { it.copy(assignees = AssigneeSelection(isLoading = true)) }
+    candidatesJob = viewModelScope.launch {
+      val loaded =
+          try {
+            AssigneeSelection(candidates = assigneeCandidates.load(eventId, teamId))
+          } catch (e: CancellationException) {
+            throw e
+          } catch (_: Exception) {
+            AssigneeSelection(loadFailed = true)
+          }
+      _uiState.update { it.copy(assignees = loaded) }
+    }
   }
 
   private fun edit(change: (AddMissionUiState) -> AddMissionUiState) {
@@ -426,6 +472,7 @@ class AddMissionViewModel(
         missionRepository: MissionRepository,
         eventRepository: EventRepository,
         teamRepository: TeamRepository,
+        assigneeCandidates: AssigneeCandidates,
         currentUserId: () -> String?,
         clock: Clock = Clock.systemDefaultZone(),
     ): ViewModelProvider.Factory = viewModelFactory {
@@ -435,6 +482,7 @@ class AddMissionViewModel(
             missionRepository,
             eventRepository,
             teamRepository,
+            assigneeCandidates,
             currentUserId,
             clock,
         )

@@ -14,6 +14,8 @@ interface MissionRepository {
    *
    * @throws MissionOverlapException when [mission] [conflictsWith][Mission.conflictsWith] a mission
    *   of the same event; nothing is written then.
+   * @throws IllegalArgumentException when [Mission.assigneeIds] lists someone twice or holds more
+   *   people than [Mission.volunteersNeeded]; nothing is written then.
    */
   suspend fun createMission(mission: Mission): Mission
 
