@@ -6,6 +6,8 @@ import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.mission.AssigneeCandidates
+import com.swent.shifter.ui.mission.AssigneeOption
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +36,21 @@ class OrganizerOverviewViewModelTest {
   private lateinit var missions: FakeMissionRepository
   private lateinit var teams: FakeTeamRepository
   private lateinit var viewModel: OrganizerOverviewViewModel
+
+  /** Who may be assigned to a mission of each team; null is "General". */
+  private val candidatesByTeam =
+      mapOf(
+          "logistics" to listOf(AssigneeOption("ana", "Ana"), AssigneeOption("ben", "Ben")),
+          null to listOf(AssigneeOption("eva", "Eva")),
+      )
+
+  /** Thrown by every load of the candidates when set. */
+  private var candidatesFailure: Exception? = null
+
+  private val candidates = AssigneeCandidates { _, teamId ->
+    candidatesFailure?.let { throw it }
+    candidatesByTeam[teamId].orEmpty()
+  }
 
   @Before
   fun setUp() {
@@ -66,6 +83,8 @@ class OrganizerOverviewViewModelTest {
       teamId: String?,
       hour: Long,
       eventId: String = this.eventId,
+      volunteersNeeded: Int = 1,
+      assigneeIds: List<String> = emptyList(),
   ) =
       missions.createMission(
           Mission(
@@ -73,21 +92,25 @@ class OrganizerOverviewViewModelTest {
               title = title,
               description = "",
               teamId = teamId,
-              volunteersNeeded = 1,
+              volunteersNeeded = volunteersNeeded,
               startAt = start.plus(Duration.ofHours(hour)),
               endAt = start.plus(Duration.ofHours(hour + 1)),
+              assigneeIds = assigneeIds,
               createdAt = start,
           )
       )
 
+  private val assigning: AssignState?
+    get() = viewModel.uiState.value.assigning
+
   private fun TestScope.open() {
-    viewModel = OrganizerOverviewViewModel(eventId, missions, teams)
+    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates)
     advanceUntilIdle()
   }
 
   @Test
   fun init_startsLoading() {
-    viewModel = OrganizerOverviewViewModel(eventId, missions, teams)
+    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates)
 
     assertTrue(viewModel.uiState.value.isLoading)
   }
@@ -259,11 +282,177 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
+  fun init_loadsWhoIsAssignedAndHowManyAreNeeded() = runTest {
+    addMission("Set up", "logistics", hour = 1, volunteersNeeded = 3, assigneeIds = listOf("ana"))
+
+    open()
+
+    val mission = viewModel.uiState.value.missions.single()
+    assertEquals(3, mission.volunteersNeeded)
+    assertEquals(listOf("ana"), mission.assigneeIds)
+  }
+
+  @Test
+  fun openAssign_preselectsTheAssigneesAndLoadsTheTeamsCandidates() = runTest {
+    val mission =
+        addMission(
+            "Set up",
+            "logistics",
+            hour = 1,
+            volunteersNeeded = 2,
+            assigneeIds = listOf("ben"),
+        )
+    open()
+
+    viewModel.openAssign(mission.id)
+    assertTrue("the candidates are loading", assigning!!.selection.isLoading)
+    advanceUntilIdle()
+
+    val state = assigning!!
+    assertEquals(mission.id, state.missionId)
+    assertEquals("Set up", state.title)
+    assertEquals(2, state.limit)
+    assertEquals(listOf("ben"), state.selection.selectedIds)
+    assertEquals(candidatesByTeam["logistics"], state.selection.candidates)
+    assertFalse(state.selection.isLoading)
+  }
+
+  @Test
+  fun openAssign_forAGeneralMission_loadsTheParticipants() = runTest {
+    val mission = addMission("Welcome", null, hour = 1)
+    open()
+
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+
+    assertEquals(listOf(AssigneeOption("eva", "Eva")), assigning!!.selection.candidates)
+  }
+
+  @Test
+  fun openAssign_withAFormerMember_keepsThemToBeUnassigned() = runTest {
+    val mission =
+        addMission(
+            "Set up",
+            "logistics",
+            hour = 1,
+            volunteersNeeded = 2,
+            assigneeIds = listOf("ana", "left"),
+        )
+    open()
+
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("left")
+
+    assertEquals(AssigneeOption("left", null), assigning!!.selection.candidates.last())
+    assertEquals(listOf("ana"), assigning!!.selection.selectedIds)
+  }
+
+  @Test
+  fun openAssign_withUnknownMission_isIgnored() = runTest {
+    open()
+
+    viewModel.openAssign("missing")
+
+    assertNull(assigning)
+  }
+
+  @Test
+  fun openAssign_onCandidatesFailure_canBeRetried() = runTest {
+    val mission =
+        addMission(
+            "Set up",
+            "logistics",
+            hour = 1,
+            volunteersNeeded = 2,
+            assigneeIds = listOf("ana"),
+        )
+    open()
+    candidatesFailure = IllegalStateException("offline")
+
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    assertTrue(assigning!!.selection.loadFailed)
+
+    candidatesFailure = null
+    viewModel.retryAssignees()
+    advanceUntilIdle()
+
+    assertFalse(assigning!!.selection.loadFailed)
+    assertEquals(candidatesByTeam["logistics"], assigning!!.selection.candidates)
+    assertEquals(listOf("ana"), assigning!!.selection.selectedIds)
+  }
+
+  @Test
+  fun toggleAssignee_picksNoMorePeopleThanNeeded() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+
+    viewModel.toggleAssignee("ana")
+    viewModel.toggleAssignee("ben")
+
+    assertEquals(listOf("ana"), assigning!!.selection.selectedIds)
+  }
+
+  @Test
+  fun saveAssignees_storesTheSelectionAndRefreshes() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1, volunteersNeeded = 2)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ben")
+    viewModel.toggleAssignee("ana")
+
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    assertEquals(listOf("ben", "ana"), missions.created.single().assigneeIds)
+    assertNull(assigning)
+    assertEquals(listOf("ben", "ana"), viewModel.uiState.value.missions.single().assigneeIds)
+  }
+
+  @Test
+  fun saveAssignees_onFailure_keepsTheDialogAndTheSelection() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+    missions.failure = IllegalStateException("offline")
+
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    val state = assigning!!
+    assertTrue(state.saveFailed)
+    assertFalse(state.isSaving)
+    assertEquals(listOf("ana"), state.selection.selectedIds)
+    assertEquals(emptyList<String>(), missions.created.single().assigneeIds)
+  }
+
+  @Test
+  fun dismissAssign_writesNothing() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+
+    viewModel.dismissAssign()
+    advanceUntilIdle()
+
+    assertNull(assigning)
+    assertEquals(emptyList<String>(), missions.created.single().assigneeIds)
+  }
+
+  @Test
   fun factory_createsAViewModelLoadingTheEvent() = runTest {
     addMission("Set up", "logistics", hour = 1)
 
     viewModel =
-        OrganizerOverviewViewModel.factory(eventId, missions, teams)
+        OrganizerOverviewViewModel.factory(eventId, missions, teams, candidates)
             .create(OrganizerOverviewViewModel::class.java, CreationExtras.Empty)
     advanceUntilIdle()
 
