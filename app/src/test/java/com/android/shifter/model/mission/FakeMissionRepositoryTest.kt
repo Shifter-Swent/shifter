@@ -5,6 +5,7 @@ import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -14,6 +15,32 @@ import org.junit.Test
 class FakeMissionRepositoryTest {
 
   private val repository = FakeMissionRepository()
+
+  @Test
+  fun createMission_withAnAssigneeListedTwice_isRejected() = runTest {
+    val failure = runCatching {
+      repository.createMission(
+          mission("event-1", startHour = 9, "user-1", "user-1").copy(volunteersNeeded = 2)
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals("A mission cannot list the same assignee twice", failure?.message)
+    assertTrue(repository.created.isEmpty())
+  }
+
+  @Test
+  fun createMission_withMoreAssigneesThanNeeded_isRejected() = runTest {
+    val failure = runCatching {
+      repository.createMission(mission("event-1", startHour = 9, "user-1", "user-2"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals("A mission needing 1 volunteers cannot have 2 assignees", failure?.message)
+    assertTrue(repository.created.isEmpty())
+  }
 
   @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = runTest {

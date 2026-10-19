@@ -20,7 +20,7 @@ import java.time.Instant
  * @property endAt when the mission ends, as a time-zone independent instant.
  * @property location where the mission takes place, or null for a mission with no fixed place. A
  *   mission with a location is called GeoTimed.
- * @property assigneeIds ids of the people assigned to the mission, none when it is created.
+ * @property assigneeIds ids of the people assigned to the mission, possibly empty.
  * @property createdAt when the mission was first persisted.
  */
 data class Mission(

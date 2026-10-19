@@ -33,6 +33,13 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
   override suspend fun createMission(mission: Mission): Mission {
     // Firestore would also reject an empty id, but with a message that does not say which one.
     require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
+    require(mission.assigneeIds.size == mission.assigneeIds.toSet().size) {
+      "A mission cannot list the same assignee twice"
+    }
+    require(mission.assigneeIds.size <= mission.volunteersNeeded) {
+      "A mission needing ${mission.volunteersNeeded} volunteers cannot have " +
+          "${mission.assigneeIds.size} assignees"
+    }
     findConflict(mission)?.let { throw MissionOverlapException(it) }
     val document = missionsOf(mission.eventId).document()
     val persisted = mission.copy(id = document.id)

@@ -17,6 +17,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -87,8 +88,16 @@ class AddMissionViewModelTest {
   /** Thrown by every load of the candidates when set. */
   private var candidatesFailure: Exception? = null
 
+  /** When set, the candidates of the "logistics" team only arrive once it completes. */
+  private var logisticsAnswer: CompletableDeferred<List<AssigneeOption>>? = null
+
   private val candidates = AssigneeCandidates { _, teamId ->
     candidatesFailure?.let { throw it }
+    logisticsAnswer
+        ?.takeIf { teamId == "logistics" }
+        ?.let {
+          return@AssigneeCandidates it.await()
+        }
     candidatesByTeam[teamId].orEmpty()
   }
 
@@ -620,6 +629,21 @@ class AddMissionViewModelTest {
     advanceUntilIdle()
 
     assertEquals(emptyList<String>(), state.assignees.selectedIds)
+    assertEquals(listOf(AssigneeOption("dan", "Dan")), state.assignees.candidates)
+  }
+
+  @Test
+  fun onTeamChange_beforeThePreviousTeamLoads_ignoresItsAnswer() = runTest {
+    val answer = CompletableDeferred<List<AssigneeOption>>()
+    logisticsAnswer = answer
+    openForm()
+
+    viewModel.onTeamChange("logistics")
+    viewModel.onTeamChange("bar")
+    advanceUntilIdle()
+    answer.complete(listOf(AssigneeOption("ana", "Ana")))
+    advanceUntilIdle()
+
     assertEquals(listOf(AssigneeOption("dan", "Dan")), state.assignees.candidates)
   }
 

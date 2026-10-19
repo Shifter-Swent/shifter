@@ -56,7 +56,7 @@ fun interface AssigneeCandidates {
  * participants of the event for a "General" mission. Only the organizer creates General missions,
  * and only they may read every membership request of the event.
  *
- * A name that cannot be read is left out rather than failing the whole list.
+ * A name that cannot be read leaves the person without a name rather than failing the whole list.
  */
 class RepositoryAssigneeCandidates(
     private val teamRepository: TeamRepository,
