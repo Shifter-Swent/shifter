@@ -41,7 +41,7 @@ class OrgaEventsContentTest {
   }
 
   @Test
-  fun showsTheOrganizerViewSubtitleAndItsEvents() {
+  fun opening_showsTheOrganizerViewSubtitleAndItsEvents() {
     val upcoming = SampleMyEvents.organizer.filter { it.badge != EventBadge.ENDED }
     setContent(MyEventsUiState(upcoming = upcoming))
 

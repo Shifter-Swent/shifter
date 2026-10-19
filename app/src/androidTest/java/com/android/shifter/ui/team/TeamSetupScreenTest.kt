@@ -162,7 +162,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aRefreshThatFailsOverTheTeamsKeepsThemListed() {
+  fun failedRefresh_keepsTheTeamsListed() {
     show(TeamSetupUiState(isLoading = false, loadFailed = true, teams = listOf(team("t1", "Logi"))))
 
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.savedTeam("t1")).assertIsDisplayed()
@@ -171,7 +171,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aFailedFirstLoadOffersNoTeamToBeAdded() {
+  fun failedFirstLoad_offersNoTeamToBeAdded() {
     // Nothing is known about the event's teams, so adding one could repeat what it already has.
     show(TeamSetupUiState(isLoading = false, loadFailed = true))
 
@@ -180,7 +180,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aFailedRefreshStillLetsAnotherTeamBeAdded() {
+  fun failedRefresh_stillLetsAnotherTeamBeAdded() {
     // The teams of an earlier load are still listed, so there is something to add to.
     show(TeamSetupUiState(isLoading = false, loadFailed = true, teams = listOf(team("t1", "Logi"))))
 
@@ -188,7 +188,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aFinishedFormDoesNotComeBackAfterTheScreenIsRecreated() {
+  fun recreatingTheScreen_afterAFinishedForm_doesNotBringItBack() {
     val teams = FakeTeams()
     val restoration = StateRestorationTester(composeTestRule)
     restoration.setContent {
@@ -222,7 +222,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun theTeamsOfTheEventAreListedWithoutAFormOverThem() {
+  fun loaded_listsTheTeamsWithoutAFormOverThem() {
     // Icons that are not the teams' own names, so a card cannot pass by guessing one from them.
     open(
         FakeTeams(
@@ -250,7 +250,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun theSavedTeamsCannotBeEdited() {
+  fun savedTeams_cannotBeEdited() {
     open(FakeTeams(listOf(team("team-1", "Logistics"))))
 
     // The three interactive parts of the card, all of them read-only on a persisted team.
@@ -264,7 +264,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aFailedLoadIsReportedAndRetryListsTheTeams() {
+  fun failedLoad_isReportedAndRetryListsTheTeams() {
     val teams = FakeTeams(listOf(team("team-1", "Logistics")))
     teams.failure = IllegalStateException("offline")
 
@@ -282,7 +282,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun aCreatedTeamIsListedAndItsFormIsDismissed() {
+  fun creatingATeam_listsItAndDismissesItsForm() {
     val teams = FakeTeams()
     open(teams)
 
@@ -294,7 +294,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun eachTeamIsCreatedFromAFreshForm() {
+  fun creatingTeams_startsEachFromAFreshForm() {
     val teams = FakeTeams()
     open(teams)
 
@@ -313,7 +313,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun cancellingTheFormDropsItWithoutTouchingTheSavedTeams() {
+  fun cancellingTheForm_dropsItWithoutTouchingTheSavedTeams() {
     val teams = FakeTeams()
     open(teams)
     createTeam("Logistics")
@@ -328,7 +328,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun addAnotherTeamOpensAFormOnAnEventThatHasTeams() {
+  fun addAnotherTeam_onAnEventWithTeams_opensAForm() {
     open(FakeTeams(listOf(team("team-1", "Logistics"))))
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.ACTIVE_FORM).assertDoesNotExist()
 
@@ -339,7 +339,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun proceedingWaitsForATeamToExist() {
+  fun proceeding_waitsForATeamToExist() {
     val events = open(FakeTeams())
 
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).assertIsNotEnabled()
@@ -352,7 +352,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun anEventThatAlreadyHasATeamCanProceedAtOnce() {
+  fun proceeding_withATeamAlready_isPossibleAtOnce() {
     val events = open(FakeTeams(listOf(team("team-1", "Logistics"))))
 
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).performClick()
@@ -361,7 +361,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun theHeaderLeavesTheStep() {
+  fun header_leavesTheStep() {
     val events = open(FakeTeams())
 
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.BACK_BUTTON).performClick()
@@ -370,7 +370,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun creationModeAsksToCreateTheEventAndWaitsForATeam() {
+  fun creationMode_asksToCreateTheEventAndWaitsForATeam() {
     show(TeamSetupUiState(isLoading = false))
 
     composeTestRule
@@ -381,7 +381,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun managementModeIsDoneAndNeedsNoTeamToLeave() {
+  fun managementMode_isDoneAndNeedsNoTeamToLeave() {
     show(TeamSetupUiState(isLoading = false), TeamSetupMode.MANAGEMENT)
 
     // The event exists already, so leaving its teams is never blocked.
@@ -398,7 +398,7 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun theStepSaysWhatItIsAbout() {
+  fun opening_saysWhatTheStepIsAbout() {
     open(FakeTeams())
 
     composeTestRule

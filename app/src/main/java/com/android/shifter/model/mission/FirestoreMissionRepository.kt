@@ -2,6 +2,7 @@
 package com.swent.shifter.model.mission
 
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.tasks.await
 
@@ -67,6 +68,39 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
           .documents
           .map { it.toMission() }
           .sortedBy { it.startAt }
+
+  /**
+   * A transaction, because the limit depends on the stored [Mission.volunteersNeeded]: reading it
+   * before a plain write would check a value that may have changed in between. Like every
+   * transaction, it needs a connection.
+   */
+  override suspend fun updateAssignees(
+      eventId: String,
+      missionId: String,
+      assigneeIds: List<String>,
+  ) {
+    require(assigneeIds.size == assigneeIds.toSet().size) {
+      "A mission cannot list the same assignee twice"
+    }
+    val document = missionsOf(eventId).document(missionId)
+    firestore
+        .runTransaction { transaction ->
+          val snapshot = transaction.get(document)
+          if (!snapshot.exists()) {
+            throw FirebaseFirestoreException(
+                "Mission '$missionId' of event '$eventId' does not exist",
+                FirebaseFirestoreException.Code.NOT_FOUND,
+            )
+          }
+          val volunteersNeeded = snapshot.toMission().volunteersNeeded
+          require(assigneeIds.size <= volunteersNeeded) {
+            "A mission needing $volunteersNeeded volunteers cannot have ${assigneeIds.size} assignees"
+          }
+          transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
+          null
+        }
+        .await()
+  }
 
   /**
    * The first existing mission [mission] conflicts with, or null. Only a GeoTimed mission of a team

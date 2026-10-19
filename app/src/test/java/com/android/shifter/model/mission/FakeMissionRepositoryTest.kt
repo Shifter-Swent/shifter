@@ -9,8 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers the contract of [FakeMissionRepository.getMissionsAssignedTo], so the ViewModels tested
- * with the fake see the same missions, in the same order, as with the Firestore repository.
+ * Covers the contract of [FakeMissionRepository.getMissionsAssignedTo] and
+ * [FakeMissionRepository.updateAssignees], so the ViewModels tested with the fake behave as with
+ * the Firestore repository.
  */
 class FakeMissionRepositoryTest {
 
@@ -67,6 +68,83 @@ class FakeMissionRepositoryTest {
     assertSame(
         failure,
         runCatching { repository.getMissionsAssignedTo("user-1") }.exceptionOrNull(),
+    )
+  }
+
+  @Test
+  fun updateAssignees_replacesTheAssigneesInTheGivenOrder() = runTest {
+    val created =
+        repository.createMission(
+            mission("event-1", startHour = 9, "user-1").copy(volunteersNeeded = 2)
+        )
+
+    repository.updateAssignees("event-1", created.id, listOf("user-3", "user-2"))
+
+    assertEquals(
+        listOf("user-3", "user-2"),
+        repository.getMission("event-1", created.id)?.assigneeIds,
+    )
+  }
+
+  @Test
+  fun updateAssignees_withAnEmptyListLeavesNobodyAssigned() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9, "user-1"))
+
+    repository.updateAssignees("event-1", created.id, emptyList())
+
+    assertEquals(emptyList<String>(), repository.getMission("event-1", created.id)?.assigneeIds)
+    assertEquals(emptyList<Mission>(), repository.getMissionsAssignedTo("user-1"))
+  }
+
+  @Test
+  fun updateAssignees_refusesMorePeopleThanTheMissionNeeds() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9, "user-1"))
+
+    val failure = runCatching {
+      repository.updateAssignees("event-1", created.id, listOf("a", "b"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals(listOf("user-1"), repository.getMission("event-1", created.id)?.assigneeIds)
+  }
+
+  @Test
+  fun updateAssignees_refusesAnAssigneeListedTwice() = runTest {
+    val created =
+        repository.createMission(mission("event-1", startHour = 9).copy(volunteersNeeded = 3))
+
+    val failure = runCatching {
+      repository.updateAssignees("event-1", created.id, listOf("a", "a"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals(emptyList<String>(), repository.getMission("event-1", created.id)?.assigneeIds)
+  }
+
+  @Test
+  fun updateAssignees_failsOnAMissingMission() = runTest {
+    repository.createMission(mission("event-1", startHour = 9))
+
+    val failure = runCatching {
+      repository.updateAssignees("event-2", "mission-1", emptyList())
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is IllegalStateException)
+  }
+
+  @Test
+  fun updateAssignees_throwsTheConfiguredFailure() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+    val failure = IllegalStateException("backend down")
+    repository.failure = failure
+
+    assertSame(
+        failure,
+        runCatching { repository.updateAssignees("event-1", created.id, emptyList()) }
+            .exceptionOrNull(),
     )
   }
 

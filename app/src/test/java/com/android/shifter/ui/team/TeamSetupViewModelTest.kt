@@ -61,7 +61,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun startsLoadingWithoutClaimingTheEventHasNoTeam() {
+  fun init_startsLoadingWithoutClaimingTheEventHasNoTeam() {
     viewModel = TeamSetupViewModel(eventId, teams)
 
     assertTrue(state.isLoading)
@@ -70,7 +70,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun listsTheTeamsOfThisEventOnly() = runTest {
+  fun init_listsTheTeamsOfThisEventOnly() = runTest {
     teams.teams += team("logistics", "Logistics")
     teams.teams += team("bar", "Bar")
     teams.teams += team("elsewhere", "Elsewhere", eventId = "event-2")
@@ -85,7 +85,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun anEventWithoutTeamsIsEmptyAndCannotProceed() = runTest {
+  fun eventWithoutTeams_isEmptyAndCannotProceed() = runTest {
     open()
 
     assertTrue(state.isEmpty)
@@ -94,7 +94,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aFailedLoadIsReportedAndRetrySucceeds() = runTest {
+  fun failedLoad_isReportedAndRetrySucceeds() = runTest {
     teams.teams += team("logistics", "Logistics")
     teams.failure = IllegalStateException("offline")
     open()
@@ -111,7 +111,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aFailedFirstLoadIsNotTheEmptyState() = runTest {
+  fun failedFirstLoad_isNotTheEmptyState() = runTest {
     teams.failure = IllegalStateException("offline")
 
     open()
@@ -122,7 +122,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aFailedRefreshKeepsTheTeamsAlreadyListed() = runTest {
+  fun refresh_onFailure_keepsTheTeamsAlreadyListed() = runTest {
     teams.teams += team("logistics", "Logistics")
     open()
 
@@ -136,7 +136,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun refreshShowsATeamCreatedSince() = runTest {
+  fun refresh_showsATeamCreatedSince() = runTest {
     open()
     assertTrue(state.isEmpty)
 
@@ -149,7 +149,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aCreatedTeamIsListedBeforeTheReloadAnswers() = runTest {
+  fun onTeamCreated_listsTheTeamBeforeTheReloadAnswers() = runTest {
     open()
 
     viewModel.onTeamCreated(team("team-1", "Logistics"))
@@ -161,7 +161,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aCreatedTeamSurvivesAReloadThatFails() = runTest {
+  fun onTeamCreated_withAFailingReload_keepsTheTeam() = runTest {
     open()
 
     teams.failure = IllegalStateException("offline")
@@ -174,7 +174,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aCreatedTeamIsNotListedTwiceOnceTheReloadBringsItBack() = runTest {
+  fun onTeamCreated_onceTheReloadBringsItBack_listsItOnce() = runTest {
     open()
     val created = team("team-1", "Logistics")
     teams.teams += created
@@ -186,7 +186,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun aTeamOfAnotherEventIsNotListed() = runTest {
+  fun onTeamCreated_withATeamOfAnotherEvent_doesNotListIt() = runTest {
     open()
 
     viewModel.onTeamCreated(team("team-1", "Elsewhere", eventId = "event-2"))
@@ -197,7 +197,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun newTeamFactoryCreatesTeamsUnderThisEvent() = runTest {
+  fun newTeamFactory_createsTeamsUnderThisEvent() = runTest {
     open()
 
     val createTeam =
@@ -215,7 +215,7 @@ class TeamSetupViewModelTest {
   }
 
   @Test
-  fun factoryCreatesAViewModelLoadingTheTeams() = runTest {
+  fun factory_createsAViewModelLoadingTheTeams() = runTest {
     teams.teams += team("logistics", "Logistics")
 
     viewModel =

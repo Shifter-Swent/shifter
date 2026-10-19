@@ -65,7 +65,7 @@ class AddMissionScreenTest {
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
   @Test
-  fun showsTheEventAndItsPeriod() {
+  fun opening_showsTheEventAndItsPeriod() {
     setContent(loaded)
 
     node(AddMissionScreenTestTags.EVENT_TITLE).assertTextEquals("Local Food Drive")
@@ -495,6 +495,12 @@ private class RecordingMissionRepository : MissionRepository {
   override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = created.filter {
     userId in it.assigneeIds
   }
+
+  override suspend fun updateAssignees(
+      eventId: String,
+      missionId: String,
+      assigneeIds: List<String>,
+  ) = throw UnsupportedOperationException()
 }
 
 private class SingleEventRepository(private val event: Event) : EventRepository {

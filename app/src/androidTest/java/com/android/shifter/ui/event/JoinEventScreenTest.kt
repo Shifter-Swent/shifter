@@ -28,7 +28,7 @@ class JoinEventScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun typesTheCodeThenFindsTheEvent() {
+  fun typingTheCode_findsTheEvent() {
     var typed = ""
     var findClicks = 0
     composeTestRule.setContent {
@@ -50,7 +50,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheEventNameAndAppliesOnClick() {
+  fun foundEvent_showsItsNameAndAppliesOnClick() {
     var applyClicks = 0
     composeTestRule.setContent {
       content(
@@ -66,7 +66,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun picksATeamAndKeepsApplyDisabledUntilThen() {
+  fun apply_untilATeamIsPicked_staysDisabled() {
     val picked = mutableListOf<String>()
     composeTestRule.setContent {
       content(
@@ -82,7 +82,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsThePickedTeamAsSelected() {
+  fun pickingATeam_showsItAsSelected() {
     composeTestRule.setContent {
       content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"))
     }
@@ -91,7 +91,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun tellsWhenTheEventHasNoTeam() {
+  fun eventWithoutTeam_tellsItHasNoTeam() {
     composeTestRule.setContent { content(uiState = JoinEventUiState(event = EVENT)) }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.NO_TEAMS).assertIsDisplayed()
@@ -99,7 +99,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheEventDetailsAndGoesBack() {
+  fun foundEvent_showsItsDetailsAndGoesBack() {
     var backClicks = 0
     composeTestRule.setContent {
       content(uiState = JoinEventUiState(event = EVENT), onBack = { backClicks++ })
@@ -117,7 +117,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun replacesTheButtonOnceApplied() {
+  fun applying_replacesTheButton() {
     composeTestRule.setContent {
       content(
           uiState = JoinEventUiState(event = EVENT, requestStatus = MembershipRequestStatus.PENDING)
@@ -129,7 +129,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsADecidedRequestAsSuch() {
+  fun decidedRequest_isShownAsSuch() {
     composeTestRule.setContent {
       content(
           uiState =
@@ -143,7 +143,7 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun showsTheErrorMessage() {
+  fun error_showsTheErrorMessage() {
     composeTestRule.setContent {
       content(uiState = JoinEventUiState(error = JoinEventError.UNKNOWN_CODE))
     }

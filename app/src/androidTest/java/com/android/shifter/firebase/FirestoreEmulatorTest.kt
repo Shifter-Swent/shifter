@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.firebase
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,7 +19,7 @@ import org.junit.runner.RunWith
 class FirestoreEmulatorTest {
 
   @Test
-  fun signsInAndReadsFromTheEmulator() {
+  fun signIn_readsFromTheEmulator() {
     val uid = await(FirestoreEmulator.auth.signInAnonymously()).user!!.uid
 
     try {

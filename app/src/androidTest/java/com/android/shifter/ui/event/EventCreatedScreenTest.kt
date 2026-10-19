@@ -96,7 +96,7 @@ class EventCreatedScreenTest {
   }
 
   @Test
-  fun displaysTheJoinCodeWithItsLabel() {
+  fun opening_displaysTheJoinCodeWithItsLabel() {
     setContent(loaded)
 
     node(EventCreatedScreenTestTags.JOIN_CODE).assertIsDisplayed().assertTextEquals("ABC234")
@@ -104,7 +104,7 @@ class EventCreatedScreenTest {
   }
 
   @Test
-  fun displaysTheEventTitle() {
+  fun opening_displaysTheEventTitle() {
     setContent(loaded)
 
     node(EventCreatedScreenTestTags.EVENT_TITLE).assertTextEquals("Paléo Festival")
