@@ -3,6 +3,7 @@ package com.swent.shifter.model.checkin
 
 import com.swent.shifter.model.mission.MissionRepository
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -55,7 +56,16 @@ class FakeCheckInRepository(
       throw CheckInRepositoryException.NotAllowed()
     }
     if (missions != null) {
-      val mission = missions.getMission(eventId, missionId)
+      // A failure to read the mission is a CheckInRepositoryException too, as the contract says;
+      // a cancellation is let through so the caller's coroutine still stops.
+      val mission =
+          try {
+            missions.getMission(eventId, missionId)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            throw CheckInRepositoryException.Unknown(e)
+          }
       if (mission == null || userId !in mission.assigneeIds) {
         throw CheckInRepositoryException.NotAllowed()
       }

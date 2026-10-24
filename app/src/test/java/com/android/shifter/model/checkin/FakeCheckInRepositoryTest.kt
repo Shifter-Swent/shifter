@@ -4,6 +4,7 @@ package com.swent.shifter.model.checkin
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -128,6 +129,36 @@ class FakeCheckInRepositoryTest {
         FakeCheckInRepository(currentUserId = VOLUNTEER, missions = FakeMissionRepository())
 
     assertThrowsSuspending<CheckInRepositoryException.NotAllowed> {
+      repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
+    }
+  }
+
+  @Test
+  fun checkIn_withMissions_wrapsAFailureToReadTheMissionInUnknown() = runTest {
+    val cause = IllegalStateException("Firestore is down")
+    val repository =
+        FakeCheckInRepository(
+            currentUserId = VOLUNTEER,
+            missions = FakeMissionRepository().apply { failure = cause },
+        )
+
+    val thrown =
+        assertThrowsSuspending<CheckInRepositoryException.Unknown> {
+          repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
+        }
+    assertSame(cause, thrown.cause)
+  }
+
+  @Test
+  fun checkIn_withMissions_letsACancellationThrough() = runTest {
+    val repository =
+        FakeCheckInRepository(
+            currentUserId = VOLUNTEER,
+            missions = FakeMissionRepository().apply { failure = CancellationException() },
+        )
+
+    // Not wrapped: the caller's coroutine must see it to stop.
+    assertThrowsSuspending<CancellationException> {
       repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
     }
   }
