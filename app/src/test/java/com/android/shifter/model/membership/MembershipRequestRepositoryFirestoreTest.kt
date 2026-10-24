@@ -182,6 +182,19 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
+  fun withdraw_byTheManagerOfTheirTeam_leavesItWithoutManager() = runTest {
+    every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
+    val managedTeam = mockk<DocumentSnapshot>()
+    every { managedTeam.getString("managerId") } returns request.userId
+    every { transaction.get(team) } returns managedTeam
+
+    repository.withdraw("event", request.userId)
+
+    verify { transaction.update(team, "managerId", null) }
+    verify { transaction.delete(ref) }
+  }
+
+  @Test
   fun withdraw_onlyDeletesAPendingOrMissingRequest() = runTest {
     // A rejected request cannot be withdrawn: the rules deny it, see the emulator tests.
     for (status in listOf(null, "PENDING")) {

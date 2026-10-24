@@ -235,6 +235,26 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun withdraw_byTheManagerOfTheirTeam_leavesItWithoutManager() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    // Appointed manager the way the app does it: out of the members, into managerId.
+    team(eventId, TEAM_ID)
+        .update(mapOf("managerId" to volunteer.uid, "memberIds" to emptyList<String>()))
+        .await()
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    val team = team(eventId, TEAM_ID).get(Source.SERVER).await()
+    assertNull(team.get("managerId"))
+    assertEquals(emptyList<String>(), team.get("memberIds"))
+    assertEquals(emptyList<String>(), participantIds(eventId))
+  }
+
+  @Test
   fun withdraw_whenPending_createsNoParticipants() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
