@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 /**
@@ -50,10 +51,13 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
     return teams.filter { it.eventId == eventId && it.managerId == userId }
   }
 
-  /** Like the backend, appointing a member leaves them out of the members in the same write. */
+  /**
+   * Like the backend, the member appointed leaves the members and the previous manager goes back to
+   * them, in the same write.
+   */
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
     update(eventId, teamId) {
-      it.copy(managerId = managerId, memberIds = it.memberIds - setOfNotNull(managerId))
+      it.copy(managerId = managerId, memberIds = it.membersAfterAppointing(managerId))
     }
   }
 
