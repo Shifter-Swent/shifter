@@ -49,6 +49,10 @@ interface CheckInRepository {
    * Emits the check-ins of [userId] to every mission of [eventId], then again each time one is
    * added, so Planning can show which missions are done and automatic check-in never tries the same
    * mission twice. Emits an empty list when they have none.
+   *
+   * A check-in whose write is still pending (offline, or before the backend has set
+   * [CheckIn.checkedInAt]) is emitted too, with an estimated [CheckIn.checkedInAt], so a check-in
+   * is never tried twice.
    */
   fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>>
 }
