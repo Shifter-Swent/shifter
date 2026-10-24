@@ -105,20 +105,28 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       // A pending request may have no participants document yet, and a volunteer may not create it.
       db.runTransaction { transaction ->
             val snapshot = transaction.get(request)
-            val status = snapshot.getString(MembershipRequestSchema.STATUS)
-            if (status == MembershipRequestStatus.ACCEPTED.name) {
+            val accepted =
+                snapshot.getString(MembershipRequestSchema.STATUS) ==
+                    MembershipRequestStatus.ACCEPTED.name
+            val team =
+                snapshot
+                    .getString(MembershipRequestSchema.TEAM_ID)
+                    ?.takeIf { accepted }
+                    ?.let { team(eventId, it) }
+            // Read before any write, as a transaction requires: a manager who leaves leaves the
+            // team without one, or they would keep managing an event they no longer take part in.
+            val managesTeam =
+                team != null && transaction.get(team).getString(TeamSchema.MANAGER_ID) == userId
+            if (accepted) {
               transaction.update(
                   participants(eventId),
                   PARTICIPANT_IDS,
                   FieldValue.arrayRemove(userId),
               )
-              snapshot.getString(MembershipRequestSchema.TEAM_ID)?.let { teamId ->
-                transaction.update(
-                    team(eventId, teamId),
-                    TeamSchema.MEMBER_IDS,
-                    FieldValue.arrayRemove(userId),
-                )
-              }
+            }
+            team?.let {
+              transaction.update(it, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+              if (managesTeam) transaction.update(it, TeamSchema.MANAGER_ID, null)
             }
             transaction.delete(request)
             null
