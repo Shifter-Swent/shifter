@@ -144,8 +144,11 @@ class FakeCheckInRepositoryTest {
         repository.add(checkIn(missionId = OTHER_MISSION_ID))
         repository.add(checkIn(eventId = OTHER_EVENT_ID))
 
-        assertEquals(emptyList<CheckIn>(), emissions.first())
-        assertEquals(listOf(VOLUNTEER), emissions.last().map { it.userId })
+        // Only the check-in to the mission is emitted: the other two leave its list unchanged.
+        assertEquals(
+            listOf(emptyList(), listOf(VOLUNTEER)),
+            emissions.map { checkIns -> checkIns.map { it.userId } },
+        )
       }
 
   @Test

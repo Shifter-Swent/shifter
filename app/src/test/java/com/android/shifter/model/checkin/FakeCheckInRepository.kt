@@ -5,6 +5,7 @@ import com.swent.shifter.model.mission.MissionRepository
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -78,7 +79,9 @@ class FakeCheckInRepository(
 
   private fun observe(predicate: (CheckIn) -> Boolean): Flow<List<CheckIn>> = flow {
     failure?.let { throw it }
-    emitAll(state.map { checkIns -> checkIns.filter(predicate) })
+    // A change elsewhere in [state] leaves the filtered list as is: not emitted, like a Firestore
+    // listener that only sees its own query.
+    emitAll(state.map { checkIns -> checkIns.filter(predicate) }.distinctUntilChanged())
   }
 
   private fun CheckIn.matches(eventId: String, missionId: String) =
