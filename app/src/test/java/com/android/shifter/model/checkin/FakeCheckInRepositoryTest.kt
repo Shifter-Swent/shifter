@@ -4,6 +4,9 @@ package com.swent.shifter.model.checkin
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import java.time.Instant
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -51,6 +54,33 @@ class FakeCheckInRepositoryTest {
       repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.MANAGER)
     }
     assertEquals(CheckInMethod.SELF, repository.checkIns.single().method)
+  }
+
+  @Test
+  fun checkIn_concurrentlyToTheSameMission_recordsOnlyOne() = runTest {
+    // 100 check-ins of the same volunteer to the same mission, started at once on several threads.
+    // Each result holds either success or the exception that call threw.
+    val results =
+        (1..100)
+            .map {
+              async(Dispatchers.Default) {
+                runCatching {
+                  repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
+                }
+              }
+            }
+            .awaitAll()
+
+    // Exactly one call gets in,
+    assertEquals(1, results.count { it.isSuccess })
+    // every other one is refused as a duplicate, not with another error,
+    assertTrue(
+        results
+            .mapNotNull { it.exceptionOrNull() }
+            .all { it is CheckInRepositoryException.AlreadyCheckedIn }
+    )
+    // and a single check-in is stored.
+    assertEquals(1, repository.checkIns.size)
   }
 
   @Test

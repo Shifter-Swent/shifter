@@ -59,10 +59,13 @@ class FakeCheckInRepository(
         throw CheckInRepositoryException.NotAllowed()
       }
     }
-    if (state.value.any { it.matches(eventId, missionId) && it.userId == userId }) {
-      throw CheckInRepositoryException.AlreadyCheckedIn()
+    // Checks and inserts in one atomic update, so two concurrent calls cannot both get in.
+    state.update { checkIns ->
+      if (checkIns.any { it.matches(eventId, missionId) && it.userId == userId }) {
+        throw CheckInRepositoryException.AlreadyCheckedIn()
+      }
+      checkIns + CheckIn(eventId, missionId, userId, clock(), method, checkedInBy = currentUserId)
     }
-    add(CheckIn(eventId, missionId, userId, clock(), method, checkedInBy = currentUserId))
   }
 
   override fun observeCheckIns(eventId: String, missionId: String): Flow<List<CheckIn>> = observe {
