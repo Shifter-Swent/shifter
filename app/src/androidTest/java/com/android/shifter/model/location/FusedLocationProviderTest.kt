@@ -4,7 +4,10 @@ package com.swent.shifter.model.location
 import android.Manifest
 import android.location.Location
 import android.location.LocationManager
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import androidx.activity.ComponentActivity
+import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -26,6 +29,9 @@ import org.junit.runner.RunWith
 /**
  * Checks [FusedLocationProvider] on the emulator, with the permission granted, location services on
  * (the emulator default) and a mocked location instead of the GPS.
+ *
+ * An empty activity stays on screen during each test: without one the app is in the background,
+ * where Android only delivers a few positions an hour.
  */
 @RunWith(AndroidJUnit4::class)
 class FusedLocationProviderTest {
@@ -34,6 +40,8 @@ class FusedLocationProviderTest {
   val permissions: GrantPermissionRule =
       GrantPermissionRule.grant(Manifest.permission.ACCESS_FINE_LOCATION)
 
+  @get:Rule val foreground = ActivityScenarioRule(ComponentActivity::class.java)
+
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
   private val client = LocationServices.getFusedLocationProviderClient(context)
   private val provider = FusedLocationProvider(context, intervalMillis = 1_000L)
@@ -41,10 +49,12 @@ class FusedLocationProviderTest {
   /** Lets the app under test set mock locations, then turns the mock mode on. */
   @Before
   fun enableMockMode() {
-    InstrumentationRegistry.getInstrumentation()
-        .uiAutomation
-        .executeShellCommand("appops set ${context.packageName} android:mock_location allow")
-        .close()
+    // Reading the output to the end waits for the command, which otherwise races setMockMode.
+    val output =
+        InstrumentationRegistry.getInstrumentation()
+            .uiAutomation
+            .executeShellCommand("appops set ${context.packageName} android:mock_location allow")
+    ParcelFileDescriptor.AutoCloseInputStream(output).use { it.readBytes() }
     runBlocking { client.setMockMode(true).await() }
   }
 
@@ -90,6 +100,6 @@ class FusedLocationProviderTest {
   private companion object {
     val LAUSANNE = LatLng(46.5197, 6.6323)
     const val TIMEOUT_MILLIS = 30_000L
-    const val PUSH_INTERVAL_MILLIS = 500L
+    const val PUSH_INTERVAL_MILLIS = 1_500L
   }
 }
