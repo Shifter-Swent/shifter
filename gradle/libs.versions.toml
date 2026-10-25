@@ -20,6 +20,7 @@ coroutines = "1.11.0"
 mockk = "1.14.9"
 mapsCompose = "9.0.1"
 playServicesMaps = "20.1.0"
+playServicesLocation = "21.3.0"
 
 # Firebase
 firebaseBom = "34.19.0"
@@ -58,6 +59,7 @@ firebase-auth = { module = "com.google.firebase:firebase-auth" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = "mapsCompose" }
 play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
+play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 
 kaspresso = { group = "com.kaspersky.android-components", name = "kaspresso", version.ref = "kaspresso" }
