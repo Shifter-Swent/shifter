@@ -18,6 +18,7 @@ events/{eventId}
   ├── teams/{teamId}
   ├── shifts/{shiftId}
   ├── missions/{missionId}
+  │     └── checkIns/{uid}
   └── membershipRequests/{uid}
 eventParticipants/{eventId}
 ```
@@ -132,6 +133,18 @@ Two GeoTimed missions of the same team must not overlap; adjacent slots are allo
 this before writing (`FirestoreMissionRepository.createMission`), not the rules, and the check is
 not atomic.
 
+### `events/{eventId}/missions/{missionId}/checkIns/{uid}`
+
+The proof that a volunteer was present at a mission. The document id is the volunteer's uid, so a
+volunteer is checked in at most once per mission. A check-in is never changed or deleted.
+
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | Same as the document id. Stored so a volunteer's check-ins can be queried across all missions (a collection-group query cannot filter on the document id alone) |
+| `method` | string | `SELF` (the volunteer's own app) or `MANAGER` (recorded by the team's manager or the organizer) |
+| `checkedInAt` | timestamp | Server timestamp, equal to the request time |
+| `checkedInBy` | string | uid of who recorded it: the volunteer for `SELF`, the manager or organizer for `MANAGER` |
+
 ### `events/{eventId}/membershipRequests/{uid}`
 
 The document id is the volunteer's uid, so a volunteer can send only one request per event.
@@ -170,6 +183,7 @@ every access to it is denied.
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | Any signed-in user | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams`, `shifts`, `missions` | Any signed-in user | **Temporary**: any signed-in user |
+| `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
@@ -177,9 +191,12 @@ requests across all events.
 Likewise, `/{path=**}/missions/{missionId}` lets a volunteer list the missions whose `assigneeIds`
 contain them, across all events, and nobody else's.
 
+`/{path=**}/checkIns/{uid}` lets a volunteer list their own check-ins across all missions, filtered
+by `userId`.
+
 Collection-group queries need a collection-group index on the filtered field, declared in
-`firestore.indexes.json` (`membershipRequests.userId`, `missions.assigneeIds`). The emulator does
-not check indexes, so after changing that file, deploy it with
+`firestore.indexes.json` (`membershipRequests.userId`, `missions.assigneeIds`, `checkIns.userId`).
+The emulator does not check indexes, so after changing that file, deploy it with
 `firebase deploy --only firestore:indexes`.
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
@@ -192,6 +209,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 - **`teams`, `shifts` and `missions` rules are temporary.** A follow-up PR will restrict writes to
   the organizer (`isOrganizer(eventId)`), and reads to the organizer and the event's participants.
+- **Check-ins trust `assigneeIds` and the team's `managerId`, which anyone signed in can still
+  write.** Until the `missions` and `teams` rules are tightened, a user could assign themself to
+  a mission, or make themself a team's manager, and then check in.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has

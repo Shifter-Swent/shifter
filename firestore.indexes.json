@@ -2,6 +2,15 @@
   "indexes": [],
   "fieldOverrides": [
     {
+      "collectionGroup": "checkIns",
+      "fieldPath": "userId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
       "collectionGroup": "membershipRequests",
       "fieldPath": "userId",
       "indexes": [
