@@ -34,19 +34,21 @@ interface MembershipRequestRepository {
   /**
    * Marks the request from [userId] for [eventId] as [MembershipRequestStatus.REJECTED] and removes
    * the user from the event participants and from the members of the team they applied to,
-   * atomically, without deleting the request. Other participants are preserved; if the participants
-   * document is absent, an empty list is created. A team deleted since the request was sent is left
-   * alone, so the request can still be rejected. Fails with
-   * [MembershipRequestRepositoryException.Unknown] if the request does not exist. Security rules
-   * may instead deny the operation with [MembershipRequestRepositoryException.PermissionDenied].
+   * atomically, without deleting the request. A manager who is rejected leaves their team without a
+   * manager in the same write. Other participants are preserved; if the participants document is
+   * absent, an empty list is created. A team deleted since the request was sent is left alone, so
+   * the request can still be rejected. Fails with [MembershipRequestRepositoryException.Unknown] if
+   * the request does not exist. Security rules may instead deny the operation with
+   * [MembershipRequestRepositoryException.PermissionDenied].
    */
   suspend fun reject(eventId: String, userId: String)
 
   /**
    * Withdraws [userId] from [eventId]: deletes their request and removes them from the event
-   * participants and from their team atomically, so they can apply again later. Withdrawing without
-   * a request does nothing. Only the volunteer themself can withdraw, and only from a pending or
-   * accepted request: security rules deny anyone else, and a rejected request, with
+   * participants and from their team atomically, so they can apply again later. A manager who
+   * withdraws leaves their team without a manager in the same write. Withdrawing without a request
+   * does nothing. Only the volunteer themself can withdraw, and only from a pending or accepted
+   * request: security rules deny anyone else, and a rejected request, with
    * [MembershipRequestRepositoryException.PermissionDenied], so a rejection cannot be undone by
    * applying again.
    */

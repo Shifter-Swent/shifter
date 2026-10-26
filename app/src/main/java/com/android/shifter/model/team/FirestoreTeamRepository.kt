@@ -16,7 +16,9 @@ import kotlinx.coroutines.tasks.await
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
  *
  * Members are added and removed with `arrayUnion` / `arrayRemove` rather than by rewriting the
- * list, so two organizers editing the same team at once cannot overwrite each other's change.
+ * list, so two organizers editing the same team at once cannot overwrite each other's change. The
+ * one exception is [setManager], which rewrites the list, since the previous manager goes back to
+ * it: it does so in a transaction, which Firestore retries when the team changes meanwhile.
  */
 class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRepository {
 
@@ -57,16 +59,36 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   override suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team> =
       teamsOf(eventId).whereEqualTo(TeamSchema.MANAGER_ID, userId).fetch()
 
-  /** `update` rather than `set`, so a missing team fails instead of being created half-filled. */
+  /**
+   * A transaction, because the members written depend on the current manager and members: the
+   * previous manager goes back to the members while the new one leaves them, which a single
+   * `arrayUnion` or `arrayRemove` cannot do. Like every transaction, it needs a connection.
+   */
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
-    val changes =
-        if (managerId == null) mapOf(TeamSchema.MANAGER_ID to null)
-        else
-            mapOf(
-                TeamSchema.MANAGER_ID to managerId,
-                TeamSchema.MEMBER_IDS to FieldValue.arrayRemove(managerId),
+    val document = teamDocument(eventId, teamId)
+    firestore
+        .runTransaction { transaction ->
+          val snapshot = transaction.get(document)
+          if (!snapshot.exists()) {
+            throw FirebaseFirestoreException(
+                "Team '$teamId' of event '$eventId' does not exist",
+                FirebaseFirestoreException.Code.NOT_FOUND,
             )
-    teamDocument(eventId, teamId).update(changes).await()
+          }
+          val team = snapshot.toTeam()
+          require(managerId == null || managerId == team.managerId || managerId in team.memberIds) {
+            "Only a member of the team can be appointed its manager"
+          }
+          transaction.update(
+              document,
+              mapOf(
+                  TeamSchema.MANAGER_ID to managerId,
+                  TeamSchema.MEMBER_IDS to team.membersAfterAppointing(managerId),
+              ),
+          )
+          null
+        }
+        .await()
   }
 
   /**
