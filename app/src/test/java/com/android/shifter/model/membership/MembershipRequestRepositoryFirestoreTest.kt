@@ -156,6 +156,16 @@ class MembershipRequestRepositoryFirestoreTest {
       }
 
   @Test
+  fun reject_ofTheTeamManager_leavesTheTeamWithoutManager() = runTest {
+    every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
+    every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
+
+    repository.reject("event", request.userId)
+
+    verify { transaction.update(team, "managerId", null) }
+  }
+
+  @Test
   fun reject_withADeletedTeam_leavesItAlone() = runTest {
     every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
     every { transaction.get(team) } returns teamSnapshot(exists = false)
@@ -184,9 +194,7 @@ class MembershipRequestRepositoryFirestoreTest {
   @Test
   fun withdraw_byTheManagerOfTheirTeam_leavesItWithoutManager() = runTest {
     every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
-    val managedTeam = mockk<DocumentSnapshot>()
-    every { managedTeam.getString("managerId") } returns request.userId
-    every { transaction.get(team) } returns managedTeam
+    every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
 
     repository.withdraw("event", request.userId)
 
@@ -427,8 +435,11 @@ class MembershipRequestRepositoryFirestoreTest {
     assertEquals(error, thrown!!.cause)
   }
 
-  private fun teamSnapshot(exists: Boolean): DocumentSnapshot =
-      mockk<DocumentSnapshot>().also { every { it.exists() } returns exists }
+  private fun teamSnapshot(exists: Boolean, managerId: String? = null): DocumentSnapshot =
+      mockk<DocumentSnapshot>().also {
+        every { it.exists() } returns exists
+        every { it.getString("managerId") } returns managerId
+      }
 
   /** The volunteer's request, missing when [status] is null, applying to [teamId]. */
   private fun statusSnapshot(status: String?, teamId: String? = null): DocumentSnapshot =
