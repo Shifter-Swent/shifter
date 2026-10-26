@@ -376,8 +376,8 @@ fun ShifterNavHost(
                 onRetry = requests::loadRequests,
                 participants = participants.uiState.collectAsState().value,
                 onReloadParticipants = participants::load,
-                // Appointing a team's manager comes with the next task.
-                onParticipantClick = { _, _ -> },
+                onAppointManager = participants::appointManager,
+                onRemoveManager = participants::removeManager,
                 onNavigate = nav::switchTab,
             )
           }

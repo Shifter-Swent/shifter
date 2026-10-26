@@ -118,6 +118,14 @@
     <string name="participants_error_offline">You are offline, try again later</string>
     <string name="participants_error_permission_denied">You cannot see the participants of this event</string>
     <string name="participants_error_unexpected">Something went wrong, try again</string>
+    <string name="participants_appoint_manager_title">Make %1$s manager?</string>
+    <string name="participants_appoint_manager_message">%1$s will manage %2$s.</string>
+    <string name="participants_replace_manager_message">%1$s will manage %2$s, and %3$s goes back to the team.</string>
+    <string name="participants_remove_manager_title">Remove %1$s as manager?</string>
+    <string name="participants_remove_manager_message">%1$s goes back to the members of %2$s.</string>
+    <string name="participants_manager_confirm">Confirm</string>
+    <string name="participants_manager_cancel">Cancel</string>
+    <string name="participants_manager_update_failed">The manager could not be changed, try again</string>
 
     <!-- Membership requests -->
     <string name="membership_requests_empty">No membership requests yet.</string>
