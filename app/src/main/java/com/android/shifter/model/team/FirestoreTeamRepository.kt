@@ -16,7 +16,9 @@ import kotlinx.coroutines.tasks.await
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
  *
  * Members are added and removed with `arrayUnion` / `arrayRemove` rather than by rewriting the
- * list, so two organizers editing the same team at once cannot overwrite each other's change.
+ * list, so two organizers editing the same team at once cannot overwrite each other's change. The
+ * one exception is [setManager], which rewrites the list, since the previous manager goes back to
+ * it: it does so in a transaction, which Firestore retries when the team changes meanwhile.
  */
 class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRepository {
 
