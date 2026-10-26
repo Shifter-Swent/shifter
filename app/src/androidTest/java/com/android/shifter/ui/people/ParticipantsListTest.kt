@@ -76,6 +76,33 @@ class ParticipantsListTest {
   }
 
   @Test
+  fun updating_disablesTheCards() {
+    setList(
+        ParticipantsUiState(
+            groups = listOf(ParticipantGroup(bar, listOf(alice, bob))),
+            isUpdating = true,
+        )
+    )
+
+    node(ParticipantsListTestTags.participantCard("bob")).assertHasNoClickAction()
+  }
+
+  @Test
+  fun updateFailed_keepsTheListAndShowsTheFailureWithoutRetry() {
+    setList(
+        ParticipantsUiState(
+            groups = listOf(ParticipantGroup(bar, listOf(alice, bob))),
+            error = ParticipantsError.UPDATE_FAILED,
+        )
+    )
+
+    node(ParticipantsListTestTags.ERROR)
+        .assertTextContains("The manager could not be changed, try again")
+    node(ParticipantsListTestTags.RETRY_BUTTON).assertDoesNotExist()
+    node(ParticipantsListTestTags.participantCard("bob")).assertHasClickAction()
+  }
+
+  @Test
   fun tappingACard_reportsTheParticipantAndTheirTeam() {
     var tapped: Pair<ParticipantItem, Team>? = null
     setList(
