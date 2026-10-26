@@ -44,21 +44,26 @@ class FakeMembershipRequestRepository(
   override suspend fun reject(eventId: String, userId: String) {
     val request = decide(eventId, userId, MembershipRequestStatus.REJECTED)
     participants.getOrPut(eventId) { mutableSetOf() } -= userId
-    teams?.removeMember(eventId, request.teamId, userId)
+    leaveTeam(eventId, request.teamId, userId)
   }
 
   override suspend fun withdraw(eventId: String, userId: String) {
     failure?.let { throw it }
     val request = requests[eventId]?.remove(userId)
     participants[eventId]?.remove(userId)
-    val teams = teams ?: return
     if (request?.status == MembershipRequestStatus.ACCEPTED) {
-      // The interface only demotes a manager back into the members, whom they then leave as well.
-      if (teams.getTeam(eventId, request.teamId)?.managerId == userId) {
-        teams.setManager(eventId, request.teamId, null)
-      }
-      teams.removeMember(eventId, request.teamId, userId)
+      leaveTeam(eventId, request.teamId, userId)
     }
+  }
+
+  /** Takes [userId] out of the team [teamId], and out of its management when they lead it. */
+  private suspend fun leaveTeam(eventId: String, teamId: String, userId: String) {
+    val teams = teams ?: return
+    // The interface only demotes a manager back into the members, whom they then leave as well.
+    if (teams.getTeam(eventId, teamId)?.managerId == userId) {
+      teams.setManager(eventId, teamId, null)
+    }
+    teams.removeMember(eventId, teamId, userId)
   }
 
   override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? {
