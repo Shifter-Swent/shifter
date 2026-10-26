@@ -10,15 +10,16 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FirestoreEventRepository
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -43,7 +44,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   @After
   fun cleanUp() = emulatorTest {
     try {
-      paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
+      step("cleanup") { paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
     } finally {
       auth.signOut()
     }
@@ -465,7 +466,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     val ref = db.collection("events").document()
     paths += ref.path
     paths += participants(ref.id).path
-    ref.set(mapOf("organizerId" to organizer.uid)).await()
+    step("write event") { ref.set(mapOf("organizerId" to organizer.uid)).await() }
     createTeam(ref.id, TEAM_ID)
     createTeam(ref.id, OTHER_TEAM_ID)
     return ref.id
@@ -475,7 +476,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   private suspend fun createTeam(eventId: String, teamId: String) {
     val ref = team(eventId, teamId)
     paths += ref.path
-    ref.set(mapOf("memberIds" to emptyList<String>())).await()
+    step("write team") { ref.set(mapOf("memberIds" to emptyList<String>())).await() }
   }
 
   private suspend fun apply(
@@ -485,18 +486,21 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   ): MembershipRequest {
     signIn(user)
     paths += requestRef(eventId, user).path
-    return repository.apply(eventId, request(user, teamId))
+    return step("apply") { repository.apply(eventId, request(user, teamId)) }
   }
 
   private suspend fun account(): Account {
     val email = "membership-${UUID.randomUUID()}@example.test"
     val password = "test-password-123"
-    val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
+    val user =
+        auth
+            .signInForFirestore { auth.createUserWithEmailAndPassword(email, password).await() }
+            .user!!
     return Account(user.uid, EmailAuthProvider.getCredential(email, password))
   }
 
   private suspend fun signIn(user: Account) {
-    auth.signInWithCredential(user.credential).await()
+    auth.signInForFirestore { auth.signInWithCredential(user.credential).await() }
   }
 
   private fun participants(eventId: String) = db.collection("eventParticipants").document(eventId)
@@ -536,9 +540,5 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
             (failure is FirebaseFirestoreException &&
                 failure.code == FirebaseFirestoreException.Code.PERMISSION_DENIED),
     )
-  }
-
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(30_000) { block() }
   }
 }

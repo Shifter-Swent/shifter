@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.shift
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -6,12 +7,13 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,11 +52,12 @@ class ShiftFirestoreMapperTest {
   private val createdDocuments = mutableListOf<DocumentReference>()
 
   /** `firestore.rules` only lets signed-in users touch the shifts of an event. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    createdDocuments.forEach { it.delete().await() }
+    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
     createdDocuments.clear()
     auth.signOut()
   }
@@ -251,13 +254,13 @@ class ShiftFirestoreMapperTest {
             .collection(ShiftSchema.COLLECTION)
             .document()
     createdDocuments += document
-    document.set(body).await()
+    step("write") { document.set(body).await() }
     return document
   }
 
   /** [Source.SERVER] bypasses the local cache, so the read really goes through the emulator. */
   private suspend fun read(shiftId: String): DocumentSnapshot =
-      shifts.document(shiftId).get(Source.SERVER).await()
+      step("read") { shifts.document(shiftId).get(Source.SERVER).await() }
 
   /** Asserts that mapping [shiftId] fails loudly and that the failure names [field]. */
   private suspend fun assertFailsOnField(shiftId: String, field: String) {
@@ -274,14 +277,7 @@ class ShiftFirestoreMapperTest {
     )
   }
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
-
     const val TEAM_ID = "team-logistics"
 
     val ASSIGNEES = listOf("user-volunteer-1", "user-volunteer-2")

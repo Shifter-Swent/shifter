@@ -4,6 +4,7 @@ package com.swent.shifter.model.user
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import kotlinx.coroutines.tasks.await
@@ -30,7 +31,7 @@ class UserRepositoryFirestoreEmulatorTest {
   @Before
   fun signIn() = runTest {
     // A fresh anonymous account per test, so tests never share a profile.
-    uid = auth.signInAnonymously().await().user!!.uid
+    uid = auth.signInForFirestore { auth.signInAnonymously().await() }.user!!.uid
   }
 
   @After fun signOut() = auth.signOut()
@@ -144,7 +145,7 @@ class UserRepositoryFirestoreEmulatorTest {
 
   private suspend fun signInAsAnotherUser() {
     auth.signOut()
-    auth.signInAnonymously().await()
+    auth.signInForFirestore { auth.signInAnonymously().await() }
   }
 
   private suspend fun assertDenied(block: suspend () -> Unit) {

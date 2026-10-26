@@ -6,12 +6,13 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -40,11 +41,12 @@ class FirestoreMissionRepositoryTest {
   private val createdDocuments = mutableListOf<DocumentReference>()
 
   /** `firestore.rules` only lets signed-in users touch missions. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    createdDocuments.forEach { it.delete().await() }
+    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
     createdDocuments.clear()
     auth.signOut()
   }
@@ -367,9 +369,8 @@ class FirestoreMissionRepositoryTest {
 
   /** Creates [mission] through the repository and remembers it for cleanup. */
   private suspend fun create(mission: Mission): Mission =
-      repository.createMission(mission).also {
-        createdDocuments += missionDocument(it.eventId, it.id)
-      }
+      step("create") { repository.createMission(mission) }
+          .also { createdDocuments += missionDocument(it.eventId, it.id) }
 
   /**
    * Writes a mission document straight to Firestore, bypassing the repository, and returns its
@@ -384,7 +385,7 @@ class FirestoreMissionRepositoryTest {
     val eventId = uniqueEventId()
     val document = missionsOf(eventId).document()
     createdDocuments += document
-    document.set(body(richMission(eventId).toFirestoreMap())).await()
+    step("write") { document.set(body(richMission(eventId).toFirestoreMap())).await() }
     return eventId to document.id
   }
 
@@ -462,14 +463,7 @@ class FirestoreMissionRepositoryTest {
         )
   }
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
-
     val LOCATION = MissionLocation("Rue de Lausanne 1, 1201 Genève", 46.21, 6.14)
   }
 }

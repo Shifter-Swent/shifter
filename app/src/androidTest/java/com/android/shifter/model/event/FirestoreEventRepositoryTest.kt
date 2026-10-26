@@ -9,12 +9,14 @@ import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import java.time.Instant
 import java.util.UUID
 import kotlin.random.Random
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,12 +47,15 @@ class FirestoreEventRepositoryTest {
   private val organizerCredentials = mutableMapOf<String, AuthCredential>()
 
   /** `firestore.rules` only lets signed-in users touch events. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    createdEventIds.forEach { id ->
-      FirestoreEmulatorAdmin.deleteDocument("${EventSchema.COLLECTION}/$id")
+    step("cleanup") {
+      createdEventIds.forEach { id ->
+        FirestoreEmulatorAdmin.deleteDocument("${EventSchema.COLLECTION}/$id")
+      }
     }
     createdEventIds.clear()
     auth.signOut()
@@ -315,8 +320,10 @@ class FirestoreEventRepositoryTest {
 
   /** Creates [event] through the repository and remembers it for cleanup. */
   private suspend fun create(event: Event): Event {
-    auth.signInWithCredential(organizerCredentials.getValue(event.organizerId)).await()
-    return track(repository.createEvent(event))
+    auth.signInForFirestore {
+      auth.signInWithCredential(organizerCredentials.getValue(event.organizerId)).await()
+    }
+    return step("create") { track(repository.createEvent(event)) }
   }
 
   private fun track(event: Event): Event = event.also { createdEventIds += it.id }
@@ -330,7 +337,8 @@ class FirestoreEventRepositoryTest {
   private suspend fun writeRawEvent(body: (Map<String, Any?>) -> Map<String, Any?>): String {
     val document = firestore.collection(EventSchema.COLLECTION).document()
     createdEventIds += document.id
-    document.set(body(richEvent(uniqueOrganizerId()).toFirestoreMap())).await()
+    val organizerId = uniqueOrganizerId()
+    step("write") { document.set(body(richEvent(organizerId).toFirestoreMap())).await() }
     return document.id
   }
 
@@ -351,7 +359,10 @@ class FirestoreEventRepositoryTest {
   private fun uniqueOrganizerId(): String = runBlocking {
     val email = "organizer-${UUID.randomUUID()}@example.test"
     val password = "test-password-123"
-    val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
+    val user =
+        auth
+            .signInForFirestore { auth.createUserWithEmailAndPassword(email, password).await() }
+            .user!!
     organizerCredentials[user.uid] = EmailAuthProvider.getCredential(email, password)
     user.uid
   }
@@ -382,13 +393,7 @@ class FirestoreEventRepositoryTest {
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
     const val COORDINATE_TOLERANCE = 1e-9
     const val JOIN_CODE_SEED = 20260705
 

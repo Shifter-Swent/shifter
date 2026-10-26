@@ -6,12 +6,13 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -40,11 +41,12 @@ class FirestoreTeamRepositoryTest {
   private val createdDocuments = mutableListOf<DocumentReference>()
 
   /** `firestore.rules` only lets signed-in users touch the teams of an event. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    createdDocuments.forEach { it.delete().await() }
+    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
     createdDocuments.clear()
     auth.signOut()
   }
@@ -238,11 +240,12 @@ class FirestoreTeamRepositoryTest {
 
   /** Creates [team] through the repository and remembers it for cleanup. */
   private suspend fun create(team: Team): Team =
-      repository.createTeam(team).also { createdDocuments += teamDocument(it.eventId, it.id) }
+      step("create") { repository.createTeam(team) }
+          .also { createdDocuments += teamDocument(it.eventId, it.id) }
 
   /** Reads [team] back from the server, so the assertion sees what was really stored. */
   private suspend fun reload(team: Team): Team =
-      teamDocument(team.eventId, team.id).get(Source.SERVER).await().toTeam()
+      step("read") { teamDocument(team.eventId, team.id).get(Source.SERVER).await() }.toTeam()
 
   private suspend fun teamsOf(eventId: String): List<Team> =
       firestore
@@ -290,14 +293,7 @@ class FirestoreTeamRepositoryTest {
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
-
     const val MANAGER_ID = "user-manager-1"
     const val VOLUNTEER_ID = "user-volunteer-1"
     const val OTHER_VOLUNTEER_ID = "user-volunteer-2"
