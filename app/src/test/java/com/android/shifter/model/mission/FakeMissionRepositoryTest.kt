@@ -134,7 +134,7 @@ class FakeMissionRepositoryTest {
     }
         .exceptionOrNull()
 
-    assertTrue(failure is IllegalStateException)
+    assertTrue(failure is MissionRepositoryException.NotFound)
   }
 
   @Test

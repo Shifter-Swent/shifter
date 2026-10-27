@@ -37,7 +37,10 @@ class FakeTeamRepositoryTest {
             { repository.addMember("event-2", team.id, "user-1") },
         )) {
       val failure = runCatching { write() }.exceptionOrNull()
-      assertTrue("a missing team must fail, but was: $failure", failure is NoSuchElementException)
+      assertTrue(
+          "a missing team must fail, but was: $failure",
+          failure is TeamRepositoryException.NotFound,
+      )
     }
   }
 

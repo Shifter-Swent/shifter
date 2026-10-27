@@ -3,7 +3,6 @@ package com.swent.shifter.model.mission
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.EventSchema
@@ -275,8 +274,7 @@ class FirestoreMissionRepositoryTest {
 
     assertTrue(
         "listing another user's missions must be denied, but was: $failure",
-        (failure as? FirebaseFirestoreException)?.code ==
-            FirebaseFirestoreException.Code.PERMISSION_DENIED,
+        failure is MissionRepositoryException.PermissionDenied,
     )
   }
 

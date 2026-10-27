@@ -3,6 +3,7 @@ package com.swent.shifter.model.mission
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.tasks.await
 
@@ -12,6 +13,7 @@ import kotlinx.coroutines.tasks.await
  *
  * All Firebase types stay inside this class and the [toMission] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
+ * Firestore errors are rethrown as [MissionRepositoryException].
  */
 class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : MissionRepository {
 
@@ -31,7 +33,7 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
    * SDK cannot run a query inside a transaction. Two organizers creating conflicting missions at
    * the same moment could both succeed.
    */
-  override suspend fun createMission(mission: Mission): Mission {
+  override suspend fun createMission(mission: Mission): Mission = translatingErrors {
     // Firestore would also reject an empty id, but with a message that does not say which one.
     require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
     require(mission.assigneeIds.size == mission.assigneeIds.toSet().size) {
@@ -45,29 +47,33 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
     val document = missionsOf(mission.eventId).document()
     val persisted = mission.copy(id = document.id)
     document.set(persisted.toFirestoreMap()).await()
-    return persisted
+    persisted
   }
 
   override suspend fun getMission(eventId: String, missionId: String): Mission? =
-      missionsOf(eventId).document(missionId).get().await().takeIf { it.exists() }?.toMission()
+      translatingErrors {
+        missionsOf(eventId).document(missionId).get().await().takeIf { it.exists() }?.toMission()
+      }
 
-  override suspend fun getMissionsByEvent(eventId: String): List<Mission> =
-      missionsOf(eventId).get().await().documents.map { it.toMission() }
+  override suspend fun getMissionsByEvent(eventId: String): List<Mission> = translatingErrors {
+    missionsOf(eventId).get().await().documents.map { it.toMission() }
+  }
 
   /**
    * Queries the `missions` collection group, so one request covers every event. The missions are
    * sorted here rather than by Firestore: ordering an array-contains query on another field would
    * need a composite index, and a volunteer only has a handful of missions.
    */
-  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> =
-      firestore
-          .collectionGroup(MissionSchema.COLLECTION)
-          .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
-          .get()
-          .await()
-          .documents
-          .map { it.toMission() }
-          .sortedBy { it.startAt }
+  override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = translatingErrors {
+    firestore
+        .collectionGroup(MissionSchema.COLLECTION)
+        .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+        .get()
+        .await()
+        .documents
+        .map { it.toMission() }
+        .sortedBy { it.startAt }
+  }
 
   /**
    * A transaction, because the limit depends on the stored [Mission.volunteersNeeded]: reading it
@@ -83,23 +89,25 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
       "A mission cannot list the same assignee twice"
     }
     val document = missionsOf(eventId).document(missionId)
-    firestore
-        .runTransaction { transaction ->
-          val snapshot = transaction.get(document)
-          if (!snapshot.exists()) {
-            throw FirebaseFirestoreException(
-                "Mission '$missionId' of event '$eventId' does not exist",
-                FirebaseFirestoreException.Code.NOT_FOUND,
-            )
+    translatingErrors {
+      firestore
+          .runTransaction { transaction ->
+            val snapshot = transaction.get(document)
+            if (!snapshot.exists()) {
+              throw FirebaseFirestoreException(
+                  "Mission '$missionId' of event '$eventId' does not exist",
+                  Code.NOT_FOUND,
+              )
+            }
+            val volunteersNeeded = snapshot.toMission().volunteersNeeded
+            require(assigneeIds.size <= volunteersNeeded) {
+              "A mission needing $volunteersNeeded volunteers cannot have ${assigneeIds.size} assignees"
+            }
+            transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
+            null
           }
-          val volunteersNeeded = snapshot.toMission().volunteersNeeded
-          require(assigneeIds.size <= volunteersNeeded) {
-            "A mission needing $volunteersNeeded volunteers cannot have ${assigneeIds.size} assignees"
-          }
-          transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
-          null
-        }
-        .await()
+          .await()
+    }
   }
 
   /**
@@ -115,5 +123,29 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
         .documents
         .map { it.toMission() }
         .firstOrNull { mission.conflictsWith(it) }
+  }
+
+  companion object {
+    /** Translates a Firestore error into the [MissionRepositoryException] callers handle. */
+    fun toRepositoryException(e: FirebaseFirestoreException): MissionRepositoryException =
+        when (e.code) {
+          Code.NOT_FOUND -> MissionRepositoryException.NotFound(e)
+          Code.PERMISSION_DENIED,
+          Code.UNAUTHENTICATED -> MissionRepositoryException.PermissionDenied(e)
+          Code.UNAVAILABLE,
+          Code.DEADLINE_EXCEEDED -> MissionRepositoryException.Unavailable(e)
+          else -> MissionRepositoryException.Unknown(e)
+        }
+
+    /**
+     * Runs [block], rethrowing its Firestore errors as [MissionRepositoryException]. Other errors,
+     * such as an [IllegalArgumentException] for invalid input, pass through unchanged.
+     */
+    private inline fun <T> translatingErrors(block: () -> T): T =
+        try {
+          block()
+        } catch (e: FirebaseFirestoreException) {
+          throw toRepositoryException(e)
+        }
   }
 }
