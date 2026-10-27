@@ -52,8 +52,24 @@ class FirestoreSignInTest {
     assertEquals(auth.currentUser?.uid, result.user?.uid)
   }
 
+  @Test
+  fun signInForFirestore_asTheSignedInUser_returns() = emulatorTest {
+    val email = "sign-in-${UUID.randomUUID()}@example.test"
+    val uid =
+        auth
+            .signInForFirestore { auth.createUserWithEmailAndPassword(email, PASSWORD).await() }
+            .user!!
+            .uid
+
+    // The user does not change, so no notification follows this sign-in.
+    val again = auth.signInForFirestore { auth.signInWithEmailAndPassword(email, PASSWORD).await() }
+
+    assertEquals(uid, again.user?.uid)
+  }
+
   private companion object {
     const val SWITCHES = 30
+    const val PASSWORD = "test-password-123"
 
     /** Marks the scratch documents these tests write into the events collection. */
     const val SCRATCH_ID_PREFIX = "sign-in-scratch-"

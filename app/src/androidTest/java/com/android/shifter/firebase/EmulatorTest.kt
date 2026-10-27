@@ -4,10 +4,9 @@ package com.swent.shifter.firebase
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Leaves room for a slow CI emulator, while still failing a call that hangs. */
 private const val EMULATOR_TEST_TIMEOUT_MILLIS = 30_000L
@@ -25,15 +24,20 @@ fun emulatorTest(
 ) {
   val steps = Steps()
   runBlocking(steps) {
-    try {
-      withTimeout(timeoutMillis) { block() }
-    } catch (e: TimeoutCancellationException) {
-      throw AssertionError("Timed out after $timeoutMillis ms ${steps.current}", e)
-    }
+    // Null only on this timeout: a `withTimeout` inside [block] fails the test with its own.
+    withTimeoutOrNull(timeoutMillis) {
+      block()
+      true
+    } ?: throw AssertionError("Timed out after $timeoutMillis ms ${steps.current}")
   }
 }
 
-/** Runs [block] as the step called [name], the one an [emulatorTest] timeout reports. */
+/**
+ * Runs [block] as the step called [name], the one an [emulatorTest] timeout reports.
+ *
+ * An [emulatorTest] remembers a single current step, so steps run in parallel (`async`) may report
+ * the wrong one.
+ */
 suspend fun <T> step(name: String, block: suspend () -> T): T {
   val steps = currentCoroutineContext()[Steps] ?: return block()
   val previous = steps.current

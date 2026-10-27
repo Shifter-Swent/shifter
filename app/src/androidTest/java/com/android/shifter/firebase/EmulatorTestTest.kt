@@ -2,7 +2,9 @@
 package com.swent.shifter.firebase
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -46,6 +48,16 @@ class EmulatorTestTest {
         }
 
     assertEquals("Timed out after $TIMEOUT_MILLIS ms outside any named step", failure.message)
+  }
+
+  @Test
+  fun emulatorTest_whenAnInnerWithTimeoutExpires_reportsThatTimeout() {
+    // Not the AssertionError of emulatorTest's own timeout, which has not expired.
+    assertThrows(TimeoutCancellationException::class.java) {
+      emulatorTest(TIMEOUT_MILLIS * 10) {
+        step("read") { withTimeout(TIMEOUT_MILLIS) { awaitCancellation() } }
+      }
+    }
   }
 
   @Test
