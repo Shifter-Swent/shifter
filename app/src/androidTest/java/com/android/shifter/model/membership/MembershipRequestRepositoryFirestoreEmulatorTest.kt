@@ -518,7 +518,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
             icon = "wine",
             createdAt = Instant.EPOCH,
         )
-    ref.set(team.toFirestoreMap()).await()
+    step("write team") { ref.set(team.toFirestoreMap()).await() }
   }
 
   /**
