@@ -3,7 +3,6 @@ package com.swent.shifter.model.team
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.EventSchema
@@ -292,8 +291,8 @@ class FirestoreTeamRepositoryTest {
     val failure = runCatching { block() }.exceptionOrNull()
 
     assertTrue(
-        "a write to a missing team must fail with NOT_FOUND, but was: $failure",
-        (failure as? FirebaseFirestoreException)?.code == FirebaseFirestoreException.Code.NOT_FOUND,
+        "a write to a missing team must fail with NotFound, but was: $failure",
+        failure is TeamRepositoryException.NotFound,
     )
   }
 

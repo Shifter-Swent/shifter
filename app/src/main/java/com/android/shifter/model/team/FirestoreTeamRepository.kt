@@ -4,6 +4,7 @@ package com.swent.shifter.model.team
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.tasks.await
@@ -14,6 +15,7 @@ import kotlinx.coroutines.tasks.await
  *
  * All Firebase types stay inside this class and the [toTeam] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
+ * Firestore errors are rethrown as [TeamRepositoryException].
  *
  * Members are added and removed with `arrayUnion` / `arrayRemove` rather than by rewriting the
  * list, so two organizers editing the same team at once cannot overwrite each other's change. The
@@ -42,14 +44,17 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
     require(team.managerId == null || team.managerId !in team.memberIds) {
       "The manager of a team cannot also be one of its members"
     }
-    val document = teamsOf(team.eventId).document()
-    val persisted = team.copy(id = document.id)
-    document.set(persisted.toFirestoreMap()).await()
-    return persisted
+    return translatingErrors {
+      val document = teamsOf(team.eventId).document()
+      val persisted = team.copy(id = document.id)
+      document.set(persisted.toFirestoreMap()).await()
+      persisted
+    }
   }
 
-  override suspend fun getTeam(eventId: String, teamId: String): Team? =
-      teamDocument(eventId, teamId).get().await().takeIf { it.exists() }?.toTeam()
+  override suspend fun getTeam(eventId: String, teamId: String): Team? = translatingErrors {
+    teamDocument(eventId, teamId).get().await().takeIf { it.exists() }?.toTeam()
+  }
 
   override suspend fun getTeamsByEvent(eventId: String): List<Team> = teamsOf(eventId).fetch()
 
@@ -66,29 +71,33 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    */
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
     val document = teamDocument(eventId, teamId)
-    firestore
-        .runTransaction { transaction ->
-          val snapshot = transaction.get(document)
-          if (!snapshot.exists()) {
-            throw FirebaseFirestoreException(
-                "Team '$teamId' of event '$eventId' does not exist",
-                FirebaseFirestoreException.Code.NOT_FOUND,
+    translatingErrors {
+      firestore
+          .runTransaction { transaction ->
+            val snapshot = transaction.get(document)
+            if (!snapshot.exists()) {
+              throw FirebaseFirestoreException(
+                  "Team '$teamId' of event '$eventId' does not exist",
+                  Code.NOT_FOUND,
+              )
+            }
+            val team = snapshot.toTeam()
+            require(
+                managerId == null || managerId == team.managerId || managerId in team.memberIds
+            ) {
+              "Only a member of the team can be appointed its manager"
+            }
+            transaction.update(
+                document,
+                mapOf(
+                    TeamSchema.MANAGER_ID to managerId,
+                    TeamSchema.MEMBER_IDS to team.membersAfterAppointing(managerId),
+                ),
             )
+            null
           }
-          val team = snapshot.toTeam()
-          require(managerId == null || managerId == team.managerId || managerId in team.memberIds) {
-            "Only a member of the team can be appointed its manager"
-          }
-          transaction.update(
-              document,
-              mapOf(
-                  TeamSchema.MANAGER_ID to managerId,
-                  TeamSchema.MEMBER_IDS to team.membersAfterAppointing(managerId),
-              ),
-          )
-          null
-        }
-        .await()
+          .await()
+    }
   }
 
   /**
@@ -98,29 +107,63 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    */
   override suspend fun addMember(eventId: String, teamId: String, userId: String) {
     val document = teamDocument(eventId, teamId)
-    firestore
-        .runTransaction { transaction ->
-          val team = transaction.get(document)
-          if (!team.exists()) {
-            throw FirebaseFirestoreException(
-                "Team '$teamId' of event '$eventId' does not exist",
-                FirebaseFirestoreException.Code.NOT_FOUND,
-            )
+    translatingErrors {
+      firestore
+          .runTransaction { transaction ->
+            val team = transaction.get(document)
+            if (!team.exists()) {
+              throw FirebaseFirestoreException(
+                  "Team '$teamId' of event '$eventId' does not exist",
+                  Code.NOT_FOUND,
+              )
+            }
+            require(team.get(TeamSchema.MANAGER_ID) != userId) {
+              "The manager of a team cannot also be one of its members"
+            }
+            transaction.update(document, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
+            null
           }
-          require(team.get(TeamSchema.MANAGER_ID) != userId) {
-            "The manager of a team cannot also be one of its members"
-          }
-          transaction.update(document, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
-          null
-        }
-        .await()
+          .await()
+    }
   }
 
+  /**
+   * Firestore refuses to update a missing document with `NOT_FOUND`, reported as
+   * [TeamRepositoryException.NotFound].
+   */
   override suspend fun removeMember(eventId: String, teamId: String, userId: String) {
-    teamDocument(eventId, teamId)
-        .update(TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
-        .await()
+    translatingErrors {
+      teamDocument(eventId, teamId)
+          .update(TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+          .await()
+    }
   }
 
-  private suspend fun Query.fetch(): List<Team> = get().await().documents.map { it.toTeam() }
+  private suspend fun Query.fetch(): List<Team> = translatingErrors {
+    get().await().documents.map { it.toTeam() }
+  }
+
+  companion object {
+    /** Translates a Firestore error into the [TeamRepositoryException] callers handle. */
+    fun toRepositoryException(e: FirebaseFirestoreException): TeamRepositoryException =
+        when (e.code) {
+          Code.NOT_FOUND -> TeamRepositoryException.NotFound(e)
+          Code.PERMISSION_DENIED,
+          Code.UNAUTHENTICATED -> TeamRepositoryException.PermissionDenied(e)
+          Code.UNAVAILABLE,
+          Code.DEADLINE_EXCEEDED -> TeamRepositoryException.Unavailable(e)
+          else -> TeamRepositoryException.Unknown(e)
+        }
+
+    /**
+     * Runs [block], rethrowing its Firestore errors as [TeamRepositoryException]. Other errors,
+     * such as an [IllegalArgumentException] for invalid input, pass through unchanged.
+     */
+    private inline fun <T> translatingErrors(block: () -> T): T =
+        try {
+          block()
+        } catch (e: FirebaseFirestoreException) {
+          throw toRepositoryException(e)
+        }
+  }
 }
