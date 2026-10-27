@@ -3,7 +3,6 @@ package com.swent.shifter.model.team
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.EventSchema
@@ -151,16 +150,39 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun setManager_withSomeoneOutsideTheTeam_appointsThem() = emulatorTest {
-    val team = create(richTeam(uniqueEventId()).copy(managerId = null))
+  fun setManager_withSomeoneOutsideTheTeam_isRejected() = emulatorTest {
+    val team = create(richTeam(uniqueEventId()))
 
-    repository.setManager(team.eventId, team.id, "new-manager")
+    val failure = runCatching {
+      repository.setManager(team.eventId, team.id, "outsider")
+    }
+        .exceptionOrNull()
 
-    assertEquals(team.copy(managerId = "new-manager"), reload(team))
+    assertTrue(
+        "appointing a non-member must fail with IllegalArgumentException, but was: $failure",
+        failure is IllegalArgumentException,
+    )
+    assertEquals("the team must be left unchanged", team, reload(team))
   }
 
   @Test
-  fun setManager_withAMember_promotesThemOutOfTheMembers() = emulatorTest {
+  fun setManager_withAMemberOfATeamWithoutManager_promotesThemOutOfTheMembers() = emulatorTest {
+    val team =
+        create(
+            richTeam(uniqueEventId())
+                .copy(managerId = null, memberIds = listOf(VOLUNTEER_ID, OTHER_VOLUNTEER_ID))
+        )
+
+    repository.setManager(team.eventId, team.id, VOLUNTEER_ID)
+
+    assertEquals(
+        team.copy(managerId = VOLUNTEER_ID, memberIds = listOf(OTHER_VOLUNTEER_ID)),
+        reload(team),
+    )
+  }
+
+  @Test
+  fun setManager_withAMember_replacesTheManagerWhoGoesBackToTheMembers() = emulatorTest {
     val team =
         create(
             richTeam(uniqueEventId())
@@ -169,20 +191,31 @@ class FirestoreTeamRepositoryTest {
 
     repository.setManager(team.eventId, team.id, VOLUNTEER_ID)
 
-    // The other member stays, and the previous manager does not become a member.
     assertEquals(
-        team.copy(managerId = VOLUNTEER_ID, memberIds = listOf(OTHER_VOLUNTEER_ID)),
+        team.copy(managerId = VOLUNTEER_ID, memberIds = listOf(OTHER_VOLUNTEER_ID, MANAGER_ID)),
         reload(team),
     )
   }
 
   @Test
-  fun setManager_withNull_leavesTheTeamWithoutAManager() = emulatorTest {
+  fun setManager_withTheCurrentManager_leavesTheTeamUnchanged() = emulatorTest {
+    val team = create(richTeam(uniqueEventId()))
+
+    repository.setManager(team.eventId, team.id, MANAGER_ID)
+
+    assertEquals(team, reload(team))
+  }
+
+  @Test
+  fun setManager_withNull_putsTheManagerBackInTheMembers() = emulatorTest {
     val team = create(richTeam(uniqueEventId()))
 
     repository.setManager(team.eventId, team.id, null)
 
-    assertEquals(team.copy(managerId = null), reload(team))
+    assertEquals(
+        team.copy(managerId = null, memberIds = listOf(VOLUNTEER_ID, MANAGER_ID)),
+        reload(team),
+    )
   }
 
   @Test
@@ -258,8 +291,8 @@ class FirestoreTeamRepositoryTest {
     val failure = runCatching { block() }.exceptionOrNull()
 
     assertTrue(
-        "a write to a missing team must fail with NOT_FOUND, but was: $failure",
-        (failure as? FirebaseFirestoreException)?.code == FirebaseFirestoreException.Code.NOT_FOUND,
+        "a write to a missing team must fail with NotFound, but was: $failure",
+        failure is TeamRepositoryException.NotFound,
     )
   }
 

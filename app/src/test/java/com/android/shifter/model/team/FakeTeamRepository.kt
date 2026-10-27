@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 /**
@@ -50,10 +51,13 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
     return teams.filter { it.eventId == eventId && it.managerId == userId }
   }
 
-  /** Like the backend, appointing a member leaves them out of the members in the same write. */
+  /**
+   * Like the backend, the member appointed leaves the members and the previous manager goes back to
+   * them, in the same write.
+   */
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
     update(eventId, teamId) {
-      it.copy(managerId = managerId, memberIds = it.memberIds - setOfNotNull(managerId))
+      it.copy(managerId = managerId, memberIds = it.membersAfterAppointing(managerId))
     }
   }
 
@@ -71,16 +75,13 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
   /**
    * Replaces the team in place, so the order teams were created in is preserved.
    *
-   * Throws [NoSuchElementException] when the team does not exist, because the contract says the
-   * write fails there and the backend does: a silent no-op would let a test pass where production
-   * throws.
+   * Throws [TeamRepositoryException.NotFound] when the team does not exist, like the backend: a
+   * silent no-op would let a test pass where production throws.
    */
   private fun update(eventId: String, teamId: String, change: (Team) -> Team) {
     failure?.let { throw it }
     val index = teams.indexOfFirst { it.eventId == eventId && it.id == teamId }
-    if (index < 0) {
-      throw NoSuchElementException("Team '$teamId' of event '$eventId' does not exist")
-    }
+    if (index < 0) throw TeamRepositoryException.NotFound()
     teams[index] = change(teams[index])
   }
 }

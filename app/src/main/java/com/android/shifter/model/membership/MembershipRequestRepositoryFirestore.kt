@@ -10,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.team.TeamSchema
 import kotlinx.coroutines.tasks.await
@@ -72,7 +73,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                     }
                 if (!snapshot.exists() || teamId == null) return@runTransaction snapshot
                 val team = team(eventId, teamId)
-                val teamExists = transaction.get(team).exists()
+                val teamSnapshot = transaction.get(team)
                 transaction.update(
                     request,
                     MembershipRequestSchema.STATUS,
@@ -85,11 +86,8 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                     SetOptions.merge(),
                 )
                 // Rejecting an accepted request takes the volunteer out of their team as well,
-                // unless
-                // the team was deleted meanwhile: then there is nothing to leave.
-                if (teamExists) {
-                  transaction.update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
-                }
+                // unless the team was deleted meanwhile: then there is nothing to leave.
+                if (teamSnapshot.exists()) transaction.leaveTeam(team, teamSnapshot, userId)
                 null
               }
               .await()
@@ -105,20 +103,25 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       // A pending request may have no participants document yet, and a volunteer may not create it.
       db.runTransaction { transaction ->
             val snapshot = transaction.get(request)
-            val status = snapshot.getString(MembershipRequestSchema.STATUS)
-            if (status == MembershipRequestStatus.ACCEPTED.name) {
+            val accepted =
+                snapshot.getString(MembershipRequestSchema.STATUS) ==
+                    MembershipRequestStatus.ACCEPTED.name
+            val team =
+                snapshot
+                    .getString(MembershipRequestSchema.TEAM_ID)
+                    ?.takeIf { accepted }
+                    ?.let { team(eventId, it) }
+            // Read before any write, as a transaction requires.
+            val teamSnapshot = team?.let { transaction.get(it) }
+            if (accepted) {
               transaction.update(
                   participants(eventId),
                   PARTICIPANT_IDS,
                   FieldValue.arrayRemove(userId),
               )
-              snapshot.getString(MembershipRequestSchema.TEAM_ID)?.let { teamId ->
-                transaction.update(
-                    team(eventId, teamId),
-                    TeamSchema.MEMBER_IDS,
-                    FieldValue.arrayRemove(userId),
-                )
-              }
+            }
+            if (team != null && teamSnapshot != null) {
+              transaction.leaveTeam(team, teamSnapshot, userId)
             }
             transaction.delete(request)
             null
@@ -169,6 +172,22 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           .document(eventId)
           .collection(TeamSchema.COLLECTION)
           .document(teamId)
+
+  /**
+   * Takes [userId] out of [team], read as [snapshot] earlier in this transaction: out of its
+   * members, and out of its management when they lead it, or they would keep managing a team of an
+   * event they no longer take part in.
+   */
+  private fun Transaction.leaveTeam(
+      team: DocumentReference,
+      snapshot: DocumentSnapshot,
+      userId: String,
+  ) {
+    update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+    if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
+      update(team, TeamSchema.MANAGER_ID, null)
+    }
+  }
 
   /**
    * The team [userId] applied to in [eventId], read from their request. The team of a request never

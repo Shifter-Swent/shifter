@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.team
 
 import java.time.Instant
@@ -8,8 +9,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers the one contract the fake has to keep on its own: a write aimed at a team that is not
- * there fails, as it does on the backend.
+ * Covers the contracts the fake has to keep on its own: a write aimed at a team that is not there
+ * fails, and the previous manager goes back to the members, as on the backend.
  */
 class FakeTeamRepositoryTest {
 
@@ -36,8 +37,30 @@ class FakeTeamRepositoryTest {
             { repository.addMember("event-2", team.id, "user-1") },
         )) {
       val failure = runCatching { write() }.exceptionOrNull()
-      assertTrue("a missing team must fail, but was: $failure", failure is NoSuchElementException)
+      assertTrue(
+          "a missing team must fail, but was: $failure",
+          failure is TeamRepositoryException.NotFound,
+      )
     }
+  }
+
+  @Test
+  fun setManager_sendsThePreviousManagerBackToTheMembers() = runTest {
+    repository.addMember(team.eventId, team.id, "ann")
+    repository.addMember(team.eventId, team.id, "bob")
+
+    repository.setManager(team.eventId, team.id, "ann")
+    assertEquals(listOf("bob"), repository.getTeam(team.eventId, team.id)?.memberIds)
+
+    repository.setManager(team.eventId, team.id, "bob")
+    val replaced = repository.getTeam(team.eventId, team.id)
+    assertEquals("bob", replaced?.managerId)
+    assertEquals(listOf("ann"), replaced?.memberIds)
+
+    repository.setManager(team.eventId, team.id, null)
+    val removed = repository.getTeam(team.eventId, team.id)
+    assertEquals(null, removed?.managerId)
+    assertEquals(listOf("ann", "bob"), removed?.memberIds)
   }
 
   /** The guard must not stand in the way of the teams that are there. */

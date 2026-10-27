@@ -9,6 +9,9 @@ package com.swent.shifter.model.team
  *
  * The manager of a team is never one of its members: [Team.managerId] and [Team.memberIds] are
  * disjoint, so "the teams I manage" and "the teams I belong to" are two separate queries.
+ *
+ * Every method throws a [TeamRepositoryException] when the backend fails, and an
+ * [IllegalArgumentException] for invalid input.
  */
 interface TeamRepository {
 
@@ -36,19 +39,20 @@ interface TeamRepository {
   suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team>
 
   /**
-   * Appoints [managerId] as the manager of the team, or leaves the team without one when it is
-   * null. A member appointed manager leaves [Team.memberIds] in the same write: promoting a
-   * volunteer of the team is a single call. The previous manager does not become a member.
+   * Appoints [managerId], a member of the team, as its manager, or leaves the team without one when
+   * it is null. A team has at most one manager, so the previous one, if any, goes back to
+   * [Team.memberIds], while the member appointed leaves them, both in the same write.
    *
-   * Fails when the team does not exist.
+   * Throws [IllegalArgumentException] when [managerId] is neither a member nor the current manager,
+   * and [TeamRepositoryException.NotFound] when the team does not exist.
    */
   suspend fun setManager(eventId: String, teamId: String, managerId: String?)
 
   /**
    * Adds [userId] to the members of the team. Adding a member twice has no effect.
    *
-   * Throws [IllegalArgumentException] when [userId] manages the team, and fails when the team does
-   * not exist.
+   * Throws [IllegalArgumentException] when [userId] manages the team, and
+   * [TeamRepositoryException.NotFound] when the team does not exist.
    */
   suspend fun addMember(eventId: String, teamId: String, userId: String)
 
@@ -56,7 +60,7 @@ interface TeamRepository {
    * Removes [userId] from the members of the team. Removing someone who is not a member has no
    * effect.
    *
-   * Fails when the team does not exist.
+   * Throws [TeamRepositoryException.NotFound] when the team does not exist.
    */
   suspend fun removeMember(eventId: String, teamId: String, userId: String)
 }

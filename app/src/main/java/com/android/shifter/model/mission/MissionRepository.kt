@@ -6,6 +6,9 @@ package com.swent.shifter.model.mission
  *
  * ViewModels depend on this interface and never on an implementation, so the Firestore repository
  * can be replaced by a fake in unit tests.
+ *
+ * Every method throws a [MissionRepositoryException] when the backend fails, and an
+ * [IllegalArgumentException] for invalid input.
  */
 interface MissionRepository {
 
@@ -41,8 +44,8 @@ interface MissionRepository {
    * assigned.
    *
    * Throws [IllegalArgumentException] when [assigneeIds] lists someone twice or holds more people
-   * than the mission's [Mission.volunteersNeeded]; nothing is written then. Fails when the mission
-   * does not exist.
+   * than the mission's [Mission.volunteersNeeded]; nothing is written then. Throws
+   * [MissionRepositoryException.NotFound] when the mission does not exist.
    */
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
 }

@@ -3,7 +3,6 @@ package com.swent.shifter.model.mission
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
@@ -122,8 +121,8 @@ class FirestoreMissionAssigneesTest {
         .exceptionOrNull()
 
     assertTrue(
-        "a missing mission must fail with NOT_FOUND, but was: $failure",
-        (failure as? FirebaseFirestoreException)?.code == FirebaseFirestoreException.Code.NOT_FOUND,
+        "a missing mission must fail with NotFound, but was: $failure",
+        failure is MissionRepositoryException.NotFound,
     )
   }
 
