@@ -263,8 +263,21 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun assignDialog_whileSaving_disablesSave() {
+  fun assignDialog_whileSaving_disablesSaveAndCancel() {
     show(loaded.copy(assigning = assigning().copy(isSaving = true)))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
+    // A save cannot be taken back, so the dialog cannot be closed until it ends.
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL).assertIsNotEnabled()
+  }
+
+  @Test
+  fun assignDialog_onCandidatesFailure_disablesSave() {
+    val failed =
+        assigning().let {
+          it.copy(selection = it.selection.copy(candidates = emptyList(), loadFailed = true))
+        }
+    show(loaded.copy(assigning = failed))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
   }

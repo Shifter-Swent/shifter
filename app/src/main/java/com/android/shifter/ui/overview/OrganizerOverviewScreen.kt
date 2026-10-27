@@ -410,7 +410,8 @@ private fun MissionRow(mission: OverviewMission, teamName: String?, onAssign: ()
 @Composable
 private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActions) {
   AlertDialog(
-      onDismissRequest = actions.onDismissAssign,
+      // A save cannot be taken back: the dialog stays open until it ends.
+      onDismissRequest = { if (!assigning.isSaving) actions.onDismissAssign() },
       modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_DIALOG),
       title = { Text(assigning.title) },
       text = {
@@ -438,8 +439,11 @@ private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActio
       confirmButton = {
         TextButton(
             onClick = actions.onSaveAssignees,
-            // Saving before the candidates are known could not show who is picked.
-            enabled = !assigning.isSaving && !assigning.selection.isLoading,
+            // Saving before the candidates are loaded could not show who is picked.
+            enabled =
+                !assigning.isSaving &&
+                    !assigning.selection.isLoading &&
+                    !assigning.selection.loadFailed,
             modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE),
         ) {
           Text(stringResource(R.string.overview_assign_save))
@@ -448,6 +452,7 @@ private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActio
       dismissButton = {
         TextButton(
             onClick = actions.onDismissAssign,
+            enabled = !assigning.isSaving,
             modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL),
         ) {
           Text(stringResource(R.string.overview_assign_cancel))

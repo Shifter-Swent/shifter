@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.mission.AssigneeCandidates
 import com.swent.shifter.ui.mission.AssigneeOption
@@ -183,41 +184,75 @@ class OrganizerOverviewViewModel(
     _uiState.value.missions.firstOrNull { it.id == missionId }?.let { loadCandidates(it) }
   }
 
-  /** Closes the assignees without storing anything. */
+  /**
+   * Closes the assignees without storing anything. Ignored while they are being stored: the save
+   * cannot be taken back, so they stay open to show how it ends.
+   */
   fun dismissAssign() {
+    if (_uiState.value.assigning?.isSaving == true) return
     candidatesJob?.cancel()
     _uiState.update { it.copy(assigning = null) }
   }
 
   /**
    * Stores the people picked as the mission's assignees, then closes them and reloads the missions.
-   * On failure they stay open with the same people picked, to try again.
+   * Nothing is stored before the candidates are loaded.
+   *
+   * When the mission was deleted, or now needs fewer people than picked, trying again cannot work:
+   * the assignees are closed and the missions reloaded. On any other failure they stay open with
+   * the same people picked, to try again.
    */
   fun saveAssignees() {
     val assigning = _uiState.value.assigning ?: return
-    if (assigning.isSaving) return
+    val selection = assigning.selection
+    if (assigning.isSaving || selection.isLoading || selection.loadFailed) return
     editAssigning { it.copy(isSaving = true, saveFailed = false) }
     viewModelScope.launch {
       try {
-        missionRepository.updateAssignees(
-            eventId,
-            assigning.missionId,
-            assigning.selection.selectedIds,
-        )
-        candidatesJob?.cancel()
-        _uiState.update { it.copy(assigning = null) }
+        missionRepository.updateAssignees(eventId, assigning.missionId, selection.selectedIds)
+        closeAssign(assigning.missionId) { missions ->
+          // Reopening the mission before the reload answers must offer who was just saved.
+          missions.map {
+            if (it.id == assigning.missionId) it.copy(assigneeIds = selection.selectedIds) else it
+          }
+        }
         refresh()
       } catch (e: CancellationException) {
         throw e
+      } catch (_: MissionRepositoryException.NotFound) {
+        closeAssign(assigning.missionId)
+        refresh()
+      } catch (_: IllegalArgumentException) {
+        closeAssign(assigning.missionId)
+        refresh()
       } catch (_: Exception) {
-        editAssigning { it.copy(isSaving = false, saveFailed = true) }
+        editAssigning(assigning.missionId) { it.copy(isSaving = false, saveFailed = true) }
       }
     }
   }
 
   /**
-   * Loads who may be assigned to [mission], keeping who is picked. Someone assigned who is no
-   * longer a candidate, e.g. who left the team, stays listed so they can be unassigned.
+   * Closes the assignees of [missionId], if they are still the ones shown, and applies [change] to
+   * the missions in the same update.
+   */
+  private fun closeAssign(
+      missionId: String,
+      change: (List<OverviewMission>) -> List<OverviewMission> = { it },
+  ) {
+    val shown = _uiState.value.assigning?.missionId == missionId
+    // The candidates still loading are those of another mission when it was opened since.
+    if (shown) candidatesJob?.cancel()
+    _uiState.update { state ->
+      state.copy(
+          missions = change(state.missions),
+          assigning = state.assigning?.takeIf { it.missionId != missionId },
+      )
+    }
+  }
+
+  /**
+   * Loads who may be assigned to [mission], keeping who is picked. Someone picked who is no longer
+   * a candidate, e.g. who left the team, stays listed so they can be unpicked.
    */
   private fun loadCandidates(mission: OverviewMission) {
     candidatesJob?.cancel()
@@ -225,11 +260,11 @@ class OrganizerOverviewViewModel(
     candidatesJob = viewModelScope.launch {
       try {
         val candidates = assigneeCandidates.load(eventId, mission.teamId)
-        val former =
-            mission.assigneeIds
-                .filter { id -> candidates.none { it.id == id } }
-                .map { AssigneeOption(it, name = null) }
         editAssigning {
+          val former =
+              it.selection.selectedIds
+                  .filter { id -> candidates.none { candidate -> candidate.id == id } }
+                  .map { id -> AssigneeOption(id, name = null) }
           it.copy(
               selection = it.selection.copy(candidates = candidates + former, isLoading = false)
           )
@@ -244,8 +279,15 @@ class OrganizerOverviewViewModel(
     }
   }
 
-  private fun editAssigning(change: (AssignState) -> AssignState) {
-    _uiState.update { state -> state.copy(assigning = state.assigning?.let(change)) }
+  /**
+   * Applies [change] to the assignees shown, if any. With [missionId], only when they are still
+   * those of that mission: the end of a save must not touch another mission opened since.
+   */
+  private fun editAssigning(missionId: String? = null, change: (AssignState) -> AssignState) {
+    _uiState.update { state ->
+      val assigning = state.assigning?.takeIf { missionId == null || it.missionId == missionId }
+      if (assigning == null) state else state.copy(assigning = change(assigning))
+    }
   }
 
   // TODO: read the status set by hand by the team's manager or the volunteer once missions have
