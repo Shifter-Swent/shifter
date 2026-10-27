@@ -145,6 +145,12 @@ volunteer is checked in at most once per mission. A check-in is never changed or
 | `checkedInAt` | timestamp | Server timestamp, equal to the request time |
 | `checkedInBy` | string | uid of who recorded it: the volunteer for `SELF`, the manager or organizer for `MANAGER` |
 
+The rules check neither the mission's time slot nor its location. The request time is when the write
+reaches the server: a `SELF` check-in made offline during the slot can arrive after `endAt`, and it
+must be accepted. Any other time or position would come from the client, so it could be forged.
+The app checks both instead: the eligibility logic (#164) says whether the volunteer is in the slot
+and the zone, and the automatic check-in (#168) only records a `SELF` check-in when they are.
+
 ### `events/{eventId}/membershipRequests/{uid}`
 
 The document id is the volunteer's uid, so a volunteer can send only one request per event.
