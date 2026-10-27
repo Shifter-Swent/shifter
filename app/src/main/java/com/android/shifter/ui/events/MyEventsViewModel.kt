@@ -80,8 +80,18 @@ open class MyEventsViewModel(private val loader: MyEventsLoader) : ViewModel() {
 class StaffEventsViewModel(loader: MyEventsLoader, private val withdrawer: EventWithdrawer) :
     MyEventsViewModel(loader) {
 
-  /** Withdraws from [eventId] and removes its card once the backend confirmed it. */
+  /** Events whose withdrawal is still waiting for the backend. */
+  private val pendingWithdrawals = mutableSetOf<String>()
+
+  /**
+   * Withdraws from [eventId] and removes its card once the backend confirmed it.
+   *
+   * A second call for the same event while the first is pending is ignored, e.g. after a double
+   * tap: the first request may already have reached the backend, so it is not cancelled, and the
+   * backend would refuse the second one once the user is no longer a participant.
+   */
   fun withdraw(eventId: String) {
+    if (!pendingWithdrawals.add(eventId)) return
     mutableUiState.update { it.copy(withdrawFailed = false) }
     viewModelScope.launch {
       try {
@@ -97,6 +107,8 @@ class StaffEventsViewModel(loader: MyEventsLoader, private val withdrawer: Event
       } catch (e: Exception) {
         Log.e(TAG, "Could not withdraw from $eventId", e)
         mutableUiState.update { it.copy(withdrawFailed = true) }
+      } finally {
+        pendingWithdrawals.remove(eventId)
       }
     }
   }

@@ -3,6 +3,7 @@ package com.swent.shifter.ui.events
 
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.utils.MainDispatcherRule
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -21,10 +22,18 @@ class StaffEventsViewModelTest {
   private val upcoming = SampleMyEvents.staff.filter { it.badge != EventBadge.ENDED }
   private val past = SampleMyEvents.staff.filter { it.badge == EventBadge.ENDED }
 
+  /** Every request sent to the backend, including the ones it refuses. */
+  private val requests = mutableListOf<String>()
   private val withdrawn = mutableListOf<String>()
   private var failure: Exception? = null
+  /** When set, each request waits for it, as a slow backend would. */
+  private var answer: CompletableDeferred<Unit>? = null
   private val withdrawer = EventWithdrawer { eventId ->
+    requests += eventId
+    answer?.await()
     failure?.let { throw it }
+    // Like the backend, someone who already withdrew is no longer a participant.
+    check(eventId !in withdrawn) { "Not a participant of $eventId" }
     withdrawn += eventId
   }
 
@@ -74,6 +83,40 @@ class StaffEventsViewModelTest {
 
     assertFalse(viewModel.uiState.value.withdrawFailed)
     assertEquals(listOf("city-marathon"), withdrawn)
+  }
+
+  @Test
+  fun withdraw_twiceWhilePending_sendsOneRequest() = runTest {
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    answer = CompletableDeferred()
+
+    viewModel.withdraw("city-marathon")
+    advanceUntilIdle()
+    viewModel.withdraw("city-marathon")
+    advanceUntilIdle()
+    answer!!.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf("city-marathon"), requests)
+    assertFalse(viewModel.uiState.value.upcoming.any { it.id == "city-marathon" })
+    assertFalse(viewModel.uiState.value.withdrawFailed)
+  }
+
+  @Test
+  fun withdraw_ofAnotherEventWhilePending_isSent() = runTest {
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    answer = CompletableDeferred()
+
+    viewModel.withdraw("city-marathon")
+    viewModel.withdraw("tech-summit")
+    advanceUntilIdle()
+    answer!!.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf("city-marathon", "tech-summit"), requests)
+    assertEquals(listOf("city-marathon", "tech-summit"), withdrawn)
   }
 
   @Test
