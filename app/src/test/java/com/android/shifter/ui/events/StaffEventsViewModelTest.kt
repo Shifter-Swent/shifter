@@ -70,7 +70,7 @@ class StaffEventsViewModelTest {
   }
 
   @Test
-  fun withdrawAgain_clearsThePreviousFailure() = runTest {
+  fun withdraw_afterAFailure_canBeRetried() = runTest {
     val viewModel = viewModel()
     advanceUntilIdle()
     failure = IllegalStateException("offline")
@@ -78,6 +78,7 @@ class StaffEventsViewModelTest {
     advanceUntilIdle()
 
     failure = null
+    // The failed withdrawal released the event: otherwise this second call would be ignored.
     viewModel.withdraw("city-marathon")
     advanceUntilIdle()
 
