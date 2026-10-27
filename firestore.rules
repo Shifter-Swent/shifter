@@ -126,6 +126,40 @@ service cloud.firestore {
       // does not cover them. Signed-in users only, until per-role rules are defined.
       match /missions/{missionId} {
         allow read, write: if request.auth != null;
+
+        // checkIns/{uid}: the proof that volunteer uid was present at the mission. The document id
+        // is their uid, so they are checked in at most once, and a check-in is never changed.
+        match /checkIns/{uid} {
+          function mission() {
+            return get(/databases/$(database)/documents/events/$(eventId)/missions/$(missionId)).data;
+          }
+
+          // A mission of no team ("General") has no manager: only the organizer manages it.
+          function isTeamManager() {
+            let teamId = mission().get('teamId', null);
+            return teamId != null
+              && get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+                   .data.get('managerId', null) == request.auth.uid;
+          }
+
+          function canManage() {
+            return isOrganizer(eventId) || isTeamManager();
+          }
+
+          // Checks the path, not the document, so a missing check-in can be read too.
+          allow read: if signedIn() && (request.auth.uid == uid || canManage());
+          // checkedInAt and checkedInBy must equal the server's time and the signed-in user, so
+          // nobody can backdate a check-in or pretend someone else recorded it.
+          allow create: if signedIn()
+            && request.resource.data.keys().hasOnly(['userId', 'method', 'checkedInAt', 'checkedInBy'])
+            && request.resource.data.userId == uid
+            && request.resource.data.checkedInBy == request.auth.uid
+            && request.resource.data.checkedInAt == request.time
+            && uid in mission().get('assigneeIds', [])
+            && ((request.resource.data.method == 'SELF' && request.auth.uid == uid)
+                || (request.resource.data.method == 'MANAGER' && canManage()));
+          allow update, delete: if false;
+        }
       }
     }
 
@@ -150,6 +184,12 @@ service cloud.firestore {
     // by assigneeIds, without granting writes.
     match /{path=**}/missions/{missionId} {
       allow read: if signedIn() && request.auth.uid in resource.data.assigneeIds;
+    }
+
+    // Enables a volunteer's collection-group query of their own check-ins, filtered by userId,
+    // without granting writes.
+    match /{path=**}/checkIns/{uid} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
     match /eventParticipants/{eventId} {

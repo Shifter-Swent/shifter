@@ -43,3 +43,13 @@ data class Team(
  * rather than with a half-filled one.
  */
 data class CheckInZone(val latitude: Double, val longitude: Double, val radiusMeters: Double)
+
+/**
+ * The members of this team once [managerId] is its manager, or once it has none when null: the
+ * manager is never a member, so the one appointed leaves the members and the previous one, if any,
+ * goes back to them, at the end.
+ */
+internal fun Team.membersAfterAppointing(managerId: String?): List<String> {
+  val previous = this.managerId?.takeIf { it != managerId && it !in memberIds }
+  return memberIds.filter { it != managerId } + listOfNotNull(previous)
+}

@@ -6,11 +6,12 @@ import com.swent.shifter.model.team.Team
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
  * Covers the contract the fake shares with the backend once it is given teams: a decision or a
- * withdrawal keeps the requested team's members in step with the request.
+ * withdrawal keeps the requested team's members, and its manager, in step with the request.
  */
 class FakeMembershipRequestRepositoryTest {
 
@@ -52,6 +53,30 @@ class FakeMembershipRequestRepositoryTest {
 
     repository.withdraw(EVENT_ID, USER_ID)
 
+    assertEquals(emptyList<String>(), members())
+  }
+
+  @Test
+  fun reject_ofTheTeamManager_leavesTheTeamWithoutManager() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    teams.setManager(EVENT_ID, team.id, USER_ID)
+
+    repository.reject(EVENT_ID, USER_ID)
+
+    assertNull(teams.getTeam(EVENT_ID, team.id)?.managerId)
+    assertEquals(emptyList<String>(), members())
+  }
+
+  @Test
+  fun withdraw_ofTheTeamManager_leavesTheTeamWithoutManager() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    teams.setManager(EVENT_ID, team.id, USER_ID)
+
+    repository.withdraw(EVENT_ID, USER_ID)
+
+    assertNull(teams.getTeam(EVENT_ID, team.id)?.managerId)
     assertEquals(emptyList<String>(), members())
   }
 

@@ -36,11 +36,12 @@ interface TeamRepository {
   suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team>
 
   /**
-   * Appoints [managerId] as the manager of the team, or leaves the team without one when it is
-   * null. A member appointed manager leaves [Team.memberIds] in the same write: promoting a
-   * volunteer of the team is a single call. The previous manager does not become a member.
+   * Appoints [managerId], a member of the team, as its manager, or leaves the team without one when
+   * it is null. A team has at most one manager, so the previous one, if any, goes back to
+   * [Team.memberIds], while the member appointed leaves them, both in the same write.
    *
-   * Fails when the team does not exist.
+   * Throws [IllegalArgumentException] when [managerId] is neither a member nor the current manager,
+   * and fails when the team does not exist.
    */
   suspend fun setManager(eventId: String, teamId: String, managerId: String?)
 

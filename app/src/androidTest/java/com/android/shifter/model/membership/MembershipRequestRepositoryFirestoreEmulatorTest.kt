@@ -17,6 +17,9 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FirestoreEventRepository
+import com.swent.shifter.model.team.FirestoreTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.toFirestoreMap
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -31,6 +34,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   private val auth = FirestoreEmulator.auth
   private val db = FirestoreEmulator.firestore
   private val repository = MembershipRequestRepositoryFirestore(db)
+  private val teamRepository = FirestoreTeamRepository(db)
   private val paths = mutableSetOf<String>()
   private lateinit var organizer: Account
   private lateinit var volunteer: Account
@@ -233,6 +237,33 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
     assertTrue(repository.getMembershipRequestsByUId(volunteer.uid).isEmpty())
     assertEquals(MembershipRequestStatus.PENDING, apply(eventId, volunteer).status)
+  }
+
+  @Test
+  fun withdraw_byTheManagerOfTheirTeam_leavesItWithoutManager() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertTeamLeftWithoutManager(eventId)
+  }
+
+  @Test
+  fun reject_ofTheManagerOfTheirTeam_leavesItWithoutManager() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+
+    repository.reject(eventId, volunteer.uid)
+
+    assertTeamLeftWithoutManager(eventId)
   }
 
   @Test
@@ -472,11 +503,32 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     return ref.id
   }
 
-  /** Creates an empty team of [eventId] as its organizer, who must be signed in. */
+  /**
+   * Creates an empty team of [eventId] as its organizer, who must be signed in. Complete, so the
+   * team repository can read it too.
+   */
   private suspend fun createTeam(eventId: String, teamId: String) {
     val ref = team(eventId, teamId)
     paths += ref.path
-    step("write team") { ref.set(mapOf("memberIds" to emptyList<String>())).await() }
+    val team =
+        Team(
+            eventId = eventId,
+            name = teamId,
+            description = "The $teamId team",
+            icon = "wine",
+            createdAt = Instant.EPOCH,
+        )
+    ref.set(team.toFirestoreMap()).await()
+  }
+
+  /**
+   * The volunteer is out of the requested team, as a member and as its manager, and of the event.
+   */
+  private suspend fun assertTeamLeftWithoutManager(eventId: String) {
+    val team = team(eventId, TEAM_ID).get(Source.SERVER).await()
+    assertNull(team.get("managerId"))
+    assertEquals(emptyList<String>(), team.get("memberIds"))
+    assertEquals(emptyList<String>(), participantIds(eventId))
   }
 
   private suspend fun apply(
