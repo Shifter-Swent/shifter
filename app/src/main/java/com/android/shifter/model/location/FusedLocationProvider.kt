@@ -3,13 +3,15 @@ package com.swent.shifter.model.location
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import com.google.android.gms.location.LocationAvailability
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -22,10 +24,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 
 /**
  * [LocationProvider] backed by the fused location provider of Google Play services.
@@ -51,24 +53,41 @@ class FusedLocationProvider(
     mutableStatus.value = readStatus()
   }
 
+  /**
+   * Also refreshes the status whenever location services are turned on or off while collected, for
+   * instance from the quick settings, which does not pause the activity and so never triggers the
+   * UI's refresh. Conflated: a slow collector only needs the latest position, not a backlog.
+   */
   @OptIn(ExperimentalCoroutinesApi::class)
-  override fun positions(): Flow<LatLng> = flow {
-    refreshStatus()
-    emitAll(status.flatMapLatest { if (it == LocationStatus.GRANTED) updates() else emptyFlow() })
+  override fun positions(): Flow<GeoPosition> = channelFlow {
+    val modeReceiver =
+        object : BroadcastReceiver() {
+          override fun onReceive(context: Context, intent: Intent) = refreshStatus()
+        }
+    ContextCompat.registerReceiver(
+        appContext,
+        modeReceiver,
+        IntentFilter(LocationManager.MODE_CHANGED_ACTION),
+        ContextCompat.RECEIVER_NOT_EXPORTED,
+    )
+    try {
+      refreshStatus()
+      status
+          .flatMapLatest { if (it == LocationStatus.GRANTED) updates() else emptyFlow() }
+          .collect { send(it) }
+    } finally {
+      appContext.unregisterReceiver(modeReceiver)
+    }
   }
+      .conflate()
 
   // Only collected while the status is GRANTED, which readStatus checked just before.
   @SuppressLint("MissingPermission")
-  private fun updates(): Flow<LatLng> = callbackFlow {
+  private fun updates(): Flow<GeoPosition> = callbackFlow {
     val callback =
         object : LocationCallback() {
           override fun onLocationResult(result: LocationResult) {
-            result.lastLocation?.let { trySend(LatLng(it.latitude, it.longitude)) }
-          }
-
-          // Location services turned off while collecting: the status then stops the updates.
-          override fun onLocationAvailability(availability: LocationAvailability) {
-            if (!availability.isLocationAvailable) refreshStatus()
+            result.lastLocation?.let { trySend(GeoPosition(it.latitude, it.longitude)) }
           }
         }
     val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis).build()

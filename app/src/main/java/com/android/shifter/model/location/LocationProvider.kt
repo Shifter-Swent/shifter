@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface LocationProvider {
 
-  /** Whether positions can be read. It changes when [refreshStatus] is called. */
+  /**
+   * Whether positions can be read. It changes when [refreshStatus] is called, and on its own when
+   * location services are turned on or off while [positions] is collected.
+   */
   val status: StateFlow<LocationStatus>
 
   /**
@@ -31,5 +34,5 @@ interface LocationProvider {
    * [LocationStatus.GRANTED] and resume when it becomes so again, so the flow never completes and
    * emits nothing while the location is denied or turned off.
    */
-  fun positions(): Flow<LatLng>
+  fun positions(): Flow<GeoPosition>
 }

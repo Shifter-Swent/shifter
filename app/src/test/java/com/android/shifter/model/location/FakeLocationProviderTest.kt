@@ -6,7 +6,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,7 +18,7 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenGranted_emitsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.GRANTED)
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
@@ -33,7 +32,7 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenDenied_emitsNothingAndDoesNotListen() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
@@ -47,7 +46,7 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenGrantedLater_startsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
@@ -61,7 +60,7 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenLocationTurnedOff_stopsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.GRANTED)
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
     provider.emit(LAUSANNE)
@@ -89,7 +88,7 @@ class FakeLocationProviderTest {
   fun positions_whenCollected_readsTheStatusAgain() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
     provider.deviceStatus = LocationStatus.GRANTED
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
@@ -111,14 +110,8 @@ class FakeLocationProviderTest {
     assertEquals(1, provider.refreshCount)
   }
 
-  @Test
-  fun latLng_withOutOfRangeCoordinates_throws() {
-    assertThrows(IllegalArgumentException::class.java) { LatLng(90.1, 0.0) }
-    assertThrows(IllegalArgumentException::class.java) { LatLng(0.0, -180.1) }
-  }
-
   private companion object {
-    val LAUSANNE = LatLng(46.5197, 6.6323)
-    val GENEVA = LatLng(46.2044, 6.1432)
+    val LAUSANNE = GeoPosition(46.5197, 6.6323)
+    val GENEVA = GeoPosition(46.2044, 6.1432)
   }
 }

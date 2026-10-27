@@ -3,6 +3,7 @@ package com.swent.shifter.model.location
 
 import android.Manifest
 import android.app.Application
+import android.content.Intent
 import android.location.Location
 import android.location.LocationManager
 import android.os.Looper
@@ -22,10 +23,13 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,7 +116,7 @@ class FusedLocationProviderUnitTest {
   fun positions_whenGranted_emitsTheLocationResults() = runTest {
     grantFinePermission()
     val provider = FusedLocationProvider(application, intervalMillis = 1_000L)
-    val received = mutableListOf<LatLng>()
+    val received = mutableListOf<GeoPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
@@ -158,13 +162,12 @@ class FusedLocationProviderUnitTest {
   }
 
   @Test
-  fun positions_whenLocationBecomesUnavailable_stopsTheUpdates() = runTest {
+  fun positions_whenLocationTurnedOff_stopsTheUpdates() = runTest {
     grantFinePermission()
     val provider = FusedLocationProvider(application)
     val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
-    shadowOf(locationManager).setLocationEnabled(false)
 
-    callback.captured.onLocationAvailability(availability(isAvailable = false))
+    setLocationEnabled(false)
 
     assertEquals(LocationStatus.LOCATION_OFF, provider.status.value)
     verify { client.removeLocationUpdates(callback.captured) }
@@ -172,15 +175,86 @@ class FusedLocationProviderUnitTest {
   }
 
   @Test
-  fun positions_whenLocationStaysAvailable_keepsTheStatus() = runTest {
+  fun positions_afterLocationTurnedBackOn_resumesTheUpdates() = runTest {
+    // The quick settings do not pause the activity, so only the mode broadcast notices this.
     grantFinePermission()
     val provider = FusedLocationProvider(application)
     val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
-    shadowOf(locationManager).setLocationEnabled(false)
+    setLocationEnabled(false)
 
-    callback.captured.onLocationAvailability(availability(isAvailable = true))
+    setLocationEnabled(true)
 
     assertEquals(LocationStatus.GRANTED, provider.status.value)
+    verify(exactly = 2) {
+      client.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>())
+    }
+    job.cancel()
+  }
+
+  @Test
+  fun positions_afterRefreshWithLocationBackOn_resumesTheUpdates() = runTest {
+    grantFinePermission()
+    shadowOf(locationManager).setLocationEnabled(false)
+    val provider = FusedLocationProvider(application)
+    val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
+    assertEquals(LocationStatus.LOCATION_OFF, provider.status.value)
+    shadowOf(locationManager).setLocationEnabled(true)
+
+    provider.refreshStatus()
+
+    assertEquals(LocationStatus.GRANTED, provider.status.value)
+    verify(exactly = 1) {
+      client.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>())
+    }
+    job.cancel()
+  }
+
+  @Test
+  fun positions_withoutAFix_keepsTheUpdates() = runTest {
+    // Indoors or while the GPS warms up the location is unavailable, yet location services are on.
+    grantFinePermission()
+    val provider = FusedLocationProvider(application)
+    val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
+
+    callback.captured.onLocationAvailability(availability(isAvailable = false))
+
+    assertEquals(LocationStatus.GRANTED, provider.status.value)
+    verify(exactly = 0) { client.removeLocationUpdates(any<LocationCallback>()) }
+    job.cancel()
+  }
+
+  @Test
+  fun positions_afterCancel_stopsFollowingTheLocationMode() = runTest {
+    grantFinePermission()
+    val provider = FusedLocationProvider(application)
+    val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
+
+    job.cancel()
+    setLocationEnabled(false)
+
+    assertEquals(LocationStatus.GRANTED, provider.status.value)
+  }
+
+  @Test
+  fun positions_withASlowCollector_keepsTheLatestPosition() = runTest {
+    grantFinePermission()
+    val provider = FusedLocationProvider(application)
+    val received = mutableListOf<GeoPosition>()
+    val job = launch {
+      provider.positions().collect {
+        received += it
+        delay(10_000L)
+      }
+    }
+    runCurrent()
+
+    listOf(LAUSANNE, GENEVA, BERN, ZURICH).forEach {
+      callback.captured.onLocationResult(LocationResult.create(listOf(location(it))))
+      runCurrent()
+    }
+    advanceUntilIdle()
+
+    assertEquals(listOf(LAUSANNE, ZURICH), received)
     job.cancel()
   }
 
@@ -205,11 +279,18 @@ class FusedLocationProviderUnitTest {
     assertEquals(failure.message, error?.message)
   }
 
+  /** Turns location services on or off and delivers the broadcast Android sends for it. */
+  private fun setLocationEnabled(enabled: Boolean) {
+    shadowOf(locationManager).setLocationEnabled(enabled)
+    application.sendBroadcast(Intent(LocationManager.MODE_CHANGED_ACTION))
+    shadowOf(Looper.getMainLooper()).idle()
+  }
+
   private fun grantFinePermission() {
     shadowOf(application).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
   }
 
-  private fun location(position: LatLng) =
+  private fun location(position: GeoPosition) =
       Location(LocationManager.GPS_PROVIDER).apply {
         latitude = position.latitude
         longitude = position.longitude
@@ -219,7 +300,9 @@ class FusedLocationProviderUnitTest {
       mockk<LocationAvailability> { every { isLocationAvailable } returns isAvailable }
 
   private companion object {
-    val LAUSANNE = LatLng(46.5197, 6.6323)
-    val GENEVA = LatLng(46.2044, 6.1432)
+    val LAUSANNE = GeoPosition(46.5197, 6.6323)
+    val GENEVA = GeoPosition(46.2044, 6.1432)
+    val BERN = GeoPosition(46.9480, 7.4474)
+    val ZURICH = GeoPosition(47.3769, 8.5417)
   }
 }

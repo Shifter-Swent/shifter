@@ -44,7 +44,8 @@ class FusedLocationProviderTest {
 
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
   private val client = LocationServices.getFusedLocationProviderClient(context)
-  private val provider = FusedLocationProvider(context, intervalMillis = 1_000L)
+  // Lazy so it is created once GrantPermissionRule has applied, and starts as GRANTED.
+  private val provider by lazy { FusedLocationProvider(context, intervalMillis = 1_000L) }
 
   /** Lets the app under test set mock locations, then turns the mock mode on. */
   @Before
@@ -88,7 +89,7 @@ class FusedLocationProviderTest {
     assertEquals(LAUSANNE, position)
   }
 
-  private fun mockLocation(position: LatLng) =
+  private fun mockLocation(position: GeoPosition) =
       Location(LocationManager.GPS_PROVIDER).apply {
         latitude = position.latitude
         longitude = position.longitude
@@ -98,7 +99,7 @@ class FusedLocationProviderTest {
       }
 
   private companion object {
-    val LAUSANNE = LatLng(46.5197, 6.6323)
+    val LAUSANNE = GeoPosition(46.5197, 6.6323)
     const val TIMEOUT_MILLIS = 30_000L
     const val PUSH_INTERVAL_MILLIS = 1_500L
   }
