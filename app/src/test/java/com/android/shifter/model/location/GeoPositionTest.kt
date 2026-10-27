@@ -36,4 +36,27 @@ class GeoPositionTest {
     assertThrows(IllegalArgumentException::class.java) { GeoPosition(Double.NaN, 0.0) }
     assertThrows(IllegalArgumentException::class.java) { GeoPosition(0.0, Double.NaN) }
   }
+
+  @Test
+  fun distanceTo_samePoint_isZero() {
+    val point = GeoPosition(46.5191, 6.5668)
+
+    assertEquals(0.0, point.distanceTo(point), 0.0)
+  }
+
+  @Test
+  fun distanceTo_isSymmetric() {
+    val lausanne = GeoPosition(46.5191, 6.5668)
+    val geneva = GeoPosition(46.2044, 6.1432)
+
+    assertEquals(lausanne.distanceTo(geneva), geneva.distanceTo(lausanne), 1e-9)
+  }
+
+  @Test
+  fun distanceTo_oneDegreeOfLatitude_isAbout111Kilometers() {
+    // One degree of a great circle is 2π R / 360 on a sphere of the mean Earth radius.
+    val distance = GeoPosition(0.0, 0.0).distanceTo(GeoPosition(1.0, 0.0))
+
+    assertEquals(111_195.0, distance, 1.0)
+  }
 }
