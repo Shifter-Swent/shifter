@@ -1,6 +1,13 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import com.swent.shifter.model.checkin.CheckIn
+import com.swent.shifter.model.checkin.CheckInMethod
+import com.swent.shifter.model.checkin.CheckInRepository
+import com.swent.shifter.model.checkin.CheckInRepositoryException
+import com.swent.shifter.model.checkin.FakeCheckInRepository
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepositoryException
@@ -18,6 +25,9 @@ import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -41,6 +51,7 @@ class AttendanceViewModelTest {
   private val teams = FakeTeamRepository()
   private val users =
       FakeUserRepository(listOf(User("ann", "Ann", "ann@x.org"), User("bob", "Bob", "bob@x.org")))
+  private val checkIns = FakeCheckInRepository()
 
   private lateinit var viewModel: AttendanceViewModel
 
@@ -103,8 +114,26 @@ class AttendanceViewModelTest {
           )
       )
 
+  /** Records [userId] as having arrived at [missionId], [minute] minutes after [start]. */
+  private fun arrive(
+      missionId: String,
+      userId: String,
+      minute: Long = 0,
+      eventId: String = "event-1",
+  ) =
+      checkIns.add(
+          CheckIn(
+              eventId = eventId,
+              missionId = missionId,
+              userId = userId,
+              checkedInAt = start.plus(Duration.ofMinutes(minute)),
+              method = CheckInMethod.SELF,
+              checkedInBy = userId,
+          )
+      )
+
   private fun TestScope.open(userId: String) {
-    viewModel = AttendanceViewModel("event-1", userId, events, missions, teams, users)
+    viewModel = AttendanceViewModel("event-1", userId, events, missions, teams, users, checkIns)
     advanceUntilIdle()
   }
 
@@ -154,7 +183,7 @@ class AttendanceViewModelTest {
     addMission("Set up", "logistics", hour = 1)
     val recording = RecordingMissions()
 
-    viewModel = AttendanceViewModel("event-1", "manager", events, recording, teams, users)
+    viewModel = AttendanceViewModel("event-1", "manager", events, recording, teams, users, checkIns)
     advanceUntilIdle()
 
     assertEquals(listOf(setOf("logistics", "bar")), recording.byTeams)
@@ -168,7 +197,7 @@ class AttendanceViewModelTest {
     addMission("Welcome", null, hour = 2)
     val recording = RecordingMissions()
 
-    viewModel = AttendanceViewModel("event-1", "ann", events, recording, teams, users)
+    viewModel = AttendanceViewModel("event-1", "ann", events, recording, teams, users, checkIns)
     advanceUntilIdle()
 
     // A volunteer manages no team, so there is nothing to ask the mission repository for.
@@ -195,7 +224,8 @@ class AttendanceViewModelTest {
 
   @Test
   fun load_withoutAnyMission_loadsThenShowsAnEmptyState() = runTest {
-    viewModel = AttendanceViewModel("event-1", "organizer", events, missions, teams, users)
+    viewModel =
+        AttendanceViewModel("event-1", "organizer", events, missions, teams, users, checkIns)
     assertTrue(viewModel.uiState.value.isLoading)
     assertFalse(viewModel.uiState.value.isEmpty)
 
@@ -244,7 +274,8 @@ class AttendanceViewModelTest {
   fun refresh_whileALoadRuns_keepsOnlyTheNewestMissions() = runTest {
     addMission("Set up", "logistics", hour = 1)
     // The first load reads the missions, then is held long enough to be overtaken.
-    viewModel = AttendanceViewModel("event-1", "manager", events, SlowFirstRead(), teams, users)
+    viewModel =
+        AttendanceViewModel("event-1", "manager", events, SlowFirstRead(), teams, users, checkIns)
     advanceTimeBy(500)
     addMission("Serve drinks", "bar", hour = 2)
 
@@ -252,6 +283,181 @@ class AttendanceViewModelTest {
     advanceUntilIdle()
 
     assertEquals(listOf("Set up", "Serve drinks"), titles())
+  }
+
+  @Test
+  fun load_withoutAnyCheckIn_hasNobodyPresentAndEveryAssigneeMissing() = runTest {
+    addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("bob", "ann"))
+
+    open("manager")
+
+    val mission = viewModel.uiState.value.missions.single()
+    assertTrue("the check-ins of the mission have arrived", mission.attendanceKnown)
+    assertEquals(0, mission.presentCount)
+    assertEquals(emptyList<AttendanceVolunteer>(), mission.presentAssignees)
+    // Missing in the order the mission lists them, and nobody is present out of the three needed.
+    assertEquals(listOf("bob", "ann"), mission.missingAssignees.map { it.userId })
+    assertTrue(mission.isUnderstaffed)
+  }
+
+  @Test
+  fun arrival_whileWatching_updatesTheAttendanceWithoutARefresh() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("bob", "ann"))
+    open("manager")
+
+    arrive(setUp.id, "ann", minute = 5)
+    advanceUntilIdle()
+
+    val mission = viewModel.uiState.value.missions.single()
+    assertEquals(1, mission.presentCount)
+    assertEquals(listOf("ann"), mission.presentAssignees.map { it.userId })
+    assertEquals(start.plus(Duration.ofMinutes(5)), mission.presentAssignees.single().checkedInAt)
+    assertEquals(listOf("bob"), mission.missingAssignees.map { it.userId })
+    assertTrue(mission.isUnderstaffed)
+  }
+
+  @Test
+  fun arrival_atOneMission_leavesTheOtherMissionsAttendanceAlone() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val drinks = addMission("Serve drinks", "bar", hour = 2, assigneeIds = listOf("bob"))
+    open("manager")
+    arrive(drinks.id, "bob")
+    advanceUntilIdle()
+
+    arrive(setUp.id, "ann")
+    advanceUntilIdle()
+
+    val byTitle = viewModel.uiState.value.missions.associateBy { it.title }
+    assertEquals(listOf("ann"), byTitle.getValue("Set up").presentAssignees.map { it.userId })
+    assertEquals(listOf("bob"), byTitle.getValue("Serve drinks").presentAssignees.map { it.userId })
+  }
+
+  @Test
+  fun arrival_ofSomeoneUnassignedOrElsewhereOrRecordedTwice_isNotCounted() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val drinks = addMission("Serve drinks", "bar", hour = 2, assigneeIds = listOf("bob"))
+    open("manager")
+
+    arrive(setUp.id, "bob") // Assigned to the other mission, so not present on this one.
+    arrive(setUp.id, "ann", minute = 5) // Counted.
+    arrive(setUp.id, "ann", minute = 9) // The same arrival recorded a second time.
+    arrive(setUp.id, "ann", minute = 1, eventId = "event-2") // Another event's mission.
+    advanceUntilIdle()
+
+    val byTitle = viewModel.uiState.value.missions.associateBy { it.title }
+    val mission = byTitle.getValue("Set up")
+    assertEquals(1, mission.presentCount)
+    assertEquals(start.plus(Duration.ofMinutes(5)), mission.presentAssignees.single().checkedInAt)
+    assertEquals(0, byTitle.getValue("Serve drinks").presentCount)
+  }
+
+  @Test
+  fun arrivals_reachingTheVolunteersNeeded_clearTheUnderstaffedWarning() = runTest {
+    // Three needed and three assigned, so everyone arriving is enough.
+    val setUp =
+        addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob", "cat"))
+    open("manager")
+    arrive(setUp.id, "ann")
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.missions.single().isUnderstaffed)
+
+    arrive(setUp.id, "bob")
+    arrive(setUp.id, "cat")
+    advanceUntilIdle()
+
+    val mission = viewModel.uiState.value.missions.single()
+    assertEquals(3, mission.presentCount)
+    assertEquals(emptyList<AttendanceVolunteer>(), mission.missingAssignees)
+    assertFalse(mission.isUnderstaffed)
+  }
+
+  @Test
+  fun refresh_replacesTheCheckInCollectionsOfTheLoadItSupersedes() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val observing = RecordingCheckIns()
+    viewModel = AttendanceViewModel("event-1", "manager", events, missions, teams, users, observing)
+    advanceUntilIdle()
+    arrive(setUp.id, "ann")
+    advanceUntilIdle()
+    assertEquals(1, observing.active)
+
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    // One collection per load, and the one of the superseded load is gone rather than left running.
+    assertEquals(listOf(setUp.id, setUp.id), observing.observed)
+    assertEquals(1, observing.active)
+    assertEquals(
+        listOf("ann"),
+        viewModel.uiState.value.missions.single().presentAssignees.map { it.userId },
+    )
+  }
+
+  @Test
+  fun load_withoutAnyMission_collectsNoCheckIns() = runTest {
+    val observing = RecordingCheckIns()
+
+    viewModel =
+        AttendanceViewModel("event-1", "organizer", events, missions, teams, users, observing)
+    advanceUntilIdle()
+
+    assertEquals(emptyList<String>(), observing.observed)
+    assertEquals(0, observing.active)
+  }
+
+  @Test
+  fun clearing_stopsTheCheckInCollections() = runTest {
+    addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val observing = RecordingCheckIns()
+    val store = ViewModelStore()
+    ViewModelProvider(
+        store,
+        AttendanceViewModel.factory(
+            "event-1",
+            "manager",
+            events,
+            missions,
+            teams,
+            users,
+            observing,
+        ),
+    )[AttendanceViewModel::class.java]
+    advanceUntilIdle()
+    assertEquals(1, observing.active)
+
+    store.clear()
+    advanceUntilIdle()
+
+    assertEquals(0, observing.active)
+  }
+
+  @Test
+  fun load_whenTheCheckInsCannotBeObserved_reportsItWithoutClaimingNobodyIsPresent() = runTest {
+    addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+
+    open("manager")
+
+    val state = viewModel.uiState.value
+    assertTrue(state.loadFailed)
+    // The mission stays listed, with an attendance that is unknown rather than read as empty.
+    val mission = state.missions.single()
+    assertFalse(mission.attendanceKnown)
+    assertEquals(0, mission.presentCount)
+  }
+
+  /** Counts the check-in collections, to check a load replaces those of the one it supersedes. */
+  private inner class RecordingCheckIns : CheckInRepository by checkIns {
+    val observed = mutableListOf<String>()
+    var active = 0
+
+    override fun observeCheckIns(eventId: String, missionId: String): Flow<List<CheckIn>> {
+      observed += missionId
+      return checkIns
+          .observeCheckIns(eventId, missionId)
+          .onStart { active++ }
+          .onCompletion { active-- }
+    }
   }
 
   /** Records which mission query a load used, to pin down what each role asks the backend for. */

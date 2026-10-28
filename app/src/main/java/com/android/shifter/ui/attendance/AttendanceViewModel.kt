@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.checkin.CheckIn
+import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
@@ -14,6 +16,7 @@ import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,8 +24,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Someone assigned to a mission, with their public name or null when it cannot be read. */
-data class AttendanceVolunteer(val userId: String, val name: String?)
+/**
+ * Someone assigned to a mission, with their public name or null when it cannot be read.
+ *
+ * @property checkedInAt when they checked in, or null while they have not. It stays null until the
+ *   check-ins of their mission have arrived, which [AttendanceMission.attendanceKnown] tells apart
+ *   from nobody being there.
+ */
+data class AttendanceVolunteer(
+    val userId: String,
+    val displayName: String?,
+    val checkedInAt: Instant? = null,
+)
 
 /**
  * A mission of the attendance screen and the people expected on it.
@@ -31,6 +44,8 @@ data class AttendanceVolunteer(val userId: String, val name: String?)
  *   null for those and for a team that no longer exists.
  * @property assignees the people assigned, in the order the mission lists them. How many there are
  *   is how many are expected, never how many are present: presence comes from the check-ins.
+ * @property attendanceKnown whether the check-ins of the mission have arrived. Until they have,
+ *   nobody is known to be present and [missingAssignees] is not yet a list of who is late.
  */
 data class AttendanceMission(
     val id: String,
@@ -41,9 +56,32 @@ data class AttendanceMission(
     val startAt: Instant,
     val endAt: Instant,
     val assignees: List<AttendanceVolunteer>,
-)
+    val attendanceKnown: Boolean = false,
+) {
+  /** The assignees who checked in, in the order the mission lists them. */
+  val presentAssignees: List<AttendanceVolunteer>
+    get() = assignees.filter { it.checkedInAt != null }
 
-/** State of the attendance screen. */
+  /** The assignees who have not checked in, in the order the mission lists them. */
+  val missingAssignees: List<AttendanceVolunteer>
+    get() = assignees.filter { it.checkedInAt == null }
+
+  /** How many assignees are present: the "present" of "present / needed". */
+  val presentCount: Int
+    get() = presentAssignees.size
+
+  /** Whether fewer people are present than the mission needs, which the screen warns about. */
+  val isUnderstaffed: Boolean
+    get() = presentCount < volunteersNeeded
+}
+
+/**
+ * State of the attendance screen.
+ *
+ * @property loadFailed whether the missions could not be loaded, which drops them, or the check-ins
+ *   of one of them could not be observed, which keeps them listed with their attendance not
+ *   [known][AttendanceMission.attendanceKnown] rather than read as nobody being present.
+ */
 data class AttendanceUiState(
     val isLoading: Boolean = true,
     val loadFailed: Boolean = false,
@@ -57,7 +95,8 @@ data class AttendanceUiState(
 
 /**
  * Loads the missions whose attendance [currentUserId] may watch in the event [eventId], by start
- * time, with the people assigned to each of them.
+ * time, with the people assigned to each of them, and keeps who is present up to date from the
+ * check-ins.
  *
  * The organizer watches all missions of the event, including the "General" ones of no team. Anyone
  * else watches those of the teams they manage, and none at all when they manage none.
@@ -69,6 +108,7 @@ class AttendanceViewModel(
     private val missionRepository: MissionRepository,
     private val teamRepository: TeamRepository,
     private val userRepository: UserRepository,
+    private val checkInRepository: CheckInRepository,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AttendanceUiState())
@@ -97,6 +137,7 @@ class AttendanceViewModel(
         _uiState.update {
           it.copy(isLoading = false, isOrganizer = isOrganizer, missions = missions)
         }
+        observeAttendance(missions)
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
@@ -134,6 +175,59 @@ class AttendanceViewModel(
     }
   }
 
+  /**
+   * Collects the check-ins of each mission, so an arrival shows up without a refresh.
+   *
+   * One collection per mission, each updating that mission only, so a check-in to one leaves the
+   * attendance of the others untouched and no mission, team or profile is read again. They are
+   * children of the load, which the next [refresh] cancels, taking them with it; no mission means
+   * no collection at all.
+   */
+  private fun CoroutineScope.observeAttendance(missions: List<AttendanceMission>) {
+    missions.forEach { mission ->
+      launch {
+        try {
+          checkInRepository.observeCheckIns(eventId, mission.id).collect { checkIns ->
+            _uiState.update { it.withAttendance(mission.id, checkIns) }
+          }
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          // The attendance of that mission stays unknown rather than read as nobody present.
+          _uiState.update { it.copy(loadFailed = true) }
+        }
+      }
+    }
+  }
+
+  /**
+   * The [checkIns] of the mission [missionId] applied to its assignees, leaving every other mission
+   * as it is. A check-in of someone the mission does not list is not one of its assignees being
+   * present, so it is ignored.
+   */
+  private fun AttendanceUiState.withAttendance(
+      missionId: String,
+      checkIns: List<CheckIn>,
+  ): AttendanceUiState {
+    // One time per volunteer, the earliest, so the same arrival recorded twice counts once.
+    val arrivals =
+        checkIns
+            .groupBy { it.userId }
+            .mapValues { (_, records) -> records.minOf { it.checkedInAt } }
+    return copy(
+        missions =
+            missions.map { mission ->
+              if (mission.id != missionId) mission
+              else
+                  mission.copy(
+                      attendanceKnown = true,
+                      assignees =
+                          mission.assignees.map { it.copy(checkedInAt = arrivals[it.userId]) },
+                  )
+            }
+    )
+  }
+
   /** The display name of [userId], or null when it cannot be read, which does not fail the load. */
   private suspend fun name(userId: String): String? =
       try {
@@ -151,6 +245,7 @@ class AttendanceViewModel(
         missionRepository: MissionRepository,
         teamRepository: TeamRepository,
         userRepository: UserRepository,
+        checkInRepository: CheckInRepository,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
         AttendanceViewModel(
@@ -160,6 +255,7 @@ class AttendanceViewModel(
             missionRepository,
             teamRepository,
             userRepository,
+            checkInRepository,
         )
       }
     }
