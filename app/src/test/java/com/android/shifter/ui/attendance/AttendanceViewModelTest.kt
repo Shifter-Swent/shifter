@@ -27,6 +27,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -444,6 +445,40 @@ class AttendanceViewModelTest {
     val mission = state.missions.single()
     assertFalse(mission.attendanceKnown)
     assertEquals(0, mission.presentCount)
+  }
+
+  @Test
+  fun observation_failingAfterAnEmission_stopsTheAttendanceBeingKnown() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    viewModel =
+        AttendanceViewModel(
+            "event-1",
+            "manager",
+            events,
+            missions,
+            teams,
+            users,
+            FailingOnArrival(),
+        )
+    advanceUntilIdle()
+    // The first snapshot came through, so the attendance is known at this point.
+    assertTrue(viewModel.uiState.value.missions.single().attendanceKnown)
+
+    arrive(setUp.id, "ann")
+    advanceUntilIdle()
+
+    val state = viewModel.uiState.value
+    assertTrue(state.loadFailed)
+    // What was collected may be out of date now, so it is no longer presented as the attendance.
+    assertFalse(state.missions.single().attendanceKnown)
+  }
+
+  /** A [CheckInRepository] whose observation emits the first snapshot, then fails on the next. */
+  private inner class FailingOnArrival : CheckInRepository by checkIns {
+    override fun observeCheckIns(eventId: String, missionId: String): Flow<List<CheckIn>> =
+        checkIns.observeCheckIns(eventId, missionId).onEach {
+          if (it.isNotEmpty()) throw CheckInRepositoryException.Unavailable()
+        }
   }
 
   /** Counts the check-in collections, to check a load replaces those of the one it supersedes. */

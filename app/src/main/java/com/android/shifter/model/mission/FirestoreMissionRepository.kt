@@ -68,9 +68,10 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
    *
    * One equality query per team rather than a single `in` filter over all of them: a rule
    * restricting a manager to their own teams then has a single team id to check per request, and no
-   * request grows past the document limits such a rule is subject to. The queries run together, so
-   * the call still costs one round trip, and a mission belongs to one team, so none comes back
-   * twice. No team means no query at all, which is why an empty [teamIds] never reaches Firestore.
+   * request grows past the document limits such a rule is subject to. Each team is a separate
+   * request, but they are sent concurrently, so the call takes about as long as the slowest of them
+   * rather than their sum. A mission belongs to one team, so none comes back twice, and no team
+   * means no request at all, which is why an empty [teamIds] never reaches Firestore.
    */
   override suspend fun getMissionsByTeams(eventId: String, teamIds: Set<String>): List<Mission> =
       translatingErrors {

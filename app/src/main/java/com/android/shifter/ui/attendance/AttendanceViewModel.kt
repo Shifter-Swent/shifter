@@ -44,8 +44,10 @@ data class AttendanceVolunteer(
  *   null for those and for a team that no longer exists.
  * @property assignees the people assigned, in the order the mission lists them. How many there are
  *   is how many are expected, never how many are present: presence comes from the check-ins.
- * @property attendanceKnown whether the check-ins of the mission have arrived. Until they have,
- *   nobody is known to be present and [missingAssignees] is not yet a list of who is late.
+ * @property attendanceKnown whether the check-ins of the mission have arrived and are still being
+ *   followed. While they are not, nobody is known to be present and [missingAssignees] is not a
+ *   list of who is late: either nothing has been collected yet, or what was is possibly stale
+ *   because the observation failed.
  */
 data class AttendanceMission(
     val id: String,
@@ -193,8 +195,17 @@ class AttendanceViewModel(
         } catch (e: CancellationException) {
           throw e
         } catch (_: Exception) {
-          // The attendance of that mission stays unknown rather than read as nobody present.
-          _uiState.update { it.copy(loadFailed = true) }
+          // Its attendance stops being known rather than being read as nobody present, or, once
+          // something was collected, left shown as current when it may already be out of date.
+          _uiState.update { state ->
+            state.copy(
+                loadFailed = true,
+                missions =
+                    state.missions.map {
+                      if (it.id == mission.id) it.copy(attendanceKnown = false) else it
+                    },
+            )
+          }
         }
       }
     }
