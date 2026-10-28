@@ -31,6 +31,11 @@ class CheckInEligibilityTest {
       )
 
   @Test
+  fun checkInWindow_opensBeforeTheStartAndClosesAtTheEnd() {
+    assertEquals(opening..end, mission.checkInWindow())
+  }
+
+  @Test
   fun checkInEligibility_inTheZoneDuringTheMission_isEligible() {
     assertEquals(Eligible, checkInEligibility(mission, start, place))
   }

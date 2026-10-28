@@ -43,10 +43,14 @@ object CheckInRules {
   const val RADIUS_METERS = 200.0
 }
 
+/** When a volunteer can check in to this mission by themself, both bounds included. */
+fun Mission.checkInWindow(): ClosedRange<Instant> =
+    (startAt - CheckInRules.OPENS_BEFORE_START)..endAt
+
 /**
- * Tells whether a volunteer at [position] can check in to [mission] at [now]: from
- * [CheckInRules.OPENS_BEFORE_START] before the start until the end, within
- * [CheckInRules.RADIUS_METERS] of the mission's location, both bounds included.
+ * Tells whether a volunteer at [position] can check in to [mission] at [now]: during its
+ * [checkInWindow], within [CheckInRules.RADIUS_METERS] of the mission's location, both bounds
+ * included.
  *
  * It does not check that the volunteer is assigned to the mission: the caller only passes their
  * missions, and the backend rules enforce it. The time is checked before the position, so a mission
@@ -62,11 +66,11 @@ fun checkInEligibility(
   val location =
       mission.location
           ?: return CheckInEligibility.Ineligible(CheckInEligibility.Reason.NO_LOCATION)
+  val window = mission.checkInWindow()
   val reason =
       when {
-        now < mission.startAt - CheckInRules.OPENS_BEFORE_START ->
-            CheckInEligibility.Reason.TOO_EARLY
-        now > mission.endAt -> CheckInEligibility.Reason.TOO_LATE
+        now < window.start -> CheckInEligibility.Reason.TOO_EARLY
+        now > window.endInclusive -> CheckInEligibility.Reason.TOO_LATE
         position == null -> CheckInEligibility.Reason.NO_POSITION
         position.distanceTo(GeoPosition(location.latitude, location.longitude)) >
             CheckInRules.RADIUS_METERS -> CheckInEligibility.Reason.TOO_FAR
