@@ -14,6 +14,8 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,6 +27,8 @@ enum class ParticipantsError {
   OFFLINE,
   PERMISSION_DENIED,
   UNEXPECTED,
+  /** Changing a team's manager failed; unlike the others, the list it was made from stays shown. */
+  UPDATE_FAILED,
 }
 
 /**
@@ -48,11 +52,13 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  *
  * @property groups one group per team of the event, in the order the repository returns them and
  *   including the teams nobody has joined yet, then the participants of no team when there are any.
+ * @property isUpdating whether a team's manager is being changed.
  */
 data class ParticipantsUiState(
     val groups: List<ParticipantGroup> = emptyList(),
     val isLoading: Boolean = false,
     val error: ParticipantsError? = null,
+    val isUpdating: Boolean = false,
 )
 
 /**
@@ -62,6 +68,8 @@ data class ParticipantsUiState(
  * one team per event: either among its [Team.memberIds], or as its [Team.managerId], since a
  * manager is promoted from the members and leaves them. Someone appointed manager without an
  * accepted request is not a participant, so they are not listed.
+ *
+ * It also lets the organizer choose the manager of each team, the only one who sees this list.
  */
 class ParticipantsViewModel(
     private val eventId: String,
@@ -73,6 +81,9 @@ class ParticipantsViewModel(
   private val _uiState = MutableStateFlow(ParticipantsUiState())
   val uiState: StateFlow<ParticipantsUiState> = _uiState.asStateFlow()
 
+  /** The load running, if any: a change of manager replaces it, as it may predate the write. */
+  private var loadJob: Job? = null
+
   init {
     load()
   }
@@ -81,7 +92,7 @@ class ParticipantsViewModel(
   fun load() {
     if (_uiState.value.isLoading) return
     _uiState.update { it.copy(isLoading = true, error = null) }
-    viewModelScope.launch {
+    loadJob = viewModelScope.launch {
       try {
         val participantIds =
             membershipRequestRepository
@@ -102,6 +113,41 @@ class ParticipantsViewModel(
       } finally {
         _uiState.update { it.copy(isLoading = false) }
       }
+    }
+  }
+
+  /**
+   * Makes [userId], a member of the team [teamId], its manager. The previous manager, if any, goes
+   * back to the members. Ignored while another change runs.
+   */
+  fun appointManager(teamId: String, userId: String) = changeManager(teamId, userId)
+
+  /**
+   * Leaves the team [teamId] without a manager, who goes back to its members. Ignored while another
+   * change runs.
+   */
+  fun removeManager(teamId: String) = changeManager(teamId, null)
+
+  /**
+   * Writes [managerId] as the manager of the team [teamId], then loads the list again to show it. A
+   * load still running may have read the teams before the write, so it is cancelled first rather
+   * than left to show them.
+   */
+  private fun changeManager(teamId: String, managerId: String?) {
+    if (_uiState.value.isUpdating) return
+    _uiState.update { it.copy(isUpdating = true, error = null) }
+    viewModelScope.launch {
+      try {
+        teamRepository.setManager(eventId, teamId, managerId)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        _uiState.update { it.copy(isUpdating = false, error = ParticipantsError.UPDATE_FAILED) }
+        return@launch
+      }
+      loadJob?.cancelAndJoin()
+      _uiState.update { it.copy(isUpdating = false) }
+      load()
     }
   }
 

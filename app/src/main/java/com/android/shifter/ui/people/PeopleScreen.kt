@@ -14,8 +14,10 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -26,7 +28,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.UnderlinedTab
 import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.membership.MembershipRequestUIState
@@ -47,7 +48,10 @@ object PeopleScreenTestTags {
  *
  * @param onReloadParticipants reloads the participants, on retry and whenever the organizer comes
  *   back to their tab, so a request accepted meanwhile shows its volunteer.
- * @param onParticipantClick called with a participant and their team when their card is tapped.
+ * @param onAppointManager called with the id of a team and of the member the organizer confirmed as
+ *   its manager, after tapping their card.
+ * @param onRemoveManager called with the id of a team whose manager the organizer confirmed to
+ *   remove, after tapping their card.
  */
 @Composable
 fun PeopleScreen(
@@ -57,12 +61,15 @@ fun PeopleScreen(
     onRetry: () -> Unit,
     participants: ParticipantsUiState,
     onReloadParticipants: () -> Unit,
-    onParticipantClick: (ParticipantItem, Team) -> Unit,
+    onAppointManager: (teamId: String, userId: String) -> Unit,
+    onRemoveManager: (teamId: String) -> Unit,
     onNavigate: (Tab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+  // The card tapped, as ids so it survives a configuration change and a reload of the list.
+  var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
@@ -86,13 +93,34 @@ fun PeopleScreen(
         ParticipantsList(
             participants,
             onReloadParticipants,
-            onParticipantClick,
+            { participant, team -> selection = participant.userId to team.id },
             Modifier.weight(1f),
         )
       } else {
         MembershipRequestsScreen(uiState, onAccept, onReject, onRetry, Modifier.weight(1f))
       }
     }
+  }
+  // Gone from the list since it was tapped, e.g. after a reload: there is nothing left to change.
+  LaunchedEffect(selection, participants.groups) {
+    val (userId, teamId) = selection ?: return@LaunchedEffect
+    val group = participants.groups.firstOrNull { it.team?.id == teamId }
+    if (group?.participants?.none { it.userId == userId } != false) selection = null
+  }
+  selection?.let { (userId, teamId) ->
+    val group = participants.groups.firstOrNull { it.team?.id == teamId }
+    val team = group?.team ?: return@let
+    val participant = group.participants.firstOrNull { it.userId == userId } ?: return@let
+    ManagerDialog(
+        participant = participant,
+        team = team,
+        currentManager = group.participants.firstOrNull { it.isManager },
+        onConfirm = {
+          if (participant.isManager) onRemoveManager(teamId) else onAppointManager(teamId, userId)
+          selection = null
+        },
+        onDismiss = { selection = null },
+    )
   }
 }
 
@@ -162,7 +190,8 @@ private fun PeopleScreenPreview() {
         onRetry = {},
         participants = ParticipantsUiState(),
         onReloadParticipants = {},
-        onParticipantClick = { _, _ -> },
+        onAppointManager = { _, _ -> },
+        onRemoveManager = {},
         onNavigate = {},
     )
   }

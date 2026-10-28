@@ -65,7 +65,8 @@ object ParticipantsListTestTags {
  * joined yet are listed too, and the participants of no team come last.
  *
  * @param onParticipantClick called with a participant and their team when their card is tapped.
- *   Cards of no team cannot be tapped, since there is no team to act on.
+ *   Cards of no team cannot be tapped, since there is no team to act on, nor any card while a
+ *   team's manager is being changed.
  */
 @Composable
 fun ParticipantsList(
@@ -122,14 +123,18 @@ fun ParticipantsList(
       items(group.participants, key = { "participant-${it.userId}" }) { participant ->
         ParticipantCard(
             participant = participant,
-            onClick = team?.let { { onParticipantClick(participant, it) } },
+            onClick =
+                team?.takeIf { !state.isUpdating }?.let { { onParticipantClick(participant, it) } },
         )
       }
     }
   }
 }
 
-/** The failure, in the words of the Requests tab, with a way to try again. */
+/**
+ * The failure, in the words of the Requests tab, with a way to try again, except after a failed
+ * change of manager: reloading would not retry it, and the list is still there to tap again.
+ */
 @Composable
 private fun ErrorMessage(error: ParticipantsError, enabled: Boolean, onRetry: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -141,12 +146,14 @@ private fun ErrorMessage(error: ParticipantsError, enabled: Boolean, onRetry: ()
         textAlign = TextAlign.Center,
         modifier = Modifier.testTag(ParticipantsListTestTags.ERROR),
     )
-    TextButton(
-        onClick = onRetry,
-        enabled = enabled,
-        modifier = Modifier.testTag(ParticipantsListTestTags.RETRY_BUTTON),
-    ) {
-      Text(text = stringResource(R.string.participants_retry), fontWeight = FontWeight.SemiBold)
+    if (error != ParticipantsError.UPDATE_FAILED) {
+      TextButton(
+          onClick = onRetry,
+          enabled = enabled,
+          modifier = Modifier.testTag(ParticipantsListTestTags.RETRY_BUTTON),
+      ) {
+        Text(text = stringResource(R.string.participants_retry), fontWeight = FontWeight.SemiBold)
+      }
     }
   }
 }
@@ -231,6 +238,7 @@ private val ParticipantsError.message: Int
         ParticipantsError.OFFLINE -> R.string.participants_error_offline
         ParticipantsError.PERMISSION_DENIED -> R.string.participants_error_permission_denied
         ParticipantsError.UNEXPECTED -> R.string.participants_error_unexpected
+        ParticipantsError.UPDATE_FAILED -> R.string.participants_manager_update_failed
       }
 
 @Preview
