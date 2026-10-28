@@ -171,9 +171,47 @@ service cloud.firestore {
         allow write: if isOrganizer(eventId);
       }
 
+      // The organizer writes every mission; a team's manager writes the missions of their team.
       match /missions/{missionId} {
+        // Whether the signed-in user manages teamId. A mission of no team ("General") has no
+        // manager; teamId is checked first, so get() never builds a path from null.
+        function managesTeam(teamId) {
+          return signedIn()
+            && teamId is string
+            && get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+                 .data.get('managerId', null) == request.auth.uid;
+        }
+
+        // A manager only adds members of the team, and never more assignees than needed. Those
+        // already on the mission may stay, so someone who left the team can still be unassigned.
+        function validAssignees(teamId, previous) {
+          let next = request.resource.data.get('assigneeIds', []);
+          let members =
+            get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+              .data.get('memberIds', []);
+          return next is list
+            && next.size() <= request.resource.data.get('volunteersNeeded', 0)
+            && next.toSet().difference(previous.toSet()).hasOnly(members);
+        }
+
+        function teamBefore() {
+          return resource.data.get('teamId', null);
+        }
+
+        function teamAfter() {
+          return request.resource.data.get('teamId', null);
+        }
+
         allow read: if canReadEventContent(eventId);
-        allow write: if isOrganizer(eventId);
+        allow create: if isOrganizer(eventId)
+          || (managesTeam(teamAfter()) && validAssignees(teamAfter(), []));
+        // Checking the team before and after keeps a manager from moving a mission to a team they
+        // do not manage.
+        allow update: if isOrganizer(eventId)
+          || (managesTeam(teamBefore())
+              && managesTeam(teamAfter())
+              && validAssignees(teamAfter(), resource.data.get('assigneeIds', [])));
+        allow delete: if isOrganizer(eventId) || managesTeam(teamBefore());
 
         // checkIns/{uid}: the proof that volunteer uid was present at the mission. The document id
         // is their uid, so they are checked in at most once, and a check-in is never changed.

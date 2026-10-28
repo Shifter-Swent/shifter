@@ -203,7 +203,8 @@ every access to it is denied.
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
-| `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
+| `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
+| `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
@@ -229,8 +230,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 ## Known gaps
 
 - **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
-  write them; malformed documents are caught by the mappers. Team managers have no write access
-  yet: only the organizer edits these subcollections.
+  write them, and which assignees a manager adds; malformed documents are caught by the mappers.
 - **Any signed-in user reads an event's teams, `memberIds` included.** These are uids only, but
   public profiles turn them into names. Events, join codes included, are listable by anyone signed
   in too; #160 is to address both, e.g. with a public subcollection holding only what candidates
