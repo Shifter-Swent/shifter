@@ -31,6 +31,7 @@ eventParticipants/{eventId}
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
+| `events/{eventId}/missions/{missionId}/checkIns/{uid}` | A volunteer's presence at a mission, keyed by their uid | `CheckInSchema` |
 | `events/{eventId}/membershipRequests/{uid}` | A volunteer's request to join, keyed by their uid | `MembershipRequestSchema` |
 | `eventParticipants/{eventId}` | The accepted volunteers of an event | written by `MembershipRequestRepositoryFirestore` |
 
@@ -150,6 +151,19 @@ reaches the server: a `SELF` check-in made offline during the slot can arrive af
 must be accepted. Any other time or position would come from the client, so it could be forged.
 The app checks both instead: the eligibility logic (#164) says whether the volunteer is in the slot
 and the zone, and the automatic check-in (#168) only records a `SELF` check-in when they are.
+
+`FirestoreCheckInRepository` reads and writes these documents:
+
+- **A second check-in** is refused by the rules with `PERMISSION_DENIED`, like any forbidden
+  write. The repository then reads the document from the server: if it exists, the error is
+  `AlreadyCheckedIn`, otherwise `NotAllowed`.
+- **`checkedInAt` of a pending write** (offline, or not yet acknowledged) is read with an estimate
+  of the server time (`ServerTimestampBehavior.ESTIMATE`), so a pending check-in is listed
+  straight away. `checkIn` itself only returns once the server has accepted the write.
+- **A volunteer's check-ins of one event:** the collection-group query on `userId` returns their
+  check-ins of every event. The repository then keeps those of the requested event, reading the
+  event id from each document's path (`events/{eventId}/…`), since the document has no `eventId`
+  field.
 
 ### `events/{eventId}/membershipRequests/{uid}`
 

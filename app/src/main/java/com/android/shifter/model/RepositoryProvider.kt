@@ -1,7 +1,9 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model
 
 import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.mission.MissionRepository
@@ -27,4 +29,5 @@ class RepositoryProvider(
     val membershipRequestRepository: MembershipRequestRepository,
     val missionRepository: MissionRepository,
     val teamRepository: TeamRepository,
+    val checkInRepository: CheckInRepository,
 )
