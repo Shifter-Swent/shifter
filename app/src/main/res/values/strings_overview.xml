@@ -20,4 +20,9 @@
     <string name="overview_notification_title">Send a notification</string>
     <string name="overview_notification_scope">Scope: all teams</string>
     <string name="overview_notification_action">Write the message →</string>
+    <!-- Assigning people to an existing mission -->
+    <string name="overview_assign">Assign</string>
+    <string name="overview_assign_save">Save</string>
+    <string name="overview_assign_cancel">Cancel</string>
+    <string name="overview_assign_failed">Could not save who is assigned. Try again.</string>
 </resources>

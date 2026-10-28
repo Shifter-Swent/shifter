@@ -272,6 +272,11 @@ fun ShifterNavHost(
                               eventId,
                               repositories.missionRepository,
                               repositories.teamRepository,
+                              RepositoryAssigneeCandidates(
+                                  repositories.teamRepository,
+                                  repositories.membershipRequestRepository,
+                                  repositories.userRepository,
+                              ),
                           )
                   )
               // Shows the missions added while the creation form was on top.
