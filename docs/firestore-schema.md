@@ -202,7 +202,7 @@ every access to it is denied.
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, except a volunteer leaving their team when they withdraw (see below; temporary, until #208). Nothing is written under an event that does not exist |
+| `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts`, `missions` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
@@ -222,7 +222,7 @@ The emulator does not check indexes, so after changing that file, deploy it with
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
 and, in the same commit, remove themself (and only themself) from `eventParticipants` and from their
-team. A request
+team: from its `memberIds`, or, for its manager, from `managerId`, which becomes `null`. A request
 can only be deleted once its volunteer is no longer a participant, and never once it is
 `REJECTED`, so a volunteer cannot undo a rejection by applying again.
 

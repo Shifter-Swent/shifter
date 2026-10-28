@@ -167,6 +167,28 @@ class EventSubcollectionRulesTest {
   }
 
   @Test
+  fun aManagerLeavesTheirTeamOnlyByWithdrawing() = emulatorTest {
+    val team = collection("teams").document(teamId)
+    signIn(organizer)
+    // What setManager writes: the manager leaves the members to lead them.
+    team.update(mapOf("managerId" to participant.uid, "memberIds" to emptyList<String>())).await()
+
+    signIn(outsider)
+    assertDenied { team.update("managerId", null).await() }
+
+    signIn(participant)
+    // Their request still exists, and they may not hand the team over to someone else.
+    assertDenied { team.update("managerId", null).await() }
+    assertDenied { team.update("managerId", outsider.uid).await() }
+    MembershipRequestRepositoryFirestore(db).withdraw(eventId, participant.uid)
+
+    signIn(organizer)
+    val stored = team.get(Source.SERVER).await()
+    assertEquals(null, stored.get("managerId"))
+    assertEquals(emptyList<String>(), stored.get("memberIds"))
+  }
+
+  @Test
   fun nobodyWritesOrReadsUnderAMissingEvent() = emulatorTest {
     // Without an event there is no organizer, so not even the user writing first may claim it.
     val missingEventId = "missing-" + UUID.randomUUID()
