@@ -56,7 +56,7 @@ class TeamFirestoreMapperTest {
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdTeamIds = mutableListOf<String>()
 
-  /** `firestore.rules` only lets signed-in users touch the teams of an event. */
+  /** `firestore.rules` only lets the organizer of an existing event write its teams. */
   @Before
   fun signInAndCreateTheEvent() = emulatorTest {
     auth.signInForFirestore { auth.signInAnonymously().await() }

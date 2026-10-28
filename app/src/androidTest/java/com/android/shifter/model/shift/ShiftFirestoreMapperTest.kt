@@ -57,7 +57,7 @@ class ShiftFirestoreMapperTest {
    */
   private val createdDocuments = mutableListOf<DocumentReference>()
 
-  /** `firestore.rules` only lets signed-in users touch the shifts of an event. */
+  /** `firestore.rules` only lets the organizer of an existing event write its shifts. */
   @Before
   fun signInAndCreateTheEvent() = emulatorTest {
     auth.signInForFirestore { auth.signInAnonymously().await() }

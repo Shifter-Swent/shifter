@@ -40,7 +40,7 @@ class FirestoreTeamRepositoryTest {
   /** The documents this test created, deleted in [tearDown]. */
   private val createdDocuments = mutableListOf<DocumentReference>()
 
-  /** `firestore.rules` only lets signed-in users touch the teams of an event. */
+  /** `firestore.rules` only lets the organizer of an existing event write its teams. */
   @Before
   fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
