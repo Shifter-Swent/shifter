@@ -4,12 +4,11 @@ package com.swent.shifter.model.authentication
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
+import com.swent.shifter.firebase.emulatorTest
 import java.util.UUID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -161,13 +160,7 @@ class AuthRepositoryFirebaseEmulatorTest {
 
   private fun uniqueEmail(): String = "volunteer-${UUID.randomUUID()}@example.com"
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
     const val DISPLAY_NAME = "Test Volunteer"
     const val GOOGLE_PROVIDER_ID = "google.com"
   }

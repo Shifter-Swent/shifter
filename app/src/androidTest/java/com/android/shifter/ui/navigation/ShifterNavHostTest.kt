@@ -26,6 +26,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.event.Event
@@ -967,7 +968,9 @@ class ShifterNavHostTest {
   /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
   private fun signInAndShowApp(name: String = "Ada"): NavHostController {
     runBlocking {
-      repositories.authRepository.signInWithGoogle(googleCredential(name)).getOrThrow()
+      AuthEmulator.auth.signInForFirestore {
+        repositories.authRepository.signInWithGoogle(googleCredential(name)).getOrThrow()
+      }
     }
     lateinit var navController: NavHostController
     composeTestRule.setContent {
@@ -990,7 +993,9 @@ class ShifterNavHostTest {
    */
   private fun signIn(account: GoogleIdTokenCredential = googleCredential()): AuthUser =
       runBlocking {
-        repositories.authRepository.signInWithGoogle(account).getOrThrow()
+        AuthEmulator.auth.signInForFirestore {
+          repositories.authRepository.signInWithGoogle(account).getOrThrow()
+        }
       }
 
   /** Creates an upcoming event organized by [organizer], who must be the signed-in user. */

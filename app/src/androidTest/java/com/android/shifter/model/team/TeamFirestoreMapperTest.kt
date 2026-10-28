@@ -6,12 +6,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,11 +50,12 @@ class TeamFirestoreMapperTest {
   private val createdTeamIds = mutableListOf<String>()
 
   /** `firestore.rules` only lets signed-in users touch the teams of an event. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    createdTeamIds.forEach { teams.document(it).delete().await() }
+    step("cleanup") { createdTeamIds.forEach { teams.document(it).delete().await() } }
     createdTeamIds.clear()
     auth.signOut()
   }
@@ -439,13 +441,13 @@ class TeamFirestoreMapperTest {
   private suspend fun writeRawTeam(body: Map<String, Any?>): String {
     val document = teams.document()
     createdTeamIds += document.id
-    document.set(body).await()
+    step("write") { document.set(body).await() }
     return document.id
   }
 
   /** [Source.SERVER] bypasses the local cache, so the read really goes through the emulator. */
   private suspend fun read(teamId: String): DocumentSnapshot =
-      teams.document(teamId).get(Source.SERVER).await()
+      step("read") { teams.document(teamId).get(Source.SERVER).await() }
 
   /** Asserts that mapping [teamId] fails loudly and that the failure names [field]. */
   private suspend fun assertFailsOnField(teamId: String, field: String) {
@@ -462,14 +464,7 @@ class TeamFirestoreMapperTest {
     )
   }
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
-
     const val MANAGER_ID = "user-manager-1"
 
     val MEMBERS = listOf("user-volunteer-1", "user-volunteer-2")

@@ -9,12 +9,13 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,12 +50,17 @@ class MembershipRequestFirestoreMapperTest {
   private val createdRequestIds = mutableListOf<String>()
 
   /** Scratch events belong to the signed-in test account, as required by `firestore.rules`. */
-  @Before fun signIn() = emulatorTest { auth.signInAnonymously().await() }
+  @Before
+  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
     try {
-      createdRequestIds.forEach { FirestoreEmulatorAdmin.deleteDocument(scratch.document(it).path) }
+      step("cleanup") {
+        createdRequestIds.forEach {
+          FirestoreEmulatorAdmin.deleteDocument(scratch.document(it).path)
+        }
+      }
       createdRequestIds.clear()
     } finally {
       auth.signOut()
@@ -377,13 +383,15 @@ class MembershipRequestFirestoreMapperTest {
     val document = scratch.document(SCRATCH_ID_PREFIX + UUID.randomUUID())
     createdRequestIds += document.id
     // The mapper ignores this event field; malformed request fields remain untouched.
-    document.set(body + ("organizerId" to checkNotNull(auth.currentUser).uid)).await()
+    step("write") {
+      document.set(body + ("organizerId" to checkNotNull(auth.currentUser).uid)).await()
+    }
     return document.id
   }
 
   /** [Source.SERVER] bypasses the local cache, so the read really goes through the emulator. */
   private suspend fun read(requestId: String): DocumentSnapshot =
-      scratch.document(requestId).get(Source.SERVER).await()
+      step("read") { scratch.document(requestId).get(Source.SERVER).await() }
 
   /** Asserts that mapping [requestId] fails loudly and that the failure names [field]. */
   private suspend fun assertFailsOnField(requestId: String, field: String) {
@@ -400,14 +408,7 @@ class MembershipRequestFirestoreMapperTest {
     )
   }
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 20_000L
-
     /** Marks the scratch documents these tests write into the events collection. */
     const val SCRATCH_ID_PREFIX = "membership-mapper-scratch-"
 

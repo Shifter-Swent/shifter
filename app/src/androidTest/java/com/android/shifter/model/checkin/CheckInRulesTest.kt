@@ -11,10 +11,10 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -343,12 +343,17 @@ class CheckInRulesTest {
   private suspend fun account(): Account {
     val email = "check-in-${UUID.randomUUID()}@example.test"
     val password = "test-password-123"
-    val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
+    val user =
+        checkNotNull(
+            auth
+                .signInForFirestore { auth.createUserWithEmailAndPassword(email, password).await() }
+                .user
+        )
     return Account(user.uid, EmailAuthProvider.getCredential(email, password))
   }
 
   private suspend fun signIn(user: Account) {
-    auth.signInWithCredential(user.credential).await()
+    auth.signInForFirestore { auth.signInWithCredential(user.credential).await() }
   }
 
   private data class Account(val uid: String, val credential: AuthCredential)
@@ -370,9 +375,5 @@ class CheckInRulesTest {
         failure is FirebaseFirestoreException &&
             failure.code == FirebaseFirestoreException.Code.PERMISSION_DENIED,
     )
-  }
-
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(30_000) { block() }
   }
 }
