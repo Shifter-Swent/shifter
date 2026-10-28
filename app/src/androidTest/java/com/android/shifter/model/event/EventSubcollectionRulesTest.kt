@@ -10,6 +10,9 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
+import com.swent.shifter.firebase.emulatorTest
+import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.firebase.step
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
@@ -18,9 +21,7 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -68,7 +69,7 @@ class EventSubcollectionRulesTest {
   @After
   fun cleanUp() = emulatorTest {
     try {
-      paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
+      step("cleanup") { paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
     } finally {
       try {
         accounts.forEach { account ->
@@ -283,14 +284,20 @@ class EventSubcollectionRulesTest {
   private suspend fun account(): Account {
     val email = "rules-${UUID.randomUUID()}@example.test"
     val password = "test-password-123"
-    val user = checkNotNull(auth.createUserWithEmailAndPassword(email, password).await().user)
+    // Creating the account signs it in, so Firestore switches to it too.
+    val user =
+        checkNotNull(
+            auth
+                .signInForFirestore { auth.createUserWithEmailAndPassword(email, password).await() }
+                .user
+        )
     return Account(user.uid, EmailAuthProvider.getCredential(email, password)).also {
       accounts += it
     }
   }
 
   private suspend fun signIn(user: Account) {
-    auth.signInWithCredential(user.credential).await()
+    auth.signInForFirestore { auth.signInWithCredential(user.credential).await() }
   }
 
   private suspend fun assertDenied(block: suspend () -> Unit) {
@@ -313,14 +320,7 @@ class EventSubcollectionRulesTest {
 
   private data class Account(val uid: String, val credential: AuthCredential)
 
-  /** Fails the test instead of hanging when the emulator cannot be reached. */
-  private fun emulatorTest(block: suspend () -> Unit) = runBlocking {
-    withTimeout(TIMEOUT_MILLIS) { block() }
-  }
-
   private companion object {
-    const val TIMEOUT_MILLIS = 30_000L
-
     val SUBCOLLECTIONS = listOf("teams", "shifts", "missions")
 
     /** The subcollections only the organizer and the participants read. */
