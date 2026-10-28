@@ -28,8 +28,9 @@ import org.junit.runner.RunWith
 /**
  * Security rules of the `teams`, `shifts` and `missions` subcollections of an event, run against
  * the Firestore emulator: the organizer writes them, the organizer and the accepted participants
- * read them, and nobody else does either. Only the organizer reads the event's participants, and a
- * volunteer leaves their team only by withdrawing.
+ * read them, and nobody else does either, except the teams, which any signed-in user reads to pick
+ * one before applying. Only the organizer reads the event's participants, and a volunteer leaves
+ * their team only by withdrawing.
  *
  * Documents are written as raw maps: the rules do not look at their content, and the mappers are
  * covered by their own tests.
@@ -107,8 +108,8 @@ class EventSubcollectionRulesTest {
   }
 
   @Test
-  fun anOutsiderCanNeitherReadNorWrite() = emulatorTest {
-    val documents = SUBCOLLECTIONS.associateWith { writeAsOrganizer(it) }
+  fun anOutsiderCanNeitherReadNorWriteShiftsAndMissions() = emulatorTest {
+    val documents = PRIVATE_SUBCOLLECTIONS.associateWith { writeAsOrganizer(it) }
     signIn(outsider)
 
     documents.forEach { (subcollection, document) ->
@@ -117,6 +118,18 @@ class EventSubcollectionRulesTest {
       assertDenied { document.update("name", "changed").await() }
       assertDenied { newDocument(subcollection).set(mapOf("name" to "mine")).await() }
     }
+  }
+
+  @Test
+  fun anOutsiderReadsTheTeamsButCannotWriteThem() = emulatorTest {
+    val team = writeAsOrganizer("teams")
+    signIn(outsider)
+
+    assertTrue(team.get(Source.SERVER).await().exists())
+    assertTrue(team.id in ids("teams"))
+    assertDenied { team.update("name", "changed").await() }
+    assertDenied { team.delete().await() }
+    assertDenied { newDocument("teams").set(mapOf("name" to "mine")).await() }
   }
 
   @Test
@@ -163,6 +176,8 @@ class EventSubcollectionRulesTest {
       val document = collection(subcollection, missingEventId).document()
       paths += document.path
       assertDenied { document.set(mapOf("name" to "orphan")).await() }
+    }
+    PRIVATE_SUBCOLLECTIONS.forEach { subcollection ->
       assertDenied { collection(subcollection, missingEventId).get(Source.SERVER).await() }
     }
   }
@@ -246,5 +261,8 @@ class EventSubcollectionRulesTest {
     const val TIMEOUT_MILLIS = 30_000L
 
     val SUBCOLLECTIONS = listOf("teams", "shifts", "missions")
+
+    /** The subcollections only the organizer and the participants read. */
+    val PRIVATE_SUBCOLLECTIONS = listOf("shifts", "missions")
   }
 }

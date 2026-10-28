@@ -136,7 +136,8 @@ service cloud.firestore {
       }
 
       // Rules do not cascade into subcollections, so teams, shifts and missions each need their
-      // own block. The organizer builds them; the organizer and the participants read them.
+      // own block. The organizer builds them; the organizer and the participants read them, except
+      // teams, which candidates read too.
       // Reads do not depend on the documents' content, so whole-subcollection queries are allowed.
       match /teams/{teamId} {
         // A volunteer who withdraws leaves their team on their own: they remove only themself
@@ -153,7 +154,9 @@ service cloud.firestore {
                  /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
         }
 
-        allow read: if canReadEventContent(eventId);
+        // A volunteer picks their team before applying, so before being a participant: any
+        // signed-in user lists an event's teams. memberIds holds uids only (trade-off of #170).
+        allow read: if signedIn();
         allow write: if isOrganizer(eventId);
         allow update: if isWithdrawal();
       }
