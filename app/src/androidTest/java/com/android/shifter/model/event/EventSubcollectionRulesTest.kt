@@ -13,6 +13,9 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
+import com.swent.shifter.model.team.FirestoreTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -189,6 +192,33 @@ class EventSubcollectionRulesTest {
   }
 
   @Test
+  fun onlyTheOrganizerSetsATeamsManager() = emulatorTest {
+    val teams = FirestoreTeamRepository(db)
+    signIn(organizer)
+    val team =
+        teams.createTeam(
+            Team(
+                eventId = eventId,
+                name = "Logistics",
+                description = "Move the equipment around the site",
+                icon = "truck",
+                memberIds = listOf(participant.uid),
+                createdAt = Instant.EPOCH,
+            )
+        )
+    paths += "${EventSchema.COLLECTION}/$eventId/teams/${team.id}"
+
+    signIn(participant)
+    assertManagerDenied { teams.setManager(eventId, team.id, participant.uid) }
+    signIn(outsider)
+    assertManagerDenied { teams.setManager(eventId, team.id, participant.uid) }
+
+    signIn(organizer)
+    teams.setManager(eventId, team.id, participant.uid)
+    assertEquals(participant.uid, teams.getTeam(eventId, team.id)?.managerId)
+  }
+
+  @Test
   fun nobodyWritesOrReadsUnderAMissingEvent() = emulatorTest {
     // Without an event there is no organizer, so not even the user writing first may claim it.
     val missingEventId = "missing-" + UUID.randomUUID()
@@ -269,6 +299,15 @@ class EventSubcollectionRulesTest {
         "expected a permission denial, but was: $failure",
         (failure as? FirebaseFirestoreException)?.code ==
             FirebaseFirestoreException.Code.PERMISSION_DENIED,
+    )
+  }
+
+  /** setManager reads the team, then writes it: only the write is denied. */
+  private suspend fun assertManagerDenied(block: suspend () -> Unit) {
+    val failure = runCatching { block() }.exceptionOrNull()
+    assertTrue(
+        "expected a permission denial, but was: $failure",
+        failure is TeamRepositoryException.PermissionDenied,
     )
   }
 
