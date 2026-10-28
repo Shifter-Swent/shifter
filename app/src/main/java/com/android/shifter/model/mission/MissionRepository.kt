@@ -32,6 +32,16 @@ interface MissionRepository {
   suspend fun getMissionsByEvent(eventId: String): List<Mission>
 
   /**
+   * Returns the missions of the event [eventId] attached to one of [teamIds], in no particular
+   * order, or an empty list when [teamIds] is empty or none of those teams has a mission.
+   *
+   * The "General" missions, attached to no team, are never among them: a team manager reads the
+   * missions of their teams with this, where the organizer reads them all with
+   * [getMissionsByEvent].
+   */
+  suspend fun getMissionsByTeams(eventId: String, teamIds: Set<String>): List<Mission>
+
+  /**
    * Returns every mission, across all events, whose [Mission.assigneeIds] contains [userId],
    * earliest [Mission.startAt] first, or an empty list when they have none. Each mission carries
    * its [Mission.eventId], so a caller interested in one event filters on it.

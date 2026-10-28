@@ -46,6 +46,39 @@ class FakeMissionRepositoryTest {
   }
 
   @Test
+  fun getMissionsByTeams_returnsTheMissionsOfThoseTeamsOfThatEventOnly() = runTest {
+    val logistics = repository.createMission(mission("event-1", startHour = 9, teamId = "log"))
+    val bar = repository.createMission(mission("event-1", startHour = 10, teamId = "bar"))
+    repository.createMission(mission("event-1", startHour = 11, teamId = "security"))
+    repository.createMission(mission("event-1", startHour = 12))
+    repository.createMission(mission("event-2", startHour = 13, teamId = "log"))
+
+    assertEquals(listOf(logistics), repository.getMissionsByTeams("event-1", setOf("log")))
+    assertEquals(
+        listOf(logistics, bar),
+        repository.getMissionsByTeams("event-1", setOf("log", "bar")),
+    )
+  }
+
+  @Test
+  fun getMissionsByTeams_withoutAnyTeam_returnsAnEmptyList() = runTest {
+    repository.createMission(mission("event-1", startHour = 9, teamId = "log"))
+
+    assertEquals(emptyList<Mission>(), repository.getMissionsByTeams("event-1", emptySet()))
+  }
+
+  @Test
+  fun getMissionsByTeams_throwsTheConfiguredFailure() = runTest {
+    val failure = IllegalStateException("backend down")
+    repository.failure = failure
+
+    assertSame(
+        failure,
+        runCatching { repository.getMissionsByTeams("event-1", setOf("log")) }.exceptionOrNull(),
+    )
+  }
+
+  @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = runTest {
     val late = repository.createMission(mission("event-1", startHour = 15, "user-1"))
     val early = repository.createMission(mission("event-2", startHour = 9, "user-1", "user-2"))
@@ -151,11 +184,17 @@ class FakeMissionRepositoryTest {
   }
 
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */
-  private fun mission(eventId: String, startHour: Int, vararg assigneeIds: String) =
+  private fun mission(
+      eventId: String,
+      startHour: Int,
+      vararg assigneeIds: String,
+      teamId: String? = null,
+  ) =
       Mission(
           eventId = eventId,
           title = "Mission at $startHour",
           description = "",
+          teamId = teamId,
           volunteersNeeded = maxOf(1, assigneeIds.size),
           startAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds(startHour * 3600L),
           endAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds((startHour + 1) * 3600L),
