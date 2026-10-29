@@ -231,6 +231,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 - **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
   write them, and which assignees a manager adds; malformed documents are caught by the mappers.
+- **Check-ins trust `assigneeIds` only.** A volunteer who withdrew or was rejected stays assigned
+  until the organizer unassigns them, so they can still check themself in; #313 is to also
+  require them to be a participant.
 - **Any signed-in user reads an event's teams, `memberIds` and `checkInZone` included.** The
   members are uids only, but public profiles turn them into names, and the check-in zone tells
   where the team's volunteers will be. Events, join codes included, are listable by anyone signed
