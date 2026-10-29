@@ -171,7 +171,7 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun authState_emitsTheSameSessionReportedTwiceOnce() = runBlocking {
+  fun authState_whenASessionIsReportedTwice_emitsItOnce() = runBlocking {
     val user = mockk<FirebaseUser>()
     every { user.uid } returns "uid-1"
     every { user.email } returns "ada@example.com"

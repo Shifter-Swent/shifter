@@ -57,8 +57,10 @@ class AuthRepositoryFirebase(
    * sign-out, including a session ending outside the app: the SDK signs out by itself when a token
    * refresh or a reload finds the account disabled or deleted on the server.
    *
-   * Depending on when the listener is added relative to a sign-in, Firebase can report the same
-   * session twice, so a repeated account is emitted once.
+   * A sign-in notification still pending when the listener is added reaches it too, after the
+   * registration call: the same session reported twice in a row is emitted once. Each call reads
+   * the session when it arrives, so a quick sign-out then sign-in as the same account can show up
+   * as that account alone.
    */
   override val authState: Flow<AuthUser?> = callbackFlow {
     // Sends the session Firebase reports to the collector, mapped to the app's own type.
