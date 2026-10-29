@@ -13,6 +13,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -55,6 +56,11 @@ class AuthRepositoryFirebase(
    * Firebase calls once on registration with the current session, then on every sign-in or
    * sign-out, including a session ending outside the app: the SDK signs out by itself when a token
    * refresh or a reload finds the account disabled or deleted on the server.
+   *
+   * A sign-in notification still pending when the listener is added reaches it too, after the
+   * registration call: the same session reported twice in a row is emitted once. Each call reads
+   * the session when it arrives, so a quick sign-out then sign-in as the same account can show up
+   * as that account alone.
    */
   override val authState: Flow<AuthUser?> = callbackFlow {
     // Sends the session Firebase reports to the collector, mapped to the app's own type.
@@ -63,6 +69,7 @@ class AuthRepositoryFirebase(
     // Keeps the flow open while collected, then removes the listener so Firebase does not keep it.
     awaitClose { auth.removeAuthStateListener(listener) }
   }
+      .distinctUntilChanged()
 
   /** Clears the current Firebase Authentication session. */
   override fun signOut(): Result<Unit> {
