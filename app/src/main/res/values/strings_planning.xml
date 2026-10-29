@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The missions a volunteer is assigned to, in their event overview -->
+    <string name="planning_title">Planning</string>
+    <string name="planning_subtitle">Your assigned tasks</string>
+    <string name="planning_empty">No missions assigned to you yet.</string>
+    <string name="planning_checked_in_at">Checked in at %1$s</string>
+</resources>
