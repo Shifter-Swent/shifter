@@ -13,6 +13,7 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -106,6 +107,33 @@ class RepositoryMyEventsLoadersTest {
         ),
         cards,
     )
+  }
+
+  @Test
+  fun staff_whenTheTeamsCannotBeRead_stillListsTheEventsWithoutTheRole() = runTest {
+    events.events += listOf(upcoming, past)
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+    requests.add("past", request(MembershipRequestStatus.ACCEPTED))
+    teams.failure = TeamRepositoryException.Unavailable()
+
+    val cards = staffLoader().load()
+
+    // The events did load, so they are listed; only the role they are labelled with is lost.
+    assertEquals(listOf("upcoming", "past"), cards.map { it.id })
+    assertEquals(listOf(EventBadge.CONFIRMED, EventBadge.ENDED), cards.map { it.badge })
+    assertTrue(cards.all { it.footer == EventCardFooter.VOLUNTEER })
+  }
+
+  @Test
+  fun staff_whenTheTeamReadIsCancelled_cancelsTheLoad() = runTest {
+    events.events += upcoming
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+    // Cancellation is not a failure to fall back from: it must carry on up.
+    teams.failure = CancellationException("cancelled")
+
+    val failure = runCatching { staffLoader().load() }.exceptionOrNull()
+
+    assertTrue("got $failure", failure is CancellationException)
   }
 
   @Test
