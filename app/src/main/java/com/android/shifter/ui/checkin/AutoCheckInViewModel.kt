@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
+import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
@@ -120,9 +121,12 @@ class AutoCheckInViewModel(
 
   private suspend fun checkInWhenEligible() = coroutineScope {
     val userId = currentUserId() ?: return@coroutineScope
-    // A mission over by now cannot become eligible while the screen is open.
+    // A mission whose window is over cannot become eligible while the screen is open. A window not
+    // open yet can, so this is not a check that now is in the window.
     val missions =
-        missionRepository.getMissionsAssignedTo(userId).filter { it.isGeoTimed && it.endAt > now() }
+        missionRepository.getMissionsAssignedTo(userId).filter {
+          it.isGeoTimed && now() <= it.checkInWindow().endInclusive
+        }
     if (missions.isEmpty()) return@coroutineScope
     val checkedIn = MutableStateFlow<Set<Pair<String, String>>?>(null)
     launch {
