@@ -159,6 +159,8 @@ class EventSubcollectionRulesTest {
 
     signIn(outsider)
     assertDenied { team.update("memberIds", FieldValue.arrayRemove(participant.uid)).await() }
+    // Removing themself, who is not a member, changes nothing: still not a withdrawal.
+    assertDenied { team.update("memberIds", FieldValue.arrayRemove(outsider.uid)).await() }
 
     signIn(participant)
     // Their request still exists, and they may not change anyone else's membership.

@@ -151,7 +151,9 @@ service cloud.firestore {
             && next.removeAll(previous).size() == 0;
           let leavesTheManagement = resource.data.get('managerId', null) == request.auth.uid
             && request.resource.data.get('managerId', null) == null;
+          // Without a change, every check below would hold, and anyone could write the team.
           return signedIn()
+            && changed.size() > 0
             && changed.hasOnly(['memberIds', 'managerId'])
             && (!changed.hasAny(['memberIds']) || leavesTheMembers)
             && (!changed.hasAny(['managerId']) || leavesTheManagement)
