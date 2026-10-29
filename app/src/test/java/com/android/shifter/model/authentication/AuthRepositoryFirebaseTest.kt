@@ -171,6 +171,32 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
+  fun authState_emitsTheSameSessionReportedTwiceOnce() = runBlocking {
+    val user = mockk<FirebaseUser>()
+    every { user.uid } returns "uid-1"
+    every { user.email } returns "ada@example.com"
+    every { user.displayName } returns "Ada"
+    val listener = slot<FirebaseAuth.AuthStateListener>()
+    // Like Firebase when the listener is added during a sign-in: the session is reported twice.
+    every { auth.addAuthStateListener(capture(listener)) } answers
+        {
+          every { auth.currentUser } returns user
+          listener.captured.onAuthStateChanged(auth)
+          listener.captured.onAuthStateChanged(auth)
+          every { auth.currentUser } returns null
+          listener.captured.onAuthStateChanged(auth)
+        }
+    every { auth.removeAuthStateListener(any()) } just runs
+
+    val states = repository.authState.take(2).toList()
+
+    assertEquals(
+        listOf(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"), null),
+        states,
+    )
+  }
+
+  @Test
   fun signOut_returnsSuccessAndDelegatesToFirebase() {
     // Mock the behavior of FirebaseAuth.signOut() to do nothing (just runs)
     every { auth.signOut() } just runs
