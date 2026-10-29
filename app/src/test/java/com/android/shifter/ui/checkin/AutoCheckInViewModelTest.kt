@@ -190,6 +190,16 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
+  fun missionAtTheEndOfItsWindow_isStillTried() = runTest {
+    addMission(endsIn = Duration.ZERO)
+    open()
+
+    moveTo(NEAR)
+
+    assertEquals(1, checkIns.checkIns.size)
+  }
+
+  @Test
   fun notAllowed_showsTheErrorAndDoesNotRetry() = runTest {
     addMission()
     open()
