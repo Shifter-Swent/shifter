@@ -4,6 +4,7 @@ package com.swent.shifter.ui.events
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.async
@@ -39,6 +40,7 @@ class OrganizerEventsLoader(
 class StaffEventsLoader(
     private val eventRepository: EventRepository,
     private val membershipRequestRepository: MembershipRequestRepository,
+    private val teamRepository: TeamRepository,
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
@@ -55,10 +57,13 @@ class StaffEventsLoader(
           async {
             val accepted = request.status == MembershipRequestStatus.ACCEPTED
             // An event deleted since the request was sent has nothing left to show.
-            eventRepository
-                .getEvent(eventId)
-                ?.takeIf { accepted || !isOver(it, now) }
-                ?.let { it to it.toStaffCard(accepted, now, zone) }
+            val event = eventRepository.getEvent(eventId)?.takeIf { accepted || !isOver(it, now) }
+            // Only someone accepted can manage a team, so the others are not asked about one.
+            val manages =
+                event != null &&
+                    accepted &&
+                    teamRepository.getTeamsManagedBy(eventId, userId).isNotEmpty()
+            event?.let { it to it.toStaffCard(accepted, manages, now, zone) }
           }
         }
         .awaitAll()

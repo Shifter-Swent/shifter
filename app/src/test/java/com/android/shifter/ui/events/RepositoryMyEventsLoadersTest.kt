@@ -8,6 +8,9 @@ import com.swent.shifter.model.membership.FakeMembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.test.runTest
@@ -21,6 +24,7 @@ class RepositoryMyEventsLoadersTest {
   private val zone = ZoneId.of("Europe/Paris")
   private val events = FakeEventRepository()
   private val requests = FakeMembershipRequestRepository()
+  private val teams = FakeTeamRepository()
 
   private val upcoming = testEvent(id = "upcoming")
   private val past =
@@ -30,7 +34,7 @@ class RepositoryMyEventsLoadersTest {
       OrganizerEventsLoader(events, { userId }, { now }, { zone })
 
   private fun staffLoader(userId: String? = "volunteer") =
-      StaffEventsLoader(events, requests, { userId }, { now }, { zone })
+      StaffEventsLoader(events, requests, teams, { userId }, { now }, { zone })
 
   private fun request(status: MembershipRequestStatus) =
       MembershipRequest(
@@ -71,6 +75,49 @@ class RepositoryMyEventsLoadersTest {
         ),
         cards,
     )
+  }
+
+  @Test
+  fun staff_namesTheRoleOfEachAcceptedEventAndAsksNothingForTheOthers() = runTest {
+    events.events += listOf(upcoming, past, testEvent(id = "pending"))
+    requests.add("upcoming", request(MembershipRequestStatus.ACCEPTED))
+    requests.add("past", request(MembershipRequestStatus.ACCEPTED))
+    requests.add("pending", request(MembershipRequestStatus.PENDING))
+    // They manage a team of the event that is over, and none of the one to come.
+    teams.teams +=
+        Team(
+            id = "bar",
+            eventId = "past",
+            name = "Bar",
+            description = "",
+            icon = "wine",
+            managerId = "volunteer",
+            createdAt = now,
+        )
+
+    val cards = staffLoader().load().associate { it.id to it.footer }
+
+    assertEquals(
+        mapOf(
+            "upcoming" to EventCardFooter.VOLUNTEER,
+            // Managing a team is still their role on an event that is over.
+            "past" to EventCardFooter.MANAGER,
+            "pending" to EventCardFooter.AWAITING_APPROVAL,
+        ),
+        cards,
+    )
+  }
+
+  @Test
+  fun staff_withOnlyAPendingRequest_asksForNoTeamAtAll() = runTest {
+    events.events += testEvent(id = "pending")
+    requests.add("pending", request(MembershipRequestStatus.PENDING))
+    // A query would throw this: nobody awaiting approval manages a team yet.
+    teams.failure = TeamRepositoryException.Unavailable()
+
+    val cards = staffLoader().load()
+
+    assertEquals(listOf(EventCardFooter.AWAITING_APPROVAL), cards.map { it.footer })
   }
 
   @Test

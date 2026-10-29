@@ -25,6 +25,7 @@ enum class EventBadge {
 /** The left part of an event card footer: the user's role, or why they have none yet. */
 enum class EventCardFooter {
   VOLUNTEER,
+  MANAGER,
   ORGANIZER,
   AWAITING_APPROVAL,
 }

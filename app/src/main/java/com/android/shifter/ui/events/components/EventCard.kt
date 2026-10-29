@@ -210,6 +210,7 @@ private val EventCardFooter.labelRes: Int
   get() =
       when (this) {
         EventCardFooter.VOLUNTEER -> R.string.my_events_footer_volunteer
+        EventCardFooter.MANAGER -> R.string.my_events_footer_manager
         EventCardFooter.ORGANIZER -> R.string.my_events_footer_organizer
         EventCardFooter.AWAITING_APPROVAL -> R.string.my_events_footer_awaiting_approval
       }

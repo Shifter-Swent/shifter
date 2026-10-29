@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
@@ -37,7 +38,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.swent.shifter.R
 import com.swent.shifter.model.RepositoryProvider
+import com.swent.shifter.ui.attendance.AttendanceViewModel
+import com.swent.shifter.ui.attendance.ManagerOverviewContent
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.event.CreateEventScreen
@@ -69,6 +73,8 @@ import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
+import java.time.Instant
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 
 /**
@@ -124,6 +130,7 @@ fun ShifterNavHost(
                             StaffEventsLoader(
                                 repositories.eventRepository,
                                 repositories.membershipRequestRepository,
+                                repositories.teamRepository,
                                 currentUserId,
                             ),
                         withdrawer =
@@ -168,7 +175,22 @@ fun ShifterNavHost(
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
-        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
+        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(
+            VolunteerTabs.Overview,
+            nav,
+            // The Overview draws itself, so it is not put under the stand-in title.
+            built = true,
+            content = { entry ->
+              val eventId =
+                  remember(entry) {
+                    navController
+                        .getBackStackEntry<VolunteerEvent>()
+                        .toRoute<VolunteerEvent>()
+                        .eventId
+                  }
+              EventOverview(eventId, repositories, currentUserId)
+            },
+        )
         mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(
             VolunteerTabs.Map,
             nav,
@@ -411,13 +433,84 @@ fun ShifterNavHost(
 private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
     tab: Tab,
     nav: NavigationActions,
+    built: Boolean = false,
     noinline content: @Composable (NavBackStackEntry) -> Unit = {},
     crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
   navigation<T>(startDestination = tab.home) {
-    composable<S> { entry -> TabPage(tab, nav) { PlaceholderPage(tab.home) { content(entry) } } }
+    composable<S> { entry ->
+      TabPage(tab, nav) {
+        if (built) content(entry) else PlaceholderPage(tab.home) { content(entry) }
+      }
+    }
     screens()
   }
+}
+
+/**
+ * The Overview of an event as the signed-in user may see it: a manager watches the live attendance
+ * of the missions of the teams they manage, anyone else is still waiting on their own screen.
+ *
+ * Whether they may watch it comes from [AttendanceViewModel], which reads it from the teams it
+ * already loads, so opening this tab asks the backend for nothing more than it is allowed to show.
+ */
+@Composable
+private fun EventOverview(
+    eventId: String,
+    repositories: RepositoryProvider,
+    currentUserId: () -> String?,
+) {
+  val viewModel: AttendanceViewModel =
+      viewModel(
+          factory =
+              AttendanceViewModel.factory(
+                  eventId,
+                  currentUserId().orEmpty(),
+                  repositories.eventRepository,
+                  repositories.missionRepository,
+                  repositories.teamRepository,
+                  repositories.userRepository,
+                  repositories.checkInRepository,
+              )
+      )
+  val state by viewModel.uiState.collectAsState()
+  when (state.canViewAttendance) {
+    true ->
+        ManagerOverviewContent(
+            state = state,
+            eventTitle = state.eventTitle,
+            now = rememberNow(),
+            onRetry = viewModel::refresh,
+        )
+    false -> PlaceholderPage(VolunteerEventScreen.Overview)
+    // Not known yet: the tab's own title only, never the manager's view of the event.
+    null ->
+        PlaceholderPage(VolunteerEventScreen.Overview) {
+          if (state.loadFailed) {
+            Text(stringResource(R.string.overview_load_failed))
+            TextButton(onClick = viewModel::refresh) {
+              Text(stringResource(R.string.overview_retry))
+            }
+          }
+        }
+  }
+}
+
+/**
+ * Now, moved on while the screen is composed, so a check-in window opens on its own without an
+ * arrival to announce it. The effect is cancelled with the screen, and a minute is fine for a
+ * window measured in them.
+ */
+@Composable
+private fun rememberNow(): Instant {
+  var now by remember { mutableStateOf(Instant.now()) }
+  LaunchedEffect(Unit) {
+    while (true) {
+      delay(60_000)
+      now = Instant.now()
+    }
+  }
+  return now
 }
 
 /** Registers the Map [tab] of the event open in the graph [E], showing its missions on a map. */
