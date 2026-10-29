@@ -18,6 +18,9 @@ import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,9 +48,11 @@ data class AttendanceVolunteer(
  * @property assignees the people assigned, in the order the mission lists them. How many there are
  *   is how many are expected, never how many are present: presence comes from the check-ins.
  * @property attendanceKnown whether the check-ins of the mission have arrived and are still being
- *   followed. While they are not, nobody is known to be present and [missingAssignees] is not a
- *   list of who is late: either nothing has been collected yet, or what was is possibly stale
- *   because the observation failed.
+ *   followed. While they are not, nobody is known to be present, the timestamps last collected are
+ *   possibly stale, and nobody is reported late: either nothing has arrived yet, or the observation
+ *   failed.
+ * @property attendanceFailed whether the check-ins of this mission could not be observed, which
+ *   leaves it listed with its attendance not [known][attendanceKnown] rather than dropping it.
  */
 data class AttendanceMission(
     val id: String,
@@ -59,30 +64,37 @@ data class AttendanceMission(
     val endAt: Instant,
     val assignees: List<AttendanceVolunteer>,
     val attendanceKnown: Boolean = false,
+    val attendanceFailed: Boolean = false,
 ) {
   /** The assignees who checked in, in the order the mission lists them. */
   val presentAssignees: List<AttendanceVolunteer>
     get() = assignees.filter { it.checkedInAt != null }
 
-  /** The assignees who have not checked in, in the order the mission lists them. */
+  /**
+   * The assignees who have not checked in, in the order the mission lists them, and none at all
+   * while the attendance is not [known][attendanceKnown]: not being seen is not being absent.
+   */
   val missingAssignees: List<AttendanceVolunteer>
-    get() = assignees.filter { it.checkedInAt == null }
+    get() = if (attendanceKnown) assignees.filter { it.checkedInAt == null } else emptyList()
 
   /** How many assignees are present: the "present" of "present / needed". */
   val presentCount: Int
     get() = presentAssignees.size
 
-  /** Whether fewer people are present than the mission needs, which the screen warns about. */
+  /**
+   * Whether fewer people are present than the mission needs, which the screen warns about, and
+   * never while the attendance is not [known][attendanceKnown].
+   */
   val isUnderstaffed: Boolean
-    get() = presentCount < volunteersNeeded
+    get() = attendanceKnown && presentCount < volunteersNeeded
 }
 
 /**
  * State of the attendance screen.
  *
- * @property loadFailed whether the missions could not be loaded, which drops them, or the check-ins
- *   of one of them could not be observed, which keeps them listed with their attendance not
- *   [known][AttendanceMission.attendanceKnown] rather than read as nobody being present.
+ * @property loadFailed whether the missions could not be loaded, which drops them. A mission whose
+ *   check-ins could not be observed is a failure of that mission alone,
+ *   [AttendanceMission.attendanceFailed], and leaves the others as they are.
  */
 data class AttendanceUiState(
     val isLoading: Boolean = true,
@@ -162,7 +174,12 @@ class AttendanceViewModel(
           teamNames.isEmpty() -> return emptyList()
           else -> missionRepository.getMissionsByTeams(eventId, teamNames.keys)
         }.sortedBy { it.startAt }
-    val names = missions.flatMap { it.assigneeIds }.distinct().associateWith { name(it) }
+    // One read per person, all at once, and cancelled together with the load they belong to.
+    val names = coroutineScope {
+      missions.flatMap { it.assigneeIds }.distinct().map { async { it to name(it) } }
+    }
+        .awaitAll()
+        .toMap()
     return missions.map { mission ->
       AttendanceMission(
           id = mission.id,
@@ -196,13 +213,16 @@ class AttendanceViewModel(
           throw e
         } catch (_: Exception) {
           // Its attendance stops being known rather than being read as nobody present, or, once
-          // something was collected, left shown as current when it may already be out of date.
+          // something was collected, left shown as current when it may already be out of date. The
+          // other missions keep theirs, and the missions themselves loaded, so the load has not
+          // failed.
           _uiState.update { state ->
             state.copy(
-                loadFailed = true,
                 missions =
                     state.missions.map {
-                      if (it.id == mission.id) it.copy(attendanceKnown = false) else it
+                      if (it.id == mission.id)
+                          it.copy(attendanceKnown = false, attendanceFailed = true)
+                      else it
                     },
             )
           }
@@ -220,11 +240,8 @@ class AttendanceViewModel(
       missionId: String,
       checkIns: List<CheckIn>,
   ): AttendanceUiState {
-    // One time per volunteer, the earliest, so the same arrival recorded twice counts once.
-    val arrivals =
-        checkIns
-            .groupBy { it.userId }
-            .mapValues { (_, records) -> records.minOf { it.checkedInAt } }
+    // At most one check-in per volunteer per mission, which the repository guarantees.
+    val arrivals = checkIns.associate { it.userId to it.checkedInAt }
     return copy(
         missions =
             missions.map { mission ->
@@ -232,6 +249,7 @@ class AttendanceViewModel(
               else
                   mission.copy(
                       attendanceKnown = true,
+                      attendanceFailed = false,
                       assignees =
                           mission.assignees.map { it.copy(checkedInAt = arrivals[it.userId]) },
                   )

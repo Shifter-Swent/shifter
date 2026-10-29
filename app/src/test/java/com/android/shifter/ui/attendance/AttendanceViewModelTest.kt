@@ -20,6 +20,7 @@ import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepositoryException
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -224,6 +225,20 @@ class AttendanceViewModelTest {
   }
 
   @Test
+  fun load_whenThePublicProfileReadFails_keepsTheAssigneeWithoutAName() = runTest {
+    addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    users.failure = UserRepositoryException.Unavailable()
+
+    open("manager")
+
+    assertFalse(viewModel.uiState.value.loadFailed)
+    assertEquals(
+        listOf(AttendanceVolunteer("ann", null)),
+        viewModel.uiState.value.missions.single().assignees,
+    )
+  }
+
+  @Test
   fun load_withoutAnyMission_loadsThenShowsAnEmptyState() = runTest {
     viewModel =
         AttendanceViewModel("event-1", "organizer", events, missions, teams, users, checkIns)
@@ -334,14 +349,13 @@ class AttendanceViewModelTest {
   }
 
   @Test
-  fun arrival_ofSomeoneUnassignedOrElsewhereOrRecordedTwice_isNotCounted() = runTest {
+  fun arrival_ofSomeoneUnassignedOrElsewhere_isNotCounted() = runTest {
     val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
     val drinks = addMission("Serve drinks", "bar", hour = 2, assigneeIds = listOf("bob"))
     open("manager")
 
     arrive(setUp.id, "bob") // Assigned to the other mission, so not present on this one.
     arrive(setUp.id, "ann", minute = 5) // Counted.
-    arrive(setUp.id, "ann", minute = 9) // The same arrival recorded a second time.
     arrive(setUp.id, "ann", minute = 1, eventId = "event-2") // Another event's mission.
     advanceUntilIdle()
 
@@ -433,23 +447,29 @@ class AttendanceViewModelTest {
   }
 
   @Test
-  fun load_whenTheCheckInsCannotBeObserved_reportsItWithoutClaimingNobodyIsPresent() = runTest {
+  fun load_whenTheCheckInsCannotBeObserved_marksThatMissionWithoutFailingTheLoad() = runTest {
     addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
     checkIns.failure = CheckInRepositoryException.Unavailable()
 
     open("manager")
 
     val state = viewModel.uiState.value
-    assertTrue(state.loadFailed)
+    // The missions did load: only their attendance did not, which is the mission's own failure.
+    assertFalse(state.loadFailed)
     // The mission stays listed, with an attendance that is unknown rather than read as empty.
     val mission = state.missions.single()
+    assertTrue(mission.attendanceFailed)
     assertFalse(mission.attendanceKnown)
     assertEquals(0, mission.presentCount)
+    // Nobody unseen is reported late, and nothing is warned about as short of volunteers.
+    assertEquals(emptyList<AttendanceVolunteer>(), mission.missingAssignees)
+    assertFalse(mission.isUnderstaffed)
   }
 
   @Test
-  fun observation_failingAfterAnEmission_stopsTheAttendanceBeingKnown() = runTest {
+  fun observation_failingAfterAnEmission_stopsThatMissionsAttendanceBeingKnown() = runTest {
     val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    addMission("Serve drinks", "bar", hour = 2, assigneeIds = listOf("bob"))
     viewModel =
         AttendanceViewModel(
             "event-1",
@@ -462,15 +482,20 @@ class AttendanceViewModelTest {
         )
     advanceUntilIdle()
     // The first snapshot came through, so the attendance is known at this point.
-    assertTrue(viewModel.uiState.value.missions.single().attendanceKnown)
+    assertTrue(viewModel.uiState.value.missions.all { it.attendanceKnown })
 
     arrive(setUp.id, "ann")
     advanceUntilIdle()
 
     val state = viewModel.uiState.value
-    assertTrue(state.loadFailed)
+    assertFalse(state.loadFailed)
+    val byTitle = state.missions.associateBy { it.title }
     // What was collected may be out of date now, so it is no longer presented as the attendance.
-    assertFalse(state.missions.single().attendanceKnown)
+    assertFalse(byTitle.getValue("Set up").attendanceKnown)
+    assertTrue(byTitle.getValue("Set up").attendanceFailed)
+    // The mission that is still being followed keeps its attendance.
+    assertTrue(byTitle.getValue("Serve drinks").attendanceKnown)
+    assertFalse(byTitle.getValue("Serve drinks").attendanceFailed)
   }
 
   /** A [CheckInRepository] whose observation emits the first snapshot, then fails on the next. */
