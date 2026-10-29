@@ -43,9 +43,18 @@ object CheckInRules {
   const val RADIUS_METERS = 200.0
 }
 
-/** When a volunteer can check in to this mission by themself, both bounds included. */
-fun Mission.checkInWindow(): ClosedRange<Instant> =
+/**
+ * When a volunteer can check in to a mission running from [startAt] to [endAt], both bounds
+ * included: it opens [CheckInRules.OPENS_BEFORE_START] early and closes with the mission.
+ *
+ * It takes the two instants rather than a [Mission] so a screen holding its own model of one reads
+ * the same window, instead of spelling the rule out a second time.
+ */
+fun checkInWindow(startAt: Instant, endAt: Instant): ClosedRange<Instant> =
     (startAt - CheckInRules.OPENS_BEFORE_START)..endAt
+
+/** When a volunteer can check in to this mission by themself, both bounds included. */
+fun Mission.checkInWindow(): ClosedRange<Instant> = checkInWindow(startAt, endAt)
 
 /**
  * Tells whether a volunteer at [position] can check in to [mission] at [now]: during its
