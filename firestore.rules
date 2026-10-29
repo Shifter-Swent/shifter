@@ -161,10 +161,19 @@ service cloud.firestore {
                  /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
         }
 
+        // The manager leads the members without being one of them, as TeamRepository promises.
+        // Malformed memberIds are left to the mappers.
+        function managerIsNotAMember() {
+          let managerId = request.resource.data.get('managerId', null);
+          let memberIds = request.resource.data.get('memberIds', []);
+          return managerId == null || !(memberIds is list) || !(managerId in memberIds);
+        }
+
         // A volunteer picks their team before applying, so before being a participant: any
         // signed-in user lists an event's teams. memberIds holds uids only (trade-off of #170).
         allow read: if signedIn();
-        allow write: if isOrganizer(eventId);
+        allow create, update: if isOrganizer(eventId) && managerIsNotAMember();
+        allow delete: if isOrganizer(eventId);
         allow update: if isWithdrawal();
       }
 

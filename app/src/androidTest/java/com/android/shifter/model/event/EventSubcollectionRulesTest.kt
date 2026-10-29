@@ -222,6 +222,26 @@ class EventSubcollectionRulesTest {
   }
 
   @Test
+  fun theOrganizerNeverPutsTheManagerAmongTheMembers() = emulatorTest {
+    val team = collection("teams").document(teamId)
+    signIn(organizer)
+
+    assertDenied {
+      newDocument("teams")
+          .set(mapOf("managerId" to participant.uid, "memberIds" to listOf(participant.uid)))
+          .await()
+    }
+    // participant is already a member of the team: appointing them must take them out of it.
+    assertDenied { team.update("managerId", participant.uid).await() }
+    assertDenied {
+      team.update(mapOf("managerId" to outsider.uid, "memberIds" to listOf(outsider.uid))).await()
+    }
+    team.update(mapOf("managerId" to participant.uid, "memberIds" to emptyList<String>())).await()
+
+    assertEquals(participant.uid, team.get(Source.SERVER).await().getString("managerId"))
+  }
+
+  @Test
   fun nobodyWritesOrReadsUnderAMissingEvent() = emulatorTest {
     // Without an event there is no organizer, so not even the user writing first may claim it.
     val missingEventId = "missing-" + UUID.randomUUID()
