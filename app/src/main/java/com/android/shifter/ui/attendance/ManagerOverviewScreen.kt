@@ -184,17 +184,16 @@ fun ManagerOverviewContent(
                   modifier = Modifier.size(20.dp).testTag(ManagerOverviewTestTags.LOADING),
                   strokeWidth = 2.dp,
               )
-          // Already "loaded, did not fail, nothing there"; only the team filter is added to it.
+          // Already "loaded, did not fail, nothing there". A team that was picked always has
+          // a mission, since the chips come from the missions, so it alone never empties the list.
           state.isEmpty -> EmptyMessage(R.string.attendance_no_missions)
-          // The failure already says why there is nothing, so it is not called empty on top.
-          !state.loadFailed -> EmptyMessage(R.string.attendance_no_team_missions)
         }
       }
     }
   }
 }
 
-/** Whether the load has answered, either with missions or with a failure. */
+/** Whether the load has come back with missions to count: neither running, nor failed. */
 private val AttendanceUiState.isLoaded: Boolean
   get() = !isLoading && !loadFailed
 

@@ -37,7 +37,6 @@
     <string name="attendance_missing">MISSING (%1$d)</string>
     <string name="attendance_volunteer_unknown">Unnamed volunteer</string>
     <string name="attendance_no_missions">No missions available</string>
-    <string name="attendance_no_team_missions">No missions in this team yet.</string>
     <string name="attendance_load_failed">Could not load the missions.</string>
     <string name="attendance_retry">Retry</string>
     <string name="attendance_expand">Show who is present</string>
