@@ -42,9 +42,13 @@ class AutoCheckInViewModelTest {
   private val location = FakeLocationProvider()
 
   private var userId: String? = USER
+  private var clock: Instant = NOW
 
   /** Only [NEAR] is eligible, whatever the mission and the time. */
   private var isEligible: (Mission, Instant, GeoPosition) -> Boolean = { _, _, at -> at == NEAR }
+
+  /** The instants [isEligible] was asked about, in order. */
+  private val eligibleAt = mutableListOf<Instant>()
 
   private lateinit var viewModel: AutoCheckInViewModel
   private lateinit var screen: Job
@@ -60,8 +64,11 @@ class AutoCheckInViewModelTest {
             repository,
             location,
             { userId },
-            { mission, time, at -> isEligible(mission, time, at) },
-            { NOW },
+            { mission, time, at ->
+              eligibleAt += time
+              isEligible(mission, time, at)
+            },
+            { clock },
             UTC,
         )
     screen =
@@ -116,11 +123,23 @@ class AutoCheckInViewModelTest {
   @Test
   fun severalEligiblePositions_checkInOnce() = runTest {
     addMission()
-    open()
+    val counting = CountsCalls(checkIns)
+    open(counting)
 
     repeat(3) { moveTo(NEAR) }
 
-    assertEquals(1, checkIns.checkIns.size)
+    assertEquals(1, counting.calls)
+  }
+
+  @Test
+  fun eachPosition_isCheckedAtItsOwnTime() = runTest {
+    addMission()
+    open()
+    clock = NOW + Duration.ofMinutes(5)
+
+    moveTo(FAR)
+
+    assertEquals(listOf(clock), eligibleAt)
   }
 
   @Test
@@ -138,11 +157,12 @@ class AutoCheckInViewModelTest {
   fun alreadyCheckedIn_skipsTheMission() = runTest {
     val mission = addMission()
     checkIns.add(CheckIn(EVENT, mission.id, USER, NOW, CheckInMethod.MANAGER, "manager"))
-    open()
+    val counting = CountsCalls(checkIns)
+    open(counting)
 
     moveTo(NEAR)
 
-    assertEquals(1, checkIns.checkIns.size)
+    assertEquals(0, counting.calls)
     assertNull(state.checkedIn)
   }
 
@@ -263,6 +283,23 @@ class AutoCheckInViewModelTest {
     advanceTimeBy(AutoCheckInViewModel.STOP_TIMEOUT_MILLIS + 1)
 
     assertEquals(0, location.activeCollectors)
+  }
+
+  /** Delegates to [checkIns], counting the check-ins asked for. */
+  private class CountsCalls(private val checkIns: CheckInRepository) :
+      CheckInRepository by checkIns {
+    /** How many check-ins were asked for. */
+    var calls = 0
+
+    override suspend fun checkIn(
+        eventId: String,
+        missionId: String,
+        userId: String,
+        method: CheckInMethod,
+    ) {
+      calls++
+      checkIns.checkIn(eventId, missionId, userId, method)
+    }
   }
 
   /** Delegates to [checkIns], except that a check-in never answers, like an offline write. */
