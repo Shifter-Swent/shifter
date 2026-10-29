@@ -252,6 +252,8 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
 
     repository.withdraw(eventId, volunteer.uid)
 
+    // Only the organizer may read the participants.
+    signIn(organizer)
     assertTeamLeftWithoutManager(eventId)
   }
 
