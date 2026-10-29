@@ -185,11 +185,10 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       userId: String,
   ) {
     val memberIds = snapshot.get(TeamSchema.MEMBER_IDS) as? List<*> ?: emptyList<Any>()
-    val changes = buildMap {
-      if (userId in memberIds) put(TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
-      if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) put(TeamSchema.MANAGER_ID, null)
+    if (userId in memberIds) update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+    if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
+      update(team, TeamSchema.MANAGER_ID, null)
     }
-    if (changes.isNotEmpty()) update(team, changes)
   }
 
   /**
