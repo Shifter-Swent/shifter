@@ -14,7 +14,7 @@ import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -66,14 +66,14 @@ class CheckInFirestoreMapperTest {
   fun toCheckIn_rejectsAnUnknownMethod() = emulatorTest {
     val stored = storeAndRead(valid() + ("method" to "GPS"))
 
-    assertThrows(IllegalStateException::class.java) { stored.toCheckIn() }
+    assertFailsNaming(stored, "'method'")
   }
 
   @Test
   fun toCheckIn_rejectsACheckedInAtThatIsNotATimestamp() = emulatorTest {
     val stored = storeAndRead(valid() + ("checkedInAt" to "yesterday"))
 
-    assertThrows(IllegalStateException::class.java) { stored.toCheckIn() }
+    assertFailsNaming(stored, "'checkedInAt'")
   }
 
   @Test
@@ -82,7 +82,7 @@ class CheckInFirestoreMapperTest {
       FirestoreEmulatorAdmin.deleteDocument(path)
       val stored = storeAndRead(valid() - field)
 
-      assertThrows("without $field", IllegalStateException::class.java) { stored.toCheckIn() }
+      assertFailsNaming(stored, "'$field'")
     }
   }
 
@@ -99,8 +99,25 @@ class CheckInFirestoreMapperTest {
             .get(Source.SERVER)
             .await()
 
-    assertThrows(IllegalStateException::class.java) { topLevel.toCheckIn() }
-    assertThrows(IllegalStateException::class.java) { underAnEventOnly.toCheckIn() }
+    assertFailsNaming(topLevel, "not nested under a mission")
+    assertFailsNaming(underAnEventOnly, "not nested under an event")
+  }
+
+  /**
+   * Asserts that mapping [snapshot] fails with an [IllegalStateException] whose message contains
+   * [reason], so a test cannot pass because of another malformed field than the one it breaks.
+   */
+  private fun assertFailsNaming(snapshot: DocumentSnapshot, reason: String) {
+    val failure = runCatching { snapshot.toCheckIn() }.exceptionOrNull()
+
+    assertTrue(
+        "a malformed document must fail with IllegalStateException, but was: $failure",
+        failure is IllegalStateException,
+    )
+    assertTrue(
+        "the failure must say $reason, but said: ${failure?.message}",
+        failure?.message?.contains(reason) == true,
+    )
   }
 
   private fun valid(): Map<String, Any> =
