@@ -151,11 +151,17 @@ class FakeMissionRepositoryTest {
   }
 
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */
-  private fun mission(eventId: String, startHour: Int, vararg assigneeIds: String) =
+  private fun mission(
+      eventId: String,
+      startHour: Int,
+      vararg assigneeIds: String,
+      teamId: String? = null,
+  ) =
       Mission(
           eventId = eventId,
           title = "Mission at $startHour",
           description = "",
+          teamId = teamId,
           volunteersNeeded = maxOf(1, assigneeIds.size),
           startAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds(startHour * 3600L),
           endAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds((startHour + 1) * 3600L),

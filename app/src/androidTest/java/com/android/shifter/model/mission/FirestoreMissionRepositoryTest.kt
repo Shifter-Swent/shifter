@@ -244,6 +244,44 @@ class FirestoreMissionRepositoryTest {
   }
 
   @Test
+  fun getMissionsByTeams_returnsTheMissionsOfThoseTeamsOfThatEventOnly() = emulatorTest {
+    val eventId = uniqueEventId()
+    val logistics = create(richMission(eventId).copy(teamId = "team-logistics"))
+    val bar = create(richMission(eventId).copy(teamId = "team-bar"))
+    create(richMission(eventId).copy(teamId = "team-security"))
+    // A "General" mission of no team, which a manager must never be served.
+    create(richMission(eventId).copy(teamId = null))
+    val theirs = create(richMission(uniqueEventId()).copy(teamId = "team-logistics"))
+
+    val found = repository.getMissionsByTeams(eventId, setOf("team-logistics", "team-bar"))
+
+    assertEquals(setOf(logistics, bar), found.toSet())
+    assertTrue("another event's mission leaked in", found.none { it.id == theirs.id })
+  }
+
+  @Test
+  fun getMissionsByTeams_withoutAnyTeam_returnsAnEmptyList() = emulatorTest {
+    val eventId = uniqueEventId()
+    create(richMission(eventId).copy(teamId = "team-logistics"))
+
+    assertEquals(emptyList<Mission>(), repository.getMissionsByTeams(eventId, emptySet()))
+  }
+
+  @Test
+  fun getMissionsByTeams_withManyTeams_returnsEachMissionOnceAndNothingForTheEmptyOnes() =
+      emulatorTest {
+        val eventId = uniqueEventId()
+        val mine = create(richMission(eventId).copy(teamId = "team-logistics"))
+        // One query per team, so more teams than an `in` filter would take is not a limit, and the
+        // 30 teams without a mission must each contribute nothing rather than fail the call.
+        val teamIds = setOf("team-logistics") + (1..30).map { "team-$it" }
+
+        val found = repository.getMissionsByTeams(eventId, teamIds)
+
+        assertEquals(listOf(mine), found)
+      }
+
+  @Test
   fun getMissionsAssignedTo_returnsTheUsersMissionsOfEveryEventEarliestFirst() = emulatorTest {
     val uid = signedInUid()
     val firstEvent = uniqueEventId()

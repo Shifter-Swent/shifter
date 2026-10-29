@@ -5,6 +5,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.swent.shifter.model.event.EventSchema
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -58,6 +61,36 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> = translatingErrors {
     missionsOf(eventId).get().await().documents.map { it.toMission() }
   }
+
+  /**
+   * One query per team on [MissionSchema.TEAM_ID], inside the event's subcollection, so the server
+   * returns the missions of those teams only and the others are never downloaded.
+   *
+   * One equality query per team rather than a single `in` filter over all of them: a rule
+   * restricting a manager to their own teams then has a single team id to check per request, and no
+   * request grows past the document limits such a rule is subject to. Each team is a separate
+   * request, but they are sent concurrently, so the call takes about as long as the slowest of them
+   * rather than their sum. A mission belongs to one team, so none comes back twice, and no team
+   * means no request at all, which is why an empty [teamIds] never reaches Firestore.
+   */
+  override suspend fun getMissionsByTeams(eventId: String, teamIds: Set<String>): List<Mission> =
+      translatingErrors {
+        coroutineScope {
+          teamIds
+              .map { teamId ->
+                async {
+                  missionsOf(eventId)
+                      .whereEqualTo(MissionSchema.TEAM_ID, teamId)
+                      .get()
+                      .await()
+                      .documents
+                      .map { it.toMission() }
+                }
+              }
+              .awaitAll()
+              .flatten()
+        }
+      }
 
   /**
    * Queries the `missions` collection group, so one request covers every event. The missions are

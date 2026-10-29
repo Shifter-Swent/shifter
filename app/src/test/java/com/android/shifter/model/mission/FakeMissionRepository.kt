@@ -41,6 +41,12 @@ class FakeMissionRepository : MissionRepository {
     return missions.filter { it.eventId == eventId }
   }
 
+  /** Filters the stored missions, where the Firestore repository queries on the team id. */
+  override suspend fun getMissionsByTeams(eventId: String, teamIds: Set<String>): List<Mission> {
+    failure?.let { throw it }
+    return missions.filter { it.eventId == eventId && it.teamId != null && it.teamId in teamIds }
+  }
+
   override suspend fun getMissionsAssignedTo(userId: String): List<Mission> {
     failure?.let { throw it }
     return missions.filter { userId in it.assigneeIds }.sortedBy { it.startAt }
