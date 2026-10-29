@@ -34,6 +34,7 @@ class StaffEventsContentTest {
   private val past = SampleMyEvents.staff.filter { it.badge == EventBadge.ENDED }
 
   private val withdrawn = mutableListOf<String>()
+  private val opened = mutableListOf<String>()
   private var organizerViewClicks = 0
   private var scanQrClicks = 0
   private var avatarClicks = 0
@@ -47,6 +48,7 @@ class StaffEventsContentTest {
             avatarInitial = "J",
             onTabSelected = { state = state.copy(selectedTab = it) },
             onWithdraw = { withdrawn += it },
+            onOpenEvent = { opened += it },
             onOrganizerViewClick = { organizerViewClicks++ },
             onScanQrClick = { scanQrClicks++ },
             onAvatarClick = { avatarClicks++ },
@@ -103,7 +105,7 @@ class StaffEventsContentTest {
   }
 
   @Test
-  fun withdraw_reportsTheEventId() {
+  fun withdraw_reportsTheEventIdWithoutOpeningTheEvent() {
     setContent(MyEventsUiState(upcoming = upcoming))
 
     composeTestRule
@@ -112,6 +114,29 @@ class StaffEventsContentTest {
         .performClick()
 
     assertEquals(listOf("city-marathon"), withdrawn)
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  @Test
+  fun card_ofAnAcceptedEvent_opensIt() {
+    setContent(MyEventsUiState(upcoming = upcoming, past = past))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("city-marathon")).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
+    // An event that is over stays readable once it is listed.
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard(past.first().id)).performClick()
+
+    assertEquals(listOf("city-marathon", past.first().id), opened)
+    assertEquals(emptyList<String>(), withdrawn)
+  }
+
+  @Test
+  fun card_awaitingApproval_doesNotOpenTheEvent() {
+    setContent(MyEventsUiState(upcoming = upcoming))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("beach-cleanup")).performClick()
+
+    assertEquals(emptyList<String>(), opened)
   }
 
   @Test

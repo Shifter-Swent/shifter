@@ -137,6 +137,7 @@ fun ShifterNavHost(
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
+            onOpenEvent = { eventId -> nav.enterEvent(VolunteerEvent(eventId)) },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
