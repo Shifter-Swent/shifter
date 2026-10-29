@@ -215,6 +215,27 @@ class FirestoreCheckInRepositoryTest {
     }
   }
 
+  @Test
+  fun observeMyCheckIns_withAMalformedCheckIn_failsWithUnknown() = emulatorTest {
+    // No client may write it: the rules only accept a well-formed check-in.
+    val path = checkInPath(volunteer, MISSION_ID, eventId)
+    paths += path
+    FirestoreEmulatorAdmin.createDocument(
+        path,
+        mapOf(
+            "userId" to volunteer.uid,
+            "method" to "GPS",
+            "checkedInAt" to Instant.now(),
+            "checkedInBy" to volunteer.uid,
+        ),
+    )
+    signIn(volunteer)
+
+    assertFailsWith<CheckInRepositoryException.Unknown> {
+      repository.observeMyCheckIns(eventId, volunteer.uid).first()
+    }
+  }
+
   /**
    * The promise of [CheckInRepository.observeMyCheckIns]: a check-in made offline is emitted at
    * once, with an estimated time, while [CheckInRepository.checkIn] waits for the connection.
