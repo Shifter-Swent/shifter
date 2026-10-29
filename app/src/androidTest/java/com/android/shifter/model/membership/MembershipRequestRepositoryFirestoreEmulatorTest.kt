@@ -258,6 +258,24 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun withdraw_whenNoLongerInTheirTeam_stillWorks() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    // The organizer edits the team: the volunteer is neither a member nor its manager anymore.
+    team(eventId, TEAM_ID).update("memberIds", FieldValue.arrayRemove(volunteer.uid)).await()
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    // Only the organizer may read the participants.
+    signIn(organizer)
+    assertEquals(emptyList<String>(), participantIds(eventId))
+  }
+
+  @Test
   fun reject_ofTheManagerOfTheirTeam_leavesItWithoutManager() = emulatorTest {
     val eventId = event()
     apply(eventId, volunteer)

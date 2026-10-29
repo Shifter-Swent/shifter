@@ -176,17 +176,20 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   /**
    * Takes [userId] out of [team], read as [snapshot] earlier in this transaction: out of its
    * members, and out of its management when they lead it, or they would keep managing a team of an
-   * event they no longer take part in.
+   * event they no longer take part in. Nothing is written when they are in neither: the rules
+   * refuse a withdrawal that changes nothing on the team, which would fail the whole transaction.
    */
   private fun Transaction.leaveTeam(
       team: DocumentReference,
       snapshot: DocumentSnapshot,
       userId: String,
   ) {
-    update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
-    if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
-      update(team, TeamSchema.MANAGER_ID, null)
+    val memberIds = snapshot.get(TeamSchema.MEMBER_IDS) as? List<*> ?: emptyList<Any>()
+    val changes = buildMap {
+      if (userId in memberIds) put(TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
+      if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) put(TeamSchema.MANAGER_ID, null)
     }
+    if (changes.isNotEmpty()) update(team, changes)
   }
 
   /**
