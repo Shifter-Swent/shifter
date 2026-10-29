@@ -16,6 +16,9 @@ import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
+import com.swent.shifter.model.team.FirestoreTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.toFirestoreMap
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -65,12 +68,12 @@ class MissionManagerRulesTest {
     eventId = event()
     accept(manager, TEAM_ID)
     accept(member, TEAM_ID)
-    // What setManager writes: the manager leaves the members to lead them.
+    accept(otherManager, OTHER_TEAM_ID)
+    // The organizer appoints the managers among the members, who then leave the members.
+    val teams = FirestoreTeamRepository(db)
     signIn(organizer)
-    team(TEAM_ID)
-        .update(mapOf("managerId" to manager.uid, "memberIds" to listOf(member.uid)))
-        .await()
-    team(OTHER_TEAM_ID).update("managerId", otherManager.uid).await()
+    teams.setManager(eventId, TEAM_ID, manager.uid)
+    teams.setManager(eventId, OTHER_TEAM_ID, otherManager.uid)
   }
 
   @After
@@ -213,7 +216,10 @@ class MissionManagerRulesTest {
     assertEquals(listOf(member.uid), repository.getMission(eventId, created.id)?.assigneeIds)
   }
 
-  /** Creates the event, owned by [organizer], with the two teams its volunteers apply to. */
+  /**
+   * Creates the event, owned by [organizer], with the two teams its volunteers apply to. The teams
+   * are complete, so the team repository can read them.
+   */
   private suspend fun event(): String {
     signIn(organizer)
     val event = db.collection(EventSchema.COLLECTION).document()
@@ -223,7 +229,18 @@ class MissionManagerRulesTest {
     listOf(TEAM_ID, OTHER_TEAM_ID).forEach { teamId ->
       val team = event.collection("teams").document(teamId)
       paths += team.path
-      team.set(mapOf("memberIds" to emptyList<String>())).await()
+      team
+          .set(
+              Team(
+                      eventId = event.id,
+                      name = teamId,
+                      description = "The $teamId team",
+                      icon = "wine",
+                      createdAt = Instant.EPOCH,
+                  )
+                  .toFirestoreMap()
+          )
+          .await()
     }
     return event.id
   }
@@ -265,9 +282,6 @@ class MissionManagerRulesTest {
           "volunteersNeeded" to 2,
           "assigneeIds" to assigneeIds.toList(),
       )
-
-  private fun team(teamId: String): DocumentReference =
-      db.collection(EventSchema.COLLECTION).document(eventId).collection("teams").document(teamId)
 
   private fun newMission(): DocumentReference =
       db.collection(EventSchema.COLLECTION)
