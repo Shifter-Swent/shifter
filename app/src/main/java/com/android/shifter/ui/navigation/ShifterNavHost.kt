@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -70,6 +72,8 @@ import com.swent.shifter.ui.overview.OrganizerOverviewScreen
 import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
 import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
+import com.swent.shifter.ui.planning.PlanningScreen
+import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.team.TeamSetupMode
@@ -212,9 +216,14 @@ fun ShifterNavHost(
                                       repositories.checkInRepository,
                                   )
                           ),
-                      // TODO(#204): the volunteer's planning of #161 replaces this stand-in.
                       volunteerOverview = {
-                        PlaceholderPage(VolunteerEventScreen.Overview) {
+                        // Scrolls as one page, the card and the Planning together.
+                        Column(
+                            modifier =
+                                Modifier.fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(16.dp)
+                        ) {
                           AutoCheckInRoute(
                               viewModel =
                                   viewModel(
@@ -223,6 +232,18 @@ fun ShifterNavHost(
                                               repositories.missionRepository,
                                               repositories.checkInRepository,
                                               locationProvider,
+                                              currentUserId,
+                                          )
+                                  )
+                          )
+                          PlanningScreen(
+                              viewModel =
+                                  viewModel(
+                                      factory =
+                                          PlanningViewModel.factory(
+                                              eventId,
+                                              repositories.missionRepository,
+                                              repositories.checkInRepository,
                                               currentUserId,
                                           )
                                   )
