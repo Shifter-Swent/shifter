@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ContextWrapper
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
@@ -33,8 +34,8 @@ import org.junit.runner.RunWith
 
 /**
  * Covers what the gate shows for a status and what its buttons do. The system permission dialog is
- * replaced by a registry where the user refuses, and the settings screens are recorded instead of
- * opened.
+ * replaced by a registry where the user refuses, the settings screens are recorded instead of
+ * opened, and the granted permissions are faked.
  */
 @RunWith(AndroidJUnit4::class)
 class LocationPermissionGateTest {
@@ -45,6 +46,7 @@ class LocationPermissionGateTest {
   private val requested = mutableListOf<List<String>>()
   private val started = mutableListOf<Intent>()
   private val missingScreens = mutableSetOf<String>()
+  private val grantedPermissions = mutableSetOf<String>()
 
   private val refusingRegistry =
       object : ActivityResultRegistryOwner {
@@ -72,6 +74,11 @@ class LocationPermissionGateTest {
             if (intent.action in missingScreens) throw ActivityNotFoundException()
             started += intent
           }
+
+          // Other tests grant the location for good, so the real permissions cannot be relied on.
+          override fun checkPermission(permission: String, pid: Int, uid: Int) =
+              if (permission in grantedPermissions) PackageManager.PERMISSION_GRANTED
+              else PackageManager.PERMISSION_DENIED
         }
       }
       CompositionLocalProvider(
@@ -115,6 +122,16 @@ class LocationPermissionGateTest {
     status = LocationStatus.GRANTED
 
     compose.onNodeWithTag(LocationPermissionTestTags.CARD).assertDoesNotExist()
+  }
+
+  @Test
+  fun approximateGranted_beforeAnyRequest_opensTheAppSettings() {
+    grantedPermissions += Manifest.permission.ACCESS_COARSE_LOCATION
+    setContent()
+
+    compose.onNodeWithText("Open settings").performClick()
+
+    assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.single().action)
   }
 
   @Test
