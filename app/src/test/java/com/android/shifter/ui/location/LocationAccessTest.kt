@@ -40,6 +40,18 @@ class LocationAccessTest {
   }
 
   @Test
+  fun locationAccess_withOnlyTheApproximateLocationBeforeAnyRequest_isApproximateOnly() {
+    assertEquals(
+        LocationAccess.APPROXIMATE_ONLY,
+        access(LocationStatus.DENIED, requested = false, rationale = true, approximate = true),
+    )
+    assertEquals(
+        LocationAccess.PERMANENTLY_DENIED,
+        access(LocationStatus.DENIED, requested = false, rationale = false, approximate = true),
+    )
+  }
+
+  @Test
   fun locationAccess_whenRefusedForGood_isPermanentlyDenied() {
     assertEquals(
         LocationAccess.PERMANENTLY_DENIED,

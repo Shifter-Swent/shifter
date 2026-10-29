@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.location
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.ContextWrapper
 import android.content.Intent
 import android.provider.Settings
@@ -43,6 +44,7 @@ class LocationPermissionGateTest {
   private var refreshes = 0
   private val requested = mutableListOf<List<String>>()
   private val started = mutableListOf<Intent>()
+  private val missingScreens = mutableSetOf<String>()
 
   private val refusingRegistry =
       object : ActivityResultRegistryOwner {
@@ -67,6 +69,7 @@ class LocationPermissionGateTest {
       val recording = remember {
         object : ContextWrapper(context) {
           override fun startActivity(intent: Intent) {
+            if (intent.action in missingScreens) throw ActivityNotFoundException()
             started += intent
           }
         }
@@ -164,5 +167,32 @@ class LocationPermissionGateTest {
     compose.onNodeWithText("Turn on location").performClick()
 
     assertEquals(Settings.ACTION_LOCATION_SOURCE_SETTINGS, started.single().action)
+  }
+
+  @Test
+  fun turnOnLocation_withoutLocationSettings_opensTheAppSettings() {
+    status = LocationStatus.LOCATION_OFF
+    missingScreens += Settings.ACTION_LOCATION_SOURCE_SETTINGS
+    setContent()
+
+    compose.onNodeWithText("Turn on location").performClick()
+
+    assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.single().action)
+  }
+
+  @Test
+  fun turnOnLocation_withoutAnySettings_doesNotCrash() {
+    status = LocationStatus.LOCATION_OFF
+    missingScreens +=
+        listOf(
+            Settings.ACTION_LOCATION_SOURCE_SETTINGS,
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        )
+    setContent()
+
+    compose.onNodeWithText("Turn on location").performClick()
+
+    assertTrue(started.isEmpty())
+    compose.onNodeWithText("Turn on location").assertIsDisplayed()
   }
 }

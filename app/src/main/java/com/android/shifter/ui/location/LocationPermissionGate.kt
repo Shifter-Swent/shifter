@@ -2,6 +2,8 @@
 package com.swent.shifter.ui.location
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -77,17 +79,29 @@ fun LocationPermissionGate(
             )
         )
       },
-      onOpenAppSettings = {
-        context.startActivity(
-            Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.fromParts("package", context.packageName, null),
-            )
-        )
-      },
+      onOpenAppSettings = { context.openAppSettings() },
       onOpenLocationSettings = {
-        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        // Some custom ROMs have no location settings screen: the app settings still help.
+        try {
+          context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+          context.openAppSettings()
+        }
       },
       modifier = modifier,
   )
+}
+
+/** Opens this app's settings, or does nothing if the device has no such screen. */
+private fun Context.openAppSettings() {
+  try {
+    startActivity(
+        Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null),
+        )
+    )
+  } catch (_: ActivityNotFoundException) {
+    // Nothing else can grant the permission: the card stays as it is.
+  }
 }

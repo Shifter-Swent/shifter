@@ -27,7 +27,8 @@ enum class LocationAccess {
 /**
  * Tells which [LocationAccess] to show. Android only says whether to show a rationale, which is
  * false both before the first request and once the user refused for good, so [requested] tells the
- * two apart.
+ * two apart. A granted approximate location means the user was already asked, so it needs no
+ * [requested].
  *
  * @param requested whether the permission dialog was already shown in this screen.
  * @param shouldShowRationale `shouldShowRequestPermissionRationale` for the precise location.
@@ -42,8 +43,10 @@ fun locationAccess(
     when {
       status == LocationStatus.GRANTED -> LocationAccess.GRANTED
       status == LocationStatus.LOCATION_OFF -> LocationAccess.LOCATION_OFF
+      approximateGranted ->
+          if (shouldShowRationale) LocationAccess.APPROXIMATE_ONLY
+          else LocationAccess.PERMANENTLY_DENIED
       !requested -> LocationAccess.NOT_REQUESTED
-      shouldShowRationale && approximateGranted -> LocationAccess.APPROXIMATE_ONLY
       shouldShowRationale -> LocationAccess.DENIED
       else -> LocationAccess.PERMANENTLY_DENIED
     }
