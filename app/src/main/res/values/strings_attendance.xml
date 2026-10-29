@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The manager's live attendance of the missions of their teams -->
+    <string name="attendance_subtitle">Manager Overview</string>
+    <string name="attendance_missions_title">My Missions</string>
+    <plurals name="attendance_mission_count">
+        <item quantity="one">%1$d mission</item>
+        <item quantity="other">%1$d missions</item>
+    </plurals>
+    <string name="attendance_mission_subtitle">%1$s · %2$s</string>
+    <string name="attendance_live_check_in">LIVE CHECK-IN</string>
+    <string name="attendance_counter">%1$s/%2$d</string>
+    <!-- Stands in for the present count while the attendance is not known. -->
+    <string name="attendance_count_unknown">—</string>
+    <string name="attendance_understaffed">Understaffed</string>
+    <string name="attendance_check_in_not_open">Check-in not open yet</string>
+    <string name="attendance_waiting">Waiting for attendance data</string>
+    <string name="attendance_unavailable">Attendance unavailable</string>
+    <string name="attendance_present">PRESENT (%1$d)</string>
+    <string name="attendance_missing">MISSING (%1$d)</string>
+    <string name="attendance_volunteer_unknown">Unnamed volunteer</string>
+    <string name="attendance_no_missions">No missions available</string>
+    <string name="attendance_expand">Show who is present</string>
+    <string name="attendance_collapse">Hide who is present</string>
+</resources>
