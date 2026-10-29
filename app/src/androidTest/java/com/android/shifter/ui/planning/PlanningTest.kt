@@ -10,7 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.ZoneOffset
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,18 +45,10 @@ class PlanningTest {
 
   @Test
   fun planning_withUnsortedMissions_showsThemChronologically() {
-    show(
-        listOf(
-            mission("late", start = "10:00", end = "11:00"),
-            mission("longer", start = "08:00", end = "10:00"),
-            mission("b", start = "08:00", end = "09:00", title = "B"),
-            mission("a", start = "08:00", end = "09:00", title = "A"),
-        )
-    )
+    show(listOf(mission("late", start = "10:00", end = "11:00"), mission("early", start = "08:00")))
 
-    // By start, then by the earliest end, then by title.
-    val shown = listOf("a", "b", "longer", "late").sortedBy { topOf(it) }
-    assertEquals(listOf("a", "b", "longer", "late"), shown)
+    // The ties are covered by PlanningOrderTest: this only checks that the rows follow the order.
+    assertTrue(topOf("early") < topOf("late"))
   }
 
   @Test

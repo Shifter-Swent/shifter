@@ -16,6 +16,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,22 +51,22 @@ data class PlanningMission(
 )
 
 object PlanningTestTags {
-  const val PLANNING = "Planning"
-  const val EMPTY = "PlanningEmpty"
+  const val PLANNING = "planning"
+  const val EMPTY = "planningEmpty"
 
-  fun mission(missionId: String) = "PlanningMission_$missionId"
+  fun mission(missionId: String) = "planningMission_$missionId"
 
-  fun address(missionId: String) = "PlanningMissionAddress_$missionId"
+  fun address(missionId: String) = "planningMissionAddress_$missionId"
 
-  fun checkIn(missionId: String) = "PlanningMissionCheckIn_$missionId"
+  fun checkIn(missionId: String) = "planningMissionCheckIn_$missionId"
 }
 
 /**
- * The missions the signed-in user is assigned to, earliest first, with whether they checked in.
+ * The missions the signed-in user is assigned to, in [chronological] order, with whether they
+ * checked in.
  *
- * Missions starting together are ordered by the earliest end, then by title, so the order stays the
- * same when the list is updated. The rows are a plain column rather than a lazy list: the Planning
- * is one section of a scrolling page, and a user has a handful of missions per event.
+ * The rows are a plain column rather than a lazy list: the Planning is one section of a scrolling
+ * page, and a user has a handful of missions per event.
  *
  * @param missions the missions to show, in any order.
  * @param zone the time zone the hours are shown in, replaceable in tests.
@@ -102,7 +103,8 @@ fun Planning(
           modifier = Modifier.testTag(PlanningTestTags.EMPTY),
       )
     } else {
-      missions.sortedWith(CHRONOLOGICAL).forEach { PlanningMissionRow(it, zone) }
+      val sorted = remember(missions) { missions.chronological() }
+      sorted.forEach { PlanningMissionRow(it, zone) }
     }
   }
 }
@@ -122,7 +124,12 @@ private fun PlanningMissionRow(mission: PlanningMission, zone: ZoneId) {
     CheckInMarker(checkedIn = mission.checkedInAt != null)
     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
-          text = "${mission.startAt.hours(zone)}–${mission.endAt.hours(zone)}",
+          text =
+              stringResource(
+                  R.string.planning_hours,
+                  mission.startAt.hours(zone),
+                  mission.endAt.hours(zone),
+              ),
           style = MaterialTheme.typography.labelSmall,
           color = shifter_mutedText,
       )
@@ -157,7 +164,11 @@ private fun Details(mission: PlanningMission, zone: ZoneId) {
       )
     }
     if (mission.address != null && mission.checkedInAt != null) {
-      Text(text = " · ", style = MaterialTheme.typography.labelSmall, color = shifter_mutedText)
+      Text(
+          text = stringResource(R.string.planning_separator),
+          style = MaterialTheme.typography.labelSmall,
+          color = shifter_mutedText,
+      )
     }
     mission.checkedInAt?.let {
       Text(
@@ -192,5 +203,9 @@ private fun Instant.hours(zone: ZoneId): String = HOURS.format(atZone(zone))
 
 private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-private val CHRONOLOGICAL: Comparator<PlanningMission> =
-    compareBy({ it.startAt }, { it.endAt }, { it.title })
+/**
+ * These missions earliest first. Missions starting together are ordered by the earliest end, then
+ * by title, so the order stays the same when the list is updated.
+ */
+fun List<PlanningMission>.chronological(): List<PlanningMission> =
+    sortedWith(compareBy({ it.startAt }, { it.endAt }, { it.title }))

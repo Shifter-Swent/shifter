@@ -5,5 +5,8 @@
     <string name="planning_title">Planning</string>
     <string name="planning_subtitle">Your assigned tasks</string>
     <string name="planning_empty">No missions assigned to you yet.</string>
+    <string name="planning_hours">%1$s–%2$s</string>
+    <!-- Between the address and the check-in time, kept apart so the address is cut first -->
+    <string name="planning_separator">" · "</string>
     <string name="planning_checked_in_at">Checked in at %1$s</string>
 </resources>
