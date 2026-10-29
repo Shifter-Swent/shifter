@@ -136,6 +136,13 @@ class MissionManagerRulesTest {
   }
 
   @Test
+  fun create_byTheManager_withADuplicateAssignee_isDenied() = emulatorTest {
+    signIn(manager)
+
+    assertDenied { newMission().set(mission(TEAM_ID, member.uid, member.uid)).await() }
+  }
+
+  @Test
   fun update_byTheManager_toAnotherTeam_isDenied() = emulatorTest {
     val mission = missionByOrganizer(TEAM_ID)
     signIn(manager)
@@ -161,6 +168,14 @@ class MissionManagerRulesTest {
     signIn(manager)
 
     assertDenied { mission.update("assigneeIds", listOf(formerMember.uid)).await() }
+  }
+
+  @Test
+  fun update_byTheManager_duplicatingAnAssignee_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, member.uid)
+    signIn(manager)
+
+    assertDenied { mission.update("assigneeIds", listOf(member.uid, member.uid)).await() }
   }
 
   @Test

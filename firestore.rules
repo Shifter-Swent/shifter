@@ -184,14 +184,16 @@ service cloud.firestore {
                  .data.get('managerId', null) == request.auth.uid;
         }
 
-        // A manager only adds members of the team, and never more assignees than needed. Those
-        // already on the mission may stay, so someone who left the team can still be unassigned.
+        // A manager only adds members of the team, each once, and never more assignees than
+        // needed. Those already on the mission may stay, so someone who left the team can still be
+        // unassigned.
         function validAssignees(teamId, previous) {
           let next = request.resource.data.get('assigneeIds', []);
           let members =
             get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
               .data.get('memberIds', []);
           return next is list
+            && next.size() == next.toSet().size()
             && next.size() <= request.resource.data.get('volunteersNeeded', 0)
             && next.toSet().difference(previous.toSet()).hasOnly(members);
         }
