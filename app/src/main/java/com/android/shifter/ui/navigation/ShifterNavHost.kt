@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -74,6 +76,7 @@ import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
 import java.time.Instant
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 
@@ -487,10 +490,13 @@ private fun EventOverview(
     null ->
         PlaceholderPage(VolunteerEventScreen.Overview) {
           if (state.loadFailed) {
-            Text(stringResource(R.string.overview_load_failed))
+            Text(stringResource(R.string.attendance_load_failed))
             TextButton(onClick = viewModel::refresh) {
-              Text(stringResource(R.string.overview_retry))
+              Text(stringResource(R.string.attendance_retry))
             }
+          } else {
+            // Something is happening: the role is still being read.
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
           }
         }
   }
@@ -506,7 +512,7 @@ private fun rememberNow(): Instant {
   var now by remember { mutableStateOf(Instant.now()) }
   LaunchedEffect(Unit) {
     while (true) {
-      delay(60_000)
+      delay(1.minutes)
       now = Instant.now()
     }
   }
