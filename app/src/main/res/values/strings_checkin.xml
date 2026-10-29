@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The automatic check-in, in the volunteer's event Overview -->
+    <string name="auto_check_in_title">Automatic GPS check-in</string>
+    <string name="auto_check_in_explanation">Enter the event zone and the app checks you in automatically.</string>
+    <!-- %1$s is the mission's title, %2$s the time of the check-in, e.g. "Checked in: Bar, 18:02" -->
+    <string name="auto_check_in_confirmation">Checked in: %1$s, %2$s</string>
+    <string name="auto_check_in_not_allowed">The check-in was refused: ask your manager to check you in.</string>
+    <string name="auto_check_in_offline">Could not reach the server. Check your connection.</string>
+    <string name="auto_check_in_unexpected">Something went wrong with the automatic check-in.</string>
+</resources>

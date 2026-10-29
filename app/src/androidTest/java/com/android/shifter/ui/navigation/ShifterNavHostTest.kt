@@ -38,6 +38,7 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.EventDetailsTestTags
@@ -544,6 +545,15 @@ class ShifterNavHostTest {
     assertTabsReachable(VolunteerTabs)
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun volunteerOverview_showsTheAutomaticCheckIn() {
+    val nav = setAppAndGetNavigation()
+
+    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1")) }
+
+    composeTestRule.onNodeWithTag(AutoCheckInTestTags.CARD).assertIsDisplayed()
   }
 
   @Test

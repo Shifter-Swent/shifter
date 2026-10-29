@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.checkin
 
+import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
@@ -88,6 +89,7 @@ class AutoCheckInViewModelTest {
       eventId: String = EVENT,
       at: MissionLocation? = PLACE,
       endsIn: Duration = Duration.ofHours(1),
+      startAt: Instant = NOW,
   ): Mission =
       missions.createMission(
           Mission(
@@ -95,8 +97,8 @@ class AutoCheckInViewModelTest {
               title = title,
               description = "",
               volunteersNeeded = 2,
-              startAt = NOW,
-              endAt = NOW + endsIn,
+              startAt = startAt,
+              endAt = startAt + endsIn,
               location = at,
               assigneeIds = listOf(USER),
               createdAt = NOW,
@@ -293,6 +295,23 @@ class AutoCheckInViewModelTest {
     advanceTimeBy(AutoCheckInViewModel.STOP_TIMEOUT_MILLIS + 1)
 
     assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun factory_checksInWhereTheEligibilityRuleSays() = runTest {
+    // The factory reads the real clock: the mission is going on now.
+    addMission(startAt = Instant.now())
+    viewModel =
+        AutoCheckInViewModel.factory(missions, checkIns, location, { userId })
+            .create(AutoCheckInViewModel::class.java, CreationExtras.Empty)
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.uiState.collect {} }
+    runCurrent()
+
+    moveTo(FAR)
+    assertTrue(checkIns.checkIns.isEmpty())
+    moveTo(NEAR)
+
+    assertEquals(1, checkIns.checkIns.size)
   }
 
   /** Delegates to [checkIns], counting the check-ins asked for. */

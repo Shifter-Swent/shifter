@@ -38,8 +38,12 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
+import com.swent.shifter.model.location.FusedLocationProvider
+import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
+import com.swent.shifter.ui.checkin.AutoCheckInRoute
+import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
 import com.swent.shifter.ui.event.EventCreatedScreen
@@ -79,6 +83,7 @@ import kotlinx.coroutines.flow.filter
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
  *   passes one that answers with a fake account, as the system picker cannot be driven.
+ * @param locationProvider The volunteer's position, for the automatic check-in.
  */
 @Composable
 fun ShifterNavHost(
@@ -89,6 +94,10 @@ fun ShifterNavHost(
     credentialManager: CredentialManager =
         LocalContext.current.let { context ->
           remember(context) { CredentialManager.create(context) }
+        },
+    locationProvider: LocationProvider =
+        LocalContext.current.let { context ->
+          remember(context) { FusedLocationProvider(context) }
         },
 ) {
   val auth = repositories.authRepository
@@ -167,7 +176,24 @@ fun ShifterNavHost(
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
-        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
+        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(
+            VolunteerTabs.Overview,
+            nav,
+            content = {
+              AutoCheckInRoute(
+                  viewModel =
+                      viewModel(
+                          factory =
+                              AutoCheckInViewModel.factory(
+                                  repositories.missionRepository,
+                                  repositories.checkInRepository,
+                                  locationProvider,
+                                  currentUserId,
+                              )
+                      )
+              )
+            },
+        )
         mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(
             VolunteerTabs.Map,
             nav,
