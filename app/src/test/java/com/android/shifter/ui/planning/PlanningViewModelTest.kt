@@ -3,6 +3,7 @@ package com.swent.shifter.ui.planning
 
 import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInMethod
+import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
 import com.swent.shifter.model.mission.FakeMissionRepository
@@ -11,6 +12,7 @@ import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -170,6 +172,37 @@ class PlanningViewModelTest {
     assertNull(state.missions.single().checkedInAt)
     assertFalse(state.isLoading)
     assertNull(state.error)
+    assertTrue(state.checkInsUnavailable)
+  }
+
+  @Test
+  fun load_whenTheCheckInsFailAfterAStatus_keepsTheStatus() = runTest {
+    val mission = create("Hand out water")
+    // Emits the check-in, then fails, as a listener that loses the backend would.
+    val failingAfterAStatus =
+        object : CheckInRepository by checkIns {
+          override fun observeMyCheckIns(eventId: String, userId: String) = flow {
+            emit(listOf(CheckIn(EVENT, mission.id, USER, CHECKED_IN_AT, CheckInMethod.SELF, USER)))
+            throw CheckInRepositoryException.Unavailable()
+          }
+        }
+
+    val state = PlanningViewModel(EVENT, missions, failingAfterAStatus) { userId }.uiState.value
+
+    assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
+    assertTrue(state.checkInsUnavailable)
+  }
+
+  @Test
+  fun load_afterTheCheckInsFailed_clearsTheMessage() = runTest {
+    create("Hand out water")
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+    val viewModel = viewModel()
+
+    checkIns.failure = null
+    viewModel.load()
+
+    assertFalse(viewModel.uiState.value.checkInsUnavailable)
   }
 
   private companion object {

@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,6 +27,7 @@ object PlanningScreenTestTags {
   const val LOADING = "planningLoading"
   const val ERROR = "planningError"
   const val RETRY_BUTTON = "planningRetryButton"
+  const val CHECK_INS_UNAVAILABLE = "planningCheckInsUnavailable"
 }
 
 /** The volunteer's Planning in the event overview, loaded by [viewModel]. */
@@ -38,12 +37,13 @@ fun PlanningScreen(viewModel: PlanningViewModel, modifier: Modifier = Modifier) 
   PlanningContent(state = uiState, onRetry = viewModel::load, modifier = modifier)
 }
 
-/** The Planning once loaded, or what replaces it while loading and after an error. */
+/**
+ * The Planning once loaded, or what replaces it while loading and after an error. It does not
+ * scroll: the Overview page that hosts it, with the automatic check-in card, does.
+ */
 @Composable
 fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-  Column(
-      modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 16.dp)
-  ) {
+  Column(modifier = modifier.fillMaxWidth().padding(top = 16.dp)) {
     when {
       state.isLoading ->
           CircularProgressIndicator(
@@ -54,7 +54,17 @@ fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modif
               strokeWidth = 2.dp,
           )
       state.error != null -> LoadError(state.error, onRetry)
-      else -> Planning(missions = state.missions)
+      else -> {
+        if (state.checkInsUnavailable) {
+          Text(
+              text = stringResource(R.string.planning_check_ins_unavailable),
+              style = MaterialTheme.typography.bodySmall,
+              color = shifter_mutedText,
+              modifier = Modifier.testTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE),
+          )
+        }
+        Planning(missions = state.missions)
+      }
     }
   }
 }

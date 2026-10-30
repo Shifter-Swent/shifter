@@ -50,6 +50,21 @@ class PlanningScreenTest {
   }
 
   @Test
+  fun checkInsUnavailable_showsTheMessageAboveThePlanning() {
+    show(PlanningUiState(isLoading = false, checkInsUnavailable = true))
+
+    compose.onNodeWithTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE).assertIsDisplayed()
+    compose.onNodeWithTag(PlanningTestTags.PLANNING).assertIsDisplayed()
+  }
+
+  @Test
+  fun loaded_hidesTheCheckInsMessage() {
+    show(PlanningUiState(isLoading = false))
+
+    compose.onNodeWithTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE).assertDoesNotExist()
+  }
+
+  @Test
   fun offline_showsTheConnectionMessage() {
     show(PlanningUiState(isLoading = false, error = PlanningError.OFFLINE))
 

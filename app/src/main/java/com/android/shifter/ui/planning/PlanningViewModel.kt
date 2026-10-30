@@ -32,11 +32,14 @@ enum class PlanningError {
  *   check-in time once they checked in.
  * @property error why the missions could not be loaded, cleared by the next
  *   [PlanningViewModel.load].
+ * @property checkInsUnavailable whether the check-ins could not be read, so the statuses shown may
+ *   be missing or outdated. Cleared by the next [PlanningViewModel.load].
  */
 data class PlanningUiState(
     val missions: List<PlanningMission> = emptyList(),
     val isLoading: Boolean = true,
     val error: PlanningError? = null,
+    val checkInsUnavailable: Boolean = false,
 )
 
 /**
@@ -69,7 +72,7 @@ class PlanningViewModel(
   fun load() {
     // Stops observing the check-ins of the previous load, so they are never observed twice.
     loading?.cancel()
-    _uiState.update { it.copy(isLoading = true, error = null) }
+    _uiState.update { it.copy(isLoading = true, error = null, checkInsUnavailable = false) }
     loading = viewModelScope.launch {
       val userId = currentUserId()
       val missions =
@@ -95,6 +98,7 @@ class PlanningViewModel(
       } catch (e: Exception) {
         // Keeps the statuses already shown, if any: a check-in is never taken back.
         if (_uiState.value.isLoading) show(missions, emptyList())
+        _uiState.update { it.copy(checkInsUnavailable = true) }
       }
     }
   }

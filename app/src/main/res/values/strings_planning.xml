@@ -12,4 +12,5 @@
     <string name="planning_error_offline">Could not load your missions. Check your connection.</string>
     <string name="planning_error_unexpected">Could not load your missions.</string>
     <string name="planning_retry">Retry</string>
+    <string name="planning_check_ins_unavailable">Check-in status unavailable</string>
 </resources>
