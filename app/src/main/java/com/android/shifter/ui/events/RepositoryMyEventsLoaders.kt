@@ -4,8 +4,10 @@ package com.swent.shifter.ui.events
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -39,6 +41,7 @@ class OrganizerEventsLoader(
 class StaffEventsLoader(
     private val eventRepository: EventRepository,
     private val membershipRequestRepository: MembershipRequestRepository,
+    private val teamRepository: TeamRepository,
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
@@ -55,16 +58,33 @@ class StaffEventsLoader(
           async {
             val accepted = request.status == MembershipRequestStatus.ACCEPTED
             // An event deleted since the request was sent has nothing left to show.
-            eventRepository
-                .getEvent(eventId)
-                ?.takeIf { accepted || !isOver(it, now) }
-                ?.let { it to it.toStaffCard(accepted, now, zone) }
+            val event = eventRepository.getEvent(eventId)?.takeIf { accepted || !isOver(it, now) }
+            // Only someone accepted can manage a team, so the others are not asked about one.
+            val manages = event != null && accepted && managesATeam(eventId, userId)
+            event?.let { it to it.toStaffCard(accepted, manages, now, zone) }
           }
         }
         .awaitAll()
         .filterNotNull()
         .inDisplayOrder()
   }
+
+  /**
+   * Whether [userId] manages a team of [eventId], and false when that cannot be read.
+   *
+   * The teams are read per event, so one event answering badly would otherwise take the whole list
+   * down with it, events that did load included. Falling back to "not a manager" only drops the
+   * role label from the card: it grants nothing, since the Overview asks again before showing any
+   * attendance. The other way round would be the dangerous one.
+   */
+  private suspend fun managesATeam(eventId: String, userId: String): Boolean =
+      try {
+        teamRepository.getTeamsManagedBy(eventId, userId).isNotEmpty()
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        false
+      }
 }
 
 /** Withdraws the signed-in user from an event, through their membership request. */

@@ -62,6 +62,7 @@
     <string name="my_events_badge_ongoing">Ongoing</string>
     <string name="my_events_badge_ended">Ended</string>
     <string name="my_events_footer_volunteer">Role: Volunteer</string>
+    <string name="my_events_footer_manager">Role: Manager</string>
     <string name="my_events_footer_organizer">Role: Organizer</string>
     <string name="my_events_footer_awaiting_approval">Awaiting organizer approval</string>
     <string name="my_events_action_withdraw">Withdraw</string>

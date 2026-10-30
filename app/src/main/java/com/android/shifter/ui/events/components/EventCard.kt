@@ -6,6 +6,10 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,13 +20,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,11 +63,27 @@ enum class EventCardActionType {
 /** The action link of an event card. Its label and color follow from [type]. */
 data class EventCardAction(val type: EventCardActionType, val onClick: () -> Unit)
 
-/** One event of a My Events list. The [action] link is hidden when it is null. */
+/**
+ * One event of a My Events list. The [action] link is hidden when it is null.
+ *
+ * @param onOpen what tapping the card does, or null for a card that cannot be opened. The [action]
+ *   link keeps its own click, so withdrawing from an event does not open it. The tap is a gesture
+ *   and a semantics action rather than a [clickable], which would merge the labels of the card into
+ *   one node and take the pill and the action link off the accessibility tree; the ripple is added
+ *   on its own, as an indication carries no semantics.
+ */
 @Composable
-fun EventCard(card: EventCardUi, action: EventCardAction?, modifier: Modifier = Modifier) {
+fun EventCard(
+    card: EventCardUi,
+    action: EventCardAction?,
+    modifier: Modifier = Modifier,
+    onOpen: (() -> Unit)? = null,
+) {
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(16.dp)
+  // Read at the tap rather than captured, so the gesture is never restarted to follow it.
+  val latestOnOpen by rememberUpdatedState(onOpen)
+  val presses = remember { MutableInteractionSource() }
   Column(
       verticalArrangement = Arrangement.spacedBy(10.dp),
       modifier =
@@ -65,6 +92,10 @@ fun EventCard(card: EventCardUi, action: EventCardAction?, modifier: Modifier = 
               .clip(shape)
               .background(colors.surfaceVariant)
               .border(1.dp, colors.outlineVariant, shape)
+              .then(
+                  if (onOpen == null) Modifier
+                  else Modifier.openedBy(presses) { latestOnOpen?.invoke() }
+              )
               .padding(16.dp)
               .testTag(MyEventsTestTags.eventCard(card.id)),
   ) {
@@ -122,6 +153,31 @@ fun EventCard(card: EventCardUi, action: EventCardAction?, modifier: Modifier = 
     }
   }
 }
+
+/**
+ * Taps anywhere on the card, leaving the labels it contains their own accessibility nodes, and
+ * ripples under the finger like any other surface. A tap on the action link is consumed by its own
+ * [clickable] and never reaches here.
+ */
+private fun Modifier.openedBy(presses: MutableInteractionSource, onOpen: () -> Unit): Modifier =
+    pointerInput(Unit) {
+          detectTapGestures(
+              onPress = {
+                val press = PressInteraction.Press(it)
+                presses.emit(press)
+                if (tryAwaitRelease()) presses.emit(PressInteraction.Release(press))
+                else presses.emit(PressInteraction.Cancel(press))
+              },
+              onTap = { onOpen() },
+          )
+        }
+        .indication(presses, ripple())
+        .semantics {
+          onClick {
+            onOpen()
+            true
+          }
+        }
 
 /** Colored "● Label" pill, colored after the [badge]. */
 @Composable
@@ -183,6 +239,7 @@ private val EventCardFooter.labelRes: Int
   get() =
       when (this) {
         EventCardFooter.VOLUNTEER -> R.string.my_events_footer_volunteer
+        EventCardFooter.MANAGER -> R.string.my_events_footer_manager
         EventCardFooter.ORGANIZER -> R.string.my_events_footer_organizer
         EventCardFooter.AWAITING_APPROVAL -> R.string.my_events_footer_awaiting_approval
       }

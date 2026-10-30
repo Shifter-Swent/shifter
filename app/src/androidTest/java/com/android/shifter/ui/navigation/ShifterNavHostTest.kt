@@ -27,6 +27,7 @@ import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.event.Event
@@ -37,6 +38,9 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.model.team.TeamRepositoryException
+import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -722,6 +726,59 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun volunteerEvent_asAManager_opensTheAttendanceOfTheirTeam() {
+    val event = acceptedEvent(asManager = true)
+    showApp()
+
+    openEvent(event)
+
+    // The manager watches the live attendance of the missions of the team they were given.
+    waitForNode(ManagerOverviewTestTags.SCREEN)
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertIsDisplayed()
+    // The tabs of the event are still the navigation's, under the screen.
+    composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
+  }
+
+  @Test
+  fun volunteerEvent_asAVolunteer_opensTheOverviewWithoutTheAttendance() {
+    val event = acceptedEvent(asManager = false)
+    showApp()
+
+    openEvent(event)
+
+    // Their own Overview, which #204 fills in; the manager's view is not theirs to see.
+    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Overview")
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertDoesNotExist()
+  }
+
+  @Test
+  fun volunteerEvent_whenTheRoleCannotBeRead_offersToTryAgainWithoutTheAttendance() {
+    val event = acceptedEvent(asManager = true)
+    // The events still list, since a team that cannot be read only costs the role label.
+    showApp(
+        RepositoryProvider(
+            repositories.authRepository,
+            repositories.eventRepository,
+            repositories.userRepository,
+            repositories.membershipRequestRepository,
+            repositories.missionRepository,
+            UnreadableTeams(),
+            repositories.checkInRepository,
+        )
+    )
+
+    openEvent(event)
+
+    // The part they have in the event is unknown, so no attendance is shown, only a way back in.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Retry").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Could not load the missions.").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertDoesNotExist()
+  }
+
+  @Test
   fun staffEvents_reloadWhenComingBackToTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
@@ -932,22 +989,32 @@ class ShifterNavHostTest {
 
   /** The event opens on the set's home tab, then each tab shows its own screen. */
   private fun assertTabsReachable(tabs: TabSet) {
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(tabs.home.home.title)
+    assertTabShown(tabs.home)
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
     tabs.all.forEach { tab ->
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      when (tab) {
-        OrganizerTabs.People -> assertPeopleScreenShown()
-        VolunteerTabs.Map,
-        OrganizerTabs.Map ->
-            composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
-        else ->
-            composeTestRule
-                .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-                .assertTextEquals(tab.home.title)
+      assertTabShown(tab)
+    }
+  }
+
+  /** That the screen of [tab] is the one on, read from whatever that tab actually draws. */
+  private fun assertTabShown(tab: Tab) {
+    when (tab) {
+      OrganizerTabs.People -> assertPeopleScreenShown()
+      VolunteerTabs.Map,
+      OrganizerTabs.Map ->
+          composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
+      // The Overview of an event follows the part the reader has in it, so it has no heading of
+      // its own to read: what navigation promises is the tab being the one selected, under the
+      // bar that reaches the others.
+      VolunteerTabs.Overview -> {
+        composeTestRule.onNodeWithTag(tab.testTag).assertIsSelected()
+        composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
       }
+      else ->
+          composeTestRule
+              .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+              .assertTextEquals(tab.home.title)
     }
   }
 
@@ -1033,6 +1100,53 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/teams/${team.id}")
     return event
+  }
+
+  /**
+   * An event the signed-in volunteer has been accepted to, managing its team when [asManager]. The
+   * organizer accepts and appoints through the repositories, as the People screen does.
+   */
+  private fun acceptedEvent(asManager: Boolean): Event {
+    val organizerAccount = googleCredential("Olga")
+    val event = createEvent(signIn(organizerAccount))
+    val volunteerAccount = googleCredential()
+    val volunteer = signIn(volunteerAccount)
+    applyTo(event, volunteer)
+    signIn(organizerAccount)
+    runBlocking {
+      repositories.membershipRequestRepository.accept(event.id, volunteer.uid)
+      if (asManager) {
+        repositories.teamRepository.setManager(
+            event.id,
+            teamIds.getValue(event.id),
+            volunteer.uid,
+        )
+      }
+    }
+    // Created by the acceptance, and deleted before the event like the request.
+    createdPaths.add(0, "eventParticipants/${'$'}{event.id}")
+    signIn(volunteerAccount)
+    return event
+  }
+
+  /** Shows the app on the volunteer's events, on [provider] when it is not the real one. */
+  private fun showApp(provider: RepositoryProvider = repositories) {
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = provider) }
+    }
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+  }
+
+  /** Taps the card of [event], which opens it on its Overview. */
+  private fun openEvent(event: Event) {
+    waitForNode(MyEventsTestTags.eventCard(event.id))
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard(event.id)).performClick()
+  }
+
+  /** The teams of an event cannot be read, which neither hides it nor makes anyone its manager. */
+  private inner class UnreadableTeams : TeamRepository by repositories.teamRepository {
+    override suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team> =
+        throw TeamRepositoryException.Unavailable()
   }
 
   /** Sends a pending request to [event] for [volunteer], who must be the signed-in user. */

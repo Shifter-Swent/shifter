@@ -31,13 +31,23 @@ internal fun Event.toOrganizerCard(now: Instant, zone: ZoneId): EventCardUi {
 /**
  * The card of an event the user takes part in, or applied to when [accepted] is false. Its badge
  * follows the user's participation, until the event is over.
+ *
+ * @param manages whether they manage one of the teams of the event, which names their role; an
+ *   event that is over keeps it, since they did manage it.
  */
-internal fun Event.toStaffCard(accepted: Boolean, now: Instant, zone: ZoneId): EventCardUi =
-    when {
-      !accepted -> toCard(EventBadge.PENDING_APPROVAL, EventCardFooter.AWAITING_APPROVAL, zone)
-      isOver(this, now) -> toCard(EventBadge.ENDED, EventCardFooter.VOLUNTEER, zone)
-      else -> toCard(EventBadge.CONFIRMED, EventCardFooter.VOLUNTEER, zone)
-    }
+internal fun Event.toStaffCard(
+    accepted: Boolean,
+    manages: Boolean,
+    now: Instant,
+    zone: ZoneId,
+): EventCardUi {
+  val role = if (manages) EventCardFooter.MANAGER else EventCardFooter.VOLUNTEER
+  return when {
+    !accepted -> toCard(EventBadge.PENDING_APPROVAL, EventCardFooter.AWAITING_APPROVAL, zone)
+    isOver(this, now) -> toCard(EventBadge.ENDED, role, zone)
+    else -> toCard(EventBadge.CONFIRMED, role, zone)
+  }
+}
 
 /**
  * Orders the cards as the screen lists them: the next event first among the upcoming ones, the most

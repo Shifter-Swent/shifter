@@ -38,6 +38,8 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
+import com.swent.shifter.ui.attendance.AttendanceViewModel
+import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.event.CreateEventScreen
@@ -124,6 +126,7 @@ fun ShifterNavHost(
                             StaffEventsLoader(
                                 repositories.eventRepository,
                                 repositories.membershipRequestRepository,
+                                repositories.teamRepository,
                                 currentUserId,
                             ),
                         withdrawer =
@@ -137,6 +140,7 @@ fun ShifterNavHost(
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
+            onOpenEvent = { eventId -> nav.enterEvent(VolunteerEvent(eventId)) },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
@@ -167,7 +171,43 @@ fun ShifterNavHost(
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
-        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(VolunteerTabs.Overview, nav)
+        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(
+            VolunteerTabs.Overview,
+            nav,
+            // The Overview draws itself, so it is not put under the stand-in title.
+            built = true,
+            content = { entry ->
+              val eventId =
+                  remember(entry) {
+                    navController
+                        .getBackStackEntry<VolunteerEvent>()
+                        .toRoute<VolunteerEvent>()
+                        .eventId
+                  }
+              val userId = currentUserId()
+              // No session: authState above is already on its way back to sign-in, and nobody is
+              // the manager of anything, so no event is loaded on behalf of an empty user.
+              if (userId == null) PlaceholderPage(VolunteerEventScreen.Overview)
+              else
+                  EventOverviewScreen(
+                      viewModel =
+                          viewModel(
+                              factory =
+                                  AttendanceViewModel.factory(
+                                      eventId,
+                                      userId,
+                                      repositories.eventRepository,
+                                      repositories.missionRepository,
+                                      repositories.teamRepository,
+                                      repositories.userRepository,
+                                      repositories.checkInRepository,
+                                  )
+                          ),
+                      // TODO(#204): the volunteer's planning of #161 replaces this stand-in.
+                      volunteerOverview = { PlaceholderPage(VolunteerEventScreen.Overview) },
+                  )
+            },
+        )
         mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(
             VolunteerTabs.Map,
             nav,
@@ -410,11 +450,16 @@ fun ShifterNavHost(
 private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
     tab: Tab,
     nav: NavigationActions,
+    built: Boolean = false,
     noinline content: @Composable (NavBackStackEntry) -> Unit = {},
     crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
   navigation<T>(startDestination = tab.home) {
-    composable<S> { entry -> TabPage(tab, nav) { PlaceholderPage(tab.home) { content(entry) } } }
+    composable<S> { entry ->
+      TabPage(tab, nav) {
+        if (built) content(entry) else PlaceholderPage(tab.home) { content(entry) }
+      }
+    }
     screens()
   }
 }
