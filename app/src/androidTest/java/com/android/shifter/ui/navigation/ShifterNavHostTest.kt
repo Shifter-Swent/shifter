@@ -989,22 +989,32 @@ class ShifterNavHostTest {
 
   /** The event opens on the set's home tab, then each tab shows its own screen. */
   private fun assertTabsReachable(tabs: TabSet) {
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(tabs.home.home.title)
+    assertTabShown(tabs.home)
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
     tabs.all.forEach { tab ->
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      when (tab) {
-        OrganizerTabs.People -> assertPeopleScreenShown()
-        VolunteerTabs.Map,
-        OrganizerTabs.Map ->
-            composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
-        else ->
-            composeTestRule
-                .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-                .assertTextEquals(tab.home.title)
+      assertTabShown(tab)
+    }
+  }
+
+  /** That the screen of [tab] is the one on, read from whatever that tab actually draws. */
+  private fun assertTabShown(tab: Tab) {
+    when (tab) {
+      OrganizerTabs.People -> assertPeopleScreenShown()
+      VolunteerTabs.Map,
+      OrganizerTabs.Map ->
+          composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
+      // The Overview of an event follows the part the reader has in it, so it has no heading of
+      // its own to read: what navigation promises is the tab being the one selected, under the
+      // bar that reaches the others.
+      VolunteerTabs.Overview -> {
+        composeTestRule.onNodeWithTag(tab.testTag).assertIsSelected()
+        composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
       }
+      else ->
+          composeTestRule
+              .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+              .assertTextEquals(tab.home.title)
     }
   }
 
