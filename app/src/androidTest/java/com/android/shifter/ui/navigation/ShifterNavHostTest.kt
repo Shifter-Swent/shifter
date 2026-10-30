@@ -553,10 +553,12 @@ class ShifterNavHostTest {
 
   @Test
   fun volunteerOverview_showsTheAutomaticCheckIn() {
-    val nav = setAppAndGetNavigation()
+    val event = acceptedEvent(asManager = false)
+    showApp()
 
-    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1")) }
+    openEvent(event)
 
+    waitForNode(AutoCheckInTestTags.CARD)
     composeTestRule.onNodeWithTag(AutoCheckInTestTags.CARD).assertIsDisplayed()
   }
 

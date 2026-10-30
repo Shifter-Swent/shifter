@@ -213,7 +213,22 @@ fun ShifterNavHost(
                                   )
                           ),
                       // TODO(#204): the volunteer's planning of #161 replaces this stand-in.
-                      volunteerOverview = { PlaceholderPage(VolunteerEventScreen.Overview) },
+                      volunteerOverview = {
+                        PlaceholderPage(VolunteerEventScreen.Overview) {
+                          AutoCheckInRoute(
+                              viewModel =
+                                  viewModel(
+                                      factory =
+                                          AutoCheckInViewModel.factory(
+                                              repositories.missionRepository,
+                                              repositories.checkInRepository,
+                                              locationProvider,
+                                              currentUserId,
+                                          )
+                                  )
+                          )
+                        }
+                      },
                   )
             },
         )
