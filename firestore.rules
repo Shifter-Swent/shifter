@@ -62,6 +62,19 @@ service cloud.firestore {
            == request.auth.uid;
     }
 
+    // An accepted volunteer of the event, listed in its participants document.
+    function isParticipant(eventId) {
+      let participants = /databases/$(database)/documents/eventParticipants/$(eventId);
+      return signedIn()
+        && exists(participants)
+        && request.auth.uid in get(participants).data.participantIds;
+    }
+
+    // Who may see the organization of an event: its organizer and its participants.
+    function canReadEventContent(eventId) {
+      return isOrganizer(eventId) || isParticipant(eventId);
+    }
+
     match /events/{eventId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
@@ -122,10 +135,96 @@ service cloud.firestore {
           && !isParticipantAfter();
       }
 
-      // missions/{missionId}: rules do not cascade into subcollections, so the event rule above
-      // does not cover them. Signed-in users only, until per-role rules are defined.
+      // Rules do not cascade into subcollections, so teams, shifts and missions each need their
+      // own block. The organizer builds them; the organizer and the participants read them, except
+      // teams, which candidates read too.
+      // Reads do not depend on the documents' content, so whole-subcollection queries are allowed.
+      match /teams/{teamId} {
+        // A volunteer who withdraws leaves their team on their own, deleting their request in the
+        // same commit: a member removes only themself from memberIds, and the manager, who is not
+        // among the members, only sets managerId from themself to null.
+        function isWithdrawal() {
+          let changed = request.resource.data.diff(resource.data).affectedKeys();
+          let previous = resource.data.get('memberIds', []);
+          let next = request.resource.data.get('memberIds', []);
+          let leavesTheMembers = previous.removeAll(next) == [request.auth.uid]
+            && next.removeAll(previous).size() == 0;
+          let leavesTheManagement = resource.data.get('managerId', null) == request.auth.uid
+            && request.resource.data.get('managerId', null) == null;
+          // Without a change, every check below would hold, and anyone could write the team.
+          return signedIn()
+            && changed.size() > 0
+            && changed.hasOnly(['memberIds', 'managerId'])
+            && (!changed.hasAny(['memberIds']) || leavesTheMembers)
+            && (!changed.hasAny(['managerId']) || leavesTheManagement)
+            && !existsAfter(
+                 /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid));
+        }
+
+        // The manager leads the members without being one of them, as TeamRepository promises.
+        // Malformed memberIds are left to the mappers.
+        function managerIsNotAMember() {
+          let managerId = request.resource.data.get('managerId', null);
+          let memberIds = request.resource.data.get('memberIds', []);
+          return managerId == null || !(memberIds is list) || !(managerId in memberIds);
+        }
+
+        // A volunteer picks their team before applying, so before being a participant: any
+        // signed-in user lists an event's teams. memberIds holds uids only (trade-off of #170).
+        allow read: if signedIn();
+        allow create, update: if isOrganizer(eventId) && managerIsNotAMember();
+        allow delete: if isOrganizer(eventId);
+        allow update: if isWithdrawal();
+      }
+
+      match /shifts/{shiftId} {
+        allow read: if canReadEventContent(eventId);
+        allow write: if isOrganizer(eventId);
+      }
+
+      // The organizer writes every mission; a team's manager writes the missions of their team.
       match /missions/{missionId} {
-        allow read, write: if request.auth != null;
+        // Whether the signed-in user manages teamId. A mission of no team ("General") has no
+        // manager; teamId is checked first, so get() never builds a path from null.
+        function managesTeam(teamId) {
+          return signedIn()
+            && teamId is string
+            && get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+                 .data.get('managerId', null) == request.auth.uid;
+        }
+
+        // A manager only adds members of the team, each once, and never more assignees than
+        // needed. Those already on the mission may stay, so someone who left the team can still be
+        // unassigned.
+        function validAssignees(teamId, previous) {
+          let next = request.resource.data.get('assigneeIds', []);
+          let members =
+            get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+              .data.get('memberIds', []);
+          return next is list
+            && next.size() == next.toSet().size()
+            && next.size() <= request.resource.data.get('volunteersNeeded', 0)
+            && next.toSet().difference(previous.toSet()).hasOnly(members);
+        }
+
+        function teamBefore() {
+          return resource.data.get('teamId', null);
+        }
+
+        function teamAfter() {
+          return request.resource.data.get('teamId', null);
+        }
+
+        allow read: if canReadEventContent(eventId);
+        allow create: if isOrganizer(eventId)
+          || (managesTeam(teamAfter()) && validAssignees(teamAfter(), []));
+        // Checking the team before and after keeps a manager from moving a mission to a team they
+        // do not manage.
+        allow update: if isOrganizer(eventId)
+          || (managesTeam(teamBefore())
+              && managesTeam(teamAfter())
+              && validAssignees(teamAfter(), resource.data.get('assigneeIds', [])));
+        allow delete: if isOrganizer(eventId) || managesTeam(teamBefore());
 
         // checkIns/{uid}: the proof that volunteer uid was present at the mission. The document id
         // is their uid, so they are checked in at most once, and a check-in is never changed.
@@ -163,18 +262,6 @@ service cloud.firestore {
       }
     }
 
-    // events/{eventId}/teams/{teamId}: rules do not cascade into subcollections, so the event
-    // rule above does not cover them. Signed-in users only, until per-role rules are defined.
-    match /events/{eventId}/teams/{teamId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // events/{eventId}/shifts/{shiftId}: rules do not cascade into subcollections, so the event
-    // rule above does not cover them. Signed-in users only, until per-role rules are defined.
-    match /events/{eventId}/shifts/{shiftId} {
-      allow read, write: if request.auth != null;
-    }
-
     // Enables a volunteer's collection-group query filtered by userId, without granting writes.
     match /{path=**}/membershipRequests/{uid} {
       allow read: if signedIn() && resource.data.userId == request.auth.uid;
@@ -210,7 +297,9 @@ service cloud.firestore {
           && (removed.size() == 0 || hasStatus(removed[0], 'REJECTED'));
       }
 
-      allow read: if signedIn();
+      // Only the organizer lists the participants. isParticipant still works, because get() in
+      // rules ignores them; a volunteer learns they take part from their own request.
+      allow read: if isOrganizer(eventId);
       allow create: if isOrganizer(eventId)
         && request.resource.data.keys().hasOnly(['participantIds'])
         && request.resource.data.participantIds is list

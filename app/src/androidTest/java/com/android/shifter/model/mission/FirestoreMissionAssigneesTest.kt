@@ -4,12 +4,12 @@ package com.swent.shifter.model.mission
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -23,7 +23,8 @@ import org.junit.runner.RunWith
  * SDK against the Firestore emulator through [FirestoreEmulator].
  *
  * Kept apart from [FirestoreMissionRepositoryTest] so assignment has its own suite. Every test
- * builds its mission under a fresh random event id, and every document created is deleted in
+ * builds its mission under a fresh event owned by the signed-in user, since `firestore.rules` only
+ * lets an event's organizer write its missions, and every document created is deleted in
  * [tearDown].
  */
 @RunWith(AndroidJUnit4::class)
@@ -36,13 +37,13 @@ class FirestoreMissionAssigneesTest {
   /** The documents this test created, deleted in [tearDown]. */
   private val createdDocuments = mutableListOf<DocumentReference>()
 
-  /** `firestore.rules` only lets signed-in users touch missions. */
   @Before
   fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
 
   @After
   fun tearDown() = emulatorTest {
-    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
+    // Children first: once its event is gone, the rules refuse to delete them.
+    step("cleanup") { createdDocuments.asReversed().forEach { it.delete().await() } }
     createdDocuments.clear()
     auth.signOut()
   }
@@ -118,7 +119,7 @@ class FirestoreMissionAssigneesTest {
   @Test
   fun updateAssignees_failsOnAMissingMission() = emulatorTest {
     val failure = runCatching {
-      repository.updateAssignees(uniqueEventId(), "missing", listOf("user-1"))
+      repository.updateAssignees(newEvent(), "missing", listOf("user-1"))
     }
         .exceptionOrNull()
 
@@ -142,14 +143,14 @@ class FirestoreMissionAssigneesTest {
   private suspend fun stored(mission: Mission): Mission =
       checkNotNull(step("read") { repository.getMission(mission.eventId, mission.id) })
 
-  private fun uniqueEventId(): String = "event-" + UUID.randomUUID()
+  private suspend fun newEvent(): String = ScratchEvents.create().also { createdDocuments += it }.id
 
   /**
    * A mission of a fresh event, needing [volunteersNeeded] people and assigned to [assigneeIds].
    */
-  private fun mission(volunteersNeeded: Int, vararg assigneeIds: String) =
+  private suspend fun mission(volunteersNeeded: Int, vararg assigneeIds: String) =
       Mission(
-          eventId = uniqueEventId(),
+          eventId = newEvent(),
           title = "Trier les dons alimentaires",
           description = "Trier les produits collectés.",
           teamId = "team-logistics",
