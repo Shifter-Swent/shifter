@@ -9,4 +9,8 @@
     <!-- Between the address and the check-in time, kept apart so the address is cut first -->
     <string name="planning_separator">" · "</string>
     <string name="planning_checked_in_at">Checked in at %1$s</string>
+    <string name="planning_error_offline">Could not load your missions. Check your connection.</string>
+    <string name="planning_error_unexpected">Could not load your missions.</string>
+    <string name="planning_retry">Retry</string>
+    <string name="planning_check_ins_unavailable">Check-in status unavailable</string>
 </resources>

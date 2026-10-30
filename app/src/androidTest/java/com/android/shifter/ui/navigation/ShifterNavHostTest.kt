@@ -52,6 +52,7 @@ import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
+import com.swent.shifter.ui.planning.PlanningTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.team.CreateTeamFormTestTags
 import com.swent.shifter.ui.team.TeamIcon
@@ -563,6 +564,39 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun volunteerOverview_showsTheMissionsAssignedToTheVolunteer() {
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Pick up the litter",
+              description = "Along the shore.",
+              teamId = teamIds.getValue(event.id),
+              volunteersNeeded = 1,
+              startAt = event.startAt,
+              endAt = event.startAt.plus(Duration.ofHours(1)),
+              assigneeIds = listOf(volunteer.uid),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    signIn(volunteerAccount)
+    showApp()
+
+    openEvent(event)
+
+    waitForNode(PlanningTestTags.mission(mission.id))
+    composeTestRule.onNodeWithText("Pick up the litter").assertIsDisplayed()
+  }
+
+  @Test
   fun organizerEvent_opensOnOverviewAndReachesEveryTab() {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -758,9 +792,8 @@ class ShifterNavHostTest {
 
     openEvent(event)
 
-    // Their own Overview, which #204 fills in; the manager's view is not theirs to see.
-    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
-    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Overview")
+    // Their own Overview, with their Planning; the manager's view is not theirs to see.
+    waitForNode(PlanningTestTags.PLANNING)
     composeTestRule.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertDoesNotExist()
   }
 
@@ -1116,12 +1149,15 @@ class ShifterNavHostTest {
 
   /**
    * An event the signed-in volunteer has been accepted to, managing its team when [asManager]. The
-   * organizer accepts and appoints through the repositories, as the People screen does.
+   * organizer accepts and appoints through the repositories, as the People screen does. The
+   * accounts are given when the test signs in as them again afterwards.
    */
-  private fun acceptedEvent(asManager: Boolean): Event {
-    val organizerAccount = googleCredential("Olga")
+  private fun acceptedEvent(
+      asManager: Boolean,
+      organizerAccount: GoogleIdTokenCredential = googleCredential("Olga"),
+      volunteerAccount: GoogleIdTokenCredential = googleCredential(),
+  ): Event {
     val event = createEvent(signIn(organizerAccount))
-    val volunteerAccount = googleCredential()
     val volunteer = signIn(volunteerAccount)
     applyTo(event, volunteer)
     signIn(organizerAccount)
