@@ -26,9 +26,9 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_mutedText
 
 object PlanningScreenTestTags {
-  const val LOADING = "PlanningLoading"
-  const val ERROR = "PlanningError"
-  const val RETRY_BUTTON = "PlanningRetryButton"
+  const val LOADING = "planningLoading"
+  const val ERROR = "planningError"
+  const val RETRY_BUTTON = "planningRetryButton"
 }
 
 /** The volunteer's Planning in the event overview, loaded by [viewModel]. */
