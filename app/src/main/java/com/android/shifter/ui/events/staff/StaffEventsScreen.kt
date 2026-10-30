@@ -39,6 +39,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 fun StaffEventsScreen(
     viewModel: StaffEventsViewModel,
     avatarInitial: String,
+    onOpenEvent: (eventId: String) -> Unit,
     onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -49,6 +50,7 @@ fun StaffEventsScreen(
       avatarInitial = avatarInitial,
       onTabSelected = viewModel::selectTab,
       onWithdraw = viewModel::withdraw,
+      onOpenEvent = onOpenEvent,
       onOrganizerViewClick = onOrganizerViewClick,
       onScanQrClick = onScanQrClick,
       onAvatarClick = onAvatarClick,
@@ -67,6 +69,7 @@ fun StaffEventsContent(
     avatarInitial: String,
     onTabSelected: (EventTab) -> Unit,
     onWithdraw: (eventId: String) -> Unit,
+    onOpenEvent: (eventId: String) -> Unit,
     onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -80,6 +83,10 @@ fun StaffEventsContent(
       cardAction = { card ->
         if (card.badge == EventBadge.ENDED) null
         else EventCardAction(EventCardActionType.WITHDRAW) { onWithdraw(card.id) }
+      },
+      // An event opens once the application to it has been accepted, past ones included.
+      cardOpen = { card ->
+        if (card.badge == EventBadge.PENDING_APPROVAL) null else ({ onOpenEvent(card.id) })
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
   ) {
@@ -123,6 +130,7 @@ private fun StaffEventsContentPreview() {
         avatarInitial = "J",
         onTabSelected = {},
         onWithdraw = {},
+        onOpenEvent = {},
         onOrganizerViewClick = {},
         onScanQrClick = {},
         onAvatarClick = {},

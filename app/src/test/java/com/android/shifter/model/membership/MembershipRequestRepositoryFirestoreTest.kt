@@ -135,7 +135,8 @@ class MembershipRequestRepositoryFirestoreTest {
       runTest {
         val removal = FieldValue.arrayRemove(request.userId)
         every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
-        every { transaction.get(team) } returns teamSnapshot(exists = true)
+        every { transaction.get(team) } returns
+            teamSnapshot(exists = true, memberIds = listOf(request.userId))
         mockkStatic(FieldValue::class) {
           every { FieldValue.arrayRemove(request.userId) } returns removal
           repository.reject("event", request.userId)
@@ -180,6 +181,8 @@ class MembershipRequestRepositoryFirestoreTest {
   fun withdraw_removesAParticipantFromEventAndTeamAndDeletesTheRequestInOneTransaction() = runTest {
     val removal = FieldValue.arrayRemove(request.userId)
     every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
+    every { transaction.get(team) } returns
+        teamSnapshot(exists = true, memberIds = listOf(request.userId))
     mockkStatic(FieldValue::class) {
       every { FieldValue.arrayRemove(request.userId) } returns removal
       repository.withdraw("event", request.userId)
@@ -199,6 +202,18 @@ class MembershipRequestRepositoryFirestoreTest {
     repository.withdraw("event", request.userId)
 
     verify { transaction.update(team, "managerId", null) }
+    verify { transaction.delete(ref) }
+  }
+
+  @Test
+  fun withdraw_whenNoLongerInTheirTeam_leavesTheTeamAlone() = runTest {
+    // The rules refuse a team write that changes nothing, which would fail the whole withdrawal.
+    every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
+    every { transaction.get(team) } returns teamSnapshot(exists = true, memberIds = listOf("other"))
+
+    repository.withdraw("event", request.userId)
+
+    verify(exactly = 0) { transaction.update(team, any<String>(), any()) }
     verify { transaction.delete(ref) }
   }
 
@@ -435,10 +450,15 @@ class MembershipRequestRepositoryFirestoreTest {
     assertEquals(error, thrown!!.cause)
   }
 
-  private fun teamSnapshot(exists: Boolean, managerId: String? = null): DocumentSnapshot =
+  private fun teamSnapshot(
+      exists: Boolean,
+      managerId: String? = null,
+      memberIds: List<String> = emptyList(),
+  ): DocumentSnapshot =
       mockk<DocumentSnapshot>().also {
         every { it.exists() } returns exists
         every { it.getString("managerId") } returns managerId
+        every { it.get("memberIds") } returns memberIds
       }
 
   /** The volunteer's request, missing when [status] is null, applying to [teamId]. */

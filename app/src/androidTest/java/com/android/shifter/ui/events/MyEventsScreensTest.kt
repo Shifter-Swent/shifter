@@ -52,6 +52,7 @@ class MyEventsScreensTest : TestCase() {
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = "J",
+            onOpenEvent = {},
             onOrganizerViewClick = { organizerViewClicks++ },
             onScanQrClick = {},
             onAvatarClick = {},

@@ -46,6 +46,19 @@ jobs:
           mkdir -p ~/.android
           echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > ~/.android/debug.keystore
 
+      # Restore local.properties (holding MAPS_API_KEY) from the base64-encoded LOCAL_PROPERTIES
+      # secret, as the CI does. Without it the APK is built without the Maps key and the map stays
+      # grey
+      - name: Decode secrets
+        env:
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          if [ -z "$LOCAL_PROPERTIES" ]; then
+            echo "::error::LOCAL_PROPERTIES secret is not set"
+            exit 1
+          fi
+          echo "$LOCAL_PROPERTIES" | base64 --decode > ./local.properties
+
       # The debug build is signed with the team's debug key (see above). It installs on devices that
       # allow sideloading, but cannot update a copy of the app signed with a different key
       - name: Assemble debug APK

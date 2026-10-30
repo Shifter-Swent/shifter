@@ -3,15 +3,16 @@
 package com.swent.shifter.model.team
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -36,8 +37,14 @@ class TeamFirestoreMapperTest {
   private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
 
-  /** The parent event of every document this test writes. Never created: only its path is used. */
-  private val eventId = "event-" + UUID.randomUUID()
+  /**
+   * The parent event of every document this test writes, owned by the signed-in user as
+   * `firestore.rules` requires.
+   */
+  private lateinit var event: DocumentReference
+
+  private val eventId
+    get() = event.id
 
   private val teams
     get() =
@@ -49,13 +56,20 @@ class TeamFirestoreMapperTest {
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdTeamIds = mutableListOf<String>()
 
-  /** `firestore.rules` only lets signed-in users touch the teams of an event. */
+  /** `firestore.rules` only lets the organizer of an existing event write its teams. */
   @Before
-  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
+  fun signInAndCreateTheEvent() = emulatorTest {
+    auth.signInForFirestore { auth.signInAnonymously().await() }
+    event = ScratchEvents.create()
+  }
 
   @After
   fun tearDown() = emulatorTest {
-    step("cleanup") { createdTeamIds.forEach { teams.document(it).delete().await() } }
+    step("cleanup") {
+      createdTeamIds.forEach { teams.document(it).delete().await() }
+      // After its teams: once the event is gone, the rules refuse to delete them.
+      event.delete().await()
+    }
     createdTeamIds.clear()
     auth.signOut()
   }

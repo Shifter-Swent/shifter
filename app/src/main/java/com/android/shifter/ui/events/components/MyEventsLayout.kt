@@ -39,6 +39,7 @@ import com.swent.shifter.ui.events.MyEventsUiState
  * reserves exactly their height, so the last card always stops above them whatever the font size.
  *
  * @param cardAction the action link of each card, or null to hide it.
+ * @param cardOpen what tapping each card does, or null for a card that cannot be opened.
  */
 @Composable
 fun MyEventsLayout(
@@ -48,6 +49,7 @@ fun MyEventsLayout(
     onAvatarClick: () -> Unit,
     cardAction: (EventCardUi) -> EventCardAction?,
     modifier: Modifier = Modifier,
+    cardOpen: (EventCardUi) -> (() -> Unit)? = { null },
     subtitle: String? = null,
     floatingContent: @Composable BoxScope.() -> Unit = {},
 ) {
@@ -106,7 +108,7 @@ fun MyEventsLayout(
                   modifier = Modifier.fillMaxSize().testTag(MyEventsTestTags.EVENT_LIST),
               ) {
                 items(state.visibleEvents, key = { it.id }) { card ->
-                  EventCard(card = card, action = cardAction(card))
+                  EventCard(card = card, action = cardAction(card), onOpen = cardOpen(card))
                 }
               }
         }

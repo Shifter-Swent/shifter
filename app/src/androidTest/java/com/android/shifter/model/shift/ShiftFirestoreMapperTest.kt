@@ -7,12 +7,12 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -35,8 +35,14 @@ class ShiftFirestoreMapperTest {
   private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
 
-  /** The parent event of every document this test writes. Never created: only its path is used. */
-  private val eventId = "event-" + UUID.randomUUID()
+  /**
+   * The parent event of every document this test writes, owned by the signed-in user as
+   * `firestore.rules` requires.
+   */
+  private lateinit var event: DocumentReference
+
+  private val eventId
+    get() = event.id
 
   private val shifts
     get() =
@@ -51,13 +57,20 @@ class ShiftFirestoreMapperTest {
    */
   private val createdDocuments = mutableListOf<DocumentReference>()
 
-  /** `firestore.rules` only lets signed-in users touch the shifts of an event. */
+  /** `firestore.rules` only lets the organizer of an existing event write its shifts. */
   @Before
-  fun signIn() = emulatorTest { auth.signInForFirestore { auth.signInAnonymously().await() } }
+  fun signInAndCreateTheEvent() = emulatorTest {
+    auth.signInForFirestore { auth.signInAnonymously().await() }
+    event = ScratchEvents.create()
+  }
 
   @After
   fun tearDown() = emulatorTest {
-    step("cleanup") { createdDocuments.forEach { it.delete().await() } }
+    // Children first, then the events: once an event is gone, the rules refuse to delete them.
+    step("cleanup") {
+      createdDocuments.asReversed().forEach { it.delete().await() }
+      event.delete().await()
+    }
     createdDocuments.clear()
     auth.signOut()
   }
@@ -107,7 +120,7 @@ class ShiftFirestoreMapperTest {
   fun toShift_derivesTheEventIdFromTheParentDocumentPath() = emulatorTest {
     // A second event, so the mapped id has to follow the document it was read from rather than
     // anything this test class holds: a volunteer's schedule spans several events.
-    val otherEventId = "event-" + UUID.randomUUID()
+    val otherEventId = ScratchEvents.create().also { createdDocuments += it }.id
     val document = writeRawShiftUnder(otherEventId, richShift().toFirestoreMap())
 
     val mapped = document.get(Source.SERVER).await().toShift()

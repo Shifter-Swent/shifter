@@ -232,11 +232,13 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     repository.accept(eventId, other.uid)
     signIn(volunteer)
     repository.withdraw(eventId, volunteer.uid)
-    assertEquals(listOf(other.uid), participantIds(eventId))
-    assertEquals(listOf(other.uid), memberIds(eventId, TEAM_ID))
     assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
     assertTrue(repository.getMembershipRequestsByUId(volunteer.uid).isEmpty())
     assertEquals(MembershipRequestStatus.PENDING, apply(eventId, volunteer).status)
+    // Only the organizer may read the participants.
+    signIn(organizer)
+    assertEquals(listOf(other.uid), participantIds(eventId))
+    assertEquals(listOf(other.uid), memberIds(eventId, TEAM_ID))
   }
 
   @Test
@@ -250,7 +252,27 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
 
     repository.withdraw(eventId, volunteer.uid)
 
+    // Only the organizer may read the participants.
+    signIn(organizer)
     assertTeamLeftWithoutManager(eventId)
+  }
+
+  @Test
+  fun withdraw_whenNoLongerInTheirTeam_stillWorks() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    // The organizer edits the team: the volunteer is neither a member nor its manager anymore.
+    team(eventId, TEAM_ID).update("memberIds", FieldValue.arrayRemove(volunteer.uid)).await()
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    // Only the organizer may read the participants.
+    signIn(organizer)
+    assertEquals(emptyList<String>(), participantIds(eventId))
   }
 
   @Test
@@ -273,6 +295,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     repository.withdraw(eventId, volunteer.uid)
     repository.withdraw(eventId, volunteer.uid)
     assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    signIn(organizer)
     assertFalse(participants(eventId).get(Source.SERVER).await().exists())
   }
 

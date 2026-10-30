@@ -53,17 +53,32 @@ class EventCardMapperTest {
 
   @Test
   fun staffCard_followsTheParticipationUntilTheEventIsOver() {
-    val accepted = testEvent().toStaffCard(accepted = true, now, zone)
+    val accepted = testEvent().toStaffCard(accepted = true, manages = false, now, zone)
     assertEquals(EventBadge.CONFIRMED, accepted.badge)
     assertEquals(EventCardFooter.VOLUNTEER, accepted.footer)
 
-    val pending = testEvent().toStaffCard(accepted = false, now, zone)
+    val pending = testEvent().toStaffCard(accepted = false, manages = false, now, zone)
     assertEquals(EventBadge.PENDING_APPROVAL, pending.badge)
     assertEquals(EventCardFooter.AWAITING_APPROVAL, pending.footer)
 
-    val ended = testEvent(status = EventStatus.COMPLETED).toStaffCard(accepted = true, now, zone)
+    val ended =
+        testEvent(status = EventStatus.COMPLETED)
+            .toStaffCard(accepted = true, manages = false, now, zone)
     assertEquals(EventBadge.ENDED, ended.badge)
     assertEquals(EventCardFooter.VOLUNTEER, ended.footer)
+  }
+
+  @Test
+  fun staffCard_ofSomeoneManagingATeam_namesThemTheManagerEvenOnceItIsOver() {
+    val manager = testEvent().toStaffCard(accepted = true, manages = true, now, zone)
+    assertEquals(EventBadge.CONFIRMED, manager.badge)
+    assertEquals(EventCardFooter.MANAGER, manager.footer)
+
+    val ended =
+        testEvent(status = EventStatus.COMPLETED)
+            .toStaffCard(accepted = true, manages = true, now, zone)
+    assertEquals(EventBadge.ENDED, ended.badge)
+    assertEquals(EventCardFooter.MANAGER, ended.footer)
   }
 
   @Test

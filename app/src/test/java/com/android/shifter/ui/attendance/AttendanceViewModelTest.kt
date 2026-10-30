@@ -40,6 +40,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -155,6 +156,9 @@ class AttendanceViewModelTest {
     assertFalse(state.isLoading)
     assertFalse(state.loadFailed)
     assertTrue(state.isOrganizer)
+    // The organizer watches the whole event, so they may watch its attendance, under its title.
+    assertEquals(true, state.canViewAttendance)
+    assertEquals("Festival", state.eventTitle)
     assertEquals(listOf("Set up", "Welcome", "Serve drinks"), titles())
     assertEquals(listOf("Logistics", null, "Bar"), state.missions.map { it.teamName })
     val setUp = state.missions.first()
@@ -208,7 +212,32 @@ class AttendanceViewModelTest {
     val state = viewModel.uiState.value
     assertFalse(state.isOrganizer)
     assertFalse(state.loadFailed)
+    // Managing no team is no attendance to watch, whatever the missions of the event.
+    assertEquals(false, state.canViewAttendance)
     assertTrue(state.isEmpty)
+  }
+
+  @Test
+  fun load_asManagerOfTeamsWithoutAnyMission_isStillAManager() = runTest {
+    open("manager")
+
+    val state = viewModel.uiState.value
+    // It comes from the teams they manage, never from having missions to show.
+    assertEquals(true, state.canViewAttendance)
+    assertEquals("Festival", state.eventTitle)
+    assertTrue(state.isEmpty)
+  }
+
+  @Test
+  fun load_failingBeforeTheRoleIsRead_leavesItUnknown() = runTest {
+    events.failure = EventRepositoryException.Unavailable()
+
+    open("manager")
+
+    val state = viewModel.uiState.value
+    assertTrue(state.loadFailed)
+    // Unknown rather than false, so the attendance is neither offered nor denied on a guess.
+    assertNull(state.canViewAttendance)
   }
 
   @Test
