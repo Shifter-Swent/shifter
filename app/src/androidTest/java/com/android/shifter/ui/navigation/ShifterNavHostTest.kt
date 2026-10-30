@@ -42,6 +42,7 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.EventDetailsTestTags
@@ -548,6 +549,17 @@ class ShifterNavHostTest {
     assertTabsReachable(VolunteerTabs)
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun volunteerOverview_showsTheAutomaticCheckIn() {
+    val event = acceptedEvent(asManager = false)
+    showApp()
+
+    openEvent(event)
+
+    waitForNode(AutoCheckInTestTags.CARD)
+    composeTestRule.onNodeWithTag(AutoCheckInTestTags.CARD).assertIsDisplayed()
   }
 
   @Test

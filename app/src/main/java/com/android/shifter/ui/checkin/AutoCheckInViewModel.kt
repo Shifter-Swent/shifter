@@ -2,10 +2,15 @@
 package com.swent.shifter.ui.checkin
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.checkin.CheckInEligibility
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
+import com.swent.shifter.model.checkin.checkInEligibility
 import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationProvider
@@ -190,5 +195,28 @@ class AutoCheckInViewModel(
     const val CHECK_IN_TIMEOUT_MILLIS = 10_000L
 
     private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+    /**
+     * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
+     * arguments. A mission is eligible when [checkInEligibility] says so.
+     */
+    fun factory(
+        missionRepository: MissionRepository,
+        checkInRepository: CheckInRepository,
+        locationProvider: LocationProvider,
+        currentUserId: () -> String?,
+    ): ViewModelProvider.Factory = viewModelFactory {
+      initializer {
+        AutoCheckInViewModel(
+            missionRepository,
+            checkInRepository,
+            locationProvider,
+            currentUserId,
+            { mission, time, at ->
+              checkInEligibility(mission, time, at) == CheckInEligibility.Eligible
+            },
+        )
+      }
+    }
   }
 }
