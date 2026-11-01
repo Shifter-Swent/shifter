@@ -35,6 +35,10 @@ class LiveLocationRulesTest {
   private val auth = FirestoreEmulator.auth
   private val db = FirestoreEmulator.firestore
   private val paths = mutableSetOf<String>()
+
+  /** Auth accounts deleted in [cleanUp], so the emulator does not keep them between tests. */
+  private val accounts = mutableListOf<Account>()
+
   private lateinit var organizer: Account
   private lateinit var manager: Account
   private lateinit var volunteer: Account
@@ -59,7 +63,15 @@ class LiveLocationRulesTest {
     try {
       paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
     } finally {
-      auth.signOut()
+      try {
+        // Only an account itself may delete it, so each one is signed in again first.
+        accounts.forEach { account ->
+          signIn(account)
+          checkNotNull(auth.currentUser).delete().await()
+        }
+      } finally {
+        auth.signOut()
+      }
     }
   }
 
@@ -348,7 +360,9 @@ class LiveLocationRulesTest {
         )
         .await()
     profile.update(LOCATION_SHARING_ENABLED, true).await()
-    return Account(user.uid, EmailAuthProvider.getCredential(email, password))
+    return Account(user.uid, EmailAuthProvider.getCredential(email, password)).also {
+      accounts += it
+    }
   }
 
   private suspend fun signIn(user: Account) {

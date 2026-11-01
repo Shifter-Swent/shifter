@@ -31,7 +31,7 @@ eventParticipants/{eventId}
 | `publicProfiles/{uid}` | What any signed-in user may see of a user | `UserRepositoryFirestore` |
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
-| `events/{eventId}/teams/{teamId}/liveLocations/{uid}` | Where a volunteer of the team is, keyed by their uid | `LiveLocationSchema`, with the repository |
+| `events/{eventId}/teams/{teamId}/liveLocations/{uid}` | Where a volunteer of the team is, keyed by their uid | `LiveLocation`; its Firestore mapper and schema object come with the repository, in a follow-up PR |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/missions/{missionId}/checkIns/{uid}` | A volunteer's presence at a mission, keyed by their uid | `CheckInSchema` |
