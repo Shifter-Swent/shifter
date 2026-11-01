@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 rules_version = '2';
 
 service cloud.firestore {
@@ -175,6 +176,58 @@ service cloud.firestore {
         allow create, update: if isOrganizer(eventId) && managerIsNotAMember();
         allow delete: if isOrganizer(eventId);
         allow update: if isWithdrawal();
+
+        // liveLocations/{uid}: where the volunteer uid is, shared with their manager while they
+        // have location sharing on. The document id is their uid, so a volunteer shares one
+        // position per team and can never write someone else's.
+        match /liveLocations/{uid} {
+          function team() {
+            return get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId)).data;
+          }
+
+          // Sharing is opt-in, in the volunteer's own private profile; get() ignores its read rule.
+          function sharingEnabled() {
+            return get(/databases/$(database)/documents/users/$(uid))
+              .data.get('locationSharingEnabled', false) == true;
+          }
+
+          // The position and when the GPS measured it, nothing else: the volunteer, the team and
+          // the event are already in the path. measuredAt is the GPS's time, not request.time, so a
+          // position sent after an offline spell is still accepted. A missing field makes the
+          // expression fail, which denies the write.
+          function isValidLocation() {
+            let data = request.resource.data;
+            return data.keys().hasOnly(['position', 'measuredAt'])
+              && data.measuredAt is timestamp
+              && data.position.keys().hasOnly(['latitude', 'longitude'])
+              && data.position.latitude is number
+              && data.position.latitude >= -90
+              && data.position.latitude <= 90
+              && data.position.longitude is number
+              && data.position.longitude >= -180
+              && data.position.longitude <= 180;
+          }
+
+          function isTeamManagerOrOrganizer() {
+            return team().get('managerId', null) == request.auth.uid || isOrganizer(eventId);
+          }
+
+          // A volunteer reads back the position they shared, and only their own.
+          allow get: if signedIn() && (request.auth.uid == uid || isTeamManagerOrOrganizer());
+          // The collection is the manager's and the organizer's, and listing it is allowed by the
+          // path alone: a condition on the documents would make their query fail whenever one of
+          // them did not satisfy it. A position therefore stays readable until it is deleted, even
+          // once its volunteer turns sharing off.
+          allow list: if signedIn() && isTeamManagerOrOrganizer();
+          allow create, update: if signedIn()
+            && request.auth.uid == uid
+            && uid in team().get('memberIds', [])
+            && sharingEnabled()
+            && isValidLocation();
+          // Never refused to its owner, so they can clean up after turning sharing off or leaving
+          // the team, when neither of the conditions above holds any more.
+          allow delete: if signedIn() && request.auth.uid == uid;
+        }
       }
 
       match /shifts/{shiftId} {
