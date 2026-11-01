@@ -42,6 +42,11 @@ Writing them down also helps the human team agree on how we build.
 - Follow the [Naming conventions](https://github.com/Shifter-Swent/shifter/wiki/Naming-conventions) of the wiki.
 - Test functions are named `method_behavior`, or `method_condition_expected` when a condition matters (e.g. `addMission_withValidForm_createsTheMission`). For a screen or a flow, the first part names the action or the situation (e.g. `submit_withEmptyTitle_showsTheError`, `loading_showsTheSpinner`).
 
+## Strings
+
+- Put the strings of a feature in `res/values/strings_<feature>.xml` (e.g. `strings_mission.xml`), in the file of the feature that owns them; create it if needed.
+- Keep `strings.xml` for the strings shared by several features (e.g. `app_name`, `content_description_back`).
+
 ## Packages names
 
 - Only add files in android.shifter, do no create a new package swent.shifter, do not modify existing files about packages names.

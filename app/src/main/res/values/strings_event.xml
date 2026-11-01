@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Event creation -->
+    <string name="create_event_title">Create an event</string>
+    <string name="create_event_back">My Events</string>
+    <string name="create_event_intro">Fill in your event. All fields are required.</string>
+    <string name="create_event_field_title">Event title</string>
+    <string name="create_event_field_description">Event description</string>
+    <string name="create_event_description_hint">Present the goal and activities to volunteers.</string>
+    <string name="create_event_field_type">Event type</string>
+    <string name="create_event_field_type_selected">Event type · %1$s selected</string>
+    <string name="create_event_field_address">Address</string>
+    <string name="create_event_period_title">Activity period</string>
+    <string name="create_event_period_instructions">Enter the start date, then the end date.</string>
+    <string name="create_event_field_start">Start</string>
+    <string name="create_event_field_end">End</string>
+    <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
+    <string name="create_event_submit">Create my event</string>
+    <string name="create_event_error_title_empty">Enter a title</string>
+    <string name="create_event_error_title_too_long">The title is too long</string>
+    <string name="create_event_error_description_empty">Enter a description</string>
+    <string name="create_event_error_description_too_long">The description is too long</string>
+    <string name="create_event_error_type_missing">Choose a type</string>
+    <string name="create_event_error_address_empty">Enter an address</string>
+    <string name="create_event_error_date_invalid">Use the format DD/MM/YYYY HH:MM</string>
+    <string name="create_event_error_start_in_past">The event must start in the future</string>
+    <string name="create_event_error_end_not_after_start">The event must end after it starts</string>
+    <string name="create_event_error_save_failed">Could not create the event. Try again.</string>
+    <string name="create_event_error_not_signed_in">You must be signed in to create an event</string>
+    <string name="create_event_save_unconfirmed">No connection: the event as last submitted will be created once you are back online. Try again to save your changes and get its join code.</string>
+    <string name="event_type_music">Music</string>
+    <string name="event_type_market">Market</string>
+    <string name="event_type_nature">Nature</string>
+    <string name="event_type_food">Food</string>
+    <string name="event_type_sport">Sport</string>
+    <string name="event_type_party">Party</string>
+    <string name="event_type_other">Other</string>
+
+    <!-- Event created -->
+    <string name="event_created_title">Event created</string>
+    <string name="event_created_code_label">Your event\'s unique code</string>
+    <string name="event_created_code_hint">Share this code with volunteers so they can join your event.</string>
+    <string name="event_created_done">Done</string>
+    <string name="event_created_error_offline">Could not load the event code. Check your connection.</string>
+    <string name="event_created_error_not_found">This event has no join code. Try creating it again.</string>
+    <string name="event_created_error_unexpected">Could not load the event code.</string>
+    <string name="event_created_retry">Try again</string>
+</resources>
