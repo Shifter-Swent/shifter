@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 
 /**
@@ -61,20 +62,15 @@ data class Mission(
 /**
  * Where a GeoTimed mission takes place.
  *
- * Unlike an event's location, both coordinates are required: a mission only has a location to be
- * shown on the map and to check volunteers in, which both need a point. Coordinates are plain
- * doubles rather than a Firebase GeoPoint, so the domain model carries no backend dependency.
+ * Unlike an event's location, the position is required: a mission only has a location to be shown
+ * on the map and to check volunteers in, which both need a point. It is a [GeoPosition] rather than
+ * a Firebase GeoPoint, so the domain model carries no backend dependency.
  *
  * @property address the address shown to the volunteers, never blank.
- * @property latitude in degrees, between -90 and 90.
- * @property longitude in degrees, between -180 and 180.
+ * @property position the point the mission takes place at.
  */
-data class MissionLocation(val address: String, val latitude: Double, val longitude: Double) {
+data class MissionLocation(val address: String, val position: GeoPosition) {
   init {
     require(address.isNotBlank()) { "Address must not be blank" }
-    require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90, but was $latitude" }
-    require(longitude in -180.0..180.0) {
-      "Longitude must be between -180 and 180, but was $longitude"
-    }
   }
 }

@@ -7,6 +7,7 @@ import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
+import com.swent.shifter.model.location.GeoPosition
 
 /** Names this entity in the failure a malformed document raises. */
 private const val ENTITY = "Event"
@@ -100,8 +101,9 @@ internal fun DocumentSnapshot.toEvent(): Event =
 private fun EventLocation.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         EventSchema.LocationFields.ADDRESS to address,
-        EventSchema.LocationFields.LATITUDE to latitude,
-        EventSchema.LocationFields.LONGITUDE to longitude,
+        // Null rather than left out until the event is geocoded, so the document keeps both keys.
+        EventSchema.LocationFields.LATITUDE to position?.latitude,
+        EventSchema.LocationFields.LONGITUDE to position?.longitude,
     )
 
 private fun EmergencyContact.toFirestoreMap(): Map<String, Any?> =
@@ -137,15 +139,21 @@ private fun DocumentSnapshot.requireLocation(): EventLocation {
       get(EventSchema.LOCATION) as? Map<*, *> ?: invalidField(ENTITY, EventSchema.LOCATION)
   val latitude = requireCoordinate(location, EventSchema.LocationFields.LATITUDE)
   val longitude = requireCoordinate(location, EventSchema.LocationFields.LONGITUDE)
-  // A map pin needs both coordinates, so half a pair is a malformed document rather than an event
-  // waiting to be geocoded.
-  if ((latitude == null) != (longitude == null)) invalidField(ENTITY, EventSchema.LOCATION)
+  val position =
+      when {
+        latitude == null && longitude == null -> null
+        // A map pin needs both coordinates, so half a pair is a malformed document rather than an
+        // event waiting to be geocoded, as is a coordinate out of range.
+        latitude == null || longitude == null -> invalidField(ENTITY, EventSchema.LOCATION)
+        else ->
+            runCatching { GeoPosition(latitude, longitude) }
+                .getOrElse { invalidField(ENTITY, EventSchema.LOCATION) }
+      }
   return EventLocation(
       address =
           location[EventSchema.LocationFields.ADDRESS] as? String
               ?: invalidField(ENTITY, EventSchema.LOCATION),
-      latitude = latitude,
-      longitude = longitude,
+      position = position,
   )
 }
 

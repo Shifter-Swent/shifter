@@ -6,9 +6,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import java.time.Instant
@@ -27,9 +27,6 @@ enum class MapError {
   OFFLINE,
   UNEXPECTED,
 }
-
-/** A point the map centres on, in degrees. */
-data class MapPoint(val latitude: Double, val longitude: Double)
 
 /**
  * The next mission the signed-in user is assigned to: its marker and its hours.
@@ -58,7 +55,7 @@ data class NextMission(
 data class MapUiState(
     val eventTitle: String = "",
     val venue: String = "",
-    val center: MapPoint? = null,
+    val center: GeoPosition? = null,
     val markers: List<MapMarker> = emptyList(),
     val selected: MapMarker? = null,
     val next: NextMission? = null,
@@ -119,9 +116,7 @@ class MapViewModel(
                       isOngoing = it.startAt <= now,
                   )
                 }
-        val center =
-            event.location.toPoint()
-                ?: markers.firstOrNull()?.let { MapPoint(it.latitude, it.longitude) }
+        val center = event.location.position ?: markers.firstOrNull()?.position
         _uiState.update {
           it.copy(
               eventTitle = event.title,
@@ -156,15 +151,10 @@ class MapViewModel(
     val hours = "${HOURS.format(startAt.atZone(zone))}–${HOURS.format(endAt.atZone(zone))}"
     return MapMarker(
         id = id,
-        latitude = location.latitude,
-        longitude = location.longitude,
+        position = location.position,
         title = title,
         info = "$hours · ${location.address}",
     )
-  }
-
-  private fun EventLocation.toPoint(): MapPoint? {
-    return MapPoint(latitude ?: return null, longitude ?: return null)
   }
 
   companion object {

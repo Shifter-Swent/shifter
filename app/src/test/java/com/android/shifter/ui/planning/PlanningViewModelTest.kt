@@ -6,6 +6,7 @@ import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -210,6 +211,6 @@ class PlanningViewModelTest {
     const val USER = "volunteer-1"
     val START: Instant = Instant.parse("2025-06-14T08:30:00Z")
     val CHECKED_IN_AT: Instant = Instant.parse("2025-06-14T08:31:00Z")
-    val STATION = MissionLocation("Hydration station A", 45.75, 4.83)
+    val STATION = MissionLocation("Hydration station A", GeoPosition(45.75, 4.83))
   }
 }

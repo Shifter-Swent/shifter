@@ -10,6 +10,7 @@ import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -344,7 +345,7 @@ class FirestoreMissionRepositoryTest {
     val halfFilled =
         mapOf(
             MissionSchema.LocationFields.ADDRESS to LOCATION.address,
-            MissionSchema.LocationFields.LATITUDE to LOCATION.latitude,
+            MissionSchema.LocationFields.LATITUDE to LOCATION.position.latitude,
         )
     val (eventId, missionId) = writeRawMission { it + (MissionSchema.LOCATION to halfFilled) }
 
@@ -357,7 +358,7 @@ class FirestoreMissionRepositoryTest {
         mapOf(
             MissionSchema.LocationFields.ADDRESS to LOCATION.address,
             MissionSchema.LocationFields.LATITUDE to 91.0,
-            MissionSchema.LocationFields.LONGITUDE to LOCATION.longitude,
+            MissionSchema.LocationFields.LONGITUDE to LOCATION.position.longitude,
         )
     val (eventId, missionId) = writeRawMission { it + (MissionSchema.LOCATION to outOfRange) }
 
@@ -502,6 +503,6 @@ class FirestoreMissionRepositoryTest {
   }
 
   private companion object {
-    val LOCATION = MissionLocation("Rue de Lausanne 1, 1201 Genève", 46.21, 6.14)
+    val LOCATION = MissionLocation("Rue de Lausanne 1, 1201 Genève", GeoPosition(46.21, 6.14))
   }
 }

@@ -19,6 +19,14 @@ class GeoPositionTest {
   }
 
   @Test
+  fun ranges_matchTheChecksOfTheConstructor() {
+    // A form checks each coordinate against these ranges, so they must accept what the
+    // constructor accepts, bounds included.
+    assertEquals(-90.0..90.0, GeoPosition.LATITUDE_RANGE)
+    assertEquals(-180.0..180.0, GeoPosition.LONGITUDE_RANGE)
+  }
+
+  @Test
   fun geoPosition_withOutOfRangeLatitude_throws() {
     assertThrows(IllegalArgumentException::class.java) { GeoPosition(90.1, 0.0) }
     assertThrows(IllegalArgumentException::class.java) { GeoPosition(-90.1, 0.0) }

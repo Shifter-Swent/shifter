@@ -6,6 +6,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -796,7 +797,7 @@ class AddMissionViewModelTest {
     advanceUntilIdle()
 
     assertEquals(
-        MissionLocation("Grand Place, Lille", 50.6366, 3.0635),
+        MissionLocation("Grand Place, Lille", GeoPosition(50.6366, 3.0635)),
         missions.created.single().location,
     )
   }
@@ -858,7 +859,7 @@ class AddMissionViewModelTest {
                 volunteersNeeded = 2,
                 startAt = eventDay.atTime(15, 0).atZone(zone).toInstant(),
                 endAt = eventDay.atTime(16, 0).atZone(zone).toInstant(),
-                location = MissionLocation("Grand Place, Lille", 50.6366, 3.0635),
+                location = MissionLocation("Grand Place, Lille", GeoPosition(50.6366, 3.0635)),
                 createdAt = now,
             )
         )
