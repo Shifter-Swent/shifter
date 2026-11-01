@@ -126,7 +126,6 @@ class CreateTeamViewModel(
             managerId = null,
             memberIds = emptyList(),
             volunteersNeeded = null,
-            checkInZone = null,
             createdAt = clock.instant(),
         )
     _uiState.update { it.copy(errors = emptySet(), isSaving = true, saveFailed = false) }

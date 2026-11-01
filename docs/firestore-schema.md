@@ -103,7 +103,6 @@ stays in `users/{uid}`.
 | `managerId` | string \| null | `null` until the organizer appoints a manager |
 | `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer belongs to at most one team per event: the one their accepted request names |
 | `volunteersNeeded` | number \| null | Whole number. `null` until the staffing need is set: it is not asked for when the team is created |
-| `checkInZone` | map \| null | `latitude`, `longitude`, `radiusMeters`, all required when the zone is set |
 | `createdAt` | timestamp | |
 
 Belonging to a team (`memberIds`) is not the same as working a given slot (`Shift.assigneeIds`).
@@ -234,11 +233,10 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 - **Check-ins trust `assigneeIds` only.** A volunteer who withdrew or was rejected stays assigned
   until the organizer unassigns them, so they can still check themself in; #313 is to also
   require them to be a participant.
-- **Any signed-in user reads an event's teams, `memberIds` and `checkInZone` included.** The
-  members are uids only, but public profiles turn them into names, and the check-in zone tells
-  where the team's volunteers will be. Events, join codes included, are listable by anyone signed
-  in too; #160 is to address both, e.g. with a public subcollection holding only what candidates
-  need.
+- **Any signed-in user reads an event's teams, `memberIds` included.** The members are uids
+  only, but public profiles turn them into names. Events, join codes included, are listable by
+  anyone signed in too; #160 is to address both, e.g. with a public subcollection holding only
+  what candidates need.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has

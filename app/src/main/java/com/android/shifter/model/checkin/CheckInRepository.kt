@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.Flow
  * Whether a volunteer is close enough and on time to check in automatically is not decided here:
  * the zone is a circle around the mission's
  * [location][com.swent.shifter.model.mission.Mission.location] (a mission without one has no
- * automatic check-in), and the team's `checkInZone` is not used.
+ * automatic check-in).
  *
  * Every method throws, or every flow fails with, a [CheckInRepositoryException] when the operation
  * fails.

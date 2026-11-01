@@ -324,7 +324,6 @@ class FirestoreTeamRepositoryTest {
           managerId = MANAGER_ID,
           memberIds = listOf(VOLUNTEER_ID),
           volunteersNeeded = 12,
-          checkInZone = CheckInZone(latitude = 46.3869, longitude = 6.2228, radiusMeters = 75.0),
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 
