@@ -7,16 +7,23 @@ import kotlinx.coroutines.flow.Flow
  * Shares the positions of the volunteers of a team with their manager, on the event day. ViewModels
  * depend on this interface, never on an implementation.
  *
- * Rules every implementation enforces:
+ * The data contract every implementation keeps:
  * - A volunteer has at most one shared position per team, so [shareLocation] replaces the previous
  *   one rather than adding to it.
- * - Only the volunteer themself shares or removes their position.
- * - Only the manager of the team and the organizer of the event observe the team's positions.
+ * - [removeLocation] takes that position out again, and [observeTeamLocations] emits a team's
+ *   positions as they change.
  *
- * Whether a position may be shared at all is not decided here: the volunteer's
- * [locationSharingEnabled][com.swent.shifter.model.user.User.locationSharingEnabled] is checked by
- * the caller, and how old a position may be is left to the reader, which knows
- * [LiveLocation.measuredAt].
+ * Who may do any of it is enforced by `firestore.rules`, not by this interface: only the volunteer
+ * themself writes or removes their position, and only the manager of the team and the organizer of
+ * the event read the team's. The in-memory fake used by unit tests checks none of that on purpose,
+ * being a test double rather than a second implementation of the policy.
+ *
+ * Two things are the caller's, not this contract's:
+ * - **Consent:** the publishing logic must not share a position while the volunteer's
+ *   [locationSharingEnabled][com.swent.shifter.model.user.User.locationSharingEnabled] is off, and
+ *   `firestore.rules` refuse the write on their own if it tries.
+ * - **Staleness:** how old a position may be before it is ignored is left to the consumer, which
+ *   knows [LiveLocation.measuredAt].
  */
 interface LiveLocationRepository {
 

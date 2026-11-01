@@ -225,7 +225,7 @@ every access to it is denied.
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
-| `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried | Create and update by the volunteer themself (`uid` is the document id), only while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off or leaving the team |
+| `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both also require `events/{eventId}` to still exist | Create and update by the volunteer themself (`uid` is the document id), only while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. A write also requires `events/{eventId}` to still exist. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event being deleted |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
@@ -263,7 +263,10 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
-  to remove them explicitly.
+  to remove them explicitly. `liveLocations` is the one place the rules already account for it:
+  every read and write under a deleted event is denied, since a team's manager would otherwise go
+  on reading the positions orphaned under it. Only the volunteer's own delete still works, so the
+  orphans can be cleaned up.
 - **A shared position outlives the consent.** Listing `liveLocations` is allowed by the path alone,
   because a condition on each document would make the manager's query of the collection fail as
   soon as one volunteer no longer satisfied it (rules are not query filters). Turning

@@ -212,14 +212,25 @@ service cloud.firestore {
             return team().get('managerId', null) == request.auth.uid || isOrganizer(eventId);
           }
 
+          // Firestore keeps a subcollection when the document above it is deleted, so the event has
+          // to be checked here: without it, the manager of a deleted event's team would go on
+          // reading the positions left under it, and its members on updating them. Only the delete
+          // below is left alone, so a volunteer can still take their position out afterwards.
+          function eventExists() {
+            return exists(/databases/$(database)/documents/events/$(eventId));
+          }
+
           // A volunteer reads back the position they shared, and only their own.
-          allow get: if signedIn() && (request.auth.uid == uid || isTeamManagerOrOrganizer());
+          allow get: if signedIn()
+            && eventExists()
+            && (request.auth.uid == uid || isTeamManagerOrOrganizer());
           // The collection is the manager's and the organizer's, and listing it is allowed by the
           // path alone: a condition on the documents would make their query fail whenever one of
           // them did not satisfy it. A position therefore stays readable until it is deleted, even
           // once its volunteer turns sharing off.
-          allow list: if signedIn() && isTeamManagerOrOrganizer();
+          allow list: if signedIn() && eventExists() && isTeamManagerOrOrganizer();
           allow create, update: if signedIn()
+            && eventExists()
             && request.auth.uid == uid
             && uid in team().get('memberIds', [])
             && sharingEnabled()

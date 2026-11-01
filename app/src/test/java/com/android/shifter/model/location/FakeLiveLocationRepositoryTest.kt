@@ -2,6 +2,7 @@
 package com.swent.shifter.model.location
 
 import java.time.Instant
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -15,6 +16,7 @@ import org.junit.Test
  * the other teams and emitted again as it changes. What the backend guarantees is left to the
  * emulator tests, and what a screen does with it to the ViewModel tests.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class FakeLiveLocationRepositoryTest {
 
   private val repository = FakeLiveLocationRepository()

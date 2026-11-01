@@ -191,6 +191,35 @@ class LiveLocationRulesTest {
   }
 
   @Test
+  fun access_afterTheEventIsDeleted_isDeniedExceptTheVolunteersOwnDelete() = emulatorTest {
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    signIn(organizer)
+    db.collection(EVENTS).document(eventId).delete().await()
+    // Deleting a document leaves its subcollections behind, so the team and the position are both
+    // still stored under an event that is gone.
+    assertTrue(teamRef(TEAM_ID).get(Source.SERVER).await().exists())
+
+    // The manager of that team reads neither the position nor the collection any more.
+    signIn(manager)
+    assertDenied { locationRef(volunteer).get(Source.SERVER).await() }
+    assertDenied { liveLocations().get(Source.SERVER).await() }
+
+    // Nor does a volunteer share a position under it, whether a first one or an update.
+    signIn(otherVolunteer)
+    assertDenied { locationRef(otherVolunteer).set(location()).await() }
+    signIn(volunteer)
+    assertDenied {
+      locationRef(volunteer).set(location(LAUSANNE_LATITUDE, LAUSANNE_LONGITUDE)).await()
+    }
+
+    // The cleanup stays possible: the volunteer still deletes what they shared. Nobody may read it
+    // back now, so the call going through without a denial is the whole assertion.
+    locationRef(volunteer).delete().await()
+  }
+
+  @Test
   fun create_withMalformedOrUnexpectedFields_isDenied() = emulatorTest {
     signIn(volunteer)
     val valid = location()
