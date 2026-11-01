@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -62,6 +63,7 @@ import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_warning
 
 object CreateEventScreenTestTags {
   const val BACK_BUTTON = "CreateEventBackButton"
@@ -75,6 +77,7 @@ object CreateEventScreenTestTags {
   const val SAVE_ERROR = "CreateEventSaveError"
   const val NOT_SIGNED_IN_ERROR = "CreateEventNotSignedInError"
   const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
+  const val SAVE_UNCONFIRMED_ICON = "CreateEventSaveUnconfirmedIcon"
 
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
@@ -206,13 +209,25 @@ fun CreateEventContent(
       }
 
       if (state.saveUnconfirmed) {
-        Text(
-            text = stringResource(R.string.create_event_save_unconfirmed),
-            // Not an error: the event is on its way, so it must not read as a failure.
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED),
-        )
+        // A warning rather than an error: the event is on its way, so it must not read as a
+        // failure, but a muted line was missed. The theme is dark only, which the warning colour
+        // is chosen for.
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          Icon(
+              imageVector = Icons.Filled.Warning,
+              // The text says it all; the icon only draws the eye.
+              contentDescription = null,
+              tint = shifter_warning,
+              modifier =
+                  Modifier.size(16.dp).testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED_ICON),
+          )
+          Text(
+              text = stringResource(R.string.create_event_save_unconfirmed),
+              color = shifter_warning,
+              style = MaterialTheme.typography.bodySmall,
+              modifier = Modifier.testTag(CreateEventScreenTestTags.SAVE_UNCONFIRMED),
+          )
+        }
       }
 
       FormPrimaryButton(
