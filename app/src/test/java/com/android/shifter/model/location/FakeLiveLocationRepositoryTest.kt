@@ -10,13 +10,15 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * What a consumer of the fake can get wrong if it does not hold: its flows are live, each event and
- * team is a collection of its own, and a failure reaches the caller as the type it was given.
- * Storing and removing a position are covered along the way by the emissions, and what the backend
- * allows is left to `LiveLocationRulesTest`.
+ * team is a collection of its own, one volunteer's position is independent of their teammates', a
+ * measure older than the stored one is refused without replacing it, and a failure reaches the
+ * caller as the type it was given. Storing a position is covered along the way by the emissions,
+ * and whether the backend allows any of it is left to `LiveLocationRulesTest`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeLiveLocationRepositoryTest {
@@ -62,6 +64,37 @@ class FakeLiveLocationRepositoryTest {
     assertEquals(
         listOf(location(OTHER_VOLUNTEER)),
         repository.observeTeamLocations(OTHER_EVENT, TEAM).first(),
+    )
+  }
+
+  @Test
+  fun shareLocation_withAnOlderMeasure_isRefusedAndKeepsTheStoredPosition() = runTest {
+    repository.shareLocation(EVENT, TEAM, LAUSANNE, LATER)
+
+    val shared = runCatching { repository.shareLocation(EVENT, TEAM, GENEVA, NOW) }
+
+    // Refused like the rules refuse it, and refused in full: the position and the time it was
+    // measured at both stay the newer ones, rather than the older write landing in part.
+    assertTrue(shared.exceptionOrNull() is LiveLocationRepositoryException.PermissionDenied)
+    assertEquals(
+        listOf(location(VOLUNTEER, LAUSANNE, LATER)),
+        repository.observeTeamLocations(EVENT, TEAM).first(),
+    )
+  }
+
+  @Test
+  fun removeLocation_keepsTheOtherVolunteersPositionOfTheSameTeam() = runTest {
+    repository.shareLocation(EVENT, TEAM, GENEVA, NOW)
+    repository.currentUserId = OTHER_VOLUNTEER
+    repository.shareLocation(EVENT, TEAM, LAUSANNE, LATER)
+
+    repository.currentUserId = VOLUNTEER
+    repository.removeLocation(EVENT, TEAM)
+
+    // One volunteer leaving the map does not take their teammates off it.
+    assertEquals(
+        listOf(location(OTHER_VOLUNTEER, LAUSANNE, LATER)),
+        repository.observeTeamLocations(EVENT, TEAM).first(),
     )
   }
 

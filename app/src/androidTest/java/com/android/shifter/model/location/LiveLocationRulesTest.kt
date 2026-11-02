@@ -161,6 +161,12 @@ class LiveLocationRulesTest {
           .await()
     }
 
+    // Refused means nothing was written: the volunteer reads their own position back from the
+    // server, which is the only place that knows, since the cache may still hold the refused write.
+    val afterDenial = locationRef(volunteer).get(Source.SERVER).await()
+    assertEquals(MEASURED_AT, afterDenial.getTimestamp("measuredAt"))
+    assertEquals(GENEVA_LATITUDE, afterDenial.getDouble("position.latitude"))
+
     // The same measure again is a retry rather than a regression, and a newer one goes through.
     locationRef(volunteer).set(location()).await()
     locationRef(volunteer)
