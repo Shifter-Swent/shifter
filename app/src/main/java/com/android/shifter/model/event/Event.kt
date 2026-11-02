@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.event
 
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 
 /**
@@ -39,15 +40,13 @@ data class Event(
 /**
  * Where an event takes place.
  *
- * Coordinates are plain doubles rather than a Firebase GeoPoint, so the domain model carries no
- * backend dependency. They stay null until the event is geocoded: the first version only asks the
- * organizer for an address, so an event has to be able to exist without a map pin. A pin needs
- * both, so either both coordinates are known or neither is.
+ * The position is a [GeoPosition] rather than a Firebase GeoPoint, so the domain model carries no
+ * backend dependency. It stays null until the event is geocoded: the first version only asks the
+ * organizer for an address, so an event has to be able to exist without a map pin.
  */
 data class EventLocation(
     val address: String,
-    val latitude: Double? = null,
-    val longitude: Double? = null,
+    val position: GeoPosition? = null,
 )
 
 /**

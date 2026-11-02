@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -71,24 +72,12 @@ class MissionTest {
     assertConflict(false, geoTimed(10, 12), geoTimed(10, 12).copy(eventId = "event-2"))
   }
 
-  @Test
-  fun location_acceptsTheBoundsOfTheCoordinates() {
-    MissionLocation("North pole", latitude = 90.0, longitude = 180.0)
-    MissionLocation("South pole", latitude = -90.0, longitude = -180.0)
-  }
-
-  @Test
-  fun location_rejectsCoordinatesOutOfRange() {
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation("Genève", 90.1, 0.0) }
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation("Genève", 0.0, -180.1) }
-    assertThrows(IllegalArgumentException::class.java) {
-      MissionLocation("Genève", Double.NaN, 0.0)
-    }
-  }
-
+  // The coordinate ranges are checked by GeoPosition, see GeoPositionTest.
   @Test
   fun location_rejectsABlankAddress() {
-    assertThrows(IllegalArgumentException::class.java) { MissionLocation(" ", 46.21, 6.14) }
+    assertThrows(IllegalArgumentException::class.java) {
+      MissionLocation(" ", GeoPosition(46.21, 6.14))
+    }
   }
 
   @Test
@@ -123,7 +112,7 @@ class MissionTest {
           volunteersNeeded = 2,
           startAt = at(startHour),
           endAt = at(endHour),
-          location = MissionLocation("Rue de Lausanne 1, Genève", 46.21, 6.14),
+          location = MissionLocation("Rue de Lausanne 1, Genève", GeoPosition(46.21, 6.14)),
           createdAt = at(0),
       )
 

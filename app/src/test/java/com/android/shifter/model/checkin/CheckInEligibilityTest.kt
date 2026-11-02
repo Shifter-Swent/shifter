@@ -26,7 +26,7 @@ class CheckInEligibilityTest {
           volunteersNeeded = 2,
           startAt = start,
           endAt = end,
-          location = MissionLocation("Rolex Learning Center", place.latitude, place.longitude),
+          location = MissionLocation("Rolex Learning Center", place),
           createdAt = Instant.parse("2026-10-01T00:00:00Z"),
       )
 

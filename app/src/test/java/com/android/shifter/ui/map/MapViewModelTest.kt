@@ -6,6 +6,7 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -41,11 +42,11 @@ class MapViewModelTest {
 
     assertEquals(EVENT.title, state.eventTitle)
     assertEquals(EVENT.location.address, state.venue)
-    assertEquals(MapPoint(46.52, 6.57), state.center)
+    assertEquals(GeoPosition(46.52, 6.57), state.center)
     assertEquals(
         listOf(
-            MapMarker("mission-3", STAND.latitude, STAND.longitude, "Water", "10:00–11:00 · Stand"),
-            MapMarker("mission-1", TENT.latitude, TENT.longitude, "Cleanup", "14:00–15:00 · Tent"),
+            MapMarker("mission-3", STAND.position, "Water", "10:00–11:00 · Stand"),
+            MapMarker("mission-1", TENT.position, "Cleanup", "14:00–15:00 · Tent"),
         ),
         state.markers,
     )
@@ -58,7 +59,7 @@ class MapViewModelTest {
     events.events[0] = EVENT.copy(location = EventLocation("Somewhere"))
     missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
 
-    assertEquals(MapPoint(STAND.latitude, STAND.longitude), viewModel().uiState.value.center)
+    assertEquals(STAND.position, viewModel().uiState.value.center)
   }
 
   @Test
@@ -159,8 +160,8 @@ class MapViewModelTest {
   private companion object {
     const val USER = "volunteer"
     val DAY: Instant = Instant.parse("2026-06-01T00:00:00Z")
-    val TENT = MissionLocation("Tent", 46.521, 6.571)
-    val STAND = MissionLocation("Stand", 46.519, 6.569)
+    val TENT = MissionLocation("Tent", GeoPosition(46.521, 6.571))
+    val STAND = MissionLocation("Stand", GeoPosition(46.519, 6.569))
     val EVENT =
         Event(
             id = "event-1",
@@ -170,7 +171,7 @@ class MapViewModelTest {
             type = EventType.SPORT,
             startAt = DAY,
             endAt = DAY.plusSeconds(86_400),
-            location = EventLocation("Place Bellecour", 46.52, 6.57),
+            location = EventLocation("Place Bellecour", GeoPosition(46.52, 6.57)),
             createdAt = DAY,
         )
   }

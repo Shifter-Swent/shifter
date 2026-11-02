@@ -10,6 +10,7 @@ import com.swent.shifter.model.firestore.requireParentEventId
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.firestore.requireStringList
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
+import com.swent.shifter.model.location.GeoPosition
 
 /** Names this entity in the failure a malformed document raises. */
 private const val ENTITY = "Mission"
@@ -91,8 +92,8 @@ internal fun DocumentSnapshot.toMission(): Mission =
 private fun MissionLocation.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         MissionSchema.LocationFields.ADDRESS to address,
-        MissionSchema.LocationFields.LATITUDE to latitude,
-        MissionSchema.LocationFields.LONGITUDE to longitude,
+        MissionSchema.LocationFields.LATITUDE to position.latitude,
+        MissionSchema.LocationFields.LONGITUDE to position.longitude,
     )
 
 /**
@@ -112,7 +113,7 @@ private fun DocumentSnapshot.optionalLocation(): MissionLocation? {
           ?: invalidField(ENTITY, MissionSchema.LOCATION)
   val latitude = requireCoordinate(location, MissionSchema.LocationFields.LATITUDE)
   val longitude = requireCoordinate(location, MissionSchema.LocationFields.LONGITUDE)
-  return runCatching { MissionLocation(address, latitude, longitude) }
+  return runCatching { MissionLocation(address, GeoPosition(latitude, longitude)) }
       .getOrElse { invalidField(ENTITY, MissionSchema.LOCATION) }
 }
 

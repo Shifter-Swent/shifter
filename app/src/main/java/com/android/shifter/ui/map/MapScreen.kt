@@ -33,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
@@ -114,8 +113,7 @@ fun MapContent(
     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
       LaunchedEffect(uiState.center) {
         uiState.center?.let {
-          cameraPositionState.position =
-              CameraPosition.fromLatLngZoom(LatLng(it.latitude, it.longitude), EVENT_ZOOM)
+          cameraPositionState.position = CameraPosition.fromLatLngZoom(it.toLatLng(), EVENT_ZOOM)
         }
       }
       val next = uiState.next
@@ -152,10 +150,7 @@ fun MapContent(
               onClick = {
                 scope.launch {
                   cameraPositionState.animate(
-                      CameraUpdateFactory.newLatLngZoom(
-                          LatLng(center.latitude, center.longitude),
-                          EVENT_ZOOM,
-                      )
+                      CameraUpdateFactory.newLatLngZoom(center.toLatLng(), EVENT_ZOOM)
                   )
                 }
               }

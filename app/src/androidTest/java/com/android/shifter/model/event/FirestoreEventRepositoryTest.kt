@@ -12,6 +12,7 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 import java.util.UUID
 import kotlin.random.Random
@@ -99,8 +100,8 @@ class FirestoreEventRepositoryTest {
     assertEquals(Instant.parse("2026-07-26T02:30:00Z"), found.endAt)
     assertEquals("Route de Saint-Cergue 318, 1260 Nyon", found.location.address)
     // checkNotNull rather than !!: a geocoded event must come back with both coordinates set.
-    assertEquals(46.3869, checkNotNull(found.location.latitude), COORDINATE_TOLERANCE)
-    assertEquals(6.2228, checkNotNull(found.location.longitude), COORDINATE_TOLERANCE)
+    assertEquals(46.3869, checkNotNull(found.location.position?.latitude), COORDINATE_TOLERANCE)
+    assertEquals(6.2228, checkNotNull(found.location.position?.longitude), COORDINATE_TOLERANCE)
     assertEquals(2, found.emergencyContacts.size)
     assertEquals(
         EmergencyContact("Site medic", "+41220000001", "Medical"),
@@ -143,8 +144,7 @@ class FirestoreEventRepositoryTest {
     assertEquals(created, found)
     checkNotNull(found)
     assertEquals("Route de Saint-Cergue 318, 1260 Nyon", found.location.address)
-    assertNull("an ungeocoded latitude must stay null", found.location.latitude)
-    assertNull("an ungeocoded longitude must stay null", found.location.longitude)
+    assertNull("an ungeocoded event must stay without a position", found.location.position)
   }
 
   @Test
@@ -279,6 +279,22 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun getEvent_failsLoudlyOnACoordinateOutOfRange() = emulatorTest {
+    // Like a mission's, the pin must be a point on Earth rather than one the map cannot draw.
+    val eventId = writeRawEvent {
+      it +
+          (EventSchema.LOCATION to
+              mapOf(
+                  EventSchema.LocationFields.ADDRESS to "Route de Saint-Cergue 318, 1260 Nyon",
+                  EventSchema.LocationFields.LATITUDE to 91.0,
+                  EventSchema.LocationFields.LONGITUDE to 6.2228,
+              ))
+    }
+
+    assertFailsOnField(eventId, EventSchema.LOCATION)
+  }
+
+  @Test
   fun getEventByJoinCode_returnsTheMatchingEvent() = emulatorTest {
     val created = create(richEvent(uniqueOrganizerId()))
 
@@ -383,7 +399,8 @@ class FirestoreEventRepositoryTest {
           imageUrl = "https://example.org/lakeside.jpg",
           startAt = Instant.parse("2026-07-21T16:00:00Z"),
           endAt = Instant.parse("2026-07-26T02:30:00Z"),
-          location = EventLocation("Route de Saint-Cergue 318, 1260 Nyon", 46.3869, 6.2228),
+          location =
+              EventLocation("Route de Saint-Cergue 318, 1260 Nyon", GeoPosition(46.3869, 6.2228)),
           emergencyContacts =
               listOf(
                   EmergencyContact("Site medic", "+41220000001", "Medical"),

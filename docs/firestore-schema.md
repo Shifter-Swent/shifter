@@ -87,7 +87,7 @@ stays in `users/{uid}`.
 | `type` | string | `MUSIC`, `MARKET`, `NATURE`, `FOOD`, `SPORT`, `PARTY`, `OTHER`. An unknown value reads as `OTHER` |
 | `imageUrl` | string \| null | |
 | `startAt`, `endAt` | timestamp | |
-| `location` | map | `address` (string), `latitude` and `longitude` (number \| null, both set or both null) |
+| `location` | map | `address` (string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number \| null, both set or both null) |
 | `emergencyContacts` | list of maps | `name`, `phoneNumber` (string), `role` (string \| null) |
 | `joinCode` | string | Unique, generated on creation |
 | `status` | string | `PREPARATION`, `ONGOING`, `COMPLETED`, `ARCHIVED` |
@@ -126,7 +126,7 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 | `teamId` | string \| null | `null` means "General": the mission belongs to no team |
 | `volunteersNeeded` | number | Whole number, at least 1 (checked by the app) |
 | `startAt`, `endAt` | timestamp | A mission has its own slot, with no `shiftId`: it may cover only part of a shift |
-| `location` | map \| null | `address` (non-blank string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
+| `location` | map \| null | `address` (non-blank string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
 | `assigneeIds` | list of string | Queried with `array-contains` across all events to list a volunteer's missions |
 | `createdAt` | timestamp | |
 
