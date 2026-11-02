@@ -10,12 +10,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -30,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -39,6 +41,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
@@ -63,6 +66,7 @@ object JoinEventScreenTestTags {
   const val APPLY_BUTTON = "JoinEventApplyButton"
   const val APPLIED_MESSAGE = "JoinEventAppliedMessage"
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
+  const val CODE_HINT = "JoinEventCodeHint"
   const val NO_TEAMS = "JoinEventNoTeams"
 
   fun teamOption(teamId: String) = "JoinEventTeam_$teamId"
@@ -158,6 +162,14 @@ private fun JoinCodeStep(
           onJoinCodeChange,
           onDone = { if (uiState.canFind) onFindEvent() },
       )
+      if (uiState.hasUnusedCharacter) {
+        Text(
+            text = stringResource(R.string.join_event_code_unused_characters),
+            color = colors.error,
+            fontSize = 14.sp,
+            modifier = Modifier.testTag(JoinEventScreenTestTags.CODE_HINT),
+        )
+      }
       if (uiState.isLoading) {
         CircularProgressIndicator(color = colors.primary)
       } else {
@@ -176,7 +188,9 @@ private fun JoinCodeStep(
 /**
  * One box per character of the code. A single hidden text field takes the input, so typing fills
  * the next box, deleting empties the last one and pasting a full code fills them all. The box the
- * next character goes into is outlined.
+ * next character goes into is outlined, and so is, in the error color, a character no code uses.
+ * The boxes share the width available, up to [CODE_BOX_MAX_WIDTH] each, and their text is sized
+ * from the box, so the row fits on a narrow screen and with a large font.
  */
 @Composable
 private fun JoinCodeField(
@@ -184,52 +198,71 @@ private fun JoinCodeField(
     onJoinCodeChange: (String) -> Unit,
     onDone: () -> Unit,
 ) {
-  val colors = MaterialTheme.colorScheme
   val label = stringResource(R.string.join_event_code_label)
-  BasicTextField(
-      value = joinCode,
-      onValueChange = onJoinCodeChange,
-      singleLine = true,
-      keyboardOptions =
-          KeyboardOptions(
-              capitalization = KeyboardCapitalization.Characters,
-              autoCorrectEnabled = false,
-              keyboardType = KeyboardType.Ascii,
-              imeAction = ImeAction.Done,
-          ),
-      keyboardActions = KeyboardActions(onDone = { onDone() }),
-      modifier =
-          Modifier.testTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).semantics {
-            contentDescription = label
-          },
-      decorationBox = {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          repeat(JoinCode.LENGTH) { index ->
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier =
-                    Modifier.size(width = 44.dp, height = 54.dp)
-                        .background(shifter_inputBackground, RoundedCornerShape(12.dp))
-                        .border(
-                            width = if (index == joinCode.length) 2.dp else 1.dp,
-                            color =
-                                if (index == joinCode.length) colors.primary else colors.outline,
-                            shape = RoundedCornerShape(12.dp),
-                        ),
-            ) {
-              Text(
-                  text = joinCode.getOrNull(index)?.toString().orEmpty(),
-                  color = colors.onBackground,
-                  fontSize = 22.sp,
-                  fontWeight = FontWeight.SemiBold,
-                  modifier = Modifier.testTag(JoinEventScreenTestTags.codeBox(index)),
-              )
-            }
+  BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    val gaps = CODE_BOX_SPACING * (JoinCode.LENGTH - 1)
+    val boxWidth = ((maxWidth - gaps) / JoinCode.LENGTH).coerceAtMost(CODE_BOX_MAX_WIDTH)
+    BasicTextField(
+        value = joinCode,
+        onValueChange = onJoinCodeChange,
+        singleLine = true,
+        keyboardOptions =
+            KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+                imeAction = ImeAction.Done,
+            ),
+        keyboardActions = KeyboardActions(onDone = { onDone() }),
+        modifier =
+            Modifier.testTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).semantics {
+              contentDescription = label
+            },
+        decorationBox = {
+          Row(horizontalArrangement = Arrangement.spacedBy(CODE_BOX_SPACING)) {
+            repeat(JoinCode.LENGTH) { index -> CodeBox(joinCode, index, boxWidth) }
           }
-        }
-      },
-  )
+        },
+    )
+  }
 }
+
+/** The box of the [index]th character of [joinCode], [width] wide. */
+@Composable
+private fun CodeBox(joinCode: String, index: Int, width: Dp) {
+  val colors = MaterialTheme.colorScheme
+  val char = joinCode.getOrNull(index)
+  val border =
+      when {
+        char != null && !JoinCode.isUsed(char) -> colors.error
+        index == joinCode.length -> colors.primary
+        else -> null
+      }
+  Box(
+      contentAlignment = Alignment.Center,
+      modifier =
+          Modifier.width(width)
+              .aspectRatio(CODE_BOX_ASPECT_RATIO)
+              .background(shifter_inputBackground, CODE_BOX_SHAPE)
+              .border(if (border != null) 2.dp else 1.dp, border ?: colors.outline, CODE_BOX_SHAPE),
+  ) {
+    Text(
+        text = char?.toString().orEmpty(),
+        color = colors.onBackground,
+        // In dp rather than sp: the box does not grow with the font scale, so neither does its
+        // text.
+        fontSize = with(LocalDensity.current) { (width / 2).toSp() },
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        modifier = Modifier.testTag(JoinEventScreenTestTags.codeBox(index)),
+    )
+  }
+}
+
+private val CODE_BOX_MAX_WIDTH = 44.dp
+private val CODE_BOX_SPACING = 8.dp
+private const val CODE_BOX_ASPECT_RATIO = 0.8f
+private val CODE_BOX_SHAPE = RoundedCornerShape(12.dp)
 
 @Composable
 internal fun ErrorText(error: JoinEventError) {
@@ -271,7 +304,7 @@ private fun JoinEventError.messageRes(): Int =
 @Preview(name = "Step 1: join code")
 @Composable
 private fun JoinEventCodePreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC123"), {}, {}, {}, {}, {}) }
+  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC234"), {}, {}, {}, {}, {}) }
 }
 
 @Preview(name = "Step 2: event details and Apply")

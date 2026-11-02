@@ -54,9 +54,13 @@ data class JoinEventUiState(
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
 ) {
-  /** Whether [joinCode] has all of its characters, so the volunteer can look it up. */
+  /** Whether [joinCode] is complete and could exist, so the volunteer can look it up. */
   val canFind: Boolean
-    get() = JoinCode.isComplete(joinCode)
+    get() = JoinCode.isValid(joinCode)
+
+  /** Whether [joinCode] holds a character no code uses, such as `0` or `I`. */
+  val hasUnusedCharacter: Boolean
+    get() = !joinCode.all(JoinCode::isUsed)
 }
 
 /**
@@ -85,13 +89,13 @@ class JoinEventViewModel(
   }
 
   /**
-   * Looks up the event volunteers join with the code typed, once it is complete, and its teams,
-   * with the signed-in volunteer's request for it if they already applied, so they are not offered
-   * to apply twice and see the team they applied to.
+   * Looks up the event volunteers join with the code typed, once it is valid, and its teams, with
+   * the signed-in volunteer's request for it if they already applied, so they are not offered to
+   * apply twice and see the team they applied to.
    */
   fun findEvent() {
     val joinCode = _uiState.value.joinCode
-    if (!JoinCode.isComplete(joinCode) || _uiState.value.isLoading) return
+    if (!JoinCode.isValid(joinCode) || _uiState.value.isLoading) return
     launchLoading {
       val event = eventRepository.getEventByJoinCode(joinCode)
       val userId = currentUserId()

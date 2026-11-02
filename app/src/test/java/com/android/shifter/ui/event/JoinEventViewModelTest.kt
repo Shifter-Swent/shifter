@@ -49,9 +49,9 @@ class JoinEventViewModelTest {
 
   @Test
   fun findEvent_showsTheEventFoundByTheTypedCode() {
-    coEvery { events.getEventByJoinCode("ABC123") } returns EVENT
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
 
-    viewModel.onJoinCodeChange(" ABC123 ")
+    viewModel.onJoinCodeChange(" ABC234 ")
     viewModel.findEvent()
 
     assertEquals(EVENT, viewModel.uiState.value.event)
@@ -61,9 +61,9 @@ class JoinEventViewModelTest {
 
   @Test
   fun findEvent_matchesALowercaseCode() {
-    coEvery { events.getEventByJoinCode("ABC123") } returns EVENT
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
 
-    viewModel.onJoinCodeChange("abc123")
+    viewModel.onJoinCodeChange("abc234")
     viewModel.findEvent()
 
     assertEquals(EVENT, viewModel.uiState.value.event)
@@ -73,7 +73,7 @@ class JoinEventViewModelTest {
   fun findEvent_showsAMessageForEachFailure() {
     fun failWith(error: Exception): JoinEventError? {
       coEvery { events.getEventByJoinCode(any()) } throws error
-      viewModel.onJoinCodeChange("ABC123")
+      viewModel.onJoinCodeChange("ABC234")
       viewModel.findEvent()
       return viewModel.uiState.value.error
     }
@@ -178,7 +178,7 @@ class JoinEventViewModelTest {
     assertNull(viewModel.uiState.value.event)
     assertEquals(emptyList<Team>(), viewModel.uiState.value.teams)
     assertNull(viewModel.uiState.value.selectedTeamId)
-    assertEquals("ABC123", viewModel.uiState.value.joinCode)
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
   }
 
   @Test
@@ -228,17 +228,27 @@ class JoinEventViewModelTest {
     coEvery { events.getEventByJoinCode(any()) } returns null
 
     viewModel.findEvent()
-    viewModel.onJoinCodeChange("NOPE0")
+    viewModel.onJoinCodeChange("NPE23")
     viewModel.findEvent()
     coVerify(exactly = 0) { events.getEventByJoinCode(any()) }
 
-    viewModel.onJoinCodeChange("NOPE00")
+    viewModel.onJoinCodeChange("NPE234")
     viewModel.findEvent()
     assertNull(viewModel.uiState.value.event)
     assertEquals(JoinEventError.UNKNOWN_CODE, viewModel.uiState.value.error)
 
-    viewModel.onJoinCodeChange("NOPE0")
+    viewModel.onJoinCodeChange("NPE23")
     assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun findEvent_withACharacterNoCodeUses_doesNotLookItUp() {
+    viewModel.onJoinCodeChange("ABCDE0")
+    viewModel.findEvent()
+
+    coVerify(exactly = 0) { events.getEventByJoinCode(any()) }
+    assertFalse(viewModel.uiState.value.canFind)
+    assertTrue(viewModel.uiState.value.hasUnusedCharacter)
   }
 
   @Test
@@ -347,7 +357,7 @@ class JoinEventViewModelTest {
   /** Finds [EVENT], then picks [team] in it unless it is null. */
   private fun loadEvent(team: String? = TEAM_ID) {
     coEvery { events.getEventByJoinCode(any()) } returns EVENT
-    viewModel.onJoinCodeChange("ABC123")
+    viewModel.onJoinCodeChange("ABC234")
     viewModel.findEvent()
     team?.let(viewModel::onTeamSelected)
   }

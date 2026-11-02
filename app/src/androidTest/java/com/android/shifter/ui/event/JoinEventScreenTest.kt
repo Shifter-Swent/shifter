@@ -1,18 +1,24 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -22,6 +28,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
@@ -31,6 +39,7 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,7 +55,7 @@ class JoinEventScreenTest {
     var findClicks = 0
     composeTestRule.setContent {
       content(
-          uiState = JoinEventUiState(joinCode = "ABC123"),
+          uiState = JoinEventUiState(joinCode = "ABC234"),
           onJoinCodeChange = { typed = it },
           onFindEvent = { findClicks++ },
       )
@@ -105,6 +114,43 @@ class JoinEventScreenTest {
 
     "ABC234".forEachIndexed { index, char -> codeBox(index).assertTextEquals(char.toString()) }
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun typing_aSeventhCharacter_leavesTheBoxesUnchanged() {
+    showCodeStep()
+
+    codeField().performTextInput("ABC234")
+    codeField().performTextInput("X")
+
+    "ABC234".forEachIndexed { index, char -> codeBox(index).assertTextEquals(char.toString()) }
+  }
+
+  @Test
+  fun typing_aCharacterNoCodeUses_showsItWithTheHintAndDisablesFind() {
+    showCodeStep()
+
+    codeField().performTextInput("abcde0")
+
+    codeBox(5).assertTextEquals("0")
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.CODE_HINT).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
+  fun codeStep_onANarrowScreenWithALargeFont_fitsEveryBox() {
+    composeTestRule.setContent {
+      CompositionLocalProvider(
+          LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)
+      ) {
+        Box(Modifier.width(NARROW_SCREEN)) { content(uiState = JoinEventUiState("ABC234")) }
+      }
+    }
+
+    repeat(JoinCode.LENGTH) {
+      codeBox(it).assertIsDisplayed()
+      assertTrue(codeBox(it).getUnclippedBoundsInRoot().right <= NARROW_SCREEN)
+    }
   }
 
   @Test
@@ -264,6 +310,7 @@ class JoinEventScreenTest {
       composeTestRule.onNodeWithTag(JoinEventScreenTestTags.codeBox(index), useUnmergedTree = true)
 
   private companion object {
+    val NARROW_SCREEN = 320.dp
     val EVENT =
         Event(
             id = "event-1",

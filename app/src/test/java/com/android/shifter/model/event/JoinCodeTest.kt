@@ -24,6 +24,24 @@ class JoinCodeTest {
   }
 
   @Test
+  fun normalize_keepsOnlyAsciiLettersAndDigits() {
+    assertEquals("LVE", JoinCode.normalize("ÉLÈVEß١２"))
+  }
+
+  @Test
+  fun normalize_keepsCharactersNoCodeUses() {
+    assertEquals("ABCDE0", JoinCode.normalize("abcde0"))
+  }
+
+  @Test
+  fun isValid_onlyForACompleteCodeOfUsedCharacters() {
+    assertTrue(JoinCode.isValid("ABC234"))
+    assertFalse(JoinCode.isValid("ABC23"))
+    assertFalse(JoinCode.isValid("ABCDE0"))
+    assertFalse(JoinCode.isValid("ABCDEI"))
+  }
+
+  @Test
   fun isComplete_onlyWithEveryCharacter() {
     assertFalse(JoinCode.isComplete("ABC23"))
     assertTrue(JoinCode.isComplete("ABC234"))
