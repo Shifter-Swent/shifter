@@ -82,8 +82,7 @@ data class CreateTeamUiState(
  *
  * The form is the one of the designs: a name, an icon and a short description, nothing else. A team
  * is created without a manager and without members, which the organizer assigns afterwards from the
- * team itself; its staffing need and its check-in zone are configured on their own later, for the
- * same reason.
+ * team itself; its staffing need is configured on its own later, for the same reason.
  *
  * @param clock source of the current time, used to stamp [Team.createdAt]. Inject a fixed clock in
  *   tests.
