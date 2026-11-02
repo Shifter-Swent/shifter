@@ -13,14 +13,11 @@ import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.model.user.UserRepositoryException
+import com.swent.shifter.model.user.displayNames
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -189,12 +186,7 @@ class AttendanceViewModel(
           teamNames.isEmpty() -> return emptyList()
           else -> missionRepository.getMissionsByTeams(eventId, teamNames.keys)
         }.sortedBy { it.startAt }
-    // One read per person, all at once, and cancelled together with the load they belong to.
-    val names = coroutineScope {
-      missions.flatMap { it.assigneeIds }.distinct().map { async { it to name(it) } }
-    }
-        .awaitAll()
-        .toMap()
+    val names = userRepository.displayNames(missions.flatMap { it.assigneeIds })
     return missions.map { mission ->
       AttendanceMission(
           id = mission.id,
@@ -271,14 +263,6 @@ class AttendanceViewModel(
             }
     )
   }
-
-  /** The display name of [userId], or null when it cannot be read, which does not fail the load. */
-  private suspend fun name(userId: String): String? =
-      try {
-        userRepository.getPublicProfile(userId)?.displayName?.takeIf { it.isNotBlank() }
-      } catch (e: UserRepositoryException) {
-        null
-      }
 
   companion object {
     /** Builds the factory for `viewModel(factory = ...)`, as this ViewModel takes arguments. */
