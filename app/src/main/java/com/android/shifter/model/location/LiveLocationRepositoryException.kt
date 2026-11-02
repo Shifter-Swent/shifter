@@ -20,6 +20,12 @@ sealed class LiveLocationRepositoryException(message: String, cause: Throwable? 
    * still valid and still being shared. Telling a genuine consent or membership change from a
    * rejected measure takes the context the publisher already has, such as the volunteer's current
    * setting and the last measure it sent, rather than this exception alone.
+   *
+   * One device on its own is enough to produce that out of order case: the rules tolerate a measure
+   * up to 5 min ahead, so a clock running 4 min fast stores a position dated in the future, and
+   * every real measure taken once the clock is corrected looks older than it and is refused until
+   * the stored time is caught up with. Sending measures in the order they are taken is therefore
+   * not enough to rule a denial out.
    */
   class PermissionDenied(cause: Throwable? = null) :
       LiveLocationRepositoryException("Access to the live locations was denied", cause)

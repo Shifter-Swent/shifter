@@ -134,7 +134,12 @@ field on two sides all the same, because the reader's call is made on this very 
   was earlier. The same measure sent twice is still accepted, so a retry is not an error.
 
 Both are refused as a permission denial, which the backend does not tell apart from a revoked
-consent, so a publisher must never send a measure older than the last one it sent.
+consent. The two bounds can also work against each other: a clock 4 min fast is within the 5 min
+tolerance, so it stores a position dated in the future, and once the clock is corrected the
+device's own later measures look older than the stored one and are refused until it is caught up
+with. A rejected write means the attempted measurement was not stored, but does not necessarily
+indicate revoked consent. A publisher must not delete an existing position solely because of such
+a denial; see `LiveLocationRepositoryException.PermissionDenied`.
 
 ### `events/{eventId}/shifts/{shiftId}`
 
