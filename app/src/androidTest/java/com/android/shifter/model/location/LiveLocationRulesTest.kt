@@ -13,6 +13,7 @@ import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -27,8 +28,9 @@ import org.junit.runner.RunWith
  * The `firestore.rules` of `events/{eventId}/teams/{teamId}/liveLocations/{uid}`, written with the
  * raw SDK so they are checked on their own, whatever the repository does.
  *
- * Every account shares its location by default ([account] turns the consent on), so a test that
- * ends in a denial shows the boundary it is about rather than a missing consent.
+ * Every account shares its location by default ([account] turns the consent on) and the event of
+ * [event] is ongoing, so a test that ends in a denial shows the boundary it is about rather than a
+ * missing consent or a period that has not come.
  */
 @RunWith(AndroidJUnit4::class)
 class LiveLocationRulesTest {
@@ -132,6 +134,97 @@ class LiveLocationRulesTest {
     // A member of this team is no member of the other one either.
     signIn(volunteer)
     assertDenied { locationRef(volunteer, OTHER_TEAM_ID).set(location()).await() }
+  }
+
+  @Test
+  fun create_withAMeasureInTheFuture_isDenied() = emulatorTest {
+    signIn(volunteer)
+
+    // Staleness is read off measuredAt, so a device clock running days ahead would otherwise pin
+    // the volunteer at a place every reader considers fresh for ever. A wrong clock is enough.
+    assertDenied { locationRef(volunteer).set(location(measuredAt = minutesFromNow(60))).await() }
+
+    // A clock a little ahead is still tolerated, so a slightly off device can share its position.
+    locationRef(volunteer).set(location(measuredAt = minutesFromNow(1))).await()
+  }
+
+  @Test
+  fun update_withAnOlderMeasure_isDeniedAndANewerOneIsAccepted() = emulatorTest {
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    // Two devices, a replayed write or offline writes sent out of order must not move the position
+    // back to where the volunteer was ten minutes ago.
+    assertDenied {
+      locationRef(volunteer)
+          .set(location(LAUSANNE_LATITUDE, LAUSANNE_LONGITUDE, EARLIER_MEASURE))
+          .await()
+    }
+
+    // The same measure again is a retry rather than a regression, and a newer one goes through.
+    locationRef(volunteer).set(location()).await()
+    locationRef(volunteer)
+        .set(location(LAUSANNE_LATITUDE, LAUSANNE_LONGITUDE, LATER_MEASURE))
+        .await()
+
+    signIn(manager)
+    val stored = locationRef(volunteer).get(Source.SERVER).await()
+    assertEquals(LATER_MEASURE, stored.getTimestamp("measuredAt"))
+    assertEquals(LAUSANNE_LATITUDE, stored.getDouble("position.latitude"))
+  }
+
+  @Test
+  fun access_beforeTheEventStarts_isDenied() = emulatorTest {
+    setEventPeriod(minutesFromNow(24 * 60), minutesFromNow(48 * 60))
+
+    // A position is the event day's: nothing is published nor read the day before.
+    signIn(volunteer)
+    assertDenied { locationRef(volunteer).set(location()).await() }
+    signIn(manager)
+    assertDenied { locationRef(volunteer).get(Source.SERVER).await() }
+    assertDenied { liveLocations().get(Source.SERVER).await() }
+  }
+
+  @Test
+  fun access_afterTheEventEnds_isDeniedExceptTheVolunteersOwnDelete() = emulatorTest {
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    setEventPeriod(minutesFromNow(-48 * 60), minutesFromNow(-24 * 60))
+
+    // A volunteer who leaves sharing on does not keep publishing days later, and neither the
+    // manager nor the organizer keeps reading what is already there.
+    signIn(manager)
+    assertDenied { locationRef(volunteer).get(Source.SERVER).await() }
+    assertDenied { liveLocations().get(Source.SERVER).await() }
+    signIn(organizer)
+    assertDenied { liveLocations().get(Source.SERVER).await() }
+
+    signIn(volunteer)
+    assertDenied {
+      locationRef(volunteer).set(location(LAUSANNE_LATITUDE, LAUSANNE_LONGITUDE)).await()
+    }
+
+    // The cleanup stays possible. Nobody may read it back now, so the call going through without a
+    // denial is the whole assertion.
+    locationRef(volunteer).delete().await()
+  }
+
+  @Test
+  fun access_withinTheMarginAroundTheEvent_isAllowed() = emulatorTest {
+    // The margin covers a volunteer arriving early; the ongoing case is the fixture of every other
+    // test here.
+    setEventPeriod(minutesFromNow(30), minutesFromNow(4 * 60))
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    // And one leaving late, half an hour after the end being still inside the hour of margin.
+    setEventPeriod(minutesFromNow(-4 * 60), minutesFromNow(-30))
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    signIn(manager)
+    assertEquals(setOf(volunteer.uid), sharedUids())
   }
 
   @Test
@@ -276,18 +369,35 @@ class LiveLocationRulesTest {
   }
 
   /**
-   * Creates an event of [organizer] with [TEAM_ID], led by [manager] with [volunteer] and
-   * [otherVolunteer] as members, and [OTHER_TEAM_ID], led by [otherManager] with no member.
+   * Creates an event of [organizer], ongoing so its positions may be shared, with [TEAM_ID], led by
+   * [manager] with [volunteer] and [otherVolunteer] as members, and [OTHER_TEAM_ID], led by
+   * [otherManager] with no member.
    */
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection(EVENTS).document()
     paths += ref.path
-    ref.set(mapOf("organizerId" to organizer.uid)).await()
+    ref.set(
+            mapOf(
+                "organizerId" to organizer.uid,
+                "startAt" to minutesFromNow(-60),
+                "endAt" to minutesFromNow(60),
+            )
+        )
+        .await()
     createTeam(TEAM_ID, manager, listOf(volunteer.uid, otherVolunteer.uid), ref.id)
     createTeam(OTHER_TEAM_ID, otherManager, emptyList(), ref.id)
     return ref.id
   }
+
+  /** Moves the event's period, the way a test places itself before, during or after it. */
+  private suspend fun setEventPeriod(startAt: Timestamp, endAt: Timestamp) {
+    signIn(organizer)
+    db.collection(EVENTS).document(eventId).update("startAt", startAt, "endAt", endAt).await()
+  }
+
+  /** A timestamp [minutes] from now, negative for the past, to place a period or a measure. */
+  private fun minutesFromNow(minutes: Long) = Timestamp(Instant.now().epochSecond + minutes * 60, 0)
 
   private suspend fun createTeam(
       teamId: String,
@@ -393,5 +503,7 @@ class LiveLocationRulesTest {
     const val LAUSANNE_LATITUDE = 46.5197
     const val LAUSANNE_LONGITUDE = 6.6323
     val MEASURED_AT = Timestamp(1_762_000_000, 0)
+    val EARLIER_MEASURE = Timestamp(MEASURED_AT.seconds - 600, 0)
+    val LATER_MEASURE = Timestamp(MEASURED_AT.seconds + 600, 0)
   }
 }

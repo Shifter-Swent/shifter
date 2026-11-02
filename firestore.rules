@@ -195,10 +195,16 @@ service cloud.firestore {
           // the event are already in the path. measuredAt is the GPS's time, not request.time, so a
           // position sent after an offline spell is still accepted. A missing field makes the
           // expression fail, which denies the write.
+          //
+          // The past is therefore open, but the future is bounded, with a tolerance for a device
+          // clock that runs ahead: staleness is read off this very field, so a measure dated 2099
+          // would be considered fresh forever and leave the volunteer pinned at a wrong place with
+          // no time limit. A wrong clock is enough for that, no forged client needed.
           function isValidLocation() {
             let data = request.resource.data;
             return data.keys().hasOnly(['position', 'measuredAt'])
               && data.measuredAt is timestamp
+              && data.measuredAt <= request.time + duration.value(5, 'm')
               && data.position.keys().hasOnly(['latitude', 'longitude'])
               && data.position.latitude is number
               && data.position.latitude >= -90
@@ -212,31 +218,58 @@ service cloud.firestore {
             return team().get('managerId', null) == request.auth.uid || isOrganizer(eventId);
           }
 
-          // Firestore keeps a subcollection when the document above it is deleted, so the event has
-          // to be checked here: without it, the manager of a deleted event's team would go on
-          // reading the positions left under it, and its members on updating them. Only the delete
-          // below is left alone, so a volunteer can still take their position out afterwards.
-          function eventExists() {
-            return exists(/databases/$(database)/documents/events/$(eventId));
+          // Positions are shared on the event day, so both publishing and reading are bounded by
+          // the event's period, with an hour of margin on each side for a volunteer arriving early
+          // or leaving late. Without it, a volunteer who leaves sharing on keeps publishing weeks
+          // later, and the manager and the organizer keep reading it.
+          //
+          // It doubles as the check on the event itself: Firestore keeps a subcollection when the
+          // document above it is deleted, and get() of a deleted event returns null, whose .data
+          // denies the request. The manager of a deleted event's team therefore stops reading the
+          // positions orphaned under it, and its members stop updating them. Only the delete below
+          // is left out, so a volunteer can still take their position out afterwards.
+          //
+          // The period is read from the event, never from the request, and both bounds are
+          // required: an event without them shares no position at all rather than for ever.
+          function duringEvent() {
+            let event = get(/databases/$(database)/documents/events/$(eventId)).data;
+            let startAt = event.get('startAt', null);
+            let endAt = event.get('endAt', null);
+            return startAt is timestamp
+              && endAt is timestamp
+              && request.time >= startAt - duration.value(1, 'h')
+              && request.time <= endAt + duration.value(1, 'h');
+          }
+
+          // An update may not move the position back in time: with two devices, a replayed write or
+          // offline writes sent out of order, the manager would otherwise see the volunteer jump
+          // back to where they were ten minutes ago. The same measure sent twice is still accepted,
+          // so a retry is not an error.
+          function isNotOlderThanStored() {
+            return resource == null
+              || request.resource.data.measuredAt >= resource.data.measuredAt;
           }
 
           // A volunteer reads back the position they shared, and only their own.
           allow get: if signedIn()
-            && eventExists()
+            && duringEvent()
             && (request.auth.uid == uid || isTeamManagerOrOrganizer());
           // The collection is the manager's and the organizer's, and listing it is allowed by the
           // path alone: a condition on the documents would make their query fail whenever one of
-          // them did not satisfy it. A position therefore stays readable until it is deleted, even
-          // once its volunteer turns sharing off.
-          allow list: if signedIn() && eventExists() && isTeamManagerOrOrganizer();
+          // them did not satisfy it. Within the event's period a position therefore stays readable
+          // until it is deleted, even once its volunteer turns sharing off or leaves the team; see
+          // docs/firestore-schema.md for what has to delete it.
+          allow list: if signedIn() && duringEvent() && isTeamManagerOrOrganizer();
           allow create, update: if signedIn()
-            && eventExists()
+            && duringEvent()
             && request.auth.uid == uid
             && uid in team().get('memberIds', [])
             && sharingEnabled()
-            && isValidLocation();
-          // Never refused to its owner, so they can clean up after turning sharing off or leaving
-          // the team, when neither of the conditions above holds any more.
+            && isValidLocation()
+            && isNotOlderThanStored();
+          // Never refused to its owner, so they can clean up after turning sharing off, leaving the
+          // team, or the event ending or being deleted, when none of the conditions above holds any
+          // more.
           allow delete: if signedIn() && request.auth.uid == uid;
         }
       }

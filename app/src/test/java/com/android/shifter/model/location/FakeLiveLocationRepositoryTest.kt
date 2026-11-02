@@ -12,27 +12,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Covers the contracts the fake has to keep on its own: one position per volunteer, kept apart from
- * the other teams and emitted again as it changes. What the backend guarantees is left to the
- * emulator tests, and what a screen does with it to the ViewModel tests.
+ * The two things a consumer of the fake can get wrong if it does not hold: its flows are live, and
+ * each event and team is a collection of its own. Storing and removing a position are covered along
+ * the way by the emissions, and what the backend allows is left to `LiveLocationRulesTest`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeLiveLocationRepositoryTest {
 
-  private val repository = FakeLiveLocationRepository()
-
-  @Test
-  fun removeLocation_dropsOnlyThatVolunteersPosition() = runTest {
-    repository.shareLocation(EVENT, TEAM, location(VOLUNTEER))
-    repository.shareLocation(EVENT, TEAM, location(OTHER_VOLUNTEER))
-
-    repository.removeLocation(EVENT, TEAM, VOLUNTEER)
-
-    assertEquals(
-        listOf(location(OTHER_VOLUNTEER)),
-        repository.observeTeamLocations(EVENT, TEAM).first(),
-    )
-  }
+  private val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
 
   @Test
   fun observeTeamLocations_emitsAgainAsThePositionsChange() =
@@ -40,10 +27,12 @@ class FakeLiveLocationRepositoryTest {
         val emissions = mutableListOf<List<LiveLocation>>()
         backgroundScope.launch { repository.observeTeamLocations(EVENT, TEAM).toList(emissions) }
 
-        repository.shareLocation(EVENT, TEAM, location(VOLUNTEER))
-        repository.shareLocation(EVENT, TEAM, location(VOLUNTEER, LAUSANNE, LATER))
-        repository.removeLocation(EVENT, TEAM, VOLUNTEER)
+        repository.shareLocation(EVENT, TEAM, GENEVA, NOW)
+        repository.shareLocation(EVENT, TEAM, LAUSANNE, LATER)
+        repository.removeLocation(EVENT, TEAM)
 
+        // Empty before anything is shared, then the position, then the one replacing it rather than
+        // a second one, then empty again: a collector sees every change without resubscribing.
         assertEquals(
             listOf(
                 emptyList(),
@@ -57,10 +46,11 @@ class FakeLiveLocationRepositoryTest {
 
   @Test
   fun shareLocation_inAnotherTeamOrEvent_leavesTheTeamsPositionsAlone() = runTest {
-    repository.shareLocation(EVENT, TEAM, location(VOLUNTEER))
+    repository.shareLocation(EVENT, TEAM, GENEVA, NOW)
 
-    repository.shareLocation(EVENT, OTHER_TEAM, location(OTHER_VOLUNTEER))
-    repository.shareLocation(OTHER_EVENT, TEAM, location(OTHER_VOLUNTEER))
+    repository.currentUserId = OTHER_VOLUNTEER
+    repository.shareLocation(EVENT, OTHER_TEAM, GENEVA, NOW)
+    repository.shareLocation(OTHER_EVENT, TEAM, GENEVA, NOW)
 
     assertEquals(listOf(location(VOLUNTEER)), repository.observeTeamLocations(EVENT, TEAM).first())
     assertEquals(
