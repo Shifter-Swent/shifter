@@ -295,13 +295,20 @@ class FirestoreCheckInRepositoryTest {
 
   /**
    * Creates an event of [organizer] with the team [TEAM_ID] led by [manager], a mission of that
-   * team and a mission of no team, both with [volunteer] and [otherVolunteer] assigned.
+   * team and a mission of no team, both with [volunteer] and [otherVolunteer] assigned and
+   * participants.
    */
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
     paths += ref.path
     ref.set(mapOf("organizerId" to organizer.uid)).await()
+    val participants = "eventParticipants/${ref.id}"
+    paths += participants
+    FirestoreEmulatorAdmin.createDocument(
+        participants,
+        mapOf("participantIds" to listOf(volunteer.uid, otherVolunteer.uid)),
+    )
     val team = ref.collection("teams").document(TEAM_ID)
     paths += team.path
     team.set(mapOf("managerId" to manager.uid, "memberIds" to emptyList<String>())).await()
