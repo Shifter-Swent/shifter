@@ -17,11 +17,18 @@ import kotlinx.coroutines.flow.Flow
  * - [removeLocation] takes the signed-in user's position out again, and [observeTeamLocations]
  *   emits a team's positions as they change.
  *
- * Who may do any of it is enforced by `firestore.rules`, not by this interface: only the volunteer
- * themself writes or removes their position, only the manager of the team and the organizer of the
- * event read the team's, and only while the volunteer is in the team, has sharing on and the event
- * is running (its period, with an hour of margin). The in-memory fake used by unit tests checks
- * none of that on purpose, being a test double rather than a second implementation of the policy.
+ * Who may do any of it is enforced by `firestore.rules`, not by this interface, and writing is not
+ * the mirror of reading:
+ * - **Writing** is the volunteer's own, and only while they are in the team, have sharing on and
+ *   the event is running (its period, with an hour of margin). Removing their own position is the
+ *   exception: the rules always allow it.
+ * - **Reading** is the team's manager's and the event's organizer's, and only while the event is
+ *   running. Neither the consent nor the membership is checked there, so a position already shared
+ *   stays readable to them once sharing is turned off or the volunteer leaves the team, until it is
+ *   deleted or the event's period ends.
+ *
+ * The in-memory fake used by unit tests checks none of that on purpose, being a test double rather
+ * than a second implementation of the policy.
  *
  * Two things are the caller's, not this contract's:
  * - **Consent:** the publishing logic must not share a position while the volunteer's

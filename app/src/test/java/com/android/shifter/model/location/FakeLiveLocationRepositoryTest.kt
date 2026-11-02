@@ -9,12 +9,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
- * The two things a consumer of the fake can get wrong if it does not hold: its flows are live, and
- * each event and team is a collection of its own. Storing and removing a position are covered along
- * the way by the emissions, and what the backend allows is left to `LiveLocationRulesTest`.
+ * What a consumer of the fake can get wrong if it does not hold: its flows are live, each event and
+ * team is a collection of its own, and a failure reaches the caller as the type it was given.
+ * Storing and removing a position are covered along the way by the emissions, and what the backend
+ * allows is left to `LiveLocationRulesTest`.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeLiveLocationRepositoryTest {
@@ -61,6 +63,25 @@ class FakeLiveLocationRepositoryTest {
         listOf(location(OTHER_VOLUNTEER)),
         repository.observeTeamLocations(OTHER_EVENT, TEAM).first(),
     )
+  }
+
+  @Test
+  fun failure_isPropagatedUnchanged() = runTest {
+    // The publisher has to tell a refusal from a missing connection to decide between cleaning up
+    // and retrying, so the fake must hand back the very exception it was given rather than one of
+    // its own. One operation is enough: each of them throws [failure] before touching the state.
+    for (failure in
+        listOf(
+            LiveLocationRepositoryException.PermissionDenied(),
+            LiveLocationRepositoryException.Unavailable(),
+            LiveLocationRepositoryException.Unknown(),
+        )) {
+      repository.failure = failure
+
+      val shared = runCatching { repository.shareLocation(EVENT, TEAM, GENEVA, NOW) }
+
+      assertSame(failure, shared.exceptionOrNull())
+    }
   }
 
   private fun location(
