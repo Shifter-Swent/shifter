@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
@@ -97,7 +98,7 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
-        .assertTextContains(EVENT.joinCode.lowercase())
+        .assertTextContains(EVENT.joinCode)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
     // Apply waits for a team to be picked.
@@ -122,7 +123,10 @@ class JoinEventFlowTest {
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .performTextReplacement(code)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON)
+        .performScrollTo()
+        .performClick()
   }
 
   private companion object {

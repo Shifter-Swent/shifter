@@ -4,18 +4,26 @@ package com.swent.shifter.ui.event
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -24,7 +32,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,6 +45,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.Pill
@@ -52,6 +66,8 @@ object JoinEventScreenTestTags {
   const val NO_TEAMS = "JoinEventNoTeams"
 
   fun teamOption(teamId: String) = "JoinEventTeam_$teamId"
+
+  fun codeBox(index: Int) = "JoinEventCodeBox_$index"
 }
 
 /** The join screen wired to [viewModel]. */
@@ -108,6 +124,7 @@ fun JoinEventContent(
   }
 }
 
+/** The code step scrolls, so the keyboard cannot hide the Find button on a small screen. */
 @Composable
 private fun JoinCodeStep(
     uiState: JoinEventUiState,
@@ -115,54 +132,102 @@ private fun JoinCodeStep(
     onFindEvent: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
-  Column(
-      modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
-  ) {
-    Text(
-        text = stringResource(R.string.join_event_title),
-        color = colors.onBackground,
-        fontSize = 22.sp,
-        fontWeight = FontWeight.Bold,
-    )
-    Text(
-        text = stringResource(R.string.join_event_intro),
-        color = shifter_mutedText,
-        fontSize = 14.sp,
-    )
-    JoinCodeField(uiState.joinCode, onJoinCodeChange)
-    if (uiState.isLoading) {
-      CircularProgressIndicator(color = colors.primary)
-    } else {
-      PrimaryButton(
-          stringResource(R.string.join_event_find),
-          onFindEvent,
-          JoinEventScreenTestTags.FIND_BUTTON,
-          uiState.joinCode.isNotBlank(),
+  BoxWithConstraints(Modifier.fillMaxSize()) {
+    Column(
+        modifier =
+            Modifier.verticalScroll(rememberScrollState())
+                .heightIn(min = maxHeight)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
+    ) {
+      Text(
+          text = stringResource(R.string.join_event_title),
+          color = colors.onBackground,
+          fontSize = 22.sp,
+          fontWeight = FontWeight.Bold,
       )
+      Text(
+          text = stringResource(R.string.join_event_intro),
+          color = shifter_mutedText,
+          fontSize = 14.sp,
+      )
+      JoinCodeField(
+          uiState.joinCode,
+          onJoinCodeChange,
+          onDone = { if (uiState.canFind) onFindEvent() },
+      )
+      if (uiState.isLoading) {
+        CircularProgressIndicator(color = colors.primary)
+      } else {
+        PrimaryButton(
+            stringResource(R.string.join_event_find),
+            onFindEvent,
+            JoinEventScreenTestTags.FIND_BUTTON,
+            uiState.canFind,
+        )
+      }
+      uiState.error?.let { ErrorText(it) }
     }
-    uiState.error?.let { ErrorText(it) }
   }
 }
 
+/**
+ * One box per character of the code. A single hidden text field takes the input, so typing fills
+ * the next box, deleting empties the last one and pasting a full code fills them all. The box the
+ * next character goes into is outlined.
+ */
 @Composable
-private fun JoinCodeField(joinCode: String, onJoinCodeChange: (String) -> Unit) {
+private fun JoinCodeField(
+    joinCode: String,
+    onJoinCodeChange: (String) -> Unit,
+    onDone: () -> Unit,
+) {
   val colors = MaterialTheme.colorScheme
-  OutlinedTextField(
+  val label = stringResource(R.string.join_event_code_label)
+  BasicTextField(
       value = joinCode,
       onValueChange = onJoinCodeChange,
-      label = { Text(stringResource(R.string.join_event_code_label)) },
       singleLine = true,
-      shape = RoundedCornerShape(14.dp),
-      colors =
-          OutlinedTextFieldDefaults.colors(
-              focusedContainerColor = shifter_inputBackground,
-              unfocusedContainerColor = shifter_inputBackground,
-              focusedBorderColor = colors.primary,
-              unfocusedBorderColor = colors.outline,
+      keyboardOptions =
+          KeyboardOptions(
+              capitalization = KeyboardCapitalization.Characters,
+              autoCorrectEnabled = false,
+              keyboardType = KeyboardType.Ascii,
+              imeAction = ImeAction.Done,
           ),
-      modifier = Modifier.fillMaxWidth().testTag(JoinEventScreenTestTags.JOIN_CODE_FIELD),
+      keyboardActions = KeyboardActions(onDone = { onDone() }),
+      modifier =
+          Modifier.testTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).semantics {
+            contentDescription = label
+          },
+      decorationBox = {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          repeat(JoinCode.LENGTH) { index ->
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier =
+                    Modifier.size(width = 44.dp, height = 54.dp)
+                        .background(shifter_inputBackground, RoundedCornerShape(12.dp))
+                        .border(
+                            width = if (index == joinCode.length) 2.dp else 1.dp,
+                            color =
+                                if (index == joinCode.length) colors.primary else colors.outline,
+                            shape = RoundedCornerShape(12.dp),
+                        ),
+            ) {
+              Text(
+                  text = joinCode.getOrNull(index)?.toString().orEmpty(),
+                  color = colors.onBackground,
+                  fontSize = 22.sp,
+                  fontWeight = FontWeight.SemiBold,
+                  modifier = Modifier.testTag(JoinEventScreenTestTags.codeBox(index)),
+              )
+            }
+          }
+        }
+      },
   )
 }
 

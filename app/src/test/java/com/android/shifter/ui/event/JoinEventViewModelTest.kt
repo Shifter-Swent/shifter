@@ -26,6 +26,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -223,19 +224,37 @@ class JoinEventViewModelTest {
   }
 
   @Test
-  fun findEvent_reportsAnUnknownCodeAndIgnoresABlankOne() {
+  fun findEvent_reportsAnUnknownCodeAndIgnoresAnIncompleteOne() {
     coEvery { events.getEventByJoinCode(any()) } returns null
 
     viewModel.findEvent()
+    viewModel.onJoinCodeChange("NOPE0")
+    viewModel.findEvent()
     coVerify(exactly = 0) { events.getEventByJoinCode(any()) }
 
-    viewModel.onJoinCodeChange("NOPE")
+    viewModel.onJoinCodeChange("NOPE00")
     viewModel.findEvent()
     assertNull(viewModel.uiState.value.event)
     assertEquals(JoinEventError.UNKNOWN_CODE, viewModel.uiState.value.error)
 
-    viewModel.onJoinCodeChange("NOPE2")
+    viewModel.onJoinCodeChange("NOPE0")
     assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun onJoinCodeChange_upperCasesAndCutsThePastedCode() {
+    viewModel.onJoinCodeChange("abc-234xyz")
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun canFind_onlyOnceTheCodeIsComplete() {
+    viewModel.onJoinCodeChange("ABC23")
+    assertFalse(viewModel.uiState.value.canFind)
+
+    viewModel.onJoinCodeChange("ABC234")
+    assertTrue(viewModel.uiState.value.canFind)
   }
 
   @Test

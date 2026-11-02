@@ -2,18 +2,31 @@
 package com.swent.shifter.ui.event
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import java.time.Instant
@@ -42,11 +55,81 @@ class JoinEventScreenTest {
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .performTextReplacement("XYZ")
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON)
+        .performScrollTo()
+        .performClick()
 
     assertEquals("XYZ", typed)
     assertEquals(1, findClicks)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun codeStep_showsOneBoxPerCharacter() {
+    composeTestRule.setContent { content(uiState = JoinEventUiState()) }
+
+    repeat(JoinCode.LENGTH) { codeBox(it).assertTextEquals("") }
+    codeBox(JoinCode.LENGTH).assertDoesNotExist()
+  }
+
+  @Test
+  fun typing_fillsTheNextBox() {
+    showCodeStep()
+
+    codeField().performTextInput("a")
+    codeField().performTextInput("b")
+
+    codeBox(0).assertTextEquals("A")
+    codeBox(1).assertTextEquals("B")
+    codeBox(2).assertTextEquals("")
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun deleting_emptiesTheLastBox() {
+    showCodeStep()
+
+    codeField().performTextInput("AB")
+    codeField().performKeyInput { pressKey(Key.Backspace) }
+
+    codeBox(0).assertTextEquals("A")
+    codeBox(1).assertTextEquals("")
+  }
+
+  @Test
+  fun pasting_fillsEveryBoxAndEnablesFind() {
+    showCodeStep()
+
+    codeField().performTextReplacement("abc-234")
+
+    "ABC234".forEachIndexed { index, char -> codeBox(index).assertTextEquals(char.toString()) }
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun find_untilTheCodeIsComplete_staysDisabled() {
+    var findClicks = 0
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(joinCode = "ABC23"), onFindEvent = { findClicks++ })
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsNotEnabled()
+    codeField().performImeAction()
+
+    assertEquals(0, findClicks)
+  }
+
+  @Test
+  fun keyboardDone_withACompleteCode_findsTheEvent() {
+    var findClicks = 0
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(joinCode = "ABC234"), onFindEvent = { findClicks++ })
+    }
+
+    codeField().performImeAction()
+
+    assertEquals(1, findClicks)
   }
 
   @Test
@@ -163,6 +246,22 @@ class JoinEventScreenTest {
       onTeamSelected: (String) -> Unit = {},
       onApply: () -> Unit = {},
   ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onTeamSelected, onApply)
+
+  /** The code step keeping the code typed, normalized like the ViewModel does. */
+  private fun showCodeStep() {
+    composeTestRule.setContent {
+      var joinCode by remember { mutableStateOf("") }
+      content(
+          uiState = JoinEventUiState(joinCode = joinCode),
+          onJoinCodeChange = { joinCode = JoinCode.normalize(it) },
+      )
+    }
+  }
+
+  private fun codeField() = composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+
+  private fun codeBox(index: Int) =
+      composeTestRule.onNodeWithTag(JoinEventScreenTestTags.codeBox(index), useUnmergedTree = true)
 
   private companion object {
     val EVENT =
