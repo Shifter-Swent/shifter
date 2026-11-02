@@ -96,6 +96,7 @@ object AddMissionScreenTestTags {
   const val SAVE_ERROR = "AddMissionSaveError"
   const val CONFLICT_ERROR = "AddMissionConflictError"
   const val ADDRESS_FIELD = "AddMissionAddressField"
+  const val ADDRESS_RULE = "AddMissionAddressRule"
   const val LATITUDE_FIELD = "AddMissionLatitudeField"
   const val LONGITUDE_FIELD = "AddMissionLongitudeField"
 
@@ -322,11 +323,12 @@ private fun EventContext(state: AddMissionUiState, onRetryLoad: () -> Unit) {
 }
 
 @Composable
-private fun Hint(@StringRes text: Int) {
+private fun Hint(@StringRes text: Int, modifier: Modifier = Modifier) {
   Text(
       text = stringResource(text),
       style = MaterialTheme.typography.labelSmall,
       color = shifter_mutedText,
+      modifier = modifier,
   )
 }
 
@@ -578,6 +580,11 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
         error = state.errorFor(MissionFormField.ADDRESS),
         enabled = enabled,
         testTag = AddMissionScreenTestTags.ADDRESS_FIELD,
+    )
+    // Under the error, if any: the error says what is missing, the rule says why.
+    Hint(
+        R.string.add_mission_address_rule,
+        modifier = Modifier.testTag(AddMissionScreenTestTags.ADDRESS_RULE),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
       Box(modifier = Modifier.weight(1f)) {

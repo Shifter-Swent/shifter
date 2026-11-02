@@ -355,6 +355,8 @@ class CreateEventScreenTest {
     }
 
     node(CreateEventScreenTestTags.SAVE_UNCONFIRMED).performScrollTo().assertIsDisplayed()
+    // Shown as a warning rather than as a muted line, so it is not missed.
+    node(CreateEventScreenTestTags.SAVE_UNCONFIRMED_ICON).assertIsDisplayed()
     node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
   }
 
