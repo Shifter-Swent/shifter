@@ -3,7 +3,6 @@
 package com.swent.shifter.model.team
 
 import com.google.firebase.firestore.DocumentSnapshot
-import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalInt
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireInstant
@@ -33,15 +32,7 @@ internal object TeamSchema {
   const val MANAGER_ID = "managerId"
   const val MEMBER_IDS = "memberIds"
   const val VOLUNTEERS_NEEDED = "volunteersNeeded"
-  const val CHECK_IN_ZONE = "checkInZone"
   const val CREATED_AT = "createdAt"
-
-  /** Fields of the map stored under [CHECK_IN_ZONE]. */
-  object CheckInZoneFields {
-    const val LATITUDE = "latitude"
-    const val LONGITUDE = "longitude"
-    const val RADIUS_METERS = "radiusMeters"
-  }
 }
 
 /**
@@ -58,7 +49,6 @@ internal fun Team.toFirestoreMap(): Map<String, Any?> =
         TeamSchema.MANAGER_ID to managerId,
         TeamSchema.MEMBER_IDS to memberIds,
         TeamSchema.VOLUNTEERS_NEEDED to volunteersNeeded,
-        TeamSchema.CHECK_IN_ZONE to checkInZone?.toFirestoreMap(),
         TeamSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
     )
 
@@ -84,34 +74,5 @@ internal fun DocumentSnapshot.toTeam(): Team =
         memberIds = requireStringList(ENTITY, TeamSchema.MEMBER_IDS),
         // Absent means no staffing need has been set yet, which is how a team is created.
         volunteersNeeded = optionalInt(ENTITY, TeamSchema.VOLUNTEERS_NEEDED),
-        checkInZone = optionalCheckInZone(),
         createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
     )
-
-private fun CheckInZone.toFirestoreMap(): Map<String, Any?> =
-    mapOf(
-        TeamSchema.CheckInZoneFields.LATITUDE to latitude,
-        TeamSchema.CheckInZoneFields.LONGITUDE to longitude,
-        TeamSchema.CheckInZoneFields.RADIUS_METERS to radiusMeters,
-    )
-
-/**
- * An absent or null field means the organizer has not placed the zone yet. A zone that is there is
- * mapped in full: a partial one would check volunteers in at the wrong place, or over the whole
- * event, so it is rejected rather than completed with a default.
- *
- * Any [Number] is accepted for the three values, because a whole-degree coordinate or a whole-metre
- * radius comes back from Firestore as a Long rather than as a Double.
- */
-private fun DocumentSnapshot.optionalCheckInZone(): CheckInZone? {
-  val value = get(TeamSchema.CHECK_IN_ZONE) ?: return null
-  val zone = value as? Map<*, *> ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)
-  return CheckInZone(
-      latitude = requireZoneValue(zone, TeamSchema.CheckInZoneFields.LATITUDE),
-      longitude = requireZoneValue(zone, TeamSchema.CheckInZoneFields.LONGITUDE),
-      radiusMeters = requireZoneValue(zone, TeamSchema.CheckInZoneFields.RADIUS_METERS),
-  )
-}
-
-private fun DocumentSnapshot.requireZoneValue(zone: Map<*, *>, field: String): Double =
-    (zone[field] as? Number)?.toDouble() ?: invalidField(ENTITY, TeamSchema.CHECK_IN_ZONE)

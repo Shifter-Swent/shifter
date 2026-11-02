@@ -303,7 +303,6 @@ class CreateTeamViewModelTest {
     assertNull(created.managerId)
     assertEquals(emptyList<String>(), created.memberIds)
     assertNull(created.volunteersNeeded)
-    assertNull(created.checkInZone)
   }
 
   @Test
