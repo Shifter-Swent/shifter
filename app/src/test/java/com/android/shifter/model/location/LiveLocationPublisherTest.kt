@@ -66,6 +66,34 @@ class LiveLocationPublisherTest {
       }
 
   @Test
+  fun publish_whenConsentIsReenabled_resumesSharing() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(false)
+        startSession(sharing)
+
+        // Off at the start: the GPS is not even read.
+        provider.emit(GENEVA)
+        assertEquals(emptyList<LiveLocation>(), shared())
+
+        sharing.value = true
+        provider.emit(GENEVA)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
+
+        sharing.value = false
+        assertEquals(emptyList<LiveLocation>(), shared())
+        assertEquals(0, provider.activeCollectors)
+
+        // On again: a volunteer who changes their mind twice is back on the map, and the gates
+        // start over with it, so the first position of the new session needs no waiting.
+        sharing.value = true
+        elapse(MIN_INTERVAL_SECONDS)
+        provider.emit(DOWN_THE_STREET)
+
+        val resumedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, resumedAt)), shared())
+      }
+
+  @Test
   fun publish_whileTheLocationIsDenied_sharesNothingUntilItIsGrantedAgain() =
       runTest(UnconfinedTestDispatcher()) {
         provider.setStatus(LocationStatus.DENIED)

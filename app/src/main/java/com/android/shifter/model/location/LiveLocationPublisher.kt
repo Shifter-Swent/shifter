@@ -51,10 +51,13 @@ class LiveLocationPublisher(
    * consent back on starts sharing again.
    *
    * A write refused or lost is not fatal: the next position that passes the gates tries again, and
-   * nothing is ever deleted because of it, since a refusal does not mean the consent was revoked
-   * (see [LiveLocationRepositoryException.PermissionDenied]). A failure to *remove* the position
-   * after a revocation does end this call by throwing, because nothing else would retry it and the
-   * volunteer would stay on the map.
+   * nothing is ever deleted because of it. A refusal may well be a consent revoked behind the app's
+   * back, but it may just as well be a measure that arrived out of order, an event whose period is
+   * over or a volunteer no longer in the team, and the backend does not tell them apart (see
+   * [LiveLocationRepositoryException.PermissionDenied]). Removing the position on that alone would
+   * throw away a position that is still valid, so only [sharingEnabled] turning off does it. A
+   * failure to *remove* the position after a revocation does end this call by throwing, because
+   * nothing else would retry it and the volunteer would stay on the map.
    *
    * @throws LiveLocationRepositoryException when removing the position after a revocation fails.
    */
@@ -119,9 +122,14 @@ class LiveLocationPublisher(
       }
 
   /**
-   * Shares [position] and says whether it was stored. A refusal, a missing connection or an
-   * unexpected backend failure are all reported as "not stored" and left to the next position: this
+   * Shares [position] and says whether the backend **confirmed** the write. A refusal, a missing
+   * connection or an unexpected failure all answer false and are left to the next position: this
    * session goes on, and the position already shared is kept, whatever the cause.
+   *
+   * False does not mean nothing was stored. Firestore keeps a write it could not confirm and sends
+   * it when the connection is back, so a position reported here as unconfirmed may still reach the
+   * backend later. False only means this session cannot count on it: it keeps the older position as
+   * the distance baseline, which at worst costs one write more than needed.
    */
   private suspend fun share(
       eventId: String,
