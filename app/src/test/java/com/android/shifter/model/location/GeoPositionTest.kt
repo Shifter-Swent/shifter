@@ -19,9 +19,8 @@ class GeoPositionTest {
   }
 
   @Test
-  fun ranges_matchTheChecksOfTheConstructor() {
-    // A form checks each coordinate against these ranges, so they must accept what the
-    // constructor accepts, bounds included.
+  fun ranges_haveTheExpectedBounds() {
+    // The mission form checks each typed coordinate against these ranges, so they are pinned here.
     assertEquals(-90.0..90.0, GeoPosition.LATITUDE_RANGE)
     assertEquals(-180.0..180.0, GeoPosition.LONGITUDE_RANGE)
   }
