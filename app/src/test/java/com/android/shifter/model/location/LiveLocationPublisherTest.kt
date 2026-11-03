@@ -211,6 +211,46 @@ class LiveLocationPublisherTest {
       }
 
   @Test
+  fun publish_whenTheFirstWriteFails_sharesTheNextPositionHoweverLittleItMoved() =
+      runTest(UnconfinedTestDispatcher()) {
+        // Nothing was ever stored, so the retry has no position to measure a move against:
+        // waiting for one would leave the manager with no position at all.
+        repository.failure = LiveLocationRepositoryException.Unavailable()
+        startSession()
+        provider.emit(GENEVA)
+        repository.failure = null
+
+        assertEquals(emptyList<LiveLocation>(), shared())
+
+        // Six metres, below the distance gate, and shared all the same.
+        elapse(MIN_INTERVAL_SECONDS)
+        provider.emit(A_FEW_METRES_AWAY)
+
+        val retriedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, A_FEW_METRES_AWAY, retriedAt)), shared())
+      }
+
+  @Test
+  fun publish_withoutAClockOfItsOwn_stampsThePositionWithTheTimeItWasCollected() =
+      runTest(UnconfinedTestDispatcher()) {
+        // The clock the other tests replace is what production leaves out, so the default has to
+        // be the real one rather than any fixed instant.
+        val withTheDefaultClock = LiveLocationPublisher(provider, repository)
+        backgroundScope.launch { withTheDefaultClock.publish(EVENT, TEAM, MutableStateFlow(true)) }
+
+        val before = Instant.now()
+        provider.emit(GENEVA)
+        val after = Instant.now()
+
+        val shared = shared().single()
+        assertEquals(GENEVA, shared.position)
+        assertTrue(
+            "Expected a measure between $before and $after, got ${shared.measuredAt}",
+            shared.measuredAt >= before && shared.measuredAt <= after,
+        )
+      }
+
+  @Test
   fun publish_whenTakingThePositionOutFails_reportsTheFailure() =
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
