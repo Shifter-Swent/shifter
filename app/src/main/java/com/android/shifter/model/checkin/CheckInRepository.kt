@@ -54,8 +54,8 @@ interface CheckInRepository {
    * mission twice. Emits an empty list when they have none.
    *
    * A check-in whose write is still pending (offline, or before the backend has set
-   * [CheckIn.checkedInAt]) is emitted too, with an estimated [CheckIn.checkedInAt], so a check-in
-   * is never tried twice.
+   * [CheckIn.checkedInAt]) is emitted too, marked [CheckIn.pending] and with an estimated
+   * [CheckIn.checkedInAt], so a check-in is never tried twice.
    */
   fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>>
 }

@@ -104,6 +104,26 @@ class FakeCheckInRepositoryTest {
   }
 
   @Test
+  fun checkIn_withItsConfirmationRefused_isRemovedAndThrows() = runTest {
+    val network = CompletableDeferred<Unit>()
+    repository.confirmation = network
+    val call = async {
+      runCatching { repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF) }
+    }
+    testScheduler.runCurrent()
+    assertTrue(repository.checkIns.single().pending)
+
+    // Like the backend refusing the queued write once online, e.g. someone checked them in first:
+    // Firestore rolls it back, so the pending check-in is gone again.
+    network.completeExceptionally(CheckInRepositoryException.AlreadyCheckedIn())
+
+    assertTrue(
+        call.await().exceptionOrNull() is CheckInRepositoryException.AlreadyCheckedIn,
+    )
+    assertTrue(repository.checkIns.isEmpty())
+  }
+
+  @Test
   fun checkIn_toAnotherMission_isAccepted() = runTest {
     repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
 
