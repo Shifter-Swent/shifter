@@ -4,6 +4,8 @@ package com.swent.shifter.model.location
 import java.time.Duration
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -45,38 +47,56 @@ class LiveLocationPublisher(
    * Shares the volunteer's position in the team [teamId] of [eventId] while [sharingEnabled] says
    * they consent to it, until this call is cancelled.
    *
-   * Turning the consent off stops the updates and takes the position already shared out, so the
-   * manager stops seeing it. Cancelling this call does not: the position stays for the next session
-   * to replace, since a screen going away is not a volunteer changing their mind. Turning the
-   * consent back on starts sharing again.
+   * **The consent off means no position stored**, whether it is turned off during this call or
+   * already off when it starts. A session that starts off removes it too, because the volunteer may
+   * have turned it off with no session running, from another device, or with the app killed before
+   * the removal went out, and nothing else would take it out. Removing a position that is not there
+   * is a no-op, which is what [LiveLocationRepository.removeLocation] being idempotent is for, so
+   * this costs a write only when there is something to remove. No position is read while the
+   * consent is off either: the GPS is not even collected.
+   *
+   * Cancelling this call removes nothing: the position stays for the next session to replace, since
+   * a screen going away is not a volunteer changing their mind. Turning the consent back on starts
+   * sharing again.
    *
    * A write refused or lost is not fatal: the next position that passes the gates tries again, and
    * nothing is ever deleted because of it. A refusal may well be a consent revoked behind the app's
    * back, but it may just as well be a measure that arrived out of order, an event whose period is
    * over or a volunteer no longer in the team, and the backend does not tell them apart (see
    * [LiveLocationRepositoryException.PermissionDenied]). Removing the position on that alone would
-   * throw away a position that is still valid, so only [sharingEnabled] turning off does it. A
-   * failure to *remove* the position after a revocation does end this call by throwing, because
-   * nothing else would retry it and the volunteer would stay on the map.
+   * throw away a position that is still valid, so only [sharingEnabled] turning off does it.
    *
-   * @throws LiveLocationRepositoryException when removing the position after a revocation fails.
+   * **A removal the backend refuses is tried again**, after [REMOVAL_RETRY_DELAY] and then twice as
+   * long each time up to [MAX_REMOVAL_RETRY_DELAY], for as long as the consent stays off and this
+   * call runs. Nothing else would retry it, and the volunteer would stay on their manager's map. So
+   * this call does not fail on a removal the backend refuses, and a ViewModel collecting it has
+   * nothing to catch. The consent coming back cancels the retries, sharing again replacing the
+   * position anyway, and so does cancelling this call, which leaves the position to the next
+   * session. A device that never comes back online therefore keeps the position until the event's
+   * period ends: closing that needs the backend mechanism #305 plans separately.
    */
   suspend fun publish(eventId: String, teamId: String, sharingEnabled: Flow<Boolean>) {
-    var wasEnabled = false
-    // collectLatest cancels the sharing as soon as the consent changes, so no write starts after
-    // it was turned off; the removal below runs outside that cancelled block.
+    // collectLatest cancels the sharing as soon as the consent is turned off, so no write starts
+    // after it, and cancels the removal as soon as it is turned back on.
     sharingEnabled.distinctUntilChanged().collectLatest { enabled ->
-      when {
-        enabled -> {
-          wasEnabled = true
-          shareWhileGranted(eventId, teamId)
-        }
-        // Only after a session that was sharing: a consent that starts off has nothing to remove,
-        // and removing it would be a write on every start.
-        wasEnabled -> {
-          wasEnabled = false
-          repository.removeLocation(eventId, teamId)
-        }
+      if (enabled) shareWhileGranted(eventId, teamId) else removeUntilItIsOut(eventId, teamId)
+    }
+  }
+
+  /**
+   * Takes the position out, trying again until it is really out. Only
+   * [LiveLocationRepositoryException] is caught, so cancelling this call - the consent coming back,
+   * or the session ending - interrupts the wait and stops the retries at once.
+   */
+  private suspend fun removeUntilItIsOut(eventId: String, teamId: String) {
+    var retryIn = REMOVAL_RETRY_DELAY
+    while (true) {
+      try {
+        repository.removeLocation(eventId, teamId)
+        return
+      } catch (_: LiveLocationRepositoryException) {
+        delay(retryIn.toKotlinDuration())
+        retryIn = minOf(retryIn.multipliedBy(2), MAX_REMOVAL_RETRY_DELAY)
       }
     }
   }
@@ -147,7 +167,11 @@ class LiveLocationPublisher(
       }
 
   companion object {
-    /** How long before another position is written, to keep the writes and the reads down. */
+    /**
+     * How long before another position is written, to keep the writes and the reads down. It spaces
+     * the writes only: [LocationProvider] goes on sampling the GPS as often as it does, so this is
+     * no saving of battery.
+     */
     val MIN_INTERVAL: Duration = Duration.ofSeconds(30)
 
     /** How far the volunteer has to have moved for a new position to be worth a write. */
@@ -159,5 +183,15 @@ class LiveLocationPublisher(
      * stale, even though they are there and still sharing.
      */
     val REFRESH_INTERVAL: Duration = Duration.ofMinutes(2)
+
+    /** How long before a refused removal is tried again, the first time. */
+    val REMOVAL_RETRY_DELAY: Duration = Duration.ofSeconds(5)
+
+    /**
+     * The longest the retries of a removal ever wait. Each attempt waits twice as long as the one
+     * before, up to this, so a backend that is down for an hour costs a handful of attempts rather
+     * than one every five seconds, and the position still goes out as soon as it answers.
+     */
+    val MAX_REMOVAL_RETRY_DELAY: Duration = Duration.ofMinutes(2)
   }
 }

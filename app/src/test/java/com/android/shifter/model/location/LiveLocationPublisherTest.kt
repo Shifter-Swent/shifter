@@ -3,13 +3,19 @@ package com.swent.shifter.model.location
 
 import java.time.Duration
 import java.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,15 +47,32 @@ class LiveLocationPublisherTest {
       }
 
   @Test
-  fun publish_withTheConsentOff_sharesNothing() =
+  fun publish_withTheConsentOff_sharesNothingAndTakesOutWhatWasStored() =
       runTest(UnconfinedTestDispatcher()) {
+        // Shared by an earlier session, then the consent turned off with none running: from the
+        // settings with this screen closed, from another device, or with the app killed before the
+        // removal went out. Nothing but this start would take it out.
+        repository.shareLocation(EVENT, TEAM, GENEVA, START)
+
         startSession(MutableStateFlow(false))
 
         provider.emit(GENEVA)
 
         assertEquals(emptyList<LiveLocation>(), shared())
-        // Nothing to clean up either: a consent that starts off must not cost a write.
+        // And the GPS is not even read while the consent is off.
         assertEquals(0, provider.activeCollectors)
+      }
+
+  /**
+   * The same start with nothing stored: an idempotent removal, so it costs nothing and is quiet.
+   */
+  @Test
+  fun publish_withTheConsentOffAndNothingStored_startsWithoutFailing() =
+      runTest(UnconfinedTestDispatcher()) {
+        val session = startSession(MutableStateFlow(false))
+
+        assertEquals(emptyList<LiveLocation>(), shared())
+        assertTrue("Expected the session to still be running", session.isActive)
       }
 
   @Test
@@ -251,25 +274,106 @@ class LiveLocationPublisherTest {
       }
 
   @Test
-  fun publish_whenTakingThePositionOutFails_reportsTheFailure() =
+  fun publish_whenTakingThePositionOutFails_triesAgainUntilItIsOut() =
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
-        // Caught inside the session, so the failure is this test's answer rather than its crash.
+        // Caught, so a session that failed would be this test's answer rather than its crash.
         var thrown: Throwable? = null
-        backgroundScope.launch {
+        val session = backgroundScope.launch {
           thrown = runCatching { publisher.publish(EVENT, TEAM, sharing) }.exceptionOrNull()
         }
         provider.emit(GENEVA)
 
-        // Nobody else retries the cleanup, so the volunteer would silently stay on the manager's
-        // map: the caller has to hear about it.
         repository.failure = LiveLocationRepositoryException.Unavailable()
         sharing.value = false
+        repository.failure = null
 
-        assertTrue(
-            "Expected the removal to fail the session, got $thrown",
-            thrown is LiveLocationRepositoryException.Unavailable,
-        )
+        // Still there, and the session still running: nobody else would retry the cleanup, so
+        // failing it must neither end the session nor leave the volunteer on the map for good.
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
+        assertTrue("Expected the session to survive the failure, got $thrown", session.isActive)
+
+        advanceTimeBy(RETRY_DELAY + 1.milliseconds)
+
+        assertEquals(emptyList<LiveLocation>(), shared())
+        assertEquals(null, thrown)
+      }
+
+  @Test
+  fun publish_whenTheConsentReturnsWhileTheRemovalFails_stopsRetryingAndSharesAgain() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(true)
+        startSession(sharing)
+        provider.emit(GENEVA)
+
+        repository.failure = LiveLocationRepositoryException.Unavailable()
+        sharing.value = false
+        repository.failure = null
+        // The first attempt failed, so the position is still there and a retry is pending: without
+        // this the test would also pass with no retry ever scheduled.
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
+
+        sharing.value = true
+
+        // Sharing again replaces the position, so the retries have nothing left to do.
+        elapse(MIN_INTERVAL_SECONDS)
+        provider.emit(DOWN_THE_STREET)
+        val sharedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, sharedAt)), shared())
+
+        // A retry still pending would now take the position of a volunteer who consents again out.
+        advanceTimeBy(RETRY_DELAY * 8)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, sharedAt)), shared())
+      }
+
+  @Test
+  fun publish_whenCancelledWhileTheRemovalFails_stopsRetrying() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(true)
+        val session = startSession(sharing)
+        provider.emit(GENEVA)
+
+        repository.failure = LiveLocationRepositoryException.Unavailable()
+        sharing.value = false
+        repository.failure = null
+        // The first attempt failed, so a retry is pending while the session is cancelled.
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
+
+        session.cancel()
+
+        // The position stays, as it does after any cancellation: the next session replaces it, and
+        // no retry outlives the session that started it.
+        advanceTimeBy(RETRY_DELAY * 8)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
+      }
+
+  /**
+   * #343 bounds the repository's own writes; this is the publisher's side of it. A write that never
+   * answers must not keep the consent from being followed: the session has to cancel it and take
+   * the position out all the same.
+   */
+  @Test
+  fun publish_whenAWriteNeverAnswers_stillFollowsTheConsentOff() =
+      runTest(UnconfinedTestDispatcher()) {
+        val unanswering = UnansweringRepository()
+        val publisher = LiveLocationPublisher(provider, unanswering, now = { clock })
+        val sharing = MutableStateFlow(true)
+        val session = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) }
+
+        provider.emit(GENEVA)
+        assertEquals(1, unanswering.writes)
+        assertEquals(0, unanswering.removals)
+
+        sharing.value = false
+
+        // The pending write is cancelled and the removal goes out: the consent is followed even
+        // though the write never answered.
+        assertEquals(1, unanswering.removals)
+        assertEquals(0, provider.activeCollectors)
+
+        // And cancelling the session itself removes nothing more.
+        session.cancel()
+        assertEquals(1, unanswering.removals)
       }
 
   /** Starts a session in the background and returns its job, so a test can cancel it. */
@@ -282,6 +386,37 @@ class LiveLocationPublisherTest {
     clock = clock.plusSeconds(seconds)
   }
 
+  /**
+   * A repository whose writes never answer, as Firestore's did offline before #343 bounded them.
+   * Only the counts matter here, so nothing is stored.
+   */
+  private class UnansweringRepository : LiveLocationRepository {
+    var writes = 0
+      private set
+
+    var removals = 0
+      private set
+
+    override suspend fun shareLocation(
+        eventId: String,
+        teamId: String,
+        position: GeoPosition,
+        measuredAt: Instant,
+    ) {
+      writes++
+      awaitCancellation()
+    }
+
+    override suspend fun removeLocation(eventId: String, teamId: String) {
+      removals++
+    }
+
+    override fun observeTeamLocations(
+        eventId: String,
+        teamId: String,
+    ): Flow<List<LiveLocation>> = emptyFlow()
+  }
+
   private suspend fun shared(): List<LiveLocation> =
       repository.observeTeamLocations(EVENT, TEAM).first()
 
@@ -290,6 +425,7 @@ class LiveLocationPublisherTest {
     const val TEAM = "team-1"
     const val VOLUNTEER = "volunteer-1"
     val MIN_INTERVAL_SECONDS = LiveLocationPublisher.MIN_INTERVAL.seconds
+    val RETRY_DELAY = LiveLocationPublisher.REMOVAL_RETRY_DELAY.toKotlinDuration()
     val REFRESH_SECONDS = LiveLocationPublisher.REFRESH_INTERVAL.seconds
     val START: Instant = Instant.parse("2026-11-02T09:00:00Z")
     val GENEVA = GeoPosition(46.2044, 6.1432)
