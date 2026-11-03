@@ -272,7 +272,27 @@ service cloud.firestore {
           // Never refused to its owner, so they can clean up after turning sharing off, leaving the
           // team, or the event ending or being deleted, when none of the conditions above holds any
           // more.
-          allow delete: if signedIn() && request.auth.uid == uid;
+          //
+          // The event's organizer may delete one too, because they are the one who takes a
+          // volunteer out of a team: rejecting an accepted request, removing a member, or
+          // appointing one as manager. The volunteer's own delete cannot cover that, since their
+          // device may be offline, killed or uninstalled at that moment, and nobody else may take
+          // the position out. It is not bounded by the event's period, like the owner's: a team is
+          // tidied up after the event too.
+          //
+          // Managers are deliberately left out: they may write neither memberIds nor managerId
+          // (see the team's own rules above), so no workflow of theirs removes a volunteer from a
+          // team, and reading the positions is all they need.
+          //
+          // This bounds who may delete a position, not when. Rules can read the state a commit
+          // will leave behind, with getAfter() and existsAfter() - isTeamMemberAfter() above does
+          // exactly that for a decision - so this delete could be made conditional on the
+          // volunteer no longer being in memberIds afterwards. What no rule can do is the
+          // converse: require a write to memberIds to come with the delete. An organizer writing
+          // memberIds directly, instead of going through the repositories, therefore leaves the
+          // position behind. The repositories are what keep the two together; see
+          // docs/firestore-schema.md.
+          allow delete: if signedIn() && (request.auth.uid == uid || isOrganizer(eventId));
         }
 
         // messages/{messageId}: the team's chat channel. Its members, its manager and the event's

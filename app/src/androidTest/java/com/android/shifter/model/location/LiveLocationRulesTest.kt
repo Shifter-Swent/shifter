@@ -113,13 +113,15 @@ class LiveLocationRulesTest {
     signIn(volunteer)
     locationRef(volunteer).set(location()).await()
 
-    // Neither a teammate who shares a position of their own, nor the manager, nor the organizer.
+    // Neither a teammate who shares a position of their own, nor the manager, nor the organizer:
+    // only the volunteer a position belongs to ever writes it. Who may take one out is a separate
+    // question, and a separate test: the organizer may, as the cleanup of #305 needs, which
+    // delete_byTheOrganizer_isAllowedWhileEveryoneElseIsDenied pins together with the denials.
     for (user in listOf(otherVolunteer, manager, organizer)) {
       signIn(user)
       assertDenied {
         locationRef(volunteer).set(location(LAUSANNE_LATITUDE, LAUSANNE_LONGITUDE)).await()
       }
-      assertDenied { locationRef(volunteer).delete().await() }
     }
   }
 
@@ -295,6 +297,33 @@ class LiveLocationRulesTest {
     teamRef(TEAM_ID).update("memberIds", listOf(otherVolunteer.uid)).await()
 
     signIn(volunteer)
+    locationRef(volunteer).delete().await()
+
+    signIn(manager)
+    assertFalse(locationRef(volunteer).get(Source.SERVER).await().exists())
+  }
+
+  /**
+   * The cleanup of #305: taking a volunteer out of a team is the organizer's doing, so the delete
+   * that goes with it has to be theirs as well. The volunteer's own delete cannot cover it, their
+   * device being offline, killed or uninstalled at that moment.
+   */
+  @Test
+  fun delete_byTheOrganizer_isAllowedWhileEveryoneElseIsDenied() = emulatorTest {
+    signIn(volunteer)
+    locationRef(volunteer).set(location()).await()
+
+    // The manager reads their team's positions but takes none out: they may write neither
+    // memberIds nor managerId, so no removal of theirs needs it. Nor may a teammate, the manager
+    // of another team, or a stranger.
+    for (user in listOf(manager, otherVolunteer, otherManager, outsider)) {
+      signIn(user)
+      assertDenied { locationRef(volunteer).delete().await() }
+    }
+    signIn(manager)
+    assertTrue(locationRef(volunteer).get(Source.SERVER).await().exists())
+
+    signIn(organizer)
     locationRef(volunteer).delete().await()
 
     signIn(manager)

@@ -40,6 +40,7 @@ class MembershipRequestRepositoryFirestoreTest {
   private val batch = mockk<WriteBatch>(relaxed = true)
   private val participants = mockk<DocumentReference>()
   private val team = mockk<DocumentReference>()
+  private val location = mockk<DocumentReference>()
   private val repository = MembershipRequestRepositoryFirestore(db)
   private val request =
       MembershipRequest(
@@ -65,6 +66,9 @@ class MembershipRequestRepositoryFirestoreTest {
     every { event.collection("membershipRequests") } returns requests
     every { event.collection("teams") } returns teams
     every { teams.document(request.teamId) } returns team
+    val liveLocations = mockk<CollectionReference>()
+    every { team.collection("liveLocations") } returns liveLocations
+    every { liveLocations.document(request.userId) } returns location
     every { requests.document(request.userId) } returns ref
     every { ref.get() } returns Tasks.forResult(snapshot(request.copy(id = request.userId)))
     every { requests.get() } returns Tasks.forResult(result)
@@ -151,7 +155,10 @@ class MembershipRequestRepositoryFirestoreTest {
             )
           }
           verify { transaction.update(team, "memberIds", removal) }
-          verify(exactly = 0) { transaction.delete(any()) }
+          // The position they shared with this team's manager goes in the same transaction (#305),
+          // while the request itself stays: being rejected is recorded, not forgotten.
+          verify { transaction.delete(location) }
+          verify(exactly = 0) { transaction.delete(ref) }
           verify(exactly = 0) { batch.commit() }
         }
       }
@@ -189,6 +196,8 @@ class MembershipRequestRepositoryFirestoreTest {
       verify { transaction.update(participants, "participantIds", removal) }
       verify { transaction.update(team, "memberIds", removal) }
       verify { transaction.delete(ref) }
+      // And the position they shared with the team's manager, in that same transaction (#305).
+      verify { transaction.delete(location) }
     }
     // The volunteer may not be allowed to read the participants document.
     verify(exactly = 0) { transaction.get(participants) }
@@ -215,6 +224,9 @@ class MembershipRequestRepositoryFirestoreTest {
 
     verify(exactly = 0) { transaction.update(team, any<String>(), any()) }
     verify { transaction.delete(ref) }
+    // Still worth a delete: a position may have been left behind by a memberIds written directly,
+    // and deleting a document that is not there costs nothing.
+    verify { transaction.delete(location) }
   }
 
   @Test

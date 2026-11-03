@@ -175,9 +175,16 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   /**
    * Takes [userId] out of [team], read as [snapshot] earlier in this transaction: out of its
-   * members, and out of its management when they lead it, or they would keep managing a team of an
-   * event they no longer take part in. Nothing is written when they are in neither: the rules
-   * refuse a withdrawal that changes nothing on the team, which would fail the whole transaction.
+   * members, out of its management when they lead it, or they would keep managing a team of an
+   * event they no longer take part in, and out of the positions shared with its manager. Nothing is
+   * written to the team itself when they are in neither: the rules refuse a withdrawal that changes
+   * nothing on the team, which would fail the whole transaction.
+   *
+   * The position goes in the same commit as the membership, so the manager never keeps reading the
+   * position of someone who has left (#305). It is deleted whether one is stored or not: a delete
+   * needs no read, which a transaction would otherwise have to do before every write, and deleting
+   * a document that is not there is a no-op in Firestore. That also takes out a position left
+   * behind by a `memberIds` written directly, outside this repository.
    */
   private fun Transaction.leaveTeam(
       team: DocumentReference,
@@ -189,6 +196,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
       update(team, TeamSchema.MANAGER_ID, null)
     }
+    delete(team.collection(TeamSchema.LIVE_LOCATIONS_COLLECTION).document(userId))
   }
 
   /**

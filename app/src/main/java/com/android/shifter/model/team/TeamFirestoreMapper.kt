@@ -26,6 +26,14 @@ internal object TeamSchema {
   /** The `/events/{eventId}/teams/{teamId}` subcollection. */
   const val COLLECTION = "teams"
 
+  /**
+   * The `/events/{eventId}/teams/{teamId}/liveLocations/{uid}` subcollection, where a volunteer
+   * shares their position with the team's manager. Named here because leaving the team deletes that
+   * position in the same commit (#305); the documents themselves belong to the live location
+   * repository.
+   */
+  const val LIVE_LOCATIONS_COLLECTION = "liveLocations"
+
   const val NAME = "name"
   const val DESCRIPTION = "description"
   const val ICON = "icon"
