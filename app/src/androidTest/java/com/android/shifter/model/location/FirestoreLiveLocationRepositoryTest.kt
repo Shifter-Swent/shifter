@@ -137,6 +137,36 @@ class FirestoreLiveLocationRepositoryTest {
     )
   }
 
+  /**
+   * Offline, Firestore answers a write only once the server has it, so without the repository's own
+   * bound this call would wait for the network to come back (#181) and the publisher of #305 would
+   * hang on its first position.
+   */
+  @Test
+  fun shareLocation_whileOffline_failsWithUnavailableRatherThanWaiting() =
+      emulatorTest(OFFLINE_TIMEOUT_MILLIS) {
+        signIn(volunteer)
+        // Registered for cleanup by hand: the write below goes through the repository, but only
+        // once the network is back, so `share` cannot be used to register it.
+        paths += locationPath(volunteer)
+
+        assertUnavailableWhileOffline("offline share") {
+          repository.shareLocation(eventId, TEAM_ID, GENEVA, MEASURED_AT)
+        }
+      }
+
+  /** The same bound on the call the cleanup of #305 makes, which runs offline just as often. */
+  @Test
+  fun removeLocation_whileOffline_failsWithUnavailableRatherThanWaiting() =
+      emulatorTest(OFFLINE_TIMEOUT_MILLIS) {
+        signIn(volunteer)
+        share(volunteer, GENEVA)
+
+        assertUnavailableWhileOffline("offline removal") {
+          repository.removeLocation(eventId, TEAM_ID)
+        }
+      }
+
   @Test
   fun observeTeamLocations_emitsEachChangeToTheTeam() = emulatorTest {
     signIn(manager)
@@ -188,6 +218,39 @@ class FirestoreLiveLocationRepositoryTest {
 
     assertFailsWith<LiveLocationRepositoryException.PermissionDenied> {
       repository.observeTeamLocations(eventId, TEAM_ID).first()
+    }
+  }
+
+  /**
+   * The end of every event, and of a manager handing their team over: the right to read is lost
+   * while the flow is open, and the flow has to end with the refusal rather than go quiet. The
+   * screen of a later PR turns it into "sharing has ended" instead of an error.
+   */
+  @Test
+  fun observeTeamLocations_whenTheManagerIsReplaced_failsWithPermissionDenied() = emulatorTest {
+    signIn(manager)
+    coroutineScope {
+      val emissions = repository.observeTeamLocations(eventId, TEAM_ID).produceIn(this)
+      try {
+        // Active before anything is taken away, so the refusal below cannot be the listener never
+        // having been allowed in the first place.
+        assertEquals(emptyList<LiveLocation>(), emissions.receive())
+
+        // Through the admin API so the manager stays signed in: signing the new manager in would
+        // take the permission away by itself and prove nothing about the rules.
+        replaceManagerAsAdmin(otherVolunteer)
+        // Firestore checks the rules again when the query's result changes, not when the team
+        // document does, so a position has to be written for the listener to notice.
+        shareAsAdmin(volunteer, GENEVA)
+
+        val failure = runCatching { step("denial") { emissions.receiveUntilFailure() } }
+        assertTrue(
+            "Expected PermissionDenied, got ${failure.exceptionOrNull()}",
+            failure.exceptionOrNull() is LiveLocationRepositoryException.PermissionDenied,
+        )
+      } finally {
+        emissions.cancel()
+      }
     }
   }
 
@@ -285,6 +348,38 @@ class FirestoreLiveLocationRepositoryTest {
   private suspend fun removeAsAdmin(user: Account) =
       FirestoreEmulatorAdmin.deleteDocument(locationPath(user))
 
+  /**
+   * Makes [user] the manager of the team, as the organizer handing it over would, whatever the
+   * rules say and without touching who is signed in.
+   *
+   * The rewritten document keeps only `managerId`: the members are of no use to a test that has
+   * stopped writing positions through the repository, and the admin API stores no list.
+   */
+  private suspend fun replaceManagerAsAdmin(user: Account) {
+    val path = "events/$eventId/teams/$TEAM_ID"
+    FirestoreEmulatorAdmin.deleteDocument(path)
+    FirestoreEmulatorAdmin.createDocument(path, mapOf("managerId" to user.uid))
+  }
+
+  /**
+   * Runs [block] as the step [name] with the network off, the way a volunteer loses it on site, and
+   * expects it to give up with [LiveLocationRepositoryException.Unavailable] instead of waiting for
+   * the network to come back.
+   *
+   * What Firestore queued meanwhile is flushed before returning: the write or the deletion is not
+   * cancelled by the timeout and would otherwise go out during a later test, after this one's
+   * cleanup had already deleted the document it recreates.
+   */
+  private suspend fun assertUnavailableWhileOffline(name: String, block: suspend () -> Unit) {
+    db.disableNetwork().await()
+    try {
+      step(name) { assertFailsWith<LiveLocationRepositoryException.Unavailable> { block() } }
+    } finally {
+      db.enableNetwork().await()
+      db.waitForPendingWrites().await()
+    }
+  }
+
   private fun locationRef(user: Account) =
       db.collection("events")
           .document(eventId)
@@ -333,6 +428,11 @@ class FirestoreLiveLocationRepositoryTest {
     auth.signInForFirestore { auth.signInWithCredential(user.credential).await() }
   }
 
+  /** Receives until the flow behind this channel fails, and throws what it failed with. */
+  private suspend fun ReceiveChannel<List<LiveLocation>>.receiveUntilFailure(): Nothing {
+    while (true) receive()
+  }
+
   /** Skips the emissions before the first one [predicate] accepts. */
   private suspend fun ReceiveChannel<List<LiveLocation>>.receiveUntil(
       predicate: (List<LiveLocation>) -> Boolean
@@ -352,6 +452,12 @@ class FirestoreLiveLocationRepositoryTest {
 
   private companion object {
     const val TEAM_ID = "team-bar"
+
+    /**
+     * Room for [FirestoreLiveLocationRepository.OPERATION_TIMEOUT_MILLIS] to expire for real, plus
+     * the round trips around it: the default budget of an emulator test does not leave enough.
+     */
+    const val OFFLINE_TIMEOUT_MILLIS = 60_000L
     val GENEVA = GeoPosition(46.2044, 6.1432)
     val LAUSANNE = GeoPosition(46.5197, 6.6323)
     val MEASURED_AT: Instant = Instant.parse("2026-11-01T09:00:00Z")
