@@ -29,6 +29,12 @@ class DisplayNamesTest {
   }
 
   @Test
+  fun displayNames_ofNoUsers_isEmptyWithoutReadingAnyProfile() = runTest {
+    assertEquals(emptyMap<String, String?>(), repository.displayNames(emptyList()))
+    coVerify(exactly = 0) { repository.getPublicProfile(any()) }
+  }
+
+  @Test
   fun displayNames_leavesOutOnlyTheUsersWhoseProfileCannotBeRead() = runTest {
     coEvery { repository.getPublicProfile("alice") } throws UserRepositoryException.Unavailable()
     coEvery { repository.getPublicProfile("bob") } returns PublicProfile("bob", "Bob")
