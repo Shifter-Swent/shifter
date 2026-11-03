@@ -110,6 +110,18 @@ class FirestoreLiveLocationRepository(
    * every event: a screen should tell it from an unexpected failure and say that sharing has ended
    * rather than show an error.
    *
+   * **That next write may never come, so the denial may never arrive.** Past `endAt` plus the
+   * margin `duringEvent()` refuses the volunteers' writes as well, and a replaced manager sees
+   * nothing change while their former team is idle. With no snapshot to deliver, this flow emits
+   * nothing further: the listener stays open without a
+   * [LiveLocationRepositoryException.PermissionDenied], while the screen goes on displaying the
+   * positions it received last. No new position reaches it, only the ones already shown.
+   *
+   * A manager's screen therefore cannot wait for an error that may not come. It has to stop
+   * observing on its own once `endAt` plus the hour has passed, and on a change of the team's
+   * manager judge again whether the signed-in user may read: cancel the observation it has, and
+   * start a new one only if they still may.
+   *
    * Offline, the listener serves Firestore's local cache first, so the positions emitted may be
    * older than they look and carry no mark saying so. A consumer judging freshness has
    * [LiveLocation.measuredAt] and nothing else here; exposing whether a snapshot came from the
