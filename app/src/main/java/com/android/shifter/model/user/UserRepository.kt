@@ -1,6 +1,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+
 /**
  * Access to user profiles. ViewModels depend on this interface, never on an implementation.
  *
@@ -28,3 +32,29 @@ interface UserRepository {
    */
   suspend fun getPublicProfile(uid: String): PublicProfile?
 }
+
+/**
+ * The display names of [userIds], read with one [UserRepository.getPublicProfile] per user, all in
+ * parallel: `publicProfiles` cannot be listed, so a single query is not an option.
+ *
+ * A missing profile or a blank name maps to `null`. A profile that cannot be read
+ * ([UserRepositoryException]) leaves its user out of the map without failing the others:
+ * `names[id]` is `null` in both cases, and `id !in names` tells a failed read apart.
+ */
+suspend fun UserRepository.displayNames(userIds: Collection<String>): Map<String, String?> =
+    coroutineScope {
+      userIds
+          .distinct()
+          .map { id ->
+            async {
+              try {
+                id to getPublicProfile(id)?.displayName?.takeIf { it.isNotBlank() }
+              } catch (e: UserRepositoryException) {
+                null
+              }
+            }
+          }
+          .awaitAll()
+          .filterNotNull()
+          .toMap()
+    }

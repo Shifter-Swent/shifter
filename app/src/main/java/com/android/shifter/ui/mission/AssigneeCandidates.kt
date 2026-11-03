@@ -5,7 +5,7 @@ import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.model.user.UserRepositoryException
+import com.swent.shifter.model.user.displayNames
 
 /**
  * Someone who may be assigned to a mission.
@@ -74,15 +74,9 @@ class RepositoryAssigneeCandidates(
         } else {
           teamRepository.getTeam(eventId, teamId)?.memberIds.orEmpty()
         }
+    val names = userRepository.displayNames(ids)
     return ids.distinct()
-        .map { AssigneeOption(it, name(it)) }
+        .map { AssigneeOption(it, names[it]) }
         .sortedWith(compareBy(nullsLast()) { it.name?.lowercase() })
   }
-
-  private suspend fun name(userId: String): String? =
-      try {
-        userRepository.getPublicProfile(userId)?.displayName?.takeIf { it.isNotBlank() }
-      } catch (e: UserRepositoryException) {
-        null
-      }
 }

@@ -12,7 +12,7 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.model.user.UserRepositoryException
+import com.swent.shifter.model.user.displayNames
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
@@ -100,7 +100,7 @@ class ParticipantsViewModel(
                 .filter { it.status == MembershipRequestStatus.ACCEPTED }
                 .map { it.userId }
         val teams = teamRepository.getTeamsByEvent(eventId)
-        val names = participantIds.associateWith { name(it) }
+        val names = userRepository.displayNames(participantIds)
         _uiState.update { it.copy(groups = group(participantIds, teams, names)) }
       } catch (e: CancellationException) {
         throw e
@@ -150,16 +150,6 @@ class ParticipantsViewModel(
       load()
     }
   }
-
-  /**
-   * The display name of [userId], or null when it cannot be shown, which does not fail the list.
-   */
-  private suspend fun name(userId: String): String? =
-      try {
-        userRepository.getPublicProfile(userId)?.displayName?.takeIf { it.isNotBlank() }
-      } catch (e: UserRepositoryException) {
-        null
-      }
 
   private fun showError(error: ParticipantsError) = _uiState.update {
     it.copy(groups = emptyList(), error = error)

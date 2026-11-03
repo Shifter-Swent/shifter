@@ -11,7 +11,7 @@ import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.model.user.UserRepositoryException
+import com.swent.shifter.model.user.displayNames
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,19 +50,14 @@ class MembershipRequestVM(
     viewModelScope.launch {
       try {
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
-        var profileError: String? = null
-        val items = requests.map { request ->
-          val name =
-              try {
-                userRepository.getPublicProfile(request.userId)?.displayName?.takeIf {
-                  it.isNotBlank()
-                }
-              } catch (e: UserRepositoryException) {
-                profileError = "Some applicant names could not be loaded. Please try again."
-                null
-              }
-          MembershipRequestItemUIState(request, name ?: "Unknown volunteer")
+        val names = userRepository.displayNames(requests.map { it.userId })
+        val items = requests.map {
+          MembershipRequestItemUIState(it, names[it.userId] ?: "Unknown volunteer")
         }
+        val profileError =
+            if (requests.any { it.userId !in names })
+                "Some applicant names could not be loaded. Please try again."
+            else null
         _uiState.update { it.copy(requests = items, errorMsg = profileError) }
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
