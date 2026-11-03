@@ -8,12 +8,12 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.team.TeamSchema
 import java.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * [LiveLocationRepository] backed by Cloud Firestore, storing each shared position under its team,
