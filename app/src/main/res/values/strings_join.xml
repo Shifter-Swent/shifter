@@ -5,6 +5,7 @@
     <string name="join_event_title">Join an event</string>
     <string name="join_event_intro">Enter the code the organizer shared with you.</string>
     <string name="join_event_code_label">Join code</string>
+    <string name="join_event_code_unused_characters">Codes never use 0, O, 1, I or L</string>
     <string name="join_event_find">Find event</string>
     <string name="join_event_apply">Apply</string>
     <string name="join_event_choose_team">Choose your team</string>

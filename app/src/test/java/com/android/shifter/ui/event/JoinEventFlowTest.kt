@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
@@ -81,14 +82,21 @@ class JoinEventFlowTest {
     val viewModel = JoinEventViewModel(events, requests, teams, { "volunteer-1" })
     composeTestRule.setContent { JoinEventScreen(viewModel) }
 
-    typeCodeAndFind("WRONG1")
+    typeCodeAndFind("WRNG23")
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.ERROR_MESSAGE)
         .assertTextEquals("No event uses this code")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
 
-    typeCodeAndFind(EVENT.joinCode.lowercase())
+    // A code typed in lower case shows, and is found, in upper case.
+    typeCodeAndFind(EVENT.joinCode.lowercase()) {
+      EVENT.joinCode.forEachIndexed { index, char ->
+        composeTestRule
+            .onNodeWithTag(JoinEventScreenTestTags.codeBox(index), useUnmergedTree = true)
+            .assertTextEquals(char.toString())
+      }
+    }
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals("Lakeside")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ERROR_MESSAGE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(EventDetailsTestTags.VENUE).assertTextEquals("Lausanne")
@@ -97,7 +105,7 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
-        .assertTextContains(EVENT.joinCode.lowercase())
+        .assertTextContains(EVENT.joinCode)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
     // Apply waits for a team to be picked.
@@ -118,11 +126,16 @@ class JoinEventFlowTest {
     assertEquals(1, sentRequests.size)
   }
 
-  private fun typeCodeAndFind(code: String) {
+  /** Types [code], runs [beforeFind] to check what the screen shows, then clicks Find. */
+  private fun typeCodeAndFind(code: String, beforeFind: () -> Unit = {}) {
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .performTextReplacement(code)
-    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
+    beforeFind()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON)
+        .performScrollTo()
+        .performClick()
   }
 
   private companion object {
@@ -136,7 +149,7 @@ class JoinEventFlowTest {
             startAt = Instant.ofEpochSecond(1_000),
             endAt = Instant.ofEpochSecond(2_000),
             location = EventLocation("Lausanne"),
-            joinCode = "ABC123",
+            joinCode = "ABC234",
             createdAt = Instant.ofEpochSecond(500),
         )
     val TEAM =
