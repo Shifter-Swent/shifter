@@ -23,6 +23,7 @@
     <string name="add_mission_schedule_hint">Within the event hours. An end before the start is on the next day.</string>
     <string name="add_mission_schedule_ends_next_day">Ends the next day.</string>
     <string name="add_mission_field_address">Address (optional)</string>
+    <string name="add_mission_address_rule">Required as soon as the location has coordinates. Leave the address and the coordinates empty for a mission with no location.</string>
     <string name="add_mission_field_latitude">Latitude</string>
     <string name="add_mission_field_longitude">Longitude</string>
     <string name="add_mission_location_hint">Optional. With a location, the mission is shown on the map and must not overlap another mission of its team.</string>

@@ -19,6 +19,7 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberUpdatedMarkerState
 import com.swent.shifter.R
+import com.swent.shifter.model.location.GeoPosition
 
 object ShifterMapTestTags {
   const val MAP = "ShifterMap"
@@ -27,6 +28,11 @@ object ShifterMapTestTags {
 /** EPFL, Lausanne: where the map opens when the caller doesn't move the camera. */
 internal val DEFAULT_CENTER = LatLng(46.5191, 6.5668)
 internal const val DEFAULT_ZOOM = 13f
+
+/**
+ * This position as a Maps `LatLng`, converted at the edge so the rest of the app never sees one.
+ */
+internal fun GeoPosition.toLatLng() = LatLng(latitude, longitude)
 
 /** Keeps a highlighted marker above the others, whose labels may overlap it. */
 private const val HIGHLIGHTED_Z_INDEX = 1f
@@ -66,7 +72,7 @@ fun ShifterMap(
     markers.forEach { marker ->
       // Keyed so each marker keeps its own state when the list changes.
       key(marker.id) {
-        val state = rememberUpdatedMarkerState(LatLng(marker.latitude, marker.longitude))
+        val state = rememberUpdatedMarkerState(marker.position.toLatLng())
         val zIndex = if (marker.highlighted) HIGHLIGHTED_Z_INDEX else 0f
         if (markerContent == null) {
           Marker(

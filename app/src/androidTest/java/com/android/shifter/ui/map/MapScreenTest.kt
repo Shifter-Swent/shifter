@@ -14,6 +14,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -143,16 +144,16 @@ class MapScreenTest {
     compose.onNodeWithTag(MapScreenTestTags.RETRY_BUTTON).assertDoesNotExist()
   }
 
-  private fun LatLng.isNear(point: MapPoint) =
+  private fun LatLng.isNear(point: GeoPosition) =
       abs(latitude - point.latitude) < 1e-4 && abs(longitude - point.longitude) < 1e-4
 
   private companion object {
-    val WATER = MapMarker("mission-1", 46.519, 6.569, "Water", "10:00–11:00 · Stand")
+    val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     val LOADED =
         MapUiState(
             eventTitle = "City Marathon",
             venue = "Place Bellecour",
-            center = MapPoint(46.52, 6.57),
+            center = GeoPosition(46.52, 6.57),
             markers = listOf(WATER),
             isLoading = false,
         )

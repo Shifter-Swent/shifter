@@ -89,7 +89,6 @@ class TeamFirestoreMapperTest {
     assertEquals(MANAGER_ID, mapped.managerId)
     assertEquals(MEMBERS, mapped.memberIds)
     assertEquals(12, mapped.volunteersNeeded)
-    assertEquals(CheckInZone(46.3869, 6.2228, 75.0), mapped.checkInZone)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
 
     // The ids come from the path, so the rest of the team must round-trip through the fields.
@@ -201,7 +200,7 @@ class TeamFirestoreMapperTest {
 
   @Test
   fun toTeam_failsLoudlyOnAnExplicitlyNullMemberIds() = emulatorTest {
-    // Unlike managerId and checkInZone, null is not a value this mapper ever writes here: a
+    // Unlike managerId, null is not a value this mapper ever writes here: a
     // non-nullable list always serializes to a list, so a null is a schema problem.
     val teamId = writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.MEMBER_IDS to null))
 
@@ -209,89 +208,36 @@ class TeamFirestoreMapperTest {
   }
 
   @Test
-  fun toTeam_mapsAnAbsentCheckInZoneToNull() = emulatorTest {
-    val teamId = writeRawTeam(richTeam().toFirestoreMap() - TeamSchema.CHECK_IN_ZONE)
-
-    val snapshot = read(teamId)
-
-    assertFalse("the field must really be absent", snapshot.contains(TeamSchema.CHECK_IN_ZONE))
-    assertNull("a team without a zone must stay without one", snapshot.toTeam().checkInZone)
-  }
-
-  @Test
-  fun toTeam_roundTripsATeamWithoutAManagerOrAZone() = emulatorTest {
-    // The other half of the optional contract: toFirestoreMap stores both as explicit nulls, which
+  fun toTeam_roundTripsATeamWithoutAManager() = emulatorTest {
+    // The other half of the optional contract: toFirestoreMap stores it as an explicit null, which
     // must read back as null just like an absent field.
-    val stored = richTeam().copy(managerId = null, checkInZone = null)
+    val stored = richTeam().copy(managerId = null)
     val teamId = writeRawTeam(stored.toFirestoreMap())
 
     val snapshot = read(teamId)
     val mapped = snapshot.toTeam()
 
     assertTrue(
-        "both fields must be stored as explicit nulls rather than omitted",
-        snapshot.contains(TeamSchema.MANAGER_ID) && snapshot.contains(TeamSchema.CHECK_IN_ZONE),
+        "the field must be stored as an explicit null rather than omitted",
+        snapshot.contains(TeamSchema.MANAGER_ID),
     )
     assertNull("an explicit null manager must stay null", mapped.managerId)
-    assertNull("an explicit null zone must stay null", mapped.checkInZone)
     assertEquals(stored.copy(id = teamId), mapped)
   }
 
   @Test
-  fun toTeam_mapsACheckInZoneWrittenWithWholeNumbers() = emulatorTest {
-    // Firestore gives whole numbers back as Longs, not Doubles.
+  fun toTeam_ignoresALegacyCheckInZone() = emulatorTest {
+    // Teams written before the check-in zone became a circle around the mission (#164) still hold
+    // this field. Its key is spelled out because the schema no longer names it.
+    val stored = richTeam()
     val teamId =
         writeRawTeam(
-            richTeam().toFirestoreMap() +
-                (TeamSchema.CHECK_IN_ZONE to
-                    mapOf(
-                        TeamSchema.CheckInZoneFields.LATITUDE to 46L,
-                        TeamSchema.CheckInZoneFields.LONGITUDE to 6L,
-                        TeamSchema.CheckInZoneFields.RADIUS_METERS to 50L,
-                    ))
+            stored.toFirestoreMap() +
+                ("checkInZone" to
+                    mapOf("latitude" to 46.3869, "longitude" to 6.2228, "radiusMeters" to 75.0))
         )
 
-    assertEquals(CheckInZone(46.0, 6.0, 50.0), read(teamId).toTeam().checkInZone)
-  }
-
-  @Test
-  fun toTeam_failsLoudlyOnACheckInZoneMissingAValue() = emulatorTest {
-    // A zone without a radius would check volunteers in over the whole event.
-    val teamId =
-        writeRawTeam(
-            richTeam().toFirestoreMap() +
-                (TeamSchema.CHECK_IN_ZONE to
-                    mapOf(
-                        TeamSchema.CheckInZoneFields.LATITUDE to 46.3869,
-                        TeamSchema.CheckInZoneFields.LONGITUDE to 6.2228,
-                    ))
-        )
-
-    assertFailsOnField(teamId, TeamSchema.CHECK_IN_ZONE)
-  }
-
-  @Test
-  fun toTeam_failsLoudlyOnACheckInZoneThatIsNotAMap() = emulatorTest {
-    val teamId =
-        writeRawTeam(richTeam().toFirestoreMap() + (TeamSchema.CHECK_IN_ZONE to "46.3869,6.2228"))
-
-    assertFailsOnField(teamId, TeamSchema.CHECK_IN_ZONE)
-  }
-
-  @Test
-  fun toTeam_failsLoudlyOnACheckInZoneValueThatIsNotANumber() = emulatorTest {
-    val teamId =
-        writeRawTeam(
-            richTeam().toFirestoreMap() +
-                (TeamSchema.CHECK_IN_ZONE to
-                    mapOf(
-                        TeamSchema.CheckInZoneFields.LATITUDE to "46.3869",
-                        TeamSchema.CheckInZoneFields.LONGITUDE to 6.2228,
-                        TeamSchema.CheckInZoneFields.RADIUS_METERS to 75.0,
-                    ))
-        )
-
-    assertFailsOnField(teamId, TeamSchema.CHECK_IN_ZONE)
+    assertEquals(stored.copy(id = teamId), read(teamId).toTeam())
   }
 
   @Test
@@ -447,7 +393,6 @@ class TeamFirestoreMapperTest {
           managerId = MANAGER_ID,
           memberIds = MEMBERS,
           volunteersNeeded = 12,
-          checkInZone = CheckInZone(latitude = 46.3869, longitude = 6.2228, radiusMeters = 75.0),
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 

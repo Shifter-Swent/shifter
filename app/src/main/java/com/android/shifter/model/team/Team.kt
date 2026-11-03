@@ -20,8 +20,6 @@ import java.time.Instant
  * @property volunteersNeeded how many volunteers the team needs in total, or null while that has
  *   not been set: an organizer creates a team before sizing its staffing need, which is configured
  *   on its own afterwards.
- * @property checkInZone where volunteers of this team are checked in automatically, or null while
- *   the organizer has not placed it on the map.
  */
 data class Team(
     val id: String = "",
@@ -32,17 +30,8 @@ data class Team(
     val managerId: String? = null,
     val memberIds: List<String> = emptyList(),
     val volunteersNeeded: Int? = null,
-    val checkInZone: CheckInZone? = null,
     val createdAt: Instant,
 )
-
-/**
- * The circle a volunteer has to enter to be checked in to their team.
- *
- * All three values are required: a team without a zone says so with a null [Team.checkInZone]
- * rather than with a half-filled one.
- */
-data class CheckInZone(val latitude: Double, val longitude: Double, val radiusMeters: Double)
 
 /**
  * The members of this team once [managerId] is its manager, or once it has none when null: the

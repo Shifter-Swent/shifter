@@ -351,7 +351,7 @@ class AutoCheckInViewModelTest {
     const val USER = "volunteer"
     const val EVENT = "event"
     val NOW: Instant = Instant.parse("2027-06-20T18:02:00Z")
-    val PLACE = MissionLocation("Bar tent", 46.52, 6.57)
+    val PLACE = MissionLocation("Bar tent", GeoPosition(46.52, 6.57))
     val NEAR = GeoPosition(46.52, 6.57)
     val FAR = GeoPosition(46.0, 6.0)
   }

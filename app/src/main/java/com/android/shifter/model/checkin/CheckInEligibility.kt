@@ -81,8 +81,8 @@ fun checkInEligibility(
         now < window.start -> CheckInEligibility.Reason.TOO_EARLY
         now > window.endInclusive -> CheckInEligibility.Reason.TOO_LATE
         position == null -> CheckInEligibility.Reason.NO_POSITION
-        position.distanceTo(GeoPosition(location.latitude, location.longitude)) >
-            CheckInRules.RADIUS_METERS -> CheckInEligibility.Reason.TOO_FAR
+        position.distanceTo(location.position) > CheckInRules.RADIUS_METERS ->
+            CheckInEligibility.Reason.TOO_FAR
         else -> return CheckInEligibility.Eligible
       }
   return CheckInEligibility.Ineligible(reason)

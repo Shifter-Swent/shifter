@@ -1,4 +1,5 @@
 <!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
 
 # Firestore schema
 
@@ -16,6 +17,7 @@ users/{uid}
 publicProfiles/{uid}
 events/{eventId}
   ├── teams/{teamId}
+  │     └── liveLocations/{uid}
   ├── shifts/{shiftId}
   ├── missions/{missionId}
   │     └── checkIns/{uid}
@@ -29,6 +31,7 @@ eventParticipants/{eventId}
 | `publicProfiles/{uid}` | What any signed-in user may see of a user | `UserRepositoryFirestore` |
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
+| `events/{eventId}/teams/{teamId}/liveLocations/{uid}` | Where a volunteer of the team is, keyed by their uid | `LiveLocation`; its Firestore mapper and schema object come with the repository, in a follow-up PR |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/missions/{missionId}/checkIns/{uid}` | A volunteer's presence at a mission, keyed by their uid | `CheckInSchema` |
@@ -87,7 +90,7 @@ stays in `users/{uid}`.
 | `type` | string | `MUSIC`, `MARKET`, `NATURE`, `FOOD`, `SPORT`, `PARTY`, `OTHER`. An unknown value reads as `OTHER` |
 | `imageUrl` | string \| null | |
 | `startAt`, `endAt` | timestamp | |
-| `location` | map | `address` (string), `latitude` and `longitude` (number \| null, both set or both null) |
+| `location` | map | `address` (string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number \| null, both set or both null) |
 | `emergencyContacts` | list of maps | `name`, `phoneNumber` (string), `role` (string \| null) |
 | `joinCode` | string | Unique, generated on creation |
 | `status` | string | `PREPARATION`, `ONGOING`, `COMPLETED`, `ARCHIVED` |
@@ -103,10 +106,40 @@ stays in `users/{uid}`.
 | `managerId` | string \| null | `null` until the organizer appoints a manager |
 | `memberIds` | list of string | The volunteers of the team. **Never contains the manager**. A volunteer belongs to at most one team per event: the one their accepted request names |
 | `volunteersNeeded` | number \| null | Whole number. `null` until the staffing need is set: it is not asked for when the team is created |
-| `checkInZone` | map \| null | `latitude`, `longitude`, `radiusMeters`, all required when the zone is set |
 | `createdAt` | timestamp | |
 
 Belonging to a team (`memberIds`) is not the same as working a given slot (`Shift.assigneeIds`).
+
+### `events/{eventId}/teams/{teamId}/liveLocations/{uid}`
+
+The last position a volunteer shared with their manager, while their `locationSharingEnabled` is
+on and the event is running. The document id is their uid, so a volunteer shares one position per
+team, and overwriting it is the only way to update it.
+
+| Field | Type | Notes |
+|---|---|---|
+| `position` | map | `latitude` (number, -90 to 90) and `longitude` (number, -180 to 180), both required and nothing else |
+| `measuredAt` | timestamp | When the GPS measured `position`, **not** when the write reached the server. At most 5 min after `request.time`, and never older than the measure it replaces |
+
+`measuredAt` is the device's time on purpose: a position measured offline keeps the time it was
+measured at when it is finally sent, so a reader can tell how old it is. The past is therefore
+open, and how old a position may be before it is ignored is the reader's call. The rules bound the
+field on two sides all the same, because the reader's call is made on this very field:
+
+- **Not in the future**, beyond 5 min of tolerance for a device clock that runs ahead. A measure
+  dated 2099 would otherwise be considered fresh for ever, pinning the volunteer at a wrong place
+  with no time limit, and a wrong clock is enough for that.
+- **Not older than the measure it replaces.** With two devices, a replayed write or offline writes
+  sent out of order, the position the manager sees would otherwise jump back to where the volunteer
+  was earlier. The same measure sent twice is still accepted, so a retry is not an error.
+
+Both are refused as a permission denial, which the backend does not tell apart from a revoked
+consent. The two bounds can also work against each other: a clock 4 min fast is within the 5 min
+tolerance, so it stores a position dated in the future, and once the clock is corrected the
+device's own later measures look older than the stored one and are refused until it is caught up
+with. A rejected write means the attempted measurement was not stored, but does not necessarily
+indicate revoked consent. A publisher must not delete an existing position solely because of such
+a denial; see `LiveLocationRepositoryException.PermissionDenied`.
 
 ### `events/{eventId}/shifts/{shiftId}`
 
@@ -126,7 +159,7 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 | `teamId` | string \| null | `null` means "General": the mission belongs to no team |
 | `volunteersNeeded` | number | Whole number, at least 1 (checked by the app) |
 | `startAt`, `endAt` | timestamp | A mission has its own slot, with no `shiftId`: it may cover only part of a shift |
-| `location` | map \| null | `address` (non-blank string), `latitude` and `longitude` (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
+| `location` | map \| null | `address` (non-blank string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
 | `assigneeIds` | list of string | Queried with `array-contains` across all events to list a volunteer's missions |
 | `createdAt` | timestamp | |
 
@@ -205,6 +238,7 @@ every access to it is denied.
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
+| `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
@@ -234,14 +268,43 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 - **Check-ins trust `assigneeIds` only.** A volunteer who withdrew or was rejected stays assigned
   until the organizer unassigns them, so they can still check themself in; #313 is to also
   require them to be a participant.
-- **Any signed-in user reads an event's teams, `memberIds` and `checkInZone` included.** The
-  members are uids only, but public profiles turn them into names, and the check-in zone tells
-  where the team's volunteers will be. Events, join codes included, are listable by anyone signed
-  in too; #160 is to address both, e.g. with a public subcollection holding only what candidates
-  need.
+- **Any signed-in user reads an event's teams, `memberIds` included.** The members are uids
+  only, but public profiles turn them into names. Events, join codes included, are listable by
+  anyone signed in too; #160 is to address both, e.g. with a public subcollection holding only
+  what candidates need.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
-  to remove them explicitly.
+  to remove them explicitly. `liveLocations` is the one place the rules already account for it:
+  every read and write under a deleted event is denied, since a team's manager would otherwise go
+  on reading the positions orphaned under it. Only the volunteer's own delete still works, so the
+  orphans can be cleaned up.
+- **A shared position outlives the consent, until the event's period ends.** Listing
+  `liveLocations` is allowed by the path alone, because a condition on each document would make the
+  manager's query of the collection fail as soon as one volunteer no longer satisfied it (rules are
+  not query filters). Turning `locationSharingEnabled` off, or leaving the team, therefore stops
+  the updates at once but does not hide the last position, and neither does the rest of the rules:
+  `memberIds` and the consent are read with the document's `uid`, so requiring either of them for
+  `list` would break the manager's query instead of hiding one document.
+
+  What bounds the exposure is the event's period: once `endAt` plus the hour of margin has passed,
+  nobody reads the position any more, whatever happened to the consent or the membership. Inside
+  the period, only a delete hides it, and only the volunteer themself may delete it:
+
+  - **Sharing turned off:** the publishing PR has to delete the position in the same step as the
+    setting. That covers the app's own path, not an app that is offline, killed or uninstalled at
+    that moment: the position then stays readable to the manager until the volunteer's app runs
+    again or the event's period ends. Closing that gap needs a backend mechanism (a scheduled
+    function deleting positions whose owner has sharing off, or a server-written timestamp), which
+    no PR of #305 plans.
+  - **Leaving the team:** a volunteer's own withdrawal can delete it in the same commit as leaving
+    `memberIds`, which the rules already allow. A removal by the organizer cannot: `delete`
+    requires `request.auth.uid == uid`, so nobody but the volunteer may take their position out,
+    and that case is bounded only by the event's period. Granting the manager and the organizer a
+    delete is the smallest fix, and belongs to the PR that implements the cleanup.
+
+  A collection-group query over `liveLocations` is not an option for finding a volunteer's
+  positions to delete: there is no `match /{path=**}/liveLocations/{uid}` rule, so the query is
+  denied however the documents are shaped, and adding a `userId` field would not change that.
 - **Offline:** with Firestore's persistent cache, a query made offline returns cached data, which
   can be empty or stale, rather than failing. Transactions need a connection.

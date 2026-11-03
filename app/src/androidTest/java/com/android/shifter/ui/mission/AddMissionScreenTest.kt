@@ -339,6 +339,29 @@ class AddMissionScreenTest {
   }
 
   @Test
+  fun opening_explainsWhenTheAddressIsRequired() {
+    setContent(loaded)
+
+    node(AddMissionScreenTestTags.ADDRESS_RULE)
+        .performScrollTo()
+        .assertTextEquals(
+            "Required as soon as the location has coordinates. Leave the address and the " +
+                "coordinates empty for a mission with no location."
+        )
+  }
+
+  @Test
+  fun addressMissing_keepsTheRuleUnderTheError() {
+    // The error says what is missing and the rule says why: both must stay visible.
+    setContent(loaded.copy(latitude = "50.63", errors = setOf(MissionFormError.ADDRESS_MISSING)))
+
+    node(AddMissionScreenTestTags.error(MissionFormField.ADDRESS))
+        .performScrollTo()
+        .assertIsDisplayed()
+    node(AddMissionScreenTestTags.ADDRESS_RULE).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
   fun aConflict_namesTheMissionInTheWay() {
     setContent(
         loaded.copy(

@@ -13,8 +13,8 @@ import kotlin.math.sqrt
  */
 data class GeoPosition(val latitude: Double, val longitude: Double) {
   init {
-    require(latitude in -90.0..90.0) { "Latitude must be between -90 and 90, but was $latitude" }
-    require(longitude in -180.0..180.0) {
+    require(latitude in LATITUDE_RANGE) { "Latitude must be between -90 and 90, but was $latitude" }
+    require(longitude in LONGITUDE_RANGE) {
       "Longitude must be between -180 and 180, but was $longitude"
     }
   }
@@ -35,6 +35,15 @@ data class GeoPosition(val latitude: Double, val longitude: Double) {
   }
 
   companion object {
+    /**
+     * The latitudes a position accepts, in degrees. Public so a form can check a latitude typed on
+     * its own, before the longitude is known.
+     */
+    val LATITUDE_RANGE: ClosedFloatingPointRange<Double> = -90.0..90.0
+
+    /** The longitudes a position accepts, in degrees. */
+    val LONGITUDE_RANGE: ClosedFloatingPointRange<Double> = -180.0..180.0
+
     /** The mean Earth radius, in meters. */
     const val EARTH_RADIUS_METERS = 6_371_000.0
   }

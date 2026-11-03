@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionOverlapException
@@ -435,10 +436,10 @@ class AddMissionViewModel(
     }
     if (form.hasLocation) {
       if (form.address.isBlank()) add(MissionFormError.ADDRESS_MISSING)
-      if (parseCoordinate(form.latitude, LATITUDE_RANGE) == null) {
+      if (parseCoordinate(form.latitude, GeoPosition.LATITUDE_RANGE) == null) {
         add(MissionFormError.LATITUDE_INVALID)
       }
-      if (parseCoordinate(form.longitude, LONGITUDE_RANGE) == null) {
+      if (parseCoordinate(form.longitude, GeoPosition.LONGITUDE_RANGE) == null) {
         add(MissionFormError.LONGITUDE_INVALID)
       }
     }
@@ -450,8 +451,11 @@ class AddMissionViewModel(
       else
           MissionLocation(
               address = address.trim(),
-              latitude = checkNotNull(parseCoordinate(latitude, LATITUDE_RANGE)),
-              longitude = checkNotNull(parseCoordinate(longitude, LONGITUDE_RANGE)),
+              position =
+                  GeoPosition(
+                      checkNotNull(parseCoordinate(latitude, GeoPosition.LATITUDE_RANGE)),
+                      checkNotNull(parseCoordinate(longitude, GeoPosition.LONGITUDE_RANGE)),
+                  ),
           )
 
   private fun EventPeriod.containsSlot(day: LocalDate, start: LocalTime, end: LocalTime): Boolean {
@@ -460,9 +464,6 @@ class AddMissionViewModel(
   }
 
   companion object {
-    private val LATITUDE_RANGE = -90.0..90.0
-    private val LONGITUDE_RANGE = -180.0..180.0
-
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments.

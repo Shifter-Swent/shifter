@@ -1,8 +1,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.map
 
+import com.swent.shifter.model.location.GeoPosition
+
 /**
- * A pin shown by [ShifterMap]. It holds plain coordinates rather than a Maps `LatLng`, so callers
+ * A pin shown by [ShifterMap]. It holds a [GeoPosition] rather than a Maps `LatLng`, so callers
  * (missions, events, a location picker...) don't depend on the Maps SDK.
  *
  * @property id identifies the marker; it must be unique within the list given to [ShifterMap].
@@ -14,8 +16,7 @@ package com.swent.shifter.ui.map
  */
 data class MapMarker(
     val id: String,
-    val latitude: Double,
-    val longitude: Double,
+    val position: GeoPosition,
     val title: String,
     val info: String? = null,
     val caption: String? = null,
