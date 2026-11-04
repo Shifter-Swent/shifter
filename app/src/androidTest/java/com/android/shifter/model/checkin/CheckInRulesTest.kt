@@ -314,8 +314,12 @@ class CheckInRulesTest {
 
   /**
    * Makes a new volunteer a participant and a member of [TEAM_ID] through the real flow, assigns
-   * them to [MISSION_ID], then lets them [leave] the event, as [MembershipRequestRepository] does.
-   * They stay in the mission's `assigneeIds`, like after a withdrawal or a rejection in the app.
+   * them to both missions, then lets them [leave] the event, as [MembershipRequestRepository] does.
+   * They stay in the missions' `assigneeIds`, like after a withdrawal or a rejection in the app.
+   *
+   * They check in at [GENERAL_MISSION_ID] before leaving, which fails the test if this setup breaks
+   * and so proves that only leaving denies them afterwards. Not at [MISSION_ID]: a check-in is
+   * final, so a second one there would be denied whether or not they left.
    */
   private suspend fun formerParticipant(
       leave: suspend MembershipRequestRepository.(Account) -> Unit
@@ -335,12 +339,17 @@ class CheckInRulesTest {
     )
     signIn(organizer)
     requests.accept(eventId, user.uid)
-    db.collection("events")
-        .document(eventId)
-        .collection("missions")
-        .document(MISSION_ID)
-        .update("assigneeIds", FieldValue.arrayUnion(user.uid))
-        .await()
+    for (missionId in listOf(MISSION_ID, GENERAL_MISSION_ID)) {
+      db.collection("events")
+          .document(eventId)
+          .collection("missions")
+          .document(missionId)
+          .update("assigneeIds", FieldValue.arrayUnion(user.uid))
+          .await()
+    }
+    signIn(user)
+    checkInRef(user, GENERAL_MISSION_ID).set(checkIn(user, SELF, by = user)).await()
+    signIn(organizer)
     requests.leave(user)
     return user
   }
@@ -355,12 +364,8 @@ class CheckInRulesTest {
     val ref = db.collection("events").document()
     paths += ref.path
     ref.set(mapOf("organizerId" to organizer.uid)).await()
-    val participants = "eventParticipants/${ref.id}"
-    paths += participants
-    FirestoreEmulatorAdmin.createDocument(
-        participants,
-        mapOf("participantIds" to listOf(volunteer.uid, otherVolunteer.uid)),
-    )
+    paths +=
+        FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(volunteer.uid, otherVolunteer.uid))
     createTeam(TEAM_ID, manager, ref.id)
     createMission(ref.id, MISSION_ID, TEAM_ID)
     createMission(ref.id, GENERAL_MISSION_ID, teamId = null)

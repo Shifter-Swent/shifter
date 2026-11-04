@@ -45,6 +45,17 @@ object FirestoreEmulatorAdmin {
     }
   }
 
+  /**
+   * Makes [userIds] the participants of the event [eventId], which only the backend writes.
+   *
+   * @return the path of the created document, for the test to clean up.
+   */
+  suspend fun createParticipants(eventId: String, userIds: List<String>): String {
+    val path = "eventParticipants/$eventId"
+    createDocument(path, mapOf("participantIds" to userIds))
+    return path
+  }
+
   private fun toValue(value: Any): JSONObject =
       when (value) {
         is String -> JSONObject().put("stringValue", value)

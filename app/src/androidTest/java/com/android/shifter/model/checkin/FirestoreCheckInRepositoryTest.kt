@@ -303,12 +303,8 @@ class FirestoreCheckInRepositoryTest {
     val ref = db.collection("events").document()
     paths += ref.path
     ref.set(mapOf("organizerId" to organizer.uid)).await()
-    val participants = "eventParticipants/${ref.id}"
-    paths += participants
-    FirestoreEmulatorAdmin.createDocument(
-        participants,
-        mapOf("participantIds" to listOf(volunteer.uid, otherVolunteer.uid)),
-    )
+    paths +=
+        FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(volunteer.uid, otherVolunteer.uid))
     val team = ref.collection("teams").document(TEAM_ID)
     paths += team.path
     team.set(mapOf("managerId" to manager.uid, "memberIds" to emptyList<String>())).await()
