@@ -124,6 +124,23 @@ class FakeCheckInRepositoryTest {
   }
 
   @Test
+  fun checkIn_cancelledWhilePending_isStillConfirmedLater() = runTest {
+    val network = CompletableDeferred<Unit>()
+    repository.confirmation = network
+    val call = launch { repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF) }
+    testScheduler.runCurrent()
+
+    // Like a caller giving up on waiting, e.g. a timeout: Firestore still sends the queued write.
+    call.cancel()
+    call.join()
+    assertTrue(repository.checkIns.single().pending)
+
+    network.complete(Unit)
+
+    assertFalse(repository.checkIns.single().pending)
+  }
+
+  @Test
   fun checkIn_toAnotherMission_isAccepted() = runTest {
     repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF)
 

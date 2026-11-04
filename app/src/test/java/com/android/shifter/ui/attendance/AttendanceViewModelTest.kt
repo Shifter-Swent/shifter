@@ -23,6 +23,7 @@ import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepositoryException
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -35,6 +36,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -135,9 +137,35 @@ class AttendanceViewModelTest {
           )
       )
 
+  /** When a manual check-in is made in the tests below, as the screen's clock reads it. */
+  private val tapTime = start.plus(Duration.ofMinutes(7))
+
   private fun TestScope.open(userId: String) {
-    viewModel = AttendanceViewModel("event-1", userId, events, missions, teams, users, checkIns)
+    viewModel =
+        AttendanceViewModel(
+            "event-1",
+            userId,
+            events,
+            missions,
+            teams,
+            users,
+            checkIns,
+            now = { tapTime },
+        )
     advanceUntilIdle()
+  }
+
+  /** The assignee [userId] of the only mission loaded. */
+  private fun assignee(userId: String) =
+      viewModel.uiState.value.missions.single().assignees.single { it.userId == userId }
+
+  /**
+   * Lets a manual check-in wait until it is sent anyway, as when the screen never says its "Undo"
+   * is gone. The tests of the screen cover the snackbar ending the window instead.
+   */
+  private fun TestScope.waitForTheUndoWindow() {
+    advanceTimeBy(AttendanceViewModel.UNDO_TIMEOUT_MILLIS + 1)
+    runCurrent()
   }
 
   private fun titles() = viewModel.uiState.value.missions.map { it.title }
@@ -473,6 +501,262 @@ class AttendanceViewModelTest {
     advanceUntilIdle()
 
     assertEquals(0, observing.active)
+  }
+
+  @Test
+  fun checkIn_showsThemPresentAtOnceAndSendsItOnceTheUndoWindowIsOver() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob"))
+    checkIns.currentUserId = "manager"
+    open("manager")
+
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+
+    // Green right away, marked as not confirmed, and nothing sent while it can be undone.
+    assertEquals(
+        AttendanceVolunteer("ann", "Ann", tapTime, checkInPending = true, checkedInManually = true),
+        assignee("ann"),
+    )
+    assertEquals(UndoableCheckIn(setUp.id, "ann", "Ann"), viewModel.uiState.value.undoableCheckIn)
+    assertTrue(checkIns.checkIns.isEmpty())
+
+    waitForTheUndoWindow()
+
+    val sent = checkIns.checkIns.single()
+    assertEquals("ann", sent.userId)
+    assertEquals(CheckInMethod.MANAGER, sent.method)
+    assertEquals("manager", sent.checkedInBy)
+    assertNull(viewModel.uiState.value.undoableCheckIn)
+    assertFalse(assignee("ann").checkInPending)
+    assertTrue(assignee("ann").checkedInManually)
+  }
+
+  @Test
+  fun undoCheckIn_withinTheWindow_sendsNothingAndPutsThemBackMissing() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    open("manager")
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+
+    viewModel.undoCheckIn()
+    waitForTheUndoWindow()
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    assertNull(viewModel.uiState.value.undoableCheckIn)
+    assertEquals(
+        listOf("ann"),
+        viewModel.uiState.value.missions.single().missingAssignees.map { it.userId },
+    )
+  }
+
+  @Test
+  fun checkIn_twiceOrOfSomeonePresent_sendsOnlyOneCheckIn() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob"))
+    arrive(setUp.id, "bob")
+    open("manager")
+
+    // A double tap, and a tap on someone already there.
+    viewModel.checkIn(setUp.id, "ann")
+    viewModel.checkIn(setUp.id, "ann")
+    viewModel.checkIn(setUp.id, "bob")
+    waitForTheUndoWindow()
+
+    assertEquals(listOf("bob", "ann"), checkIns.checkIns.map { it.userId })
+    assertEquals(CheckInMethod.SELF, checkIns.checkIns.first().method)
+  }
+
+  @Test
+  fun checkIn_ofAnotherVolunteer_sendsThePreviousOneAtOnce() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob"))
+    open("manager")
+
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+    viewModel.checkIn(setUp.id, "bob")
+    runCurrent()
+
+    // Only the last one can still be undone: the first one is no longer what "Undo" would undo.
+    assertEquals(listOf("ann"), checkIns.checkIns.map { it.userId })
+    assertEquals("bob", viewModel.uiState.value.undoableCheckIn?.userId)
+  }
+
+  @Test
+  fun sendUndoableCheckIn_sendsItWithoutWaitingForTheWindow() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    open("manager")
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+
+    // What the screen does when it is left.
+    viewModel.sendUndoableCheckIn()
+
+    assertEquals(listOf("ann"), checkIns.checkIns.map { it.userId })
+    assertNull(viewModel.uiState.value.undoableCheckIn)
+  }
+
+  @Test
+  fun checkIn_waitingForTheNetwork_staysPendingUntilTheBackendConfirmsIt() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val network = CompletableDeferred<Unit>()
+    checkIns.confirmation = network
+    open("manager")
+
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    // Sent, but only queued: it stays marked, and is counted for the banner.
+    assertEquals(1, checkIns.checkIns.size)
+    assertTrue(assignee("ann").checkInPending)
+    assertEquals(1, viewModel.uiState.value.pendingCheckInCount)
+
+    network.complete(Unit)
+    advanceUntilIdle()
+
+    assertFalse(assignee("ann").checkInPending)
+    assertEquals(0, viewModel.uiState.value.pendingCheckInCount)
+  }
+
+  @Test
+  fun checkIn_refusedOnceBackOnline_putsThemBackMissingAndNamesThem() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val network = CompletableDeferred<Unit>()
+    checkIns.confirmation = network
+    open("manager")
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+    assertTrue(assignee("ann").checkInPending)
+
+    // Queued offline, then refused once online: Firestore rolls the write back.
+    network.completeExceptionally(CheckInRepositoryException.NotAllowed())
+    advanceUntilIdle()
+
+    assertEquals(
+        ManualCheckInFailure(ManualCheckInError.NOT_ALLOWED, "Ann"),
+        viewModel.uiState.value.checkInError,
+    )
+    assertEquals(AttendanceVolunteer("ann", "Ann"), assignee("ann"))
+    assertEquals(0, viewModel.uiState.value.pendingCheckInCount)
+  }
+
+  @Test
+  fun checkIn_refusedBecauseTheyCheckedInFirst_staysSilent() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    val network = CompletableDeferred<Unit>()
+    checkIns.confirmation = network
+    open("manager")
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    // Their own check-in reached the backend first: nothing for the manager to act on.
+    network.completeExceptionally(CheckInRepositoryException.AlreadyCheckedIn())
+    advanceUntilIdle()
+
+    assertNull(viewModel.uiState.value.checkInError)
+    assertEquals(0, viewModel.uiState.value.pendingCheckInCount)
+  }
+
+  @Test
+  fun checkIn_ofSomeoneWhoCheckedInThemselfMeanwhile_isSilentAndKeepsTheirCheckIn() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    open("manager")
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+
+    // Their own phone checks them in during the undo window: the manual one is then refused.
+    arrive(setUp.id, "ann", minute = 6)
+    waitForTheUndoWindow()
+
+    assertNull(viewModel.uiState.value.checkInError)
+    assertEquals(CheckInMethod.SELF, checkIns.checkIns.single().method)
+    assertEquals(
+        AttendanceVolunteer("ann", "Ann", start.plus(Duration.ofMinutes(6))),
+        assignee("ann"),
+    )
+  }
+
+  @Test
+  fun checkIn_refusedByTheBackend_showsWhyAndPutsThemBackMissing() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    open("manager")
+    // Set once the check-ins are observed, so only the check-in itself fails.
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    // Named, since several check-ins may fail at once when the device is back online.
+    assertEquals(
+        ManualCheckInFailure(ManualCheckInError.NOT_ALLOWED, "Ann"),
+        viewModel.uiState.value.checkInError,
+    )
+    assertEquals(AttendanceVolunteer("ann", "Ann"), assignee("ann"))
+
+    viewModel.onCheckInErrorShown()
+    assertNull(viewModel.uiState.value.checkInError)
+  }
+
+  @Test
+  fun checkIn_ofSomeoneElse_keepsAFailureNotShownYet() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob"))
+    open("manager")
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+    checkIns.failure = null
+
+    viewModel.checkIn(setUp.id, "bob")
+    runCurrent()
+
+    // Ann's failure is still there for the screen to show, though Bob's check-in came after it.
+    assertEquals(
+        ManualCheckInFailure(ManualCheckInError.NOT_ALLOWED, "Ann"),
+        viewModel.uiState.value.checkInError,
+    )
+  }
+
+  @Test
+  fun checkIn_afterTheMissionIsOver_doesNothing() = runTest {
+    // Ran from three hours to one hour before the tap: a check-in would record the tap, not an
+    // arrival.
+    val over = addMission("Set up", "logistics", hour = -3, assigneeIds = listOf("ann"))
+    open("manager")
+
+    viewModel.checkIn(over.id, "ann")
+    waitForTheUndoWindow()
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    assertNull(viewModel.uiState.value.undoableCheckIn)
+  }
+
+  @Test
+  fun checkIn_failingOtherwise_reportsAFailure() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    open("manager")
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    assertEquals(
+        ManualCheckInFailure(ManualCheckInError.FAILED, "Ann"),
+        viewModel.uiState.value.checkInError,
+    )
+    assertEquals(AttendanceVolunteer("ann", "Ann"), assignee("ann"))
+  }
+
+  @Test
+  fun checkIn_whileTheAttendanceIsNotKnown_doesNothing() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+    open("manager")
+    checkIns.failure = null
+
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    // Nobody is known to be missing, so nobody can be checked in.
+    assertTrue(checkIns.checkIns.isEmpty())
+    assertNull(viewModel.uiState.value.undoableCheckIn)
   }
 
   @Test
