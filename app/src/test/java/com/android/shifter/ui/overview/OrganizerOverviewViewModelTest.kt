@@ -35,6 +35,7 @@ class OrganizerOverviewViewModelTest {
   private val dispatcher = StandardTestDispatcher()
   private val eventId = "event-1"
   private val start = Instant.parse("2027-06-20T08:00:00Z")
+  private var clock: Instant = start
 
   private lateinit var missions: FakeMissionRepository
   private lateinit var repository: SlowMissionRepository
@@ -109,7 +110,7 @@ class OrganizerOverviewViewModelTest {
     get() = viewModel.uiState.value.assigning
 
   private fun TestScope.open() {
-    viewModel = OrganizerOverviewViewModel(eventId, repository, teams, candidates)
+    viewModel = OrganizerOverviewViewModel(eventId, repository, teams, candidates, now = { clock })
     advanceUntilIdle()
   }
 
@@ -201,9 +202,26 @@ class OrganizerOverviewViewModelTest {
 
     val state = viewModel.uiState.value
     assertEquals(2, state.missions.size)
-    // No mission can be marked completed yet.
+    // Neither has ended, and neither was closed by hand.
     assertEquals(0, state.completedCount)
     assertEquals(0f, state.progress)
+  }
+
+  @Test
+  fun progress_countsMissionsClosedByHandOrPastTheirEnd() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    val closed = addMission("Serve drinks", "bar", hour = 3)
+    addMission("Clean up", "bar", hour = 5)
+    missions.markCompleted(eventId, closed.id)
+    // Past the end of "Set up" only, and before the end of the other two.
+    clock = start.plus(Duration.ofHours(2).plusMinutes(30))
+    open()
+
+    assertEquals(
+        listOf(true, true, false),
+        viewModel.uiState.value.missions.map { it.isCompleted },
+    )
+    assertEquals(2, viewModel.uiState.value.completedCount)
   }
 
   @Test

@@ -6,13 +6,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
+import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.mission.AssigneeCandidates
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneeSelection
+import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,6 +99,7 @@ class OrganizerOverviewViewModel(
     private val missionRepository: MissionRepository,
     private val teamRepository: TeamRepository,
     private val assigneeCandidates: AssigneeCandidates,
+    private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(OrganizerOverviewUiState())
@@ -124,7 +126,7 @@ class OrganizerOverviewViewModel(
                       id = it.id,
                       title = it.title,
                       teamId = it.teamId,
-                      isCompleted = it.isCompleted(),
+                      isCompleted = isCompleted(it.completed, it.endAt, now()),
                       volunteersNeeded = it.volunteersNeeded,
                       assigneeIds = it.assigneeIds,
                   )
@@ -289,10 +291,6 @@ class OrganizerOverviewViewModel(
       if (assigning == null) state else state.copy(assigning = change(assigning))
     }
   }
-
-  // TODO: read the status set by hand by the team's manager or the volunteer once missions have
-  //  one. No mission can be marked completed yet, so none is.
-  private fun Mission.isCompleted(): Boolean = false
 
   companion object {
     /**
