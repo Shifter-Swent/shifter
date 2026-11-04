@@ -2,12 +2,15 @@
 package com.swent.shifter.model.chat
 
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,6 +110,73 @@ class FakeTeamChatRepositoryTest {
         repository.send(OTHER_EVENT_ID, TEAM_ID, "Other event")
 
         // Only the message to the channel is emitted: the other two leave its list unchanged.
+        assertEquals(
+            listOf(emptyList(), listOf("Hello team")),
+            emissions.map { messages -> messages.map { it.text } },
+        )
+      }
+
+  @Test
+  fun send_withAConfirmationPending_showsTheMessageBeforeReturning() =
+      runTest(UnconfinedTestDispatcher()) {
+        val confirmation = CompletableDeferred<Unit>()
+        repository.confirmation = confirmation
+
+        val sending = launch { repository.send(EVENT_ID, TEAM_ID, "Hello team") }
+
+        assertFalse(sending.isCompleted)
+        assertEquals(
+            listOf("Hello team"),
+            repository.messages(EVENT_ID, TEAM_ID).first().map { it.text },
+        )
+        confirmation.complete(Unit)
+        assertTrue(sending.isCompleted)
+      }
+
+  @Test
+  fun send_refusedOnceConfirmed_takesTheMessageOutAndThrows() = runTest {
+    repository.confirmation =
+        CompletableDeferred<Unit>().apply {
+          completeExceptionally(TeamChatRepositoryException.NotAllowed())
+        }
+
+    assertThrowsSuspending<TeamChatRepositoryException.NotAllowed> {
+      repository.send(EVENT_ID, TEAM_ID, "Hello team")
+    }
+    assertEquals(emptyList<ChatMessage>(), repository.messages(EVENT_ID, TEAM_ID).first())
+  }
+
+  @Test
+  fun send_notConfirmedInTime_keepsTheMessageAndThrowsUnavailable() = runTest {
+    repository.confirmation =
+        CompletableDeferred<Unit>().apply {
+          completeExceptionally(TeamChatRepositoryException.Unavailable())
+        }
+
+    assertThrowsSuspending<TeamChatRepositoryException.Unavailable> {
+      repository.send(EVENT_ID, TEAM_ID, "Hello team")
+    }
+    // Not confirmed is not "not sent": the queued message is still shown, and goes out later.
+    assertEquals(
+        listOf("Hello team"),
+        repository.messages(EVENT_ID, TEAM_ID).first().map { it.text },
+    )
+  }
+
+  @Test
+  fun failure_whileCollected_endsTheFlowAfterItsMessages() =
+      runTest(UnconfinedTestDispatcher()) {
+        val emissions = mutableListOf<List<ChatMessage>>()
+        val removed = TeamChatRepositoryException.NotAllowed()
+        val collection = async {
+          runCatching { repository.messages(EVENT_ID, TEAM_ID).toList(emissions) }
+        }
+        repository.send(EVENT_ID, TEAM_ID, "Hello team")
+
+        // The member is removed from the team while the channel is open.
+        repository.failure = removed
+
+        assertSame(removed, collection.await().exceptionOrNull())
         assertEquals(
             listOf(emptyList(), listOf("Hello team")),
             emissions.map { messages -> messages.map { it.text } },

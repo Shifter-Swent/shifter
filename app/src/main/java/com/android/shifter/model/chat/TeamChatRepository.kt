@@ -25,18 +25,28 @@ interface TeamChatRepository {
    *
    * A message sent from this device but not confirmed yet, typically offline, is emitted at once
    * with an estimated [ChatMessage.sentAt], so it keeps its place in the list.
+   *
+   * The flow fails with a [TeamChatRepositoryException.NotAllowed] when the collector may not read
+   * the channel. That also ends an observation already running, since the right to read can be lost
+   * while it is open: the collector is removed from the team, or withdraws.
    */
   fun messages(eventId: String, teamId: String): Flow<List<ChatMessage>>
 
   /**
-   * Sends [text], trimmed, to the channel of [teamId] in [eventId], in the signed-in user's name.
-   *
-   * Offline, the message is kept and sent once the connection is back: this call suspends until
-   * then, while [messages] already emits it.
+   * Sends [text], trimmed, to the channel of [teamId] in [eventId], in the signed-in user's name,
+   * and waits for the backend to confirm it, for a bounded time. [messages] already emits the
+   * message while this call waits.
    *
    * @throws IllegalArgumentException if the trimmed text is empty or longer than
-   *   [ChatRules.MAX_TEXT_LENGTH]; nothing is sent.
-   * @throws TeamChatRepositoryException.NotAllowed if the rules above deny it.
+   *   [ChatRules.MAX_TEXT_LENGTH]; nothing is sent, whatever the state of the backend.
+   * @throws TeamChatRepositoryException.NotAllowed if the rules above deny it; the message is taken
+   *   out of [messages] again.
+   * @throws TeamChatRepositoryException.Unavailable when the backend cannot be reached, or when an
+   *   implementation gives up waiting for its confirmation. **It does not mean the message was not
+   *   sent:** an implementation that queues writes while offline still sends it once the connection
+   *   is back, and [messages] keeps showing it. A caller must read it as "not confirmed" rather
+   *   than "not sent", and must not send it again, which would post it twice.
+   * @throws TeamChatRepositoryException.Unknown on any other failure.
    */
   suspend fun send(eventId: String, teamId: String, text: String)
 }
