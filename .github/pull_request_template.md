@@ -1,0 +1,52 @@
+<!-- Title: like the main commit, e.g. "fix: Show Shifter as the name of the app". -->
+
+## Summary
+
+<!-- The problem and the solution, in 1 to 3 lines. -->
+
+## Changes
+
+<!-- Files and classes touched, and what changes in each. -->
+
+-
+
+## Design choices
+
+<!-- Decisions that are not obvious, and why. -->
+
+-
+
+## Out of scope
+
+<!-- What this PR deliberately does not do, with a link to the issue or PR that will. -->
+
+-
+
+## Known limitations
+
+<!-- What is imperfect in what is delivered. "None." if nothing. -->
+
+-
+
+## Screenshots
+
+<!-- When the UI changes. Remove the section otherwise. -->
+
+## Definition of Done
+
+<!-- The acceptance criteria of the issue, then the items of AGENTS.md. Only check what was
+     actually verified; an unchecked box points to Out of scope or Known limitations. -->
+
+- [ ] <!-- Acceptance criterion of the issue -->
+- [ ] Unit tests: <!-- test classes or names -->
+- [ ] Compose UI tests: <!-- test classes or names -->
+- [ ] `./gradlew check` and `./gradlew ktfmtCheck` pass
+- [ ] `./gradlew connectedDebugAndroidTest` passes (only if instrumented tests are touched)
+
+## Related issues
+
+<!-- Parent user story, dependencies, expected conflicts. -->
+
+-
+
+Closes #
