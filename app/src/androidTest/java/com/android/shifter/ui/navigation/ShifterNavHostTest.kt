@@ -40,6 +40,7 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
@@ -410,6 +411,27 @@ class ShifterNavHostTest {
             .map { it.id },
     )
     waitForNode(MyEventsTestTags.eventCard(event.id))
+  }
+
+  @Test
+  fun settings_changeModeEntersTheEventsOfTheNewMode() {
+    signInAndShowApp()
+    val user = checkNotNull(repositories.authRepository.currentUser())
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(user.uid, "Ada", "", UserMode.VOLUNTEER)
+    }
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    assertEquals(
+        UserMode.ORGANIZER,
+        runBlocking { repositories.userRepository.getUser(user.uid) }?.mode,
+    )
+    // The back stack is cleared: the Volunteer events are gone.
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
   }
 
   @Test

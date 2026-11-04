@@ -42,6 +42,7 @@ import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
@@ -163,7 +164,16 @@ fun ShifterNavHost(
         SettingsRoute(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
-            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
+            viewModel =
+                viewModel(
+                    factory =
+                        SettingsViewModel.factory(
+                            auth,
+                            repositories.userRepository,
+                            UserMode.VOLUNTEER,
+                        )
+                ),
             credentialManager = credentialManager,
         )
       }
@@ -291,7 +301,16 @@ fun ShifterNavHost(
         SettingsRoute(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
-            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
+            viewModel =
+                viewModel(
+                    factory =
+                        SettingsViewModel.factory(
+                            auth,
+                            repositories.userRepository,
+                            UserMode.ORGANIZER,
+                        )
+                ),
             credentialManager = credentialManager,
         )
       }
@@ -616,3 +635,10 @@ private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable (
     Box(modifier = Modifier.padding(padding)) { content() }
   }
 }
+
+/** The app a user of [mode] enters. */
+private fun appOfMode(mode: UserMode): App =
+    when (mode) {
+      UserMode.VOLUNTEER -> Volunteer
+      UserMode.ORGANIZER -> Organizer
+    }

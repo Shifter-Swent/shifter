@@ -8,13 +8,21 @@ import androidx.credentials.exceptions.ClearCredentialUnknownException
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
+import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import java.time.Duration
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -27,9 +35,12 @@ import org.robolectric.Shadows.shadowOf
 @RunWith(RobolectricTestRunner::class)
 class SettingsViewModelTest {
 
-  private val repository = FakeAuthRepository()
+  private val ada = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+  private val repository = FakeAuthRepository(ada)
+  private val userRepository =
+      FakeUserRepository(listOf(User("uid-1", "Ada", "ada@example.com", mode = UserMode.VOLUNTEER)))
   private val credentialManager = mockk<CredentialManager>()
-  private val viewModel = SettingsViewModel(repository)
+  private val viewModel = SettingsViewModel(repository, userRepository, UserMode.VOLUNTEER)
 
   init {
     coEvery { credentialManager.clearCredentialState(any<ClearCredentialStateRequest>()) } just runs
@@ -87,8 +98,10 @@ class SettingsViewModelTest {
         }
     val store = ViewModelStore()
     val leftViewModel =
-        ViewModelProvider(store, SettingsViewModel.factory(repository))[
-            SettingsViewModel::class.java]
+        ViewModelProvider(
+            store,
+            SettingsViewModel.factory(repository, userRepository, UserMode.VOLUNTEER),
+        )[SettingsViewModel::class.java]
 
     leftViewModel.signOut(credentialManager)
     idle()
@@ -123,7 +136,7 @@ class SettingsViewModelTest {
   @Test
   fun factory_createsViewModelOnTheGivenRepository() {
     val built =
-        SettingsViewModel.factory(repository)
+        SettingsViewModel.factory(repository, userRepository, UserMode.VOLUNTEER)
             .create(SettingsViewModel::class.java, CreationExtras.Empty)
 
     built.signOut(credentialManager)
@@ -131,6 +144,93 @@ class SettingsViewModelTest {
 
     assertEquals(1, repository.signOutCalls)
     assertTrue(built.uiState.value.signedOut)
+  }
+
+  @Test
+  fun changeMode_savesTheOtherModeThenReportsIt() {
+    viewModel.changeMode()
+    idle()
+
+    assertEquals(UserMode.ORGANIZER, userRepository.users.getValue("uid-1").mode)
+    assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.modeChanged)
+    assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.mode)
+    assertFalse(viewModel.uiState.value.changingMode)
+  }
+
+  @Test
+  fun changeMode_fromOrganizer_switchesToVolunteer() {
+    userRepository.users["uid-1"] =
+        User("uid-1", "Ada", "ada@example.com", mode = UserMode.ORGANIZER)
+    val organizer = SettingsViewModel(repository, userRepository, UserMode.ORGANIZER)
+
+    organizer.changeMode()
+    idle()
+
+    assertEquals(UserMode.VOLUNTEER, userRepository.users.getValue("uid-1").mode)
+    assertEquals(UserMode.VOLUNTEER, organizer.uiState.value.modeChanged)
+  }
+
+  @Test
+  fun changeMode_onFailure_reportsItAndKeepsTheMode() {
+    userRepository.failure = UserRepositoryException.Unavailable()
+
+    viewModel.changeMode()
+    idle()
+
+    assertTrue(viewModel.uiState.value.modeChangeFailed)
+    assertNull(viewModel.uiState.value.modeChanged)
+    assertEquals(UserMode.VOLUNTEER, viewModel.uiState.value.mode)
+    assertFalse(viewModel.uiState.value.changingMode)
+  }
+
+  @Test
+  fun changeMode_withoutAnswer_timesOutAndQueuesTheModeBack() {
+    // Offline, the write is queued but never answers.
+    val offline = mockk<UserRepository>()
+    coEvery { offline.setMode("uid-1", UserMode.ORGANIZER) } coAnswers { awaitCancellation() }
+    coEvery { offline.setMode("uid-1", UserMode.VOLUNTEER) } just runs
+    val waiting = SettingsViewModel(repository, offline, UserMode.VOLUNTEER)
+
+    waiting.changeMode()
+    idle()
+    assertTrue(waiting.uiState.value.changingMode)
+    shadowOf(Looper.getMainLooper())
+        .idleFor(Duration.ofMillis(SettingsViewModel.MODE_CHANGE_TIMEOUT_MILLIS))
+
+    assertTrue(waiting.uiState.value.modeChangeFailed)
+    assertNull(waiting.uiState.value.modeChanged)
+    assertFalse(waiting.uiState.value.changingMode)
+    coVerify { offline.setMode("uid-1", UserMode.VOLUNTEER) }
+  }
+
+  @Test
+  fun changeMode_whileChanging_isIgnored() {
+    val pending = CompletableDeferred<Unit>()
+    val slow = mockk<UserRepository>()
+    coEvery { slow.setMode(any(), any()) } coAnswers { pending.await() }
+    val changing = SettingsViewModel(repository, slow, UserMode.VOLUNTEER)
+
+    changing.changeMode()
+    idle()
+    changing.changeMode()
+    pending.complete(Unit)
+    idle()
+
+    coVerify(exactly = 1) { slow.setMode(any(), any()) }
+  }
+
+  @Test
+  fun changeMode_eventsAreResetOnceHandled() {
+    viewModel.changeMode()
+    idle()
+    viewModel.onModeChangeHandled()
+    assertNull(viewModel.uiState.value.modeChanged)
+
+    userRepository.failure = UserRepositoryException.Unavailable()
+    viewModel.changeMode()
+    idle()
+    viewModel.onModeChangeErrorShown()
+    assertFalse(viewModel.uiState.value.modeChangeFailed)
   }
 
   /** Runs the coroutines launched in viewModelScope, which use the main looper. */

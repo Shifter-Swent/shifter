@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.settings
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
@@ -24,13 +26,48 @@ class SettingsScreenTest {
 
   private var backClicks = 0
   private var signOutClicks = 0
+  private var changeModeClicks = 0
 
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-  private fun setScreen() {
+  private fun setScreen(mode: UserMode = UserMode.VOLUNTEER, changingMode: Boolean = false) {
     composeTestRule.setContent {
-      ShifterTheme { SettingsScreen(onBack = { backClicks++ }, onSignOut = { signOutClicks++ }) }
+      ShifterTheme {
+        SettingsScreen(
+            mode = mode,
+            onBack = { backClicks++ },
+            onChangeMode = { changeModeClicks++ },
+            onSignOut = { signOutClicks++ },
+            changingMode = changingMode,
+        )
+      }
     }
+  }
+
+  @Test
+  fun changeModeClick_callsOnChangeModeOnly() {
+    setScreen()
+
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+
+    assertEquals(1, changeModeClicks)
+    assertEquals(0, signOutClicks)
+  }
+
+  @Test
+  fun changeMode_offersTheOtherMode() {
+    setScreen(mode = UserMode.ORGANIZER)
+
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.settings_switch_to_volunteer))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun changingMode_disablesTheButton() {
+    setScreen(changingMode = true)
+
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).assertIsNotEnabled()
   }
 
   @Test
@@ -44,6 +81,9 @@ class SettingsScreenTest {
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).assertIsDisplayed()
     composeTestRule
         .onNodeWithText(context.getString(R.string.settings_sign_out))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.settings_switch_to_organizer))
         .assertIsDisplayed()
   }
 
