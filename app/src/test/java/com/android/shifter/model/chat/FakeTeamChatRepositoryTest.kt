@@ -56,6 +56,15 @@ class FakeTeamChatRepositoryTest {
   }
 
   @Test
+  fun send_withABlankTextWhileTheBackendFails_throwsForTheText() = runTest {
+    repository.failure = TeamChatRepositoryException.Unavailable()
+
+    // The text is checked before the backend is reached, so the user is told what to fix rather
+    // than to check their connection.
+    assertThrowsSuspending<IllegalArgumentException> { repository.send(EVENT_ID, TEAM_ID, "  ") }
+  }
+
+  @Test
   fun messages_areOldestFirst() = runTest {
     repository.add(EVENT_ID, TEAM_ID, message("later", NOW.plusSeconds(60)))
     repository.add(EVENT_ID, TEAM_ID, message("earlier", NOW))
