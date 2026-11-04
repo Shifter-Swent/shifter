@@ -36,35 +36,45 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
         ?.let { userFromFirestoreOrThrow(it) }
   }
 
-  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
-      translatingErrors {
-        val ref = db.collection(USERS_COLLECTION).document(uid)
-        val publicRef = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
-        // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
-        // It returns the existing profile, mapped once the transaction is over.
-        val existing =
-            db.runTransaction { transaction ->
-                  // A transaction reads everything before it writes.
-                  val stored = transaction.get(ref).takeIf { it.exists() }
-                  val hasPublicProfile = transaction.get(publicRef).exists()
-                  if (stored == null) transaction.set(ref, newUserFields(displayName, email))
-                  // The rules require the public name to be the private one. A malformed private
-                  // profile gets no public profile: mapping it below reports it anyway.
-                  val name =
-                      if (stored == null) displayName else stored.get(DISPLAY_NAME) as? String
-                  if (!hasPublicProfile && name != null) {
-                    transaction.set(publicRef, publicProfileFields(name))
-                  }
-                  stored
-                }
-                .await()
-        existing?.let { userFromFirestoreOrThrow(it) }
-            ?: User(uid = uid, displayName = displayName, email = email)
-      }
+  override suspend fun getOrCreateUser(
+      uid: String,
+      displayName: String,
+      email: String,
+      mode: UserMode?,
+  ): User = translatingErrors {
+    val ref = db.collection(USERS_COLLECTION).document(uid)
+    val publicRef = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
+    // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
+    // It returns the existing profile, mapped once the transaction is over.
+    val existing =
+        db.runTransaction { transaction ->
+              // A transaction reads everything before it writes.
+              val stored = transaction.get(ref).takeIf { it.exists() }
+              val hasPublicProfile = transaction.get(publicRef).exists()
+              if (stored == null) {
+                transaction.set(ref, newUserFields(displayName, email, mode))
+              } else if (mode != null && stored.get(MODE) == null) {
+                // A profile from before modes: it takes the mode of this sign-in. One already
+                // set, even unknown to this version, is never overwritten at sign-in.
+                transaction.update(ref, mapOf(MODE to mode.name))
+              }
+              // The rules require the public name to be the private one. A malformed private
+              // profile gets no public profile: mapping it below reports it anyway.
+              val name = if (stored == null) displayName else stored.get(DISPLAY_NAME) as? String
+              if (!hasPublicProfile && name != null) {
+                transaction.set(publicRef, publicProfileFields(name))
+              }
+              stored
+            }
+            .await()
+    existing?.let { stored ->
+      val user = userFromFirestoreOrThrow(stored)
+      if (mode != null && stored.get(MODE) == null) user.copy(mode = mode) else user
+    } ?: User(uid = uid, displayName = displayName, email = email, mode = mode)
+  }
 
-  override suspend fun chooseMode(uid: String, mode: UserMode): Unit = translatingErrors {
-    // The rules refuse another mode than the one already set, so a choice is never overwritten.
-    // The same mode changes nothing, so they let it through: a retry succeeds.
+  override suspend fun setMode(uid: String, mode: UserMode): Unit = translatingErrors {
+    // An update, not a set: the rules refuse it when there is no profile, rather than creating one.
     db.collection(USERS_COLLECTION).document(uid).update(MODE, mode.name).await()
   }
 
@@ -84,14 +94,21 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     const val CREATED_AT = "createdAt"
     const val MODE = "mode"
 
-    /** Fields of a newly created profile. Location sharing starts disabled until opt-in. */
-    fun newUserFields(displayName: String, email: String): Map<String, Any> =
+    /**
+     * Fields of a newly created profile, with [mode] when given. Location sharing starts disabled
+     * until opt-in.
+     */
+    fun newUserFields(
+        displayName: String,
+        email: String,
+        mode: UserMode? = null,
+    ): Map<String, Any> =
         mapOf(
             DISPLAY_NAME to displayName,
             EMAIL to email,
             LOCATION_SHARING_ENABLED to false,
             CREATED_AT to FieldValue.serverTimestamp(),
-        )
+        ) + listOfNotNull(mode?.let { MODE to it.name })
 
     /** Fields of a public profile: only what any signed-in user may see. */
     fun publicProfileFields(displayName: String): Map<String, Any> =

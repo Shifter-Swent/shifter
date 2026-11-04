@@ -162,46 +162,48 @@ class UserRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun chooseMode_savesTheModeOnTheProfile() = emulatorTest {
-    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
-    assertNull(step("read profile") { repository.getUser(uid) }?.mode)
-
-    step("choose mode") { repository.chooseMode(uid, UserMode.ORGANIZER) }
+  fun getOrCreateUser_withMode_createsTheProfileWithIt() = emulatorTest {
+    step("create profile") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.ORGANIZER)
+    }
 
     assertEquals(UserMode.ORGANIZER, step("read profile") { repository.getUser(uid) }?.mode)
   }
 
   @Test
-  fun rules_keepTheFirstModeChosen() = emulatorTest {
+  fun getOrCreateUser_withMode_savesItOnlyOnAProfileWithout() = emulatorTest {
+    // A profile from before modes.
     step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
-    step("choose mode") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
 
-    val thrown =
-        step("choose again") {
-          runCatching { repository.chooseMode(uid, UserMode.ORGANIZER) }.exceptionOrNull()
+    step("sign in as organizer") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.ORGANIZER)
+    }
+    val user =
+        step("sign in as volunteer") {
+          repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.VOLUNTEER)
         }
 
-    assertTrue(thrown is UserRepositoryException.PermissionDenied)
-    val profile = db.collection(USERS_COLLECTION).document(uid)
-    assertDenied { profile.update(MODE, FieldValue.delete()).await() }
+    assertEquals(UserMode.ORGANIZER, user.mode)
+    assertEquals(UserMode.ORGANIZER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  @Test
+  fun setMode_changesTheMode() = emulatorTest {
+    step("create profile") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.VOLUNTEER)
+    }
+
+    step("set mode") { repository.setMode(uid, UserMode.ORGANIZER) }
+    assertEquals(UserMode.ORGANIZER, step("read profile") { repository.getUser(uid) }?.mode)
+    step("set mode back") { repository.setMode(uid, UserMode.VOLUNTEER) }
     assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
   }
 
   @Test
-  fun chooseMode_sameModeTwice_keepsIt() = emulatorTest {
-    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
-    step("choose mode") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
-
-    step("choose it again") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
-
-    assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
-  }
-
-  @Test
-  fun chooseMode_withoutProfile_throwsPermissionDenied() = emulatorTest {
+  fun setMode_withoutProfile_throwsPermissionDenied() = emulatorTest {
     val thrown =
-        step("choose mode") {
-          runCatching { repository.chooseMode(uid, UserMode.VOLUNTEER) }.exceptionOrNull()
+        step("set mode") {
+          runCatching { repository.setMode(uid, UserMode.VOLUNTEER) }.exceptionOrNull()
         }
 
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
@@ -209,18 +211,35 @@ class UserRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun rules_forbidAnUnknownMode() = emulatorTest {
-    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+  fun rules_forbidAnUnknownOrRemovedMode() = emulatorTest {
+    val profile = db.collection(USERS_COLLECTION).document(uid)
+    val withUnknownMode =
+        UserRepositoryFirestore.newUserFields("Ada", "ada@example.com") + (MODE to "ADMIN")
+    assertDenied { profile.set(withUnknownMode).await() }
+    step("create profile") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.VOLUNTEER)
+    }
 
-    assertDenied { db.collection(USERS_COLLECTION).document(uid).update(MODE, "ADMIN").await() }
+    assertDenied { profile.update(MODE, "ADMIN").await() }
+    assertDenied { profile.update(MODE, 1).await() }
+    assertDenied { profile.update(MODE, FieldValue.delete()).await() }
+    assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
   }
 
   @Test
-  fun rules_forbidCreatingProfileWithAModeAlreadyChosen() = emulatorTest {
-    val fields =
-        UserRepositoryFirestore.newUserFields("Ada", "ada@example.com") + (MODE to "ORGANIZER")
+  fun rules_forbidChangingAnotherUsersMode() = emulatorTest {
+    val owner = uid
+    step("create profile") {
+      repository.getOrCreateUser(owner, "Ada", "ada@example.com", UserMode.VOLUNTEER)
+    }
+    signInAsAnotherUser()
 
-    assertDenied { db.collection(USERS_COLLECTION).document(uid).set(fields).await() }
+    val thrown =
+        step("set another mode") {
+          runCatching { repository.setMode(owner, UserMode.ORGANIZER) }.exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
   private fun publicProfile(uid: String) = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)

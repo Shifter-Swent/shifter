@@ -179,10 +179,14 @@ private object PreviewAuthRepository : AuthRepository {
 private object PreviewUserRepository : UserRepository {
   override suspend fun getUser(uid: String): User? = null
 
-  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
-      throw UnsupportedOperationException("Preview")
+  override suspend fun getOrCreateUser(
+      uid: String,
+      displayName: String,
+      email: String,
+      mode: UserMode?,
+  ): User = throw UnsupportedOperationException("Preview")
 
-  override suspend fun chooseMode(uid: String, mode: UserMode) =
+  override suspend fun setMode(uid: String, mode: UserMode) =
       throw UnsupportedOperationException("Preview")
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = null

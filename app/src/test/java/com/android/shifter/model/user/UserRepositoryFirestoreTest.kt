@@ -143,21 +143,68 @@ class UserRepositoryFirestoreTest {
   }
 
   @Test
-  fun chooseMode_writesTheModeByName() = runTest {
+  fun getOrCreateUser_withMode_createsTheProfileWithIt() = runTest {
+    stored(null)
+
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.ORGANIZER, user.mode)
+    verify {
+      transaction.set(
+          ref,
+          UserRepositoryFirestore.newUserFields("Ada", "ada@example.com", UserMode.ORGANIZER),
+      )
+    }
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAProfileWithout_savesIt() = runTest {
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
+
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.ORGANIZER, user.mode)
+    verify { transaction.update(ref, mapOf<String, Any>(MODE to "ORGANIZER")) }
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAProfileWithOne_keepsTheStoredMode() = runTest {
+    // An unknown mode, from a later version, is kept as well.
+    listOf("VOLUNTEER", "ADMIN").forEach { storedMode ->
+      stored(
+          mapOf(
+              DISPLAY_NAME to "Ada",
+              EMAIL to "ada@example.com",
+              LOCATION_SHARING_ENABLED to false,
+              MODE to storedMode,
+          )
+      )
+
+      val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+      assertEquals(UserMode.entries.firstOrNull { it.name == storedMode }, user.mode)
+    }
+    verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun setMode_writesTheModeByName() = runTest {
     every { ref.update(MODE, "ORGANIZER") } returns Tasks.forResult(null)
 
-    repository.chooseMode(UID, UserMode.ORGANIZER)
+    repository.setMode(UID, UserMode.ORGANIZER)
 
     verify { ref.update(MODE, "ORGANIZER") }
   }
 
   @Test
-  fun chooseMode_whenAlreadyChosen_throwsPermissionDenied() = runTest {
-    // What the rules answer when the profile already has a mode.
+  fun setMode_translatesFirestoreErrors() = runTest {
+    // What the rules answer when there is no profile.
     every { ref.update(MODE, "VOLUNTEER") } returns
         Tasks.forException(FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
 
-    val thrown = runCatching { repository.chooseMode(UID, UserMode.VOLUNTEER) }.exceptionOrNull()
+    val thrown = runCatching { repository.setMode(UID, UserMode.VOLUNTEER) }.exceptionOrNull()
 
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }

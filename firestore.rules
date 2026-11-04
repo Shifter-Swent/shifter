@@ -12,28 +12,33 @@ service cloud.firestore {
         return request.auth != null && request.auth.uid == uid;
       }
 
+      // The names of UserMode.
+      function isKnownMode(mode) {
+        return mode in ['VOLUNTEER', 'ORGANIZER'];
+      }
+
       allow read: if isOwner();
 
-      // Location sharing is opt-in, so a profile always starts with it disabled.
+      // Location sharing is opt-in, so a profile always starts with it disabled. The mode of the
+      // sign-in screen may be saved with it.
       allow create: if isOwner()
         && request.resource.data.keys().hasOnly(
-             ['displayName', 'email', 'locationSharingEnabled', 'createdAt'])
+             ['displayName', 'email', 'locationSharingEnabled', 'createdAt', 'mode'])
+        && (!('mode' in request.resource.data) || isKnownMode(request.resource.data.mode))
         && request.resource.data.displayName is string
         && request.resource.data.email is string
         && request.resource.data.locationSharingEnabled == false
         && request.resource.data.createdAt == request.time;
 
       // A new name is also written to the public profile in the same commit, so the two never
-      // disagree. The mode is chosen once, after the first sign-in, and never changed: re-sending the
-      // same mode changes no key, so it is allowed as a no-op.
+      // disagree. The mode can be set or changed, to a known mode only, but never removed.
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'locationSharingEnabled', 'mode'])
         && request.resource.data.displayName is string
         && request.resource.data.locationSharingEnabled is bool
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['mode'])
-            || (!('mode' in resource.data)
-                && request.resource.data.mode in ['VOLUNTEER', 'ORGANIZER']))
+            || ('mode' in request.resource.data && isKnownMode(request.resource.data.mode)))
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName'])
             || getAfter(/databases/$(database)/documents/publicProfiles/$(uid)).data.displayName
                  == request.resource.data.displayName);

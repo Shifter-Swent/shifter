@@ -19,18 +19,24 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     return users[uid]
   }
 
-  override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User {
+  override suspend fun getOrCreateUser(
+      uid: String,
+      displayName: String,
+      email: String,
+      mode: UserMode?,
+  ): User {
     failure?.let { throw it }
-    return users.getOrPut(uid) {
-      User(uid = uid, displayName = displayName, email = email, createdAt = Instant.now())
-    }
+    val user =
+        users[uid]
+            ?: User(uid = uid, displayName = displayName, email = email, createdAt = Instant.now())
+    // Like the real repository, a mode already set is never replaced at sign-in.
+    return user.copy(mode = user.mode ?: mode).also { users[uid] = it }
   }
 
-  /** Like the rules, refuses another mode than the one chosen, and a uid with no profile. */
-  override suspend fun chooseMode(uid: String, mode: UserMode) {
+  /** Like the rules, refuses a uid with no profile. */
+  override suspend fun setMode(uid: String, mode: UserMode) {
     failure?.let { throw it }
     val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
-    if (user.mode != null && user.mode != mode) throw UserRepositoryException.PermissionDenied()
     users[uid] = user.copy(mode = mode)
   }
 

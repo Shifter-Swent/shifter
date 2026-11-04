@@ -2,8 +2,8 @@
 package com.swent.shifter.model.user
 
 /**
- * How a user uses Shifter, chosen once after their first sign-in and never changed afterwards.
- * Stored by name in [User.mode].
+ * How a user uses Shifter: saved at their first sign-in, from the sign-in screen used, and changed
+ * in Settings. Stored by name in [User.mode].
  */
 enum class UserMode {
   /** Joins events and works their missions. */

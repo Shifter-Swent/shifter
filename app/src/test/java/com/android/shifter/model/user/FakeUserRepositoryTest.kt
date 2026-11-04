@@ -18,54 +18,49 @@ class FakeUserRepositoryTest {
   }
 
   @Test
-  fun chooseMode_savesTheModeOnTheProfile() = runTest {
-    repository.chooseMode(ada.uid, UserMode.ORGANIZER)
+  fun getOrCreateUser_withMode_savesItOnAProfileWithout() = runTest {
+    val bob = repository.getOrCreateUser("uid-2", "Bob", "bob@example.com", UserMode.ORGANIZER)
+    val signedInAgain =
+        repository.getOrCreateUser(ada.uid, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.ORGANIZER, bob.mode)
+    assertEquals(UserMode.ORGANIZER, signedInAgain.mode)
+    assertEquals(UserMode.ORGANIZER, repository.getUser(ada.uid)?.mode)
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAProfileWithOne_keepsTheStoredMode() = runTest {
+    repository.setMode(ada.uid, UserMode.VOLUNTEER)
+
+    val user = repository.getOrCreateUser(ada.uid, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.VOLUNTEER, user.mode)
+    assertEquals(UserMode.VOLUNTEER, repository.getUser(ada.uid)?.mode)
+  }
+
+  @Test
+  fun setMode_changesTheMode() = runTest {
+    repository.setMode(ada.uid, UserMode.VOLUNTEER)
+
+    repository.setMode(ada.uid, UserMode.ORGANIZER)
 
     assertEquals(UserMode.ORGANIZER, repository.getUser(ada.uid)?.mode)
   }
 
   @Test
-  fun chooseMode_whenAlreadyChosen_throwsPermissionDeniedAndKeepsTheFirstChoice() = runTest {
-    repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
-
-    val thrown = runCatching {
-      repository.chooseMode(ada.uid, UserMode.ORGANIZER)
-    }
-        .exceptionOrNull()
-
-    assertTrue(thrown is UserRepositoryException.PermissionDenied)
-    assertEquals(UserMode.VOLUNTEER, repository.getUser(ada.uid)?.mode)
-  }
-
-  @Test
-  fun chooseMode_sameModeTwice_keepsIt() = runTest {
-    repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
-
-    repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
-
-    assertEquals(UserMode.VOLUNTEER, repository.getUser(ada.uid)?.mode)
-  }
-
-  @Test
-  fun chooseMode_withoutProfile_throwsPermissionDeniedAndCreatesNothing() = runTest {
-    val thrown = runCatching {
-      repository.chooseMode("uid-2", UserMode.VOLUNTEER)
-    }
-        .exceptionOrNull()
+  fun setMode_withoutProfile_throwsPermissionDeniedAndCreatesNothing() = runTest {
+    val thrown = runCatching { repository.setMode("uid-2", UserMode.VOLUNTEER) }.exceptionOrNull()
 
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
     assertNull(repository.getUser("uid-2"))
   }
 
   @Test
-  fun chooseMode_withFailure_throwsIt() = runTest {
+  fun setMode_withFailure_throwsIt() = runTest {
     val failure = UserRepositoryException.Unavailable()
     repository.failure = failure
 
-    val thrown = runCatching {
-      repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
-    }
-        .exceptionOrNull()
+    val thrown = runCatching { repository.setMode(ada.uid, UserMode.VOLUNTEER) }.exceptionOrNull()
 
     assertEquals(failure, thrown)
     repository.failure = null
