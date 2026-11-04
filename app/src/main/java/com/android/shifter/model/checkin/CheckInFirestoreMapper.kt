@@ -50,7 +50,7 @@ internal fun newCheckInFields(
  * [CheckIn.missionId] and [CheckIn.eventId] from the documents it is nested under.
  *
  * A check-in whose write is still pending has no server time yet: it is read with an estimate of
- * it, as [CheckInRepository.observeMyCheckIns] promises.
+ * it, as [CheckInRepository.observeMyCheckIns] promises, and marked [CheckIn.pending].
  *
  * Throws [IllegalStateException] when a field is missing or has an unexpected type. An unknown
  * method is rejected too rather than read as a default: a check-in is a record of who was present
@@ -75,5 +75,6 @@ internal fun DocumentSnapshot.toCheckIn(): CheckIn {
           CheckInMethod.entries.firstOrNull { it.name == method }
               ?: invalidField(ENTITY, CheckInSchema.METHOD),
       checkedInBy = requireString(ENTITY, CheckInSchema.CHECKED_IN_BY),
+      pending = metadata.hasPendingWrites(),
   )
 }

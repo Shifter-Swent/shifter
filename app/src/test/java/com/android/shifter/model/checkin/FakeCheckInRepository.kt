@@ -4,6 +4,7 @@ package com.swent.shifter.model.checkin
 import com.swent.shifter.model.mission.MissionRepository
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -35,6 +36,14 @@ class FakeCheckInRepository(
 ) : CheckInRepository {
 
   private val state = MutableStateFlow<List<CheckIn>>(emptyList())
+
+  /**
+   * When set, a check-in is recorded at once as [CheckIn.pending], like a write Firestore queues
+   * offline, and is only confirmed, with [checkIn] returning, once it completes. Completing it with
+   * a [CheckInRepositoryException] stands for the backend refusing the check-in once online: it is
+   * taken out again, as Firestore rolls the write back, and [checkIn] throws it.
+   */
+  var confirmation: CompletableDeferred<Unit>? = null
 
   /** Every check-in recorded so far, in recording order. */
   val checkIns: List<CheckIn>
@@ -70,12 +79,26 @@ class FakeCheckInRepository(
         throw CheckInRepositoryException.NotAllowed()
       }
     }
+    val gate = confirmation
+    val recorded =
+        CheckIn(eventId, missionId, userId, clock(), method, currentUserId, pending = gate != null)
     // Checks and inserts in one atomic update, so two concurrent calls cannot both get in.
     state.update { checkIns ->
       if (checkIns.any { it.matches(eventId, missionId) && it.userId == userId }) {
         throw CheckInRepositoryException.AlreadyCheckedIn()
       }
-      checkIns + CheckIn(eventId, missionId, userId, clock(), method, checkedInBy = currentUserId)
+      checkIns + recorded
+    }
+    if (gate != null) {
+      try {
+        gate.await()
+      } catch (e: CheckInRepositoryException) {
+        state.update { checkIns -> checkIns - recorded }
+        throw e
+      }
+      state.update { checkIns ->
+        checkIns.map { if (it == recorded) it.copy(pending = false) else it }
+      }
     }
   }
 

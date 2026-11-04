@@ -17,6 +17,9 @@ import java.time.Instant
  * @property method whether the volunteer checked in themself or was checked in by a manager.
  * @property checkedInBy id of the user who recorded the check-in: [userId] for
  *   [CheckInMethod.SELF], the manager or organizer for [CheckInMethod.MANAGER].
+ * @property pending whether the check-in was written on this device but not confirmed by the
+ *   backend yet, typically offline. [checkedInAt] is then an estimate, and the backend may still
+ *   refuse it, e.g. when someone else checked the volunteer in first.
  */
 data class CheckIn(
     val eventId: String,
@@ -25,6 +28,7 @@ data class CheckIn(
     val checkedInAt: Instant,
     val method: CheckInMethod,
     val checkedInBy: String,
+    val pending: Boolean = false,
 )
 
 /** How a [CheckIn] was recorded. */
