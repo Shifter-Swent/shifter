@@ -49,7 +49,11 @@ interface LiveLocationRepository {
    * @throws LiveLocationRepositoryException.PermissionDenied when the rules refuse the write, which
    *   includes sharing being off, no longer being in the team, the event not running, and
    *   [measuredAt] being older than the measure already stored.
-   * @throws LiveLocationRepositoryException.Unavailable when the backend cannot be reached.
+   * @throws LiveLocationRepositoryException.Unavailable when the backend cannot be reached, or when
+   *   an implementation gives up waiting for its acknowledgement. **It does not mean the position
+   *   was not stored:** an implementation that queues writes while offline may still send this one
+   *   when the connection is back, so a caller must read it as "not confirmed" rather than "not
+   *   written". Retrying is allowed and sending the same [measuredAt] twice is not refused.
    */
   suspend fun shareLocation(
       eventId: String,
@@ -63,7 +67,10 @@ interface LiveLocationRepository {
    * they turn sharing off or leave the event. Removing a position that was never shared has no
    * effect, and the rules allow it whatever the consent, the team and the event say.
    *
-   * @throws LiveLocationRepositoryException.Unavailable when the backend cannot be reached.
+   * @throws LiveLocationRepositoryException.Unavailable when the backend cannot be reached, or when
+   *   an implementation gives up waiting for its acknowledgement. As for [shareLocation], **it does
+   *   not mean the position is still there:** a queued deletion may go out later. Removing again is
+   *   harmless, so a caller may retry.
    */
   suspend fun removeLocation(eventId: String, teamId: String)
 
@@ -74,6 +81,13 @@ interface LiveLocationRepository {
    *
    * The flow fails with a [LiveLocationRepositoryException.PermissionDenied] when the collector is
    * neither the team's manager nor the event's organizer, or when the event is not running.
+   *
+   * That refusal also ends an observation already running, since the right to read can be lost
+   * while it is open: the event's period ends, or the organizer gives the team another manager. It
+   * is the expected end of every event rather than a fault, so a consumer should distinguish it
+   * from an unexpected failure and present it as sharing having ended. When it arrives is the
+   * implementation's business: a backend may only notice on the next change to the team's
+   * positions.
    */
   fun observeTeamLocations(eventId: String, teamId: String): Flow<List<LiveLocation>>
 }
