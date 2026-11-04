@@ -10,23 +10,36 @@ import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.model.location.FakeLiveLocationRepository
+import com.swent.shifter.model.location.LiveLocation
+import com.swent.shifter.model.location.LiveLocationRepository
+import com.swent.shifter.model.location.LiveLocationRepositoryException
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.User
 import com.swent.shifter.utils.MainDispatcherRule
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset.UTC
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -163,6 +176,56 @@ class MapViewModelTest {
     assertNull(viewModel.myPosition.value)
   }
 
+  private val liveLocations = FakeLiveLocationRepository()
+  private val teams =
+      FakeTeamRepository(
+          listOf(
+              team("bar", manager = USER, "alice", "bob"),
+              team("stage", manager = USER, "carol"),
+              team("parking", manager = "someone-else", "dave"),
+          )
+      )
+  private val users = FakeUserRepository(listOf(User("alice", "Alice", "alice@example.com")))
+
+  /** The clock of the volunteers' map, moved by the tests to age the positions. */
+  private var clock: Instant = NOON
+
+  /** The map of [USER], who manages the bar and the stage. */
+  private fun volunteerMap(repository: LiveLocationRepository = liveLocations) =
+      MapViewModel(
+          EVENT.id,
+          events,
+          missions,
+          { userId },
+          { clock },
+          UTC,
+          liveLocations = repository,
+          watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
+          userRepository = users,
+      )
+
+  /**
+   * Opens the map: the positions are only followed while [MapViewModel.volunteers] is collected.
+   */
+  private fun TestScope.open(viewModel: MapViewModel): MapViewModel {
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.volunteers.collect {}
+    }
+    runCurrent()
+    return viewModel
+  }
+
+  /** Shares [position] as [volunteer]'s in [teamId], measured [minutesAgo] before [clock]. */
+  private suspend fun share(
+      volunteer: String,
+      teamId: String,
+      position: GeoPosition,
+      minutesAgo: Long = 0,
+  ) {
+    liveLocations.currentUserId = volunteer
+    liveLocations.shareLocation(EVENT.id, teamId, position, clock.minusSeconds(minutesAgo * 60))
+  }
+
   @Test
   fun load_showsTheEventAndOneMarkerPerLocatedMissionInTimeOrder() = runTest {
     missions.createMission(mission("Cleanup", startHour = 14, endHour = 15, at = TENT))
@@ -269,6 +332,160 @@ class MapViewModelTest {
     assertNull(viewModel.uiState.value.selected)
   }
 
+  @Test
+  fun volunteers_showsTheSharedPositionsOfTheManagedTeamsOnly() = runTest {
+    share("alice", "bar", TENT.position)
+    share("carol", "stage", STAND.position)
+    share("dave", "parking", STAND.position)
+
+    val volunteers = open(volunteerMap()).volunteers.value
+
+    assertEquals(
+        listOf(
+            VolunteerPin("alice", "Alice", TENT.position, minutesAgo = 0, isStale = false),
+            VolunteerPin("carol", null, STAND.position, minutesAgo = 0, isStale = false),
+        ),
+        volunteers,
+    )
+  }
+
+  @Test
+  fun volunteers_followAVolunteerWhoMoves() = runTest {
+    share("alice", "bar", TENT.position)
+    val viewModel = open(volunteerMap())
+
+    clock = clock.plusSeconds(30)
+    share("alice", "bar", STAND.position)
+    runCurrent()
+
+    assertEquals(STAND.position, viewModel.volunteers.value.single().position)
+  }
+
+  @Test
+  fun volunteers_whoLeftTheTeam_areNotShown() = runTest {
+    // The rules let a position stay readable for a while after its volunteer left the team.
+    share("erin", "bar", TENT.position)
+
+    assertTrue(open(volunteerMap()).volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_inTwoManagedTeams_areShownOnceAtTheirLatestPosition() = runTest {
+    teams.addMember(EVENT.id, "stage", "alice")
+    share("alice", "bar", TENT.position, minutesAgo = 3)
+    share("alice", "stage", STAND.position, minutesAgo = 1)
+
+    val alice = open(volunteerMap()).volunteers.value.single()
+
+    assertEquals(STAND.position, alice.position)
+    assertEquals(1, alice.minutesAgo)
+  }
+
+  @Test
+  fun volunteers_olderThanTenMinutes_areStale() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 10)
+    share("carol", "stage", STAND.position, minutesAgo = 11)
+
+    val volunteers = open(volunteerMap()).volunteers.value
+
+    assertEquals(listOf(false, true), volunteers.map { it.isStale })
+    assertEquals(listOf(10L, 11L), volunteers.map { it.minutesAgo })
+  }
+
+  @Test
+  fun volunteers_ageEveryMinuteWithoutANewPosition() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 9)
+    val viewModel = open(volunteerMap())
+    assertFalse(viewModel.volunteers.value.single().isStale)
+
+    clock = clock.plus(Duration.ofMinutes(2))
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    val alice = viewModel.volunteers.value.single()
+    assertEquals(11, alice.minutesAgo)
+    assertTrue(alice.isStale)
+  }
+
+  @Test
+  fun volunteers_whenReadingIsRefused_areEmptyAndTheMapStillLoads() = runTest {
+    missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    share("alice", "bar", TENT.position)
+    liveLocations.failure = LiveLocationRepositoryException.PermissionDenied()
+
+    val viewModel = open(volunteerMap())
+
+    assertTrue(viewModel.volunteers.value.isEmpty())
+    assertEquals(1, viewModel.uiState.value.markers.size)
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun volunteers_forAUserWhoManagesNoTeam_readNoPosition() = runTest {
+    userId = "dave"
+    val counting = CountsObservations(liveLocations)
+
+    val volunteers = open(volunteerMap(counting)).volunteers.value
+
+    assertTrue(volunteers.isEmpty())
+    assertEquals(0, counting.observations)
+  }
+
+  @Test
+  fun volunteers_withoutLiveLocations_areEmpty() = runTest {
+    // The organizer's map, which is given no live locations for now.
+    share("alice", "bar", TENT.position)
+
+    assertTrue(open(viewModel()).volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_stopBeingFollowedWhenTheMapLeaves() = runTest {
+    val counting = CountsObservations(liveLocations)
+    val viewModel = volunteerMap(counting)
+    val screen =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.volunteers.collect {}
+        }
+    runCurrent()
+    assertEquals(2, counting.active)
+
+    screen.cancel()
+    advanceTimeBy(MapViewModel.STOP_TIMEOUT_MILLIS + 1)
+
+    assertEquals(0, counting.active)
+  }
+
+  /** Delegates to [repository], counting the team observations started and still running. */
+  private class CountsObservations(private val repository: LiveLocationRepository) :
+      LiveLocationRepository by repository {
+    var observations = 0
+    var active = 0
+
+    override fun observeTeamLocations(eventId: String, teamId: String): Flow<List<LiveLocation>> =
+        flow {
+          observations++
+          active++
+          try {
+            emitAll(repository.observeTeamLocations(eventId, teamId))
+          } finally {
+            active--
+          }
+        }
+  }
+
+  private fun team(id: String, manager: String, vararg members: String) =
+      Team(
+          id = id,
+          eventId = EVENT.id,
+          name = id,
+          description = "",
+          icon = "",
+          managerId = manager,
+          memberIds = members.toList(),
+          createdAt = DAY,
+      )
+
   private fun mission(
       title: String,
       startHour: Int,
@@ -291,6 +508,7 @@ class MapViewModelTest {
   private companion object {
     const val USER = "volunteer"
     val DAY: Instant = Instant.parse("2026-06-01T00:00:00Z")
+    val NOON: Instant = DAY.plusSeconds(12 * 3600L)
     val TENT = MissionLocation("Tent", GeoPosition(46.521, 6.571))
     val STAND = MissionLocation("Stand", GeoPosition(46.519, 6.569))
     val EVENT =
