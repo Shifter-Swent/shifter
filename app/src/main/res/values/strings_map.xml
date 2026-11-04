@@ -11,4 +11,9 @@
     <string name="map_error_unexpected">The map could not be loaded.</string>
     <string name="map_retry">Retry</string>
     <string name="map_close">Close</string>
+    <!-- The location picker: tap the map to place a point. -->
+    <string name="map_picker_hint">Tap the map to place the location</string>
+    <string name="map_picker_selected">Selected: %1$s, %2$s</string>
+    <string name="map_picker_marker">Selected place</string>
+    <string name="map_picker_description">Map to pick a place. Tap it to place the location.</string>
 </resources>

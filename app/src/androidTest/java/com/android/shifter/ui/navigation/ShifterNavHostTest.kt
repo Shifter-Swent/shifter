@@ -203,11 +203,11 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
-        .performTextInput("ABC123")
+        .performTextInput("ABC234")
 
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
-        .assertTextContains("ABC123")
+        .assertTextContains("ABC234")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsEnabled()
   }
 
@@ -289,7 +289,7 @@ class ShifterNavHostTest {
 
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
-        .performTextInput("NOPE00")
+        .performTextInput("ZZZZ22")
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
 
     waitForNode(JoinEventScreenTestTags.ERROR_MESSAGE)

@@ -5,6 +5,7 @@ import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -82,6 +84,43 @@ class FakeCheckInRepositoryTest {
     )
     // and a single check-in is stored.
     assertEquals(1, repository.checkIns.size)
+  }
+
+  @Test
+  fun checkIn_withAConfirmationPending_isPendingUntilItCompletes() = runTest {
+    val network = CompletableDeferred<Unit>()
+    repository.confirmation = network
+
+    // Like a write Firestore queues offline: recorded at once, but checkIn does not return yet.
+    val call = launch { repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF) }
+    testScheduler.runCurrent()
+    assertTrue(repository.checkIns.single().pending)
+    assertTrue(call.isActive)
+
+    network.complete(Unit)
+    call.join()
+
+    assertFalse(repository.checkIns.single().pending)
+  }
+
+  @Test
+  fun checkIn_withItsConfirmationRefused_isRemovedAndThrows() = runTest {
+    val network = CompletableDeferred<Unit>()
+    repository.confirmation = network
+    val call = async {
+      runCatching { repository.checkIn(EVENT_ID, MISSION_ID, VOLUNTEER, CheckInMethod.SELF) }
+    }
+    testScheduler.runCurrent()
+    assertTrue(repository.checkIns.single().pending)
+
+    // Like the backend refusing the queued write once online, e.g. someone checked them in first:
+    // Firestore rolls it back, so the pending check-in is gone again.
+    network.completeExceptionally(CheckInRepositoryException.AlreadyCheckedIn())
+
+    assertTrue(
+        call.await().exceptionOrNull() is CheckInRepositoryException.AlreadyCheckedIn,
+    )
+    assertTrue(repository.checkIns.isEmpty())
   }
 
   @Test

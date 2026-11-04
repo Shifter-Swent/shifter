@@ -1,5 +1,6 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.firebase
 
 import com.google.firebase.FirebaseApp
@@ -23,7 +24,8 @@ object FirestoreEmulatorAdmin {
   /**
    * Creates the document at [path] with [fields], whatever `firestore.rules` say, so a test can
    * store a document no client may write, such as a malformed one. Each value is a [String], a
-   * [Boolean] or an [Instant], stored as a string, a boolean or a timestamp.
+   * [Boolean], a [Double], an [Instant] or a nested [Map] of them, stored as a string, a boolean, a
+   * number, a timestamp or a map.
    */
   suspend fun createDocument(path: String, fields: Map<String, Any>) {
     val parent = path.substringBeforeLast('/')
@@ -46,7 +48,22 @@ object FirestoreEmulatorAdmin {
       when (value) {
         is String -> JSONObject().put("stringValue", value)
         is Boolean -> JSONObject().put("booleanValue", value)
+        is Double -> JSONObject().put("doubleValue", value)
         is Instant -> JSONObject().put("timestampValue", value.toString())
+        is Map<*, *> ->
+            JSONObject()
+                .put(
+                    "mapValue",
+                    JSONObject()
+                        .put(
+                            "fields",
+                            JSONObject().apply {
+                              value.forEach { (name, nested) ->
+                                put(name as String, toValue(checkNotNull(nested)))
+                              }
+                            },
+                        ),
+                )
         else -> throw IllegalArgumentException("Unsupported field value: $value")
       }
 

@@ -82,9 +82,7 @@ class FirestoreEventRepository(
 
   private fun randomJoinCode(): String =
       String(
-          CharArray(JOIN_CODE_LENGTH) {
-            JOIN_CODE_ALPHABET[random.nextInt(JOIN_CODE_ALPHABET.length)]
-          }
+          CharArray(JoinCode.LENGTH) { JoinCode.ALPHABET[random.nextInt(JoinCode.ALPHABET.length)] }
       )
 
   companion object {
@@ -105,9 +103,6 @@ class FirestoreEventRepository(
           throw toRepositoryException(e)
         }
 
-    /** Digits and upper-case letters, without the pairs users confuse: 0/O, 1/I/L. */
-    private const val JOIN_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
-    private const val JOIN_CODE_LENGTH = 6
     private const val JOIN_CODE_ATTEMPTS = 5
   }
 }

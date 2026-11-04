@@ -42,6 +42,9 @@ interface CheckInRepository {
   /**
    * Emits every check-in of the mission [missionId] of [eventId], then again each time one is
    * added, for the attendance view. Emits an empty list when nobody is checked in yet.
+   *
+   * A check-in written on this device but not confirmed yet is emitted as [CheckIn.pending], then
+   * again once the backend confirms it, or without it if the backend refuses it.
    */
   fun observeCheckIns(eventId: String, missionId: String): Flow<List<CheckIn>>
 
@@ -51,8 +54,8 @@ interface CheckInRepository {
    * mission twice. Emits an empty list when they have none.
    *
    * A check-in whose write is still pending (offline, or before the backend has set
-   * [CheckIn.checkedInAt]) is emitted too, with an estimated [CheckIn.checkedInAt], so a check-in
-   * is never tried twice.
+   * [CheckIn.checkedInAt]) is emitted too, marked [CheckIn.pending] and with an estimated
+   * [CheckIn.checkedInAt], so a check-in is never tried twice.
    */
   fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>>
 }

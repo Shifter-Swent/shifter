@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.Source
@@ -13,6 +14,7 @@ import com.swent.shifter.model.mission.MissionSchema
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -87,23 +89,30 @@ class FirestoreCheckInRepository(
   /**
    * Emits the check-ins of [query], passed through [select], each time its result changes. A
    * listener error or a malformed check-in ends the flow with a [CheckInRepositoryException].
+   *
+   * Metadata changes are listened to as well: the backend confirming a pending check-in changes
+   * nothing but its metadata, so it would not be emitted otherwise and would stay
+   * [CheckIn.pending]. The other metadata changes, such as a snapshot only moving from the cache to
+   * the server, give the same check-ins again, which are not emitted twice.
    */
   private fun observe(query: Query, select: (List<CheckIn>) -> List<CheckIn>): Flow<List<CheckIn>> =
       callbackFlow {
-        val registration = query.addSnapshotListener { snapshot, error ->
-          when {
-            error != null -> close(toRepositoryException(error))
-            snapshot != null ->
-                try {
-                  trySend(select(snapshot.toCheckIns()))
-                } catch (e: IllegalStateException) {
-                  close(CheckInRepositoryException.Unknown(e))
-                }
-          }
-        }
+        val registration =
+            query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+              when {
+                error != null -> close(toRepositoryException(error))
+                snapshot != null ->
+                    try {
+                      trySend(select(snapshot.toCheckIns()))
+                    } catch (e: IllegalStateException) {
+                      close(CheckInRepositoryException.Unknown(e))
+                    }
+              }
+            }
         // Keeps the flow open while collected, then removes the listener so Firestore stops it.
         awaitClose { registration.remove() }
       }
+      .distinctUntilChanged()
 
   private fun QuerySnapshot.toCheckIns(): List<CheckIn> = documents.map { it.toCheckIn() }
 

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
@@ -52,7 +53,15 @@ data class JoinEventUiState(
     val isLoading: Boolean = false,
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
-)
+) {
+  /** Whether [joinCode] is complete and could exist, so the volunteer can look it up. */
+  val canFind: Boolean
+    get() = JoinCode.isValid(joinCode)
+
+  /** Whether [joinCode] holds a character no code uses, such as `0` or `I`. */
+  val hasUnusedCharacter: Boolean
+    get() = !joinCode.all(JoinCode::isUsed)
+}
 
 /**
  * Finds an event by its join code, then sends the signed-in volunteer's request to join it.
@@ -71,19 +80,22 @@ class JoinEventViewModel(
   private val _uiState = MutableStateFlow(JoinEventUiState())
   val uiState: StateFlow<JoinEventUiState> = _uiState.asStateFlow()
 
+  /**
+   * Keeps the code typed or pasted so far, upper-cased and cut to [JoinCode.LENGTH], since join
+   * codes are upper-case and the screen shows one box per character.
+   */
   fun onJoinCodeChange(joinCode: String) = _uiState.update {
-    it.copy(joinCode = joinCode, error = null)
+    it.copy(joinCode = JoinCode.normalize(joinCode), error = null)
   }
 
   /**
-   * Looks up the event volunteers join with the code typed so far and its teams, with the signed-in
-   * volunteer's request for it if they already applied, so they are not offered to apply twice and
-   * see the team they applied to. Join codes are upper-case, so the code is matched whatever case
-   * the volunteer typed it in.
+   * Looks up the event volunteers join with the code typed, once it is valid, and its teams, with
+   * the signed-in volunteer's request for it if they already applied, so they are not offered to
+   * apply twice and see the team they applied to.
    */
   fun findEvent() {
-    val joinCode = _uiState.value.joinCode.trim().uppercase()
-    if (joinCode.isEmpty() || _uiState.value.isLoading) return
+    val joinCode = _uiState.value.joinCode
+    if (!JoinCode.isValid(joinCode) || _uiState.value.isLoading) return
     launchLoading {
       val event = eventRepository.getEventByJoinCode(joinCode)
       val userId = currentUserId()

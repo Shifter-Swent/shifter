@@ -255,10 +255,37 @@ class FirestoreCheckInRepositoryTest {
         val pending = emissions.receiveUntil { it.isNotEmpty() }.single()
         assertEquals(CheckInMethod.SELF, pending.method)
         assertNear(before, pending.checkedInAt)
+        assertTrue("an unsent check-in must be marked pending", pending.pending)
         assertTrue("checkIn returned while offline", pendingCheckIn.isActive)
 
         db.enableNetwork().await()
         step("check-in sent once online") { pendingCheckIn.await() }
+      } finally {
+        db.enableNetwork().await()
+        emissions.cancel()
+      }
+    }
+  }
+
+  @Test
+  fun observeCheckIns_marksAManualCheckInPendingUntilTheServerConfirmsIt() = emulatorTest {
+    signIn(manager)
+    coroutineScope {
+      val emissions = repository.observeCheckIns(eventId, MISSION_ID).produceIn(this)
+      try {
+        assertEquals(emptyList<CheckIn>(), emissions.receive())
+        db.disableNetwork().await()
+        val pendingCheckIn =
+            async(start = CoroutineStart.UNDISPATCHED) { checkIn(volunteer, CheckInMethod.MANAGER) }
+
+        assertTrue(emissions.receiveUntil { it.isNotEmpty() }.single().pending)
+
+        db.enableNetwork().await()
+        step("check-in sent once online") { pendingCheckIn.await() }
+        // Only its metadata changes when the server confirms it, which must still be emitted.
+        val confirmed = emissions.receiveUntil { list -> list.none { it.pending } }.single()
+        assertEquals(CheckInMethod.MANAGER, confirmed.method)
+        assertEquals(manager.uid, confirmed.checkedInBy)
       } finally {
         db.enableNetwork().await()
         emissions.cancel()

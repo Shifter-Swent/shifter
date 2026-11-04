@@ -32,4 +32,20 @@ class ShifterMapTest {
 
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
   }
+
+  // The picker's behaviour is covered over a stand-in map by LocationPickerTest; this only checks
+  // that it draws the real one.
+  @Test
+  fun locationPicker_drawsTheRealMap() {
+    compose.setContent {
+      LocationPicker(
+          selected = GeoPosition(46.5191, 6.5668),
+          onSelect = {},
+          modifier = Modifier.fillMaxSize(),
+      )
+    }
+
+    compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
+    compose.onNodeWithTag(LocationPickerTestTags.SELECTED).assertIsDisplayed()
+  }
 }
