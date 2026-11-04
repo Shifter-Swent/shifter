@@ -1,6 +1,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+
 /**
  * In-memory [MissionRepository] for unit tests: ids are assigned in creation order, and setting
  * [failure] makes every call throw it, to exercise error handling. Like the real repository, it
@@ -8,11 +16,15 @@ package com.swent.shifter.model.mission
  */
 class FakeMissionRepository : MissionRepository {
 
-  private val missions = mutableListOf<Mission>()
+  /** A flow, so that each write reaches the observers like a Firestore listener. */
+  private val state = MutableStateFlow<List<Mission>>(emptyList())
+
+  private val missions: List<Mission>
+    get() = state.value
 
   /** Every mission created so far, in creation order. */
   val created: List<Mission>
-    get() = missions.toList()
+    get() = missions
 
   var failure: Exception? = null
 
@@ -27,7 +39,7 @@ class FakeMissionRepository : MissionRepository {
     }
     missions.firstOrNull { mission.conflictsWith(it) }?.let { throw MissionOverlapException(it) }
     val stored = mission.copy(id = "mission-${missions.size + 1}")
-    missions += stored
+    state.update { it + stored }
     return stored
   }
 
@@ -49,7 +61,14 @@ class FakeMissionRepository : MissionRepository {
 
   override suspend fun getMissionsAssignedTo(userId: String): List<Mission> {
     failure?.let { throw it }
-    return missions.filter { userId in it.assigneeIds }.sortedBy { it.startAt }
+    return missions.assignedTo(userId)
+  }
+
+  override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> = flow {
+    failure?.let { throw it }
+    // A change to someone else's missions leaves the list as is: not emitted, like a Firestore
+    // listener that only sees its own query.
+    emitAll(state.map { it.assignedTo(userId) }.distinctUntilChanged())
   }
 
   override suspend fun updateAssignees(
@@ -67,6 +86,13 @@ class FakeMissionRepository : MissionRepository {
     require(assigneeIds.size <= mission.volunteersNeeded) {
       "A mission needing ${mission.volunteersNeeded} volunteers cannot have ${assigneeIds.size} assignees"
     }
-    missions[index] = mission.copy(assigneeIds = assigneeIds)
+    state.update { all ->
+      all.toMutableList().also { it[index] = mission.copy(assigneeIds = assigneeIds) }
+    }
   }
+
+  private fun List<Mission>.assignedTo(userId: String) = filter {
+    userId in it.assigneeIds
+  }
+      .sortedBy { it.startAt }
 }

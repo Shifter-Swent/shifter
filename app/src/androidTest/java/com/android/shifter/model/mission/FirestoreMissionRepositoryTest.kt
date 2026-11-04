@@ -13,6 +13,8 @@ import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -317,6 +319,56 @@ class FirestoreMissionRepositoryTest {
 
     assertTrue(
         "listing another user's missions must be denied, but was: $failure",
+        failure is MissionRepositoryException.PermissionDenied,
+    )
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_emitsTheUsersMissionsEarliestFirst() = emulatorTest {
+    val uid = signedInUid()
+    val firstEvent = newEvent()
+    val secondEvent = newEvent()
+    val late = create(assignedMission(firstEvent, startHour = 15, uid))
+    val early = create(assignedMission(secondEvent, startHour = 9, "someone-else", uid))
+    create(assignedMission(firstEvent, startHour = 12, "someone-else"))
+
+    val emitted = repository.observeMissionsAssignedTo(uid).first()
+
+    assertEquals(listOf(early, late), emitted)
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_emitsAgainWhenAMissionIsAssigned() = emulatorTest {
+    val uid = signedInUid()
+    val eventId = newEvent()
+    val mission = create(assignedMission(eventId, startHour = 9, "someone-else"))
+
+    // Assigns the user once the listener has emitted their (empty) missions, then waits for the
+    // listener to see the assignment.
+    val emitted =
+        repository
+            .observeMissionsAssignedTo(uid)
+            .onEach {
+              if (it.isEmpty()) repository.updateAssignees(eventId, mission.id, listOf(uid))
+            }
+            .first { it.isNotEmpty() }
+
+    assertEquals(listOf(mission.copy(assigneeIds = listOf(uid))), emitted)
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_isDeniedForTheMissionsOfAnotherUser() = emulatorTest {
+    val other = "someone-else-" + UUID.randomUUID()
+    create(assignedMission(newEvent(), startHour = 9, other))
+
+    // Collects until the flow ends: the listener may first emit the mission this client just wrote,
+    // from its local cache, before the server's refusal closes the flow.
+    val failure = runCatching {
+      repository.observeMissionsAssignedTo(other).collect {}
+    }.exceptionOrNull()
+
+    assertTrue(
+        "listening to another user's missions must be denied, but was: $failure",
         failure is MissionRepositoryException.PermissionDenied,
     )
   }
