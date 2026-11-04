@@ -31,7 +31,6 @@ import com.swent.shifter.ui.events.SampleMyEvents
 import com.swent.shifter.ui.events.components.EventCardAction
 import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
-import com.swent.shifter.ui.events.components.SwitchViewButton
 import com.swent.shifter.ui.theme.ShifterTheme
 
 /** [OrgaEventsContent] driven by [viewModel], which owns the cards and the selected tab. */
@@ -41,7 +40,6 @@ fun OrgaEventsScreen(
     avatarInitial: String,
     onManageEvent: (eventId: String) -> Unit,
     onCreateEventClick: () -> Unit,
-    onVolunteerViewClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
   val state by viewModel.uiState.collectAsState()
@@ -51,7 +49,6 @@ fun OrgaEventsScreen(
       onTabSelected = viewModel::selectTab,
       onManageEvent = onManageEvent,
       onCreateEventClick = onCreateEventClick,
-      onVolunteerViewClick = onVolunteerViewClick,
       onAvatarClick = onAvatarClick,
   )
 }
@@ -64,7 +61,6 @@ fun OrgaEventsContent(
     onTabSelected: (EventTab) -> Unit,
     onManageEvent: (eventId: String) -> Unit,
     onCreateEventClick: () -> Unit,
-    onVolunteerViewClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
   MyEventsLayout(
@@ -78,12 +74,6 @@ fun OrgaEventsContent(
       },
       modifier = Modifier.testTag(MyEventsTestTags.ORGANIZER_SCREEN),
   ) {
-    // Mirrors the staff screen's "Organizer View" button, so the organizer can go back.
-    SwitchViewButton(
-        label = stringResource(R.string.my_events_volunteer_view),
-        testTag = MyEventsTestTags.VOLUNTEER_VIEW_BUTTON,
-        onClick = onVolunteerViewClick,
-    )
     CreateEventButton(onCreateEventClick)
   }
 }
@@ -129,7 +119,6 @@ private fun OrgaEventsContentPreview() {
         onTabSelected = {},
         onManageEvent = {},
         onCreateEventClick = {},
-        onVolunteerViewClick = {},
         onAvatarClick = {},
     )
   }

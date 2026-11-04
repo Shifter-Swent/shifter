@@ -20,6 +20,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,15 +35,27 @@ data class AuthUIState(
     val errorMsg: String? = null,
     /** One-shot event: set on a successful sign-in, reset once the screen has navigated. */
     val signedIn: Boolean = false,
+    /** The mode to enter once [signedIn]: the one saved on the profile. */
+    val mode: UserMode? = null,
+    /** Signed in with a profile that has no mode yet: the user must choose one to go on. */
+    val choosingMode: Boolean = false,
 )
 
-/** Signs the user in with Google, then makes sure their Firestore profile exists. */
+/**
+ * Signs the user in with Google, then makes sure their Firestore profile exists and has a mode,
+ * asking for it on the first sign-in. With a session restored at launch, it skips Google and only
+ * reads the mode to enter.
+ */
 class SignInViewModel(
     private val repository: AuthRepository,
     private val userRepository: UserRepository,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
+
+  init {
+    repository.currentUser()?.let { resumeSession(it) }
+  }
 
   /** Clears the current authentication error. */
   fun clearErrorMsg() {
@@ -95,22 +108,75 @@ class SignInViewModel(
    * a failure signs the user out again: otherwise the next launch would skip this screen.
    */
   private suspend fun createProfile(user: AuthUser) {
-    try {
-      userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
-    } catch (e: CancellationException) {
-      signOutWithoutProfile()
-      _uiState.update { it.copy(isLoading = false) }
-      throw e
-    } catch (e: Exception) {
-      val reason = e.localizedMessage ?: UNKNOWN_ERROR
-      if (signOutWithoutProfile()) {
-        showError("Could not load your profile: $reason")
-      } else {
-        showError("Could not load your profile ($reason) and could not sign you out")
+    val profile =
+        try {
+          userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+        } catch (e: CancellationException) {
+          signOutWithoutProfile()
+          _uiState.update { it.copy(isLoading = false) }
+          throw e
+        } catch (e: Exception) {
+          val reason = e.localizedMessage ?: UNKNOWN_ERROR
+          if (signOutWithoutProfile()) {
+            showError("Could not load your profile: $reason")
+          } else {
+            showError("Could not load your profile ($reason) and could not sign you out")
+          }
+          return
+        }
+    _uiState.value =
+        if (profile.mode == null) AuthUIState(user = user, choosingMode = true)
+        else AuthUIState(user = user, signedIn = true, mode = profile.mode)
+  }
+
+  /**
+   * Saves [mode] as the signed-in user's choice, then raises the sign-in event. The choice is
+   * final, so a failure leaves the user on the choice to try again.
+   */
+  fun chooseMode(mode: UserMode) {
+    val state = _uiState.value
+    val user = state.user
+    if (state.isLoading || !state.choosingMode || user == null) return
+
+    viewModelScope.launch {
+      _uiState.update { it.copy(isLoading = true, errorMsg = null) }
+      try {
+        userRepository.chooseMode(user.uid, mode)
+      } catch (e: CancellationException) {
+        _uiState.update { it.copy(isLoading = false) }
+        throw e
+      } catch (e: Exception) {
+        showError("Could not save your mode: ${e.localizedMessage ?: UNKNOWN_ERROR}")
+        return@launch
       }
-      return
+      _uiState.value = AuthUIState(user = user, signedIn = true, mode = mode)
     }
-    _uiState.value = AuthUIState(isLoading = false, user = user, signedIn = true)
+  }
+
+  /**
+   * Enters the mode saved on the profile of [user], signed in since an earlier launch. The profile
+   * is read from the cache when offline. When it cannot be read at all, the user is not signed out:
+   * they enter Volunteer mode, as before modes were saved, rather than lose their offline data.
+   */
+  private fun resumeSession(user: AuthUser) {
+    _uiState.value = AuthUIState(isLoading = true, user = user)
+    viewModelScope.launch {
+      val profile =
+          try {
+            userRepository.getUser(user.uid)
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            Log.w(TAG, "Could not read the profile at launch", e)
+            null
+          }
+      _uiState.value =
+          when {
+            profile == null -> AuthUIState(user = user, signedIn = true, mode = UserMode.VOLUNTEER)
+            profile.mode == null -> AuthUIState(user = user, choosingMode = true)
+            else -> AuthUIState(user = user, signedIn = true, mode = profile.mode)
+          }
+    }
   }
 
   /** Closes the session left without a profile. Returns `false`, after logging, if it could not. */

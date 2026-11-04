@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Mode choice, after the first sign-in -->
+    <string name="sign_in_mode_title">How will you use Shifter?</string>
+    <string name="sign_in_mode_volunteer">Volunteer</string>
+    <string name="sign_in_mode_organizer">Organizer</string>
+    <string name="sign_in_mode_final">You cannot change it later.</string>
+</resources>

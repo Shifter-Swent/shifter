@@ -17,6 +17,8 @@ import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -41,6 +43,7 @@ class SignInViewModelTest {
   private val repository = FakeAuthRepository()
   private val userRepository = FakeUserRepository()
   private val viewModel = SignInViewModel(repository, userRepository)
+  private val ada = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
 
   // Set up the mock context to return a default web client ID for testing
   init {
@@ -90,6 +93,8 @@ class SignInViewModelTest {
   @Test
   fun signIn_success_raisesSignedInEventUntilHandled() {
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
+    userRepository.users["uid-1"] =
+        User("uid-1", "Ada", "ada@example.com", mode = UserMode.VOLUNTEER)
     repository.signInResult = Result.success(user)
     stubCredentialManager(mockk<Credential>())
 
@@ -302,7 +307,69 @@ class SignInViewModelTest {
     val profile = userRepository.users.getValue("uid-1")
     assertEquals("", profile.displayName)
     assertEquals("", profile.email)
+    assertTrue(viewModel.uiState.value.choosingMode)
+  }
+
+  @Test
+  fun signIn_profileWithMode_signsInToThatMode() {
+    userRepository.users["uid-1"] =
+        User("uid-1", "Ada", "ada@example.com", mode = UserMode.ORGANIZER)
+    signInAsAda()
+
     assertTrue(viewModel.uiState.value.signedIn)
+    assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.mode)
+    assertFalse(viewModel.uiState.value.choosingMode)
+  }
+
+  @Test
+  fun signIn_firstSignIn_asksForTheModeWithoutSigningIn() {
+    signInAsAda()
+
+    assertTrue(viewModel.uiState.value.choosingMode)
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertEquals("uid-1", viewModel.uiState.value.user?.uid)
+  }
+
+  @Test
+  fun chooseMode_savesItAndSignsInToIt() {
+    signInAsAda()
+
+    viewModel.chooseMode(UserMode.ORGANIZER)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(UserMode.ORGANIZER, userRepository.users.getValue("uid-1").mode)
+    assertTrue(viewModel.uiState.value.signedIn)
+    assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.mode)
+    assertFalse(viewModel.uiState.value.choosingMode)
+  }
+
+  @Test
+  fun chooseMode_withFailure_showsErrorAndKeepsTheChoice() {
+    signInAsAda()
+    userRepository.failure = UserRepositoryException.Unavailable()
+
+    viewModel.chooseMode(UserMode.VOLUNTEER)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertEquals(
+        "Could not save your mode: The user profile service is unavailable",
+        viewModel.uiState.value.errorMsg,
+    )
+    assertTrue(viewModel.uiState.value.choosingMode)
+    assertFalse(viewModel.uiState.value.signedIn)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun chooseMode_beforeSignIn_doesNothing() {
+    userRepository.users["uid-1"] = User("uid-1", "Ada", "ada@example.com")
+
+    viewModel.chooseMode(UserMode.ORGANIZER)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertNull(userRepository.users.getValue("uid-1").mode)
+    assertFalse(viewModel.uiState.value.signedIn)
   }
 
   @Test
@@ -380,6 +447,51 @@ class SignInViewModelTest {
         viewModel.uiState.value.errorMsg,
     )
     assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun launch_withSavedMode_entersItWithoutGoogle() {
+    userRepository.users["uid-1"] =
+        User("uid-1", "Ada", "ada@example.com", mode = UserMode.ORGANIZER)
+    val resumed = SignInViewModel(FakeAuthRepository(ada), userRepository)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertTrue(resumed.uiState.value.signedIn)
+    assertEquals(UserMode.ORGANIZER, resumed.uiState.value.mode)
+    coVerify(exactly = 0) { credentialManager.getCredential(any(), any<GetCredentialRequest>()) }
+  }
+
+  @Test
+  fun launch_withoutMode_asksForIt() {
+    userRepository.users["uid-1"] = User("uid-1", "Ada", "ada@example.com")
+    val resumed = SignInViewModel(FakeAuthRepository(ada), userRepository)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    assertTrue(resumed.uiState.value.choosingMode)
+    assertFalse(resumed.uiState.value.signedIn)
+  }
+
+  @Test
+  fun launch_withUnreadableProfile_entersVolunteerWithoutSigningOut() {
+    val auth = FakeAuthRepository(ada)
+    userRepository.failure = UserRepositoryException.Unavailable()
+    val resumed = SignInViewModel(auth, userRepository)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+
+    // Offline without a cached profile: the session and its offline data are kept.
+    assertTrue(resumed.uiState.value.signedIn)
+    assertEquals(UserMode.VOLUNTEER, resumed.uiState.value.mode)
+    assertEquals(0, auth.signOutCalls)
+    assertNull(resumed.uiState.value.errorMsg)
+  }
+
+  /** Signs in as Ada (`uid-1`) and waits for the result. */
+  private fun signInAsAda() {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    stubCredentialManager(mockk<Credential>())
+    viewModel.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
   }
 
   // Helper method to stub the CredentialManager to return a specific credential

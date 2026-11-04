@@ -40,6 +40,7 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
@@ -103,9 +104,7 @@ class ShifterNavHostTest {
 
   @Test
   fun signedOut_startsOnSignIn() {
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = false, repositories = repositories) }
-    }
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(repositories = repositories) } }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
   }
@@ -116,6 +115,27 @@ class ShifterNavHostTest {
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun launch_withSavedOrganizerMode_opensTheOrganizerEvents() {
+    signInAndShowApp(mode = UserMode.ORGANIZER)
+
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun launch_withoutMode_asksForItThenOpensItsEvents() {
+    val user = signIn()
+    runBlocking { repositories.userRepository.getOrCreateUser(user.uid, "Ada", "") }
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
+    composeTestRule.setContent { ShifterTheme { ShifterNavHost(repositories = repositories) } }
+
+    // Left on the choice at a previous launch, the user is asked again rather than sent anywhere.
+    waitForNode(SignInScreenTestTags.MODE_ORGANIZER)
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE_ORGANIZER).performClick()
+
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
   }
 
   @Test
@@ -146,16 +166,6 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun sessionAlreadyGoneAtLaunch_returnsToSignIn() {
-    // Started as signed in, but the session ended before the app listened to it.
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
-
-    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
-  }
-
-  @Test
   fun sessionEndingOutsideTheApp_returnsToSignIn() {
     signInAndShowApp()
 
@@ -167,9 +177,7 @@ class ShifterNavHostTest {
 
   @Test
   fun sessionEndingOutsideTheApp_fromOrganizerMode_returnsToSignIn() {
-    signInAndShowApp()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+    signInAndShowApp(mode = UserMode.ORGANIZER)
 
     AuthEmulator.auth.signOut()
 
@@ -215,9 +223,7 @@ class ShifterNavHostTest {
   fun joinEvent_appliesToTheTeamPicked() {
     val event = createEvent(signIn())
     val volunteer = signIn()
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    showApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
@@ -250,9 +256,7 @@ class ShifterNavHostTest {
     val event = createEvent(signIn())
     val volunteer = signIn()
     applyTo(event, volunteer)
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    showApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
 
     composeTestRule
@@ -282,9 +286,7 @@ class ShifterNavHostTest {
   @Test
   fun joinEvent_unknownCodeShowsAnError() {
     signIn()
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    showApp()
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
 
     composeTestRule
@@ -297,20 +299,8 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun organizerView_switchesModesBothWays() {
-    signInAndShowApp()
-
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
-
-    composeTestRule.onNodeWithTag(MyEventsTestTags.VOLUNTEER_VIEW_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
-  }
-
-  @Test
   fun organizerEvents_avatarOpensSettingsAndBackReturns() {
-    signInAndShowApp()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    signInAndShowApp(mode = UserMode.ORGANIZER)
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
@@ -321,8 +311,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvents_createEventOpensTheFormAndBackReturns() {
-    signInAndShowApp()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    signInAndShowApp(mode = UserMode.ORGANIZER)
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
     composeTestRule.onNodeWithTag(CreateEventScreenTestTags.TITLE_FIELD).assertIsDisplayed()
@@ -473,11 +462,10 @@ class ShifterNavHostTest {
    */
   @Test
   fun teamsCreatedByTheOrganizer_areTheOnesAVolunteerAppliesTo() {
-    val navController = signInAndShowApp(name = "Olga")
+    val navController = signInAndShowApp(name = "Olga", mode = UserMode.ORGANIZER)
     val organizer = checkNotNull(repositories.authRepository.currentUser())
 
     // ── The organizer creates the event, then its teams, through the forms ──
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
     val event = submitValidEventForm(organizer)
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.SECTION_TITLE).assertIsDisplayed()
@@ -536,8 +524,6 @@ class ShifterNavHostTest {
   fun eventsLists_showTheInitialOfTheSignedInUser() {
     signInAndShowApp(name = "grace")
 
-    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).assertTextEquals("G")
   }
 
@@ -598,8 +584,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvent_opensOnOverviewAndReachesEveryTab() {
-    val nav = setAppAndGetNavigation()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    val nav = setAppAndGetNavigation(UserMode.ORGANIZER)
 
     composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
 
@@ -610,8 +595,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvent_addMissionOpensTheFormAndBackReturns() {
-    val nav = setAppAndGetNavigation()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    val nav = setAppAndGetNavigation(UserMode.ORGANIZER)
     composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
 
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
@@ -627,10 +611,8 @@ class ShifterNavHostTest {
   fun addMission_savesTheMissionInTheEventAndReturnsToTheOverview() {
     // The form is only shown to the organizer, so the app keeps their session.
     val event = createEvent(signIn())
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    saveMode(UserMode.ORGANIZER)
+    showApp(events = MyEventsTestTags.ORGANIZER_SCREEN)
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
@@ -684,8 +666,7 @@ class ShifterNavHostTest {
 
   @Test
   fun organizerEvent_peopleTabOpensThePeopleScreenAndBackReturns() {
-    val nav = setAppAndGetNavigation()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    val nav = setAppAndGetNavigation(UserMode.ORGANIZER)
     composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
 
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
@@ -712,18 +693,8 @@ class ShifterNavHostTest {
     // Created by the acceptance, and deleted before the event like the request.
     createdPaths.add(0, "eventParticipants/${event.id}")
     signIn(organizerAccount)
-    lateinit var navController: NavHostController
-    composeTestRule.setContent {
-      navController = rememberNavController()
-      ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = true,
-            repositories = repositories,
-            navController = navController,
-        )
-      }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    saveMode(UserMode.ORGANIZER)
+    val navController = showApp(events = MyEventsTestTags.ORGANIZER_SCREEN)
     composeTestRule.runOnUiThread {
       NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
     }
@@ -752,9 +723,7 @@ class ShifterNavHostTest {
     val event = createEvent(organizer)
     val volunteer = signIn()
     applyTo(event, volunteer)
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    showApp()
 
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
@@ -827,9 +796,7 @@ class ShifterNavHostTest {
   fun staffEvents_reloadWhenComingBackToTheList() {
     val event = createEvent(signIn())
     val volunteer = signIn()
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    showApp()
     // Loaded once with no request yet.
     waitForNode(MyEventsTestTags.EMPTY_STATE)
 
@@ -845,10 +812,8 @@ class ShifterNavHostTest {
   @Test
   fun organizerEvents_showTheOrganizedEventAndManageOpensIt() {
     val event = createEvent(signIn())
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    saveMode(UserMode.ORGANIZER)
+    showApp(events = MyEventsTestTags.ORGANIZER_SCREEN)
 
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
@@ -895,18 +860,8 @@ class ShifterNavHostTest {
 
   /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */
   private fun openOrganizerEvent(event: Event) {
-    lateinit var navController: NavHostController
-    composeTestRule.setContent {
-      navController = rememberNavController()
-      ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = true,
-            repositories = repositories,
-            navController = navController,
-        )
-      }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    saveMode(UserMode.ORGANIZER)
+    val navController = showApp(events = MyEventsTestTags.ORGANIZER_SCREEN)
     composeTestRule.runOnUiThread {
       NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
     }
@@ -953,10 +908,8 @@ class ShifterNavHostTest {
   /** Signs in and opens the creation form; returns the signed-in organizer. */
   private fun openCreateEventForm(): AuthUser {
     val organizer = signIn()
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    saveMode(UserMode.ORGANIZER)
+    showApp(events = MyEventsTestTags.ORGANIZER_SCREEN)
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
     return organizer
   }
@@ -1023,7 +976,8 @@ class ShifterNavHostTest {
    * Shows the signed-in app and returns its navigation, to open an event: the lists have no cards
    * until an events ViewModel loads them.
    */
-  private fun setAppAndGetNavigation(): NavigationActions = NavigationActions(signInAndShowApp())
+  private fun setAppAndGetNavigation(mode: UserMode? = null): NavigationActions =
+      NavigationActions(signInAndShowApp(mode = mode))
 
   /** The real People screen is shown, with its own bottom bar on the People tab. */
   private fun assertPeopleScreenShown() {
@@ -1078,25 +1032,33 @@ class ShifterNavHostTest {
   }
 
   /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
-  private fun signInAndShowApp(name: String = "Ada"): NavHostController {
+  /**
+   * Signs in a fresh account named [name], saves [mode] on its profile when given, and shows the
+   * app on the events of that mode. Without a mode the account has no profile, so the app falls
+   * back to the volunteer events.
+   */
+  private fun signInAndShowApp(name: String = "Ada", mode: UserMode? = null): NavHostController {
+    signIn(googleCredential(name))
+    mode?.let { saveMode(it) }
+    return showApp(
+        events =
+            if (mode == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
+            else MyEventsTestTags.STAFF_SCREEN
+    )
+  }
+
+  /** Creates the profile of the signed-in user with [mode], as the choice after sign-in does. */
+  private fun saveMode(mode: UserMode) {
+    val user = checkNotNull(repositories.authRepository.currentUser())
     runBlocking {
-      AuthEmulator.auth.signInForFirestore {
-        repositories.authRepository.signInWithGoogle(googleCredential(name)).getOrThrow()
-      }
+      repositories.userRepository.getOrCreateUser(
+          user.uid,
+          user.displayName.orEmpty(),
+          user.email.orEmpty(),
+      )
+      repositories.userRepository.chooseMode(user.uid, mode)
     }
-    lateinit var navController: NavHostController
-    composeTestRule.setContent {
-      navController = rememberNavController()
-      ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = true,
-            repositories = repositories,
-            navController = navController,
-        )
-      }
-    }
-    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
-    return navController
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
   }
 
   /**
@@ -1177,12 +1139,21 @@ class ShifterNavHostTest {
     return event
   }
 
-  /** Shows the app on the volunteer's events, on [provider] when it is not the real one. */
-  private fun showApp(provider: RepositoryProvider = repositories) {
+  /**
+   * Shows the app, on [provider] when it is not the real one, and waits for [events], the list the
+   * signed-in user's mode opens on.
+   */
+  private fun showApp(
+      provider: RepositoryProvider = repositories,
+      events: String = MyEventsTestTags.STAFF_SCREEN,
+  ): NavHostController {
+    lateinit var navController: NavHostController
     composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = provider) }
+      navController = rememberNavController()
+      ShifterTheme { ShifterNavHost(repositories = provider, navController = navController) }
     }
-    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    waitForNode(events)
+    return navController
   }
 
   /** Taps the card of [event], which opens it on its Overview. */

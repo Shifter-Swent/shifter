@@ -28,7 +28,6 @@ import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.components.EventCardAction
 import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
-import com.swent.shifter.ui.events.components.SwitchViewButton
 import com.swent.shifter.ui.theme.ShifterTheme
 
 /**
@@ -40,7 +39,6 @@ fun StaffEventsScreen(
     viewModel: StaffEventsViewModel,
     avatarInitial: String,
     onOpenEvent: (eventId: String) -> Unit,
-    onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
@@ -51,7 +49,6 @@ fun StaffEventsScreen(
       onTabSelected = viewModel::selectTab,
       onWithdraw = viewModel::withdraw,
       onOpenEvent = onOpenEvent,
-      onOrganizerViewClick = onOrganizerViewClick,
       onScanQrClick = onScanQrClick,
       onAvatarClick = onAvatarClick,
   )
@@ -70,7 +67,6 @@ fun StaffEventsContent(
     onTabSelected: (EventTab) -> Unit,
     onWithdraw: (eventId: String) -> Unit,
     onOpenEvent: (eventId: String) -> Unit,
-    onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
@@ -90,11 +86,6 @@ fun StaffEventsContent(
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
   ) {
-    SwitchViewButton(
-        label = stringResource(R.string.my_events_organizer_view),
-        testTag = MyEventsTestTags.ORGANIZER_VIEW_BUTTON,
-        onClick = onOrganizerViewClick,
-    )
     ScanQrButton(onScanQrClick)
   }
 }
@@ -131,7 +122,6 @@ private fun StaffEventsContentPreview() {
         onTabSelected = {},
         onWithdraw = {},
         onOpenEvent = {},
-        onOrganizerViewClick = {},
         onScanQrClick = {},
         onAvatarClick = {},
     )

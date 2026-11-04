@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import com.swent.shifter.model.user.UserMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -25,11 +26,9 @@ class NavigationRoutesTest {
       )
 
   @Test
-  fun startApp_picksTheRightApp() {
-    assertEquals(SignedOut, startApp(isSignedIn = false, wasOrganizer = false))
-    assertEquals(SignedOut, startApp(isSignedIn = false, wasOrganizer = true))
-    assertEquals(Volunteer, startApp(isSignedIn = true, wasOrganizer = false))
-    assertEquals(Organizer, startApp(isSignedIn = true, wasOrganizer = true))
+  fun appOf_entersTheAppOfTheMode() {
+    assertEquals(Volunteer, appOf(UserMode.VOLUNTEER))
+    assertEquals(Organizer, appOf(UserMode.ORGANIZER))
   }
 
   @Test

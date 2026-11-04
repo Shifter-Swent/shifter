@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.credentials.CredentialManager
@@ -23,6 +24,7 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.model.user.USERS_COLLECTION
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
@@ -58,6 +60,7 @@ class SignInScreenTest {
       )
 
   private var signedInCalls = 0
+  private var signedInMode: UserMode? = null
 
   @Before
   fun setUp() {
@@ -126,12 +129,24 @@ class SignInScreenTest {
     }
 
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
+    // A first sign-in asks for the mode before navigating.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(SignInScreenTestTags.MODE_ORGANIZER)
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    assertEquals(0, signedInCalls)
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE_ORGANIZER).performClick()
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedInCalls > 0 }
 
+    assertEquals(UserMode.ORGANIZER, signedInMode)
     assertEquals(email, AuthEmulator.auth.currentUser?.email)
     assertEquals(email, viewModel.uiState.value.user?.email)
     val uid = AuthEmulator.auth.currentUser!!.uid
-    assertEquals(DISPLAY_NAME, runBlocking { userRepository.getUser(uid) }?.displayName)
+    val profile = runBlocking { userRepository.getUser(uid) }
+    assertEquals(DISPLAY_NAME, profile?.displayName)
+    assertEquals(UserMode.ORGANIZER, profile?.mode)
 
     // Recreating the screen, as on a rotation, must not navigate a second time.
     restorationTester.emulateSavedInstanceStateRestore()
@@ -139,6 +154,18 @@ class SignInScreenTest {
 
     assertEquals(1, signedInCalls)
     assertFalse(viewModel.uiState.value.signedIn)
+  }
+
+  @Test
+  fun modeChoice_reportsTheModePicked() {
+    val picked = mutableListOf<UserMode>()
+    composeTestRule.setContent { ShifterTheme { ModeChoice(onChoose = { picked += it }) } }
+
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE_TITLE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE_VOLUNTEER).performClick()
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE_ORGANIZER).performClick()
+
+    assertEquals(listOf(UserMode.VOLUNTEER, UserMode.ORGANIZER), picked)
   }
 
   private fun setSignInContent(credentialManager: CredentialManager) {
@@ -151,7 +178,10 @@ class SignInScreenTest {
       SignInScreen(
           authViewModel = viewModel,
           credentialManager = credentialManager,
-          onSignedIn = { signedInCalls++ },
+          onSignedIn = { mode ->
+            signedInCalls++
+            signedInMode = mode
+          },
       )
     }
   }

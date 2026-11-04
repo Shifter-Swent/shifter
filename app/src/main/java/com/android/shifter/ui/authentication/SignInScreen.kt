@@ -55,13 +55,16 @@ object SignInScreenTestTags {
   const val LOGIN_BUTTON = "LOGIN_BUTTON"
   const val LOGIN_TITLE = "LOGIN_TITLE"
   const val LOADING_INDICATOR = "LOADING_INDICATOR"
+  const val MODE_TITLE = "MODE_TITLE"
+  const val MODE_VOLUNTEER = "MODE_VOLUNTEER"
+  const val MODE_ORGANIZER = "MODE_ORGANIZER"
 }
 
 @Composable
 fun SignInScreen(
     authViewModel: SignInViewModel,
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
-    onSignedIn: () -> Unit = {},
+    onSignedIn: (UserMode) -> Unit = {},
 ) {
   val context = LocalContext.current
   val colors = MaterialTheme.colorScheme
@@ -75,11 +78,11 @@ fun SignInScreen(
     }
   }
 
-  // Navigate to MyEvents screen on successful login
+  // Navigate to the My Events of the user's mode on successful login
   LaunchedEffect(uiState.signedIn) {
-    if (uiState.signedIn) {
-      Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
-      onSignedIn()
+    val mode = uiState.mode
+    if (uiState.signedIn && mode != null) {
+      onSignedIn(mode)
       authViewModel.onSignedInHandled()
     }
   }
@@ -104,20 +107,20 @@ fun SignInScreen(
           modifier = Modifier.size(48.dp).testTag(SignInScreenTestTags.LOADING_INDICATOR),
           color = colors.primary,
       )
+    } else if (uiState.choosingMode) {
+      ModeChoice(onChoose = authViewModel::chooseMode)
     } else {
       GoogleSignInButton(onSignIn = { authViewModel.signIn(context, credentialManager) })
+      Spacer(modifier = Modifier.height(18.dp))
+      Text(
+          text = "Create your account or sign in\nwith your Google account.",
+          color = colors.secondary,
+          fontSize = 14.sp,
+          lineHeight = 22.sp,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.testTag(SignInScreenTestTags.LOGIN_TITLE),
+      )
     }
-
-    Spacer(modifier = Modifier.height(18.dp))
-
-    Text(
-        text = "Create your account or sign in\nwith your Google account.",
-        color = colors.secondary,
-        fontSize = 14.sp,
-        lineHeight = 22.sp,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.testTag(SignInScreenTestTags.LOGIN_TITLE),
-    )
   }
 }
 

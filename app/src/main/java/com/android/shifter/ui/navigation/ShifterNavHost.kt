@@ -84,7 +84,6 @@ import kotlinx.coroutines.flow.filter
 /**
  * The app's navigation graph.
  *
- * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
  * @param repositories The repositories the screens' ViewModels are built from. It has no default,
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
@@ -93,7 +92,6 @@ import kotlinx.coroutines.flow.filter
  */
 @Composable
 fun ShifterNavHost(
-    isSignedIn: Boolean,
     repositories: RepositoryProvider,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
@@ -110,21 +108,22 @@ fun ShifterNavHost(
   // Read on every load, so the lists follow the account signed in at that time.
   val currentUserId = { auth.currentUser()?.uid }
   val nav = rememberNavigationActions(navController)
-  val start = remember { startApp(isSignedIn, wasOrganizer = false) }
 
   // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
   // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
   // session already gone at launch. exitToSignIn does nothing when already on sign-in.
   LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
 
-  NavHost(navController, startDestination = start, modifier = modifier) {
+  // Sign-in always opens first: with a session restored at launch, it reads the user's mode and
+  // enters that mode's app (see SignInViewModel).
+  NavHost(navController, startDestination = SignedOut, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
       composable<SignedOut.SignIn> {
         SignInScreen(
             authViewModel =
                 viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
             credentialManager = credentialManager,
-            onSignedIn = { nav.enterApp(Volunteer) },
+            onSignedIn = { mode -> nav.enterApp(appOf(mode)) },
         )
       }
     }
@@ -154,7 +153,6 @@ fun ShifterNavHost(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onOpenEvent = { eventId -> nav.enterEvent(VolunteerEvent(eventId)) },
-            onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
         )
@@ -282,7 +280,6 @@ fun ShifterNavHost(
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
-            onVolunteerViewClick = { nav.enterApp(Volunteer) },
             onAvatarClick = { nav.navigateTo(Organizer.ProfileSettings) },
         )
       }

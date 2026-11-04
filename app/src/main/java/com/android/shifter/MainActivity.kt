@@ -20,8 +20,6 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val repositories = RepositoryProviderFactory.production
-    // Firebase restores the previous session synchronously, so a returning user skips sign-in.
-    val isSignedIn = repositories.authRepository.currentUser() != null
     setContent {
       ShifterTheme {
         // A surface container using the 'background' color from the theme
@@ -29,7 +27,7 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
-          ShifterNavHost(isSignedIn = isSignedIn, repositories = repositories)
+          ShifterNavHost(repositories = repositories)
         }
       }
     }

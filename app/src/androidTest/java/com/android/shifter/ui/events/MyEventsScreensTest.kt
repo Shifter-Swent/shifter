@@ -23,7 +23,6 @@ class MyEventsScreen(semanticsProvider: SemanticsNodeInteractionsProvider) :
   val subtitle: KNode = onNode { hasTestTag(MyEventsTestTags.SUBTITLE) }
   val upcomingTab: KNode = onNode { hasTestTag(MyEventsTestTags.UPCOMING_TAB) }
   val pastTab: KNode = onNode { hasTestTag(MyEventsTestTags.PAST_TAB) }
-  val organizerViewButton: KNode = onNode { hasTestTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON) }
   val scanQrButton: KNode = onNode { hasTestTag(MyEventsTestTags.SCAN_QR_BUTTON) }
   val createEventButton: KNode = onNode { hasTestTag(MyEventsTestTags.CREATE_EVENT_BUTTON) }
 
@@ -34,7 +33,7 @@ class MyEventsScreen(semanticsProvider: SemanticsNodeInteractionsProvider) :
 
 /**
  * Runs both My Events screens on a device with the real [MyEventsViewModel], fed with the mock-up
- * events. Navigation is not involved: the screens only report the Organizer View click.
+ * events. Navigation is not involved: the screens only report the clicks.
  */
 @RunWith(AndroidJUnit4::class)
 class MyEventsScreensTest : TestCase() {
@@ -43,7 +42,6 @@ class MyEventsScreensTest : TestCase() {
 
   @Test
   fun staffScreen_showsItsEventsSwitchesTabsAndReportsActions() = run {
-    var organizerViewClicks = 0
     val withdrawn = mutableListOf<String>()
     val viewModel =
         StaffEventsViewModel(SampleMyEvents.staffLoader, EventWithdrawer { withdrawn += it })
@@ -53,7 +51,6 @@ class MyEventsScreensTest : TestCase() {
             viewModel = viewModel,
             avatarInitial = "J",
             onOpenEvent = {},
-            onOrganizerViewClick = { organizerViewClicks++ },
             onScanQrClick = {},
             onAvatarClick = {},
         )
@@ -81,10 +78,6 @@ class MyEventsScreensTest : TestCase() {
         card("winter-food-bank").assertIsDisplayed()
         card("beach-cleanup").assertDoesNotExist()
       }
-      step("Organizer View reports the click, navigation is left to the caller") {
-        organizerViewButton { performClick() }
-        assertEquals(1, organizerViewClicks)
-      }
     }
   }
 
@@ -100,7 +93,6 @@ class MyEventsScreensTest : TestCase() {
             avatarInitial = "J",
             onManageEvent = { managed += it },
             onCreateEventClick = { createClicks++ },
-            onVolunteerViewClick = {},
             onAvatarClick = {},
         )
       }
@@ -112,7 +104,6 @@ class MyEventsScreensTest : TestCase() {
         subtitle { assertTextEquals("Organizer View") }
         card("arts-festival").assertIsDisplayed()
         card("food-drive").assertIsDisplayed()
-        organizerViewButton { assertDoesNotExist() }
       }
       step("Past only shows ended events") {
         pastTab { performClick() }

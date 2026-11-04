@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import com.swent.shifter.model.user.UserMode
 import kotlinx.serialization.Serializable
 
 /*
@@ -326,12 +327,11 @@ sealed interface OrganizerEventScreen : Destination {
   }
 }
 
-/** Opens Organizer mode if the user was there last time, Volunteer mode otherwise. */
-fun startApp(isSignedIn: Boolean, wasOrganizer: Boolean): App =
-    when {
-      !isSignedIn -> SignedOut
-      wasOrganizer -> Organizer
-      else -> Volunteer
+/** The app a user of [mode] enters. */
+fun appOf(mode: UserMode): App =
+    when (mode) {
+      UserMode.VOLUNTEER -> Volunteer
+      UserMode.ORGANIZER -> Organizer
     }
 
 // ── Navigation actions ──────────────────────────────────────────────────────
@@ -342,7 +342,7 @@ fun rememberNavigationActions(navController: NavHostController): NavigationActio
 
 open class NavigationActions(private val navController: NavHostController) {
 
-  /** Clears the whole back stack: sign in, sign out, or switch between Volunteer and Organizer. */
+  /** Clears the whole back stack: sign in or sign out. */
   open fun enterApp(app: App) {
     navController.navigate(app) {
       popUpTo(navController.graph.id) { inclusive = true }

@@ -29,6 +29,7 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -81,8 +82,8 @@ class RecruitmentEndToEndTest {
   private val context: Context
     get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-  private val organizer = GoogleAccount("Olga")
-  private val volunteer = GoogleAccount("Victor")
+  private val organizer = GoogleAccount("Olga", UserMode.ORGANIZER)
+  private val volunteer = GoogleAccount("Victor", UserMode.VOLUNTEER)
 
   /** The account the picker answers with on the next sign-in. */
   private var pickedAccount: GoogleAccount? = null
@@ -119,7 +120,6 @@ class RecruitmentEndToEndTest {
     composeTestRule.setContent {
       ShifterTheme {
         ShifterNavHost(
-            isSignedIn = false,
             repositories = repositories,
             credentialManager = accountPicker,
         )
@@ -128,7 +128,6 @@ class RecruitmentEndToEndTest {
 
     // ── 1. The organizer creates the event and its team, and gets the join code ──
     val organizerId = signInAs(organizer)
-    click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
     click(MyEventsTestTags.CREATE_EVENT_BUTTON)
     fillAndSubmitEventForm()
 
@@ -189,7 +188,6 @@ class RecruitmentEndToEndTest {
 
     // ── 3. The organizer plans a mission for the team on the event's Overview ──
     signInAs(organizer)
-    click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
     waitForNode(MyEventsTestTags.eventAction(event.id))
     click(MyEventsTestTags.eventAction(event.id))
     waitForNode(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS)
@@ -264,15 +262,32 @@ class RecruitmentEndToEndTest {
   }
 
   /**
-   * Signs in through the sign-in screen, the picker answering with [account], and waits for the
-   * volunteer events every sign-in opens on. Returns the user's id and registers their profile for
-   * cleanup.
+   * Signs in through the sign-in screen, the picker answering with [account], choosing its mode on
+   * the first sign-in, and waits for the events of that mode. Returns the user's id and registers
+   * their profile for cleanup.
    */
   private fun signInAs(account: GoogleAccount): String {
     pickedAccount = account
     waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
     click(SignInScreenTestTags.LOGIN_BUTTON)
-    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    val events =
+        when (account.mode) {
+          UserMode.VOLUNTEER -> MyEventsTestTags.STAFF_SCREEN
+          UserMode.ORGANIZER -> MyEventsTestTags.ORGANIZER_SCREEN
+        }
+    // Only the first sign-in asks for the mode: later ones enter the saved one directly.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      exists(SignInScreenTestTags.MODE_TITLE) || exists(events)
+    }
+    if (exists(SignInScreenTestTags.MODE_TITLE)) {
+      click(
+          when (account.mode) {
+            UserMode.VOLUNTEER -> SignInScreenTestTags.MODE_VOLUNTEER
+            UserMode.ORGANIZER -> SignInScreenTestTags.MODE_ORGANIZER
+          }
+      )
+    }
+    waitForNode(events)
     val uid = checkNotNull(repositories.authRepository.currentUser()).uid
     if ("users/$uid" !in createdPaths) {
       createdPaths += "users/$uid"
@@ -379,10 +394,11 @@ class RecruitmentEndToEndTest {
   }
 
   private fun waitForNode(tag: String) {
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-    }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { exists(tag) }
   }
+
+  private fun exists(tag: String): Boolean =
+      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
   private fun textOf(node: SemanticsNodeInteraction): String =
       node.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text }
@@ -397,9 +413,9 @@ class RecruitmentEndToEndTest {
 
   /**
    * A Google account, the same person on every sign-in: the Auth emulator maps its fixed subject to
-   * the same Firebase user each time.
+   * the same Firebase user each time. Its owner uses Shifter in [mode].
    */
-  private class GoogleAccount(private val name: String) {
+  private class GoogleAccount(private val name: String, val mode: UserMode) {
     private val subject = "google-${UUID.randomUUID()}"
     private val email = "${name.lowercase()}-${UUID.randomUUID()}@example.com"
 
