@@ -41,7 +41,7 @@ private const val PICKER_ZOOM = 16f
  * tapped, and the [cameraPositionState] to open at. The picker draws a [ShifterMap] by default; a
  * test passes another, since a tap inside the native map cannot be made from a Compose test.
  */
-typealias PickerMap =
+internal typealias PickerMap =
     @Composable
     (
         markers: List<MapMarker>,
@@ -52,7 +52,9 @@ typealias PickerMap =
 /**
  * A map to pick a place on: tapping it calls [onSelect] with the point tapped, and the caller
  * passes it back as [selected], drawn as a marker. Tapping elsewhere moves it. It knows nothing
- * about events or missions, and keeps no state of its own but the camera.
+ * about events or missions, and keeps no state of its own but the camera. The caller keeps
+ * [selected] across configuration changes, in its ViewModel: held in a plain `remember`, it is lost
+ * on rotation, and `rememberSaveable` cannot save a [GeoPosition] without a `Saver`.
  *
  * The map opens on [selected], or else on [initialCenter], or else on the app's default place, and
  * is not moved afterwards: a later change of [selected] moves the marker, not the camera, so the
@@ -71,16 +73,30 @@ fun LocationPicker(
     onSelect: (GeoPosition) -> Unit,
     modifier: Modifier = Modifier,
     initialCenter: GeoPosition? = null,
-    map: PickerMap = { markers, onMapClick, cameraPositionState ->
-      ShifterMap(
-          markers = markers,
-          onMarkerClick = {},
-          modifier = Modifier.fillMaxSize(),
-          cameraPositionState = cameraPositionState,
-          onMapClick = onMapClick,
-          centerOnMarkerClick = false,
-      )
-    },
+) {
+  LocationPicker(selected, onSelect, modifier, initialCenter) {
+      markers,
+      onMapClick,
+      cameraPositionState ->
+    ShifterMap(
+        markers = markers,
+        onMarkerClick = {},
+        modifier = Modifier.fillMaxSize(),
+        cameraPositionState = cameraPositionState,
+        onMapClick = onMapClick,
+        centerOnMarkerClick = false,
+    )
+  }
+}
+
+/** The [LocationPicker] drawing [map], which a test replaces with a stand-in it can tap. */
+@Composable
+internal fun LocationPicker(
+    selected: GeoPosition?,
+    onSelect: (GeoPosition) -> Unit,
+    modifier: Modifier,
+    initialCenter: GeoPosition?,
+    map: PickerMap,
 ) {
   val cameraPositionState = rememberCameraPositionState {
     val center = selected ?: initialCenter

@@ -21,10 +21,11 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.util.Locale
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -38,6 +39,10 @@ import org.junit.runner.RunWith
 class LocationPickerTest {
 
   @get:Rule val compose = createComposeRule()
+
+  private val defaultLocale = Locale.getDefault()
+
+  @After fun restoreLocale() = Locale.setDefault(defaultLocale)
 
   /** The markers the picker last gave the map. */
   private var markers: List<MapMarker> = emptyList()
@@ -70,6 +75,7 @@ class LocationPickerTest {
               selected = it
               onSelect(it)
             },
+            modifier = Modifier,
             initialCenter = initialCenter,
             map = fakeMap,
         )
@@ -153,6 +159,7 @@ class LocationPickerTest {
     show(initialCenter = EPFL)
 
     compose.onNodeWithTag(TAP_OUCHY).performClick()
+    compose.waitForIdle()
 
     // The view stays where the user was looking, so it does not jump under their finger.
     assertEquals(EPFL.toLatLng(), camera?.position?.target)
@@ -174,9 +181,15 @@ class LocationPickerTest {
   }
 
   @Test
-  fun toGeoPosition_isTheInverseOfToLatLng() {
-    assertEquals(EPFL, EPFL.toLatLng().toGeoPosition())
-    assertEquals(GeoPosition(-90.0, -180.0), LatLng(-90.0, -180.0).toGeoPosition())
+  fun selecting_onAFrenchDevice_stillWritesADecimalPoint() {
+    Locale.setDefault(Locale.FRANCE)
+    show()
+
+    compose.onNodeWithTag(TAP_OUCHY).performClick()
+
+    compose
+        .onNodeWithTag(LocationPickerTestTags.SELECTED)
+        .assertTextEquals("Selected: 46.50690, 6.62660")
   }
 
   private companion object {
