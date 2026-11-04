@@ -365,7 +365,8 @@ class FirestoreMissionRepositoryTest {
     // from its local cache, before the server's refusal closes the flow.
     val failure = runCatching {
       repository.observeMissionsAssignedTo(other).collect {}
-    }.exceptionOrNull()
+    }
+        .exceptionOrNull()
 
     assertTrue(
         "listening to another user's missions must be denied, but was: $failure",
