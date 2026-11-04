@@ -31,11 +31,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.theme.shifter_warning
 import kotlinx.coroutines.launch
@@ -60,18 +62,22 @@ private const val EVENT_ZOOM = 15f
 @Composable
 fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
   val uiState by viewModel.uiState.collectAsState()
+  // With the lifecycle, so the GPS stops when the app goes to the background.
+  val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
   MapContent(
       uiState = uiState,
       onBack = onBack,
       onMarkerClick = viewModel::selectMarker,
       onCloseCard = viewModel::clearSelection,
       onRetry = viewModel::load,
+      myPosition = myPosition,
   )
 }
 
 /**
  * Stateless map screen: the event's title and venue above a map of its missions.
  *
+ * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
  */
 @Composable
@@ -81,6 +87,7 @@ fun MapContent(
     onMarkerClick: (MapMarker) -> Unit,
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
+    myPosition: GeoPosition? = null,
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
@@ -131,6 +138,7 @@ fun MapContent(
               },
           onMarkerClick = onMarkerClick,
           modifier = Modifier.fillMaxSize(),
+          myPosition = myPosition,
           cameraPositionState = cameraPositionState,
           markerContent = { MissionLabel(it) },
       )

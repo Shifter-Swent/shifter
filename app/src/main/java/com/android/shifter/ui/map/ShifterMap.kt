@@ -1,12 +1,21 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.map
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
@@ -23,6 +32,7 @@ import com.swent.shifter.model.location.GeoPosition
 
 object ShifterMapTestTags {
   const val MAP = "ShifterMap"
+  const val MY_POSITION = "ShifterMapMyPosition"
 }
 
 /** EPFL, Lausanne: where the map opens when the caller doesn't move the camera. */
@@ -43,6 +53,9 @@ internal fun LatLng.toGeoPosition() = GeoPosition(latitude, longitude)
 /** Keeps a highlighted marker above the others, whose labels may overlap it. */
 private const val HIGHLIGHTED_Z_INDEX = 1f
 
+/** Keeps the user's position above every mission, so it stays visible when they are at one. */
+private const val MY_POSITION_Z_INDEX = 2f
+
 /** The callers draw their own controls, such as a recenter button, over the map. */
 private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarEnabled = false)
 
@@ -58,12 +71,15 @@ private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarE
  *
  * [onMapClick] receives the point tapped anywhere but on a marker, which Maps keeps for
  * [onMarkerClick]; it is how a caller lets the user pick a place, as [LocationPicker] does.
+ *
+ * [myPosition] is the user's position, drawn as a dot above the markers; a tap on it does nothing.
  */
 @Composable
 fun ShifterMap(
     markers: List<MapMarker>,
     onMarkerClick: (MapMarker) -> Unit,
     modifier: Modifier = Modifier,
+    myPosition: GeoPosition? = null,
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
@@ -75,6 +91,7 @@ fun ShifterMap(
   val properties = remember {
     MapProperties(mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style))
   }
+  val myPositionLabel = stringResource(R.string.map_my_position)
   GoogleMap(
       modifier = modifier.testTag(ShifterMapTestTags.MAP),
       cameraPositionState = cameraPositionState,
@@ -114,5 +131,29 @@ fun ShifterMap(
         }
       }
     }
+    myPosition?.let {
+      MarkerComposable(
+          state = rememberUpdatedMarkerState(it.toLatLng()),
+          contentDescription = myPositionLabel,
+          anchor = Offset(0.5f, 0.5f),
+          zIndex = MY_POSITION_Z_INDEX,
+          onClick = { true },
+      ) {
+        MyPositionDot()
+      }
+    }
   }
+}
+
+/** The user's position on the map: a dot with a light ring, to stand out on the dark style. */
+@Composable
+internal fun MyPositionDot() {
+  Box(
+      modifier =
+          Modifier.size(20.dp)
+              .testTag(ShifterMapTestTags.MY_POSITION)
+              .background(MaterialTheme.colorScheme.onPrimary, CircleShape)
+              .padding(3.dp)
+              .background(MaterialTheme.colorScheme.primary, CircleShape)
+  )
 }

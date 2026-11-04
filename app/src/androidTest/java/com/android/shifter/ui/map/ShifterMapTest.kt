@@ -48,4 +48,27 @@ class ShifterMapTest {
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(LocationPickerTestTags.SELECTED).assertIsDisplayed()
   }
+
+  @Test
+  fun map_isDisplayedWithMyPosition() {
+    compose.setContent {
+      ShifterMap(
+          markers = emptyList(),
+          onMarkerClick = {},
+          modifier = Modifier.fillMaxSize(),
+          myPosition = GeoPosition(46.5191, 6.5668),
+      )
+    }
+
+    compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
+  }
+
+  // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
+  // dot is checked on its own.
+  @Test
+  fun myPositionDot_isDisplayed() {
+    compose.setContent { MyPositionDot() }
+
+    compose.onNodeWithTag(ShifterMapTestTags.MY_POSITION).assertIsDisplayed()
+  }
 }

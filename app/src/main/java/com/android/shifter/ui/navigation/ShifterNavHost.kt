@@ -89,7 +89,7 @@ import kotlinx.coroutines.flow.filter
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
  *   passes one that answers with a fake account, as the system picker cannot be driven.
- * @param locationProvider The volunteer's position, for the automatic check-in.
+ * @param locationProvider The volunteer's position, for the automatic check-in and their map.
  */
 @Composable
 fun ShifterNavHost(
@@ -259,6 +259,7 @@ fun ShifterNavHost(
             navController,
             repositories,
             currentUserId,
+            locationProvider,
         )
         tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
             VolunteerTabs.Discussions,
@@ -509,7 +510,10 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
   }
 }
 
-/** Registers the Map [tab] of the event open in the graph [E], showing its missions on a map. */
+/**
+ * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, and
+ * the user's position when given a [locationProvider].
+ */
 private inline fun <reified T : Tab, reified S : Destination, reified E : EventMode> NavGraphBuilder
     .mapTab(
     tab: Tab,
@@ -517,6 +521,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
     navController: NavHostController,
     repositories: RepositoryProvider,
     noinline currentUserId: () -> String?,
+    locationProvider: LocationProvider? = null,
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
@@ -531,6 +536,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             repositories.eventRepository,
                             repositories.missionRepository,
                             currentUserId,
+                            locationProvider,
                         )
                 ),
             onBack = { nav.leaveEvent(tab.set) },

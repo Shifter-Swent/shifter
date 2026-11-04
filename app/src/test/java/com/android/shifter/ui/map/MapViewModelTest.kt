@@ -6,13 +6,23 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
 import java.time.ZoneOffset.UTC
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,6 +30,7 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MapViewModelTest {
 
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
@@ -29,8 +40,128 @@ class MapViewModelTest {
 
   private var userId: String? = USER
 
-  private fun viewModel() =
-      MapViewModel(EVENT.id, events, missions, { userId }, { DAY.plusSeconds(12 * 3600L) }, UTC)
+  private fun viewModel(location: LocationProvider? = null) =
+      MapViewModel(
+          EVENT.id,
+          events,
+          missions,
+          { userId },
+          { DAY.plusSeconds(12 * 3600L) },
+          UTC,
+          location,
+      )
+
+  /** Collects the position in the background of the test, like the screen, until cancelled. */
+  private fun TestScope.collectPosition(viewModel: MapViewModel) =
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+        viewModel.myPosition.collect {}
+      }
+
+  @Test
+  fun myPosition_followsTheVolunteerWithTheLocationGranted() = runTest {
+    val location = FakeLocationProvider()
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+    assertNull(viewModel.myPosition.value)
+
+    location.emit(TENT.position)
+    assertEquals(TENT.position, viewModel.myPosition.value)
+
+    location.emit(STAND.position)
+    assertEquals(STAND.position, viewModel.myPosition.value)
+  }
+
+  @Test
+  fun myPosition_staysUnknownWithTheLocationDeniedAndTheMapStillLoads() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+
+    location.emit(TENT.position)
+
+    assertNull(viewModel.myPosition.value)
+    assertEquals(1, viewModel.uiState.value.markers.size)
+  }
+
+  @Test
+  fun myPosition_isForgottenWhenTheLocationIsTurnedOff() = runTest {
+    val location = FakeLocationProvider()
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+    location.emit(TENT.position)
+
+    location.setStatus(LocationStatus.LOCATION_OFF)
+
+    assertNull(viewModel.myPosition.value)
+  }
+
+  @Test
+  fun myPosition_waitsForANewPositionWhenTheLocationIsTurnedBackOn() = runTest {
+    val location = FakeLocationProvider()
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+    location.emit(TENT.position)
+    location.setStatus(LocationStatus.LOCATION_OFF)
+
+    location.setStatus(LocationStatus.GRANTED)
+    assertNull(viewModel.myPosition.value)
+
+    location.emit(STAND.position)
+    assertEquals(STAND.position, viewModel.myPosition.value)
+  }
+
+  @Test
+  fun myPosition_ignoresAPositionArrivingAfterTheAccessIsLost() = runTest {
+    val late = MutableSharedFlow<GeoPosition>()
+    val location =
+        object : LocationProvider by FakeLocationProvider(LocationStatus.DENIED) {
+          override fun positions() = late
+        }
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+
+    late.emit(TENT.position)
+
+    assertNull(viewModel.myPosition.value)
+  }
+
+  @Test
+  fun myPosition_staysUnknownWithNoProvider() = runTest {
+    val viewModel = viewModel()
+    collectPosition(viewModel)
+
+    assertNull(viewModel.myPosition.value)
+  }
+
+  @Test
+  fun myPosition_staysUnknownWhenTheGpsFailsAndTheMapStillLoads() = runTest {
+    val failing =
+        object : LocationProvider by FakeLocationProvider() {
+          override fun positions() = flow<GeoPosition> { throw IllegalStateException("no GPS") }
+        }
+    val viewModel = viewModel(failing)
+    collectPosition(viewModel)
+
+    assertNull(viewModel.myPosition.value)
+    assertEquals(EVENT.title, viewModel.uiState.value.eventTitle)
+  }
+
+  @Test
+  fun myPosition_stopsTheGpsAndForgetsThePositionOnceNotCollected() = runTest {
+    val location = FakeLocationProvider()
+    val viewModel = viewModel(location)
+    assertEquals(0, location.activeCollectors)
+    val screen = collectPosition(viewModel)
+    location.emit(TENT.position)
+    assertEquals(1, location.activeCollectors)
+
+    screen.cancel()
+    advanceTimeBy(MapViewModel.STOP_TIMEOUT_MILLIS + 1)
+
+    assertEquals(0, location.activeCollectors)
+    assertNull(viewModel.myPosition.value)
+  }
 
   @Test
   fun load_showsTheEventAndOneMarkerPerLocatedMissionInTimeOrder() = runTest {
