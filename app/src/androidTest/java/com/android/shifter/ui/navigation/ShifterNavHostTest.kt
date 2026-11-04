@@ -811,6 +811,7 @@ class ShifterNavHostTest {
             UnreadableTeams(),
             repositories.checkInRepository,
             repositories.teamChatRepository,
+            repositories.liveLocationRepository,
         )
     )
 

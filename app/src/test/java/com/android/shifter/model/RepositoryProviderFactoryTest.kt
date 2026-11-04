@@ -6,9 +6,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.QuerySnapshot
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.location.LiveLocation
+import com.swent.shifter.model.location.LiveLocationRepositoryException
+import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.membership.MembershipRequestSchema
 import com.swent.shifter.model.mission.MissionSchema
 import com.swent.shifter.model.team.TeamSchema
@@ -18,9 +23,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -101,8 +108,35 @@ class RepositoryProviderFactoryTest {
     verify { firestore.collection(USERS_COLLECTION) }
   }
 
+  /**
+   * The live location repository needs both instances: it listens on the supplied Firestore and
+   * reads who is signed in from the supplied auth.
+   */
+  @Test
+  fun create_buildsTheLiveLocationRepositoryOnTheSuppliedFirebase() = runTest {
+    val team = mockk<DocumentReference>()
+    val liveLocations = mockk<CollectionReference>()
+    every { teams.document(TEAM_ID) } returns team
+    every { team.collection(LiveLocationSchema.COLLECTION) } returns liveLocations
+    every { liveLocations.addSnapshotListener(any<EventListener<QuerySnapshot>>()) } answers
+        {
+          firstArg<EventListener<QuerySnapshot>>().onEvent(empty, null)
+          mockk<ListenerRegistration>(relaxed = true)
+        }
+    every { auth.currentUser } returns null
+
+    val shared = provider.liveLocationRepository.observeTeamLocations(EVENT_ID, TEAM_ID).first()
+    val removal = runCatching { provider.liveLocationRepository.removeLocation(EVENT_ID, TEAM_ID) }
+
+    assertEquals(emptyList<LiveLocation>(), shared)
+    // Nobody is signed in on the supplied auth, so there is no position of theirs to remove.
+    assertTrue(removal.exceptionOrNull() is LiveLocationRepositoryException.PermissionDenied)
+    verify { auth.currentUser }
+  }
+
   private companion object {
     const val EVENT_ID = "event-1"
     const val USER_ID = "user-1"
+    const val TEAM_ID = "team-1"
   }
 }

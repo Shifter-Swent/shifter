@@ -11,6 +11,7 @@ import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.chat.FirestoreTeamChatRepository
 import com.swent.shifter.model.checkin.FirestoreCheckInRepository
 import com.swent.shifter.model.event.FirestoreEventRepository
+import com.swent.shifter.model.location.FirestoreLiveLocationRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
 import com.swent.shifter.model.mission.FirestoreMissionRepository
 import com.swent.shifter.model.team.FirestoreTeamRepository
@@ -54,5 +55,6 @@ object RepositoryProviderFactory {
           teamRepository = FirestoreTeamRepository(firestore),
           checkInRepository = FirestoreCheckInRepository(firestore, auth),
           teamChatRepository = FirestoreTeamChatRepository(firestore, auth),
+          liveLocationRepository = FirestoreLiveLocationRepository(firestore, auth),
       )
 }
