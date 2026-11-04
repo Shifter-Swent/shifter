@@ -2,6 +2,8 @@
 package com.swent.shifter.ui.map
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.MyLocation
@@ -28,8 +31,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -39,6 +44,8 @@ import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
 import kotlinx.coroutines.launch
 
@@ -52,7 +59,12 @@ object MapScreenTestTags {
   const val MISSION_CARD = "MapMissionCard"
   const val CLOSE_CARD_BUTTON = "MapCloseCardButton"
   const val RECENTER_BUTTON = "MapRecenterButton"
+  const val VOLUNTEER = "MapVolunteer"
+  const val STALE_VOLUNTEER = "MapStaleVolunteer"
 }
+
+/** Starts the id of a volunteer's marker, which keeps it apart from the missions' ids. */
+private const val VOLUNTEER_MARKER_PREFIX = "volunteer-"
 
 /** Zoom the camera opens at once the event is loaded: close enough to tell missions apart. */
 private const val EVENT_ZOOM = 15f
@@ -63,6 +75,8 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
   val uiState by viewModel.uiState.collectAsState()
   // With the lifecycle, so the GPS stops when the app goes to the background.
   val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
+  // Stops following the volunteers' positions while the app is in the background.
+  val volunteers by viewModel.volunteers.collectAsStateWithLifecycle()
   MapContent(
       uiState = uiState,
       onBack = onBack,
@@ -70,6 +84,7 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
       onCloseCard = viewModel::clearSelection,
       onRetry = viewModel::load,
       myPosition = myPosition,
+      volunteers = volunteers,
   )
 }
 
@@ -77,6 +92,8 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
  * Stateless map screen: the event's title and venue above a map of its missions.
  *
  * @param myPosition where the user is, shown on the map; null shows nothing.
+ * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
+ *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
  */
 @Composable
@@ -87,6 +104,7 @@ fun MapContent(
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
     myPosition: GeoPosition? = null,
+    volunteers: List<VolunteerPin> = emptyList(),
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
@@ -127,17 +145,31 @@ fun MapContent(
             next.isOngoing -> stringResource(R.string.map_ongoing_mission, next.endTime)
             else -> stringResource(R.string.map_next_mission, next.startTime)
           }
+      val unknownName = stringResource(R.string.map_volunteer_unknown)
+      // The age is part of the marker, so its drawing is redone each time the age changes.
+      val volunteerMarkers = volunteers.map {
+        MapMarker(
+            id = VOLUNTEER_MARKER_PREFIX + it.userId,
+            position = it.position,
+            title = it.name ?: unknownName,
+            info = volunteerAge(it.minutesAgo),
+        )
+      }
+      val staleIds = volunteers.filter { it.isStale }.map { VOLUNTEER_MARKER_PREFIX + it.userId }
       ShifterMap(
           markers =
               uiState.markers.map {
                 if (it.id == next?.markerId) it.copy(caption = nextCaption, highlighted = true)
                 else it
-              },
-          onMarkerClick = onMarkerClick,
+              } + volunteerMarkers,
+          onMarkerClick = { if (!it.isVolunteer()) onMarkerClick(it) },
           modifier = Modifier.fillMaxSize(),
           myPosition = myPosition,
           cameraPositionState = cameraPositionState,
-          markerContent = { MissionLabel(it) },
+          markerContent = {
+            if (it.isVolunteer()) VolunteerLabel(it, isStale = it.id in staleIds)
+            else MissionLabel(it)
+          },
       )
       if (uiState.isLoading) {
         CircularProgressIndicator(
@@ -228,6 +260,59 @@ internal fun MissionLabel(marker: MapMarker) {
         contentDescription = null,
         tint = accent,
         modifier = Modifier.size(32.dp),
+    )
+  }
+}
+
+private fun MapMarker.isVolunteer() = id.startsWith(VOLUNTEER_MARKER_PREFIX)
+
+/** How long ago a volunteer's position was measured, as the map says it. */
+@Composable
+internal fun volunteerAge(minutesAgo: Long): String =
+    if (minutesAgo == 0L) stringResource(R.string.map_volunteer_just_now)
+    else {
+      val minutes = minutesAgo.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+      pluralStringResource(R.plurals.map_volunteer_minutes_ago, minutes, minutes)
+    }
+
+/**
+ * A volunteer as drawn on the map: a small dot on their position, with their name and how old the
+ * position is in one line above it, smaller than the missions' cards so many volunteers fit. The
+ * map anchors it by its bottom centre, so the dot sits on the position. A [isStale] position is
+ * greyed out, the dot left hollow, since the volunteer may have moved since.
+ */
+@Composable
+internal fun VolunteerLabel(marker: MapMarker, isStale: Boolean) {
+  val accent = if (isStale) shifter_mutedText else shifter_success
+  Column(
+      modifier =
+          Modifier.testTag(
+              if (isStale) MapScreenTestTags.STALE_VOLUNTEER else MapScreenTestTags.VOLUNTEER
+          ),
+      horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+      Text(
+          text = listOfNotNull(marker.title, marker.info).joinToString(" · "),
+          modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp).widthIn(max = 140.dp),
+          style = MaterialTheme.typography.labelSmall,
+          fontWeight = FontWeight.SemiBold,
+          color =
+              if (isStale) MaterialTheme.colorScheme.onSurfaceVariant
+              else MaterialTheme.colorScheme.onSurface,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+    }
+    Box(
+        modifier =
+            Modifier.padding(top = 2.dp)
+                .size(12.dp)
+                .border(2.dp, accent, CircleShape)
+                .then(if (isStale) Modifier else Modifier.background(accent, CircleShape))
     )
   }
 }

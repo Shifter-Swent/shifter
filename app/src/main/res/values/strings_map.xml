@@ -11,6 +11,13 @@
     <string name="map_error_unexpected">The map could not be loaded.</string>
     <string name="map_retry">Retry</string>
     <string name="map_close">Close</string>
+    <!-- A volunteer of the manager's teams on the map, with how old their position is. -->
+    <string name="map_volunteer_unknown">Volunteer</string>
+    <string name="map_volunteer_just_now">now</string>
+    <plurals name="map_volunteer_minutes_ago">
+        <item quantity="one">%d min</item>
+        <item quantity="other">%d min</item>
+    </plurals>
     <!-- The location picker: tap the map to place a point. -->
     <string name="map_picker_hint">Tap the map to place the location</string>
     <string name="map_picker_selected">Selected: %1$s, %2$s</string>
