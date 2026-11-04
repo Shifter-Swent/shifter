@@ -5,10 +5,15 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
 import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -99,15 +104,37 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
    * need a composite index, and a volunteer only has a handful of missions.
    */
   override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = translatingErrors {
-    firestore
-        .collectionGroup(MissionSchema.COLLECTION)
-        .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
-        .get()
-        .await()
-        .documents
-        .map { it.toMission() }
-        .sortedBy { it.startAt }
+    assignedTo(userId).get().await().toAssignedMissions()
   }
+
+  /**
+   * Listens to the query of [getMissionsAssignedTo], so the same rules and indexes apply. A
+   * listener error or a malformed mission ends the flow with a [MissionRepositoryException].
+   */
+  override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> = callbackFlow {
+    val registration =
+        assignedTo(userId).addSnapshotListener { snapshot, error ->
+          when {
+            error != null -> close(toRepositoryException(error))
+            snapshot != null ->
+                try {
+                  trySend(snapshot.toAssignedMissions())
+                } catch (e: IllegalStateException) {
+                  close(MissionRepositoryException.Unknown(e))
+                }
+          }
+        }
+    // Keeps the flow open while collected, then removes the listener so Firestore stops it.
+    awaitClose { registration.remove() }
+  }
+
+  private fun assignedTo(userId: String): Query =
+      firestore
+          .collectionGroup(MissionSchema.COLLECTION)
+          .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+
+  private fun QuerySnapshot.toAssignedMissions(): List<Mission> =
+      documents.map { it.toMission() }.sortedBy { it.startAt }
 
   /**
    * A transaction, because the limit depends on the stored [Mission.volunteersNeeded]: reading it

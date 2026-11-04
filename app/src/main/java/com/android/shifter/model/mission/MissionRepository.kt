@@ -2,6 +2,8 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.model.mission
 
+import kotlinx.coroutines.flow.Flow
+
 /**
  * Read and write access to the missions of the events, independent of any backend.
  *
@@ -48,6 +50,13 @@ interface MissionRepository {
    * its [Mission.eventId], so a caller interested in one event filters on it.
    */
   suspend fun getMissionsAssignedTo(userId: String): List<Mission>
+
+  /**
+   * Emits the missions [getMissionsAssignedTo] returns, then again each time one is assigned to
+   * [userId], unassigned or changed, so automatic check-in follows assignments made while it runs.
+   * A backend failure ends the flow with a [MissionRepositoryException].
+   */
+  fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>>
 
   /**
    * Replaces the [Mission.assigneeIds] of the mission identified by [missionId] in the event
