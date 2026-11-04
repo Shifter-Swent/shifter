@@ -28,6 +28,7 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onCompletion
@@ -960,6 +961,92 @@ class AttendanceViewModelTest {
           .onStart { active++ }
           .onCompletion { active-- }
     }
+  }
+
+  @Test
+  fun load_keepsWhetherTheMissionWasClosedByHand() = runTest {
+    val closed = addMission("Set up", "logistics", hour = 1)
+    addMission("Serve drinks", "bar", hour = 2)
+    missions.markCompleted("event-1", closed.id)
+
+    open("manager")
+
+    assertEquals(listOf(true, false), viewModel.uiState.value.missions.map { it.completed })
+  }
+
+  @Test
+  fun markCompleted_closesTheMissionOnceStored() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open("manager")
+
+    viewModel.markCompleted(mission.id)
+
+    assertEquals(setOf(mission.id), viewModel.uiState.value.markingCompletedIds)
+    assertFalse(viewModel.uiState.value.missions.single().completed)
+
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+    assertTrue(viewModel.uiState.value.markingCompletedIds.isEmpty())
+    assertEquals(true, missions.getMission("event-1", mission.id)?.completed)
+  }
+
+  @Test
+  fun markCompleted_whenItFails_reportsItAndLeavesTheMissionAsItWas() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open("manager")
+    missions.failure = IllegalStateException("backend down")
+
+    viewModel.markCompleted(mission.id)
+    advanceUntilIdle()
+
+    val state = viewModel.uiState.value
+    assertEquals(mission.id, state.completionFailedMissionId)
+    assertFalse(state.missions.single().completed)
+    assertTrue(state.markingCompletedIds.isEmpty())
+
+    viewModel.onCompletionFailureShown()
+
+    assertNull(viewModel.uiState.value.completionFailedMissionId)
+  }
+
+  @Test
+  fun markCompleted_whenTheBackendNeverAnswers_timesOutAsAFailure() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    val silent =
+        object : MissionRepository by missions {
+          override suspend fun markCompleted(eventId: String, missionId: String) {
+            awaitCancellation()
+          }
+        }
+    viewModel = AttendanceViewModel("event-1", "manager", events, silent, teams, users, checkIns)
+    advanceUntilIdle()
+
+    viewModel.markCompleted(mission.id)
+    advanceUntilIdle()
+
+    assertEquals(mission.id, viewModel.uiState.value.completionFailedMissionId)
+    assertTrue(viewModel.uiState.value.markingCompletedIds.isEmpty())
+  }
+
+  @Test
+  fun canBeMarkedCompleted_isTrueOnlyWhileTheMissionRuns() {
+    val mission =
+        AttendanceMission(
+            id = "m",
+            title = "Set up",
+            teamId = null,
+            teamName = null,
+            volunteersNeeded = 1,
+            startAt = start,
+            endAt = start.plus(Duration.ofHours(1)),
+            assignees = emptyList(),
+        )
+
+    assertFalse(mission.canBeMarkedCompleted(start.minusSeconds(1)))
+    assertTrue(mission.canBeMarkedCompleted(start))
+    assertFalse(mission.canBeMarkedCompleted(mission.endAt))
+    assertFalse(mission.copy(completed = true).canBeMarkedCompleted(start))
   }
 
   /** Records which mission query a load used, to pin down what each role asks the backend for. */

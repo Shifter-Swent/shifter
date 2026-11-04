@@ -13,6 +13,7 @@ import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
@@ -23,11 +24,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 /**
  * Someone assigned to a mission, with their public name or null when it cannot be read.
@@ -85,6 +88,7 @@ data class ManualCheckInFailure(val reason: ManualCheckInError, val displayName:
  *   failed.
  * @property attendanceFailed whether the check-ins of this mission could not be observed, which
  *   leaves it listed with its attendance not [known][attendanceKnown] rather than dropping it.
+ * @property completed whether the mission was closed by hand before its end.
  */
 data class AttendanceMission(
     val id: String,
@@ -97,7 +101,14 @@ data class AttendanceMission(
     val assignees: List<AttendanceVolunteer>,
     val attendanceKnown: Boolean = false,
     val attendanceFailed: Boolean = false,
+    val completed: Boolean = false,
 ) {
+  /** Whether the mission is completed at [now], by the same rule as a stored mission. */
+  fun isCompleted(now: Instant): Boolean = isCompleted(completed, endAt, now)
+
+  /** Whether it can be closed by hand at [now]: it is running and has not been closed yet. */
+  fun canBeMarkedCompleted(now: Instant): Boolean = now >= startAt && !isCompleted(now)
+
   /** The assignees who checked in, in the order the mission lists them. */
   val presentAssignees: List<AttendanceVolunteer>
     get() = assignees.filter { it.checkedInAt != null }
@@ -136,6 +147,9 @@ data class AttendanceMission(
  * @property undoableCheckIn the manual check-in just made, while it can still be undone.
  * @property checkInErrors the manual check-ins not recorded, oldest first, each until the screen
  *   has shown it: several may fail at once when the device is back online.
+ * @property markingCompletedIds the missions being closed by hand, waiting for the backend.
+ * @property completionFailedMissionId the mission that could not be closed, until the failure has
+ *   been shown; it stays as it was.
  */
 data class AttendanceUiState(
     val isLoading: Boolean = true,
@@ -146,6 +160,8 @@ data class AttendanceUiState(
     val missions: List<AttendanceMission> = emptyList(),
     val undoableCheckIn: UndoableCheckIn? = null,
     val checkInErrors: List<ManualCheckInFailure> = emptyList(),
+    val markingCompletedIds: Set<String> = emptySet(),
+    val completionFailedMissionId: String? = null,
 ) {
   /** Whether the user is known to watch no mission: not while loading, nor after a failure. */
   val isEmpty: Boolean
@@ -262,6 +278,54 @@ class AttendanceViewModel(
   }
 
   /**
+   * Closes the mission [missionId] by hand. It only shows as completed once the backend has
+   * confirmed; a failure leaves it as it was, reported through
+   * [AttendanceUiState.completionFailedMissionId].
+   */
+  fun markCompleted(missionId: String) {
+    if (missionId in _uiState.value.markingCompletedIds) return
+    _uiState.update {
+      it.copy(
+          markingCompletedIds = it.markingCompletedIds + missionId,
+          completionFailedMissionId = null,
+      )
+    }
+    viewModelScope.launch {
+      try {
+        // An offline write may never answer (#181): the manager must not wait for it forever.
+        withTimeout(MARK_COMPLETED_TIMEOUT_MILLIS) {
+          missionRepository.markCompleted(eventId, missionId)
+        }
+        _uiState.update { state ->
+          state.copy(
+              markingCompletedIds = state.markingCompletedIds - missionId,
+              missions =
+                  state.missions.map { if (it.id == missionId) it.copy(completed = true) else it },
+          )
+        }
+      } catch (_: TimeoutCancellationException) {
+        markCompletedFailed(missionId)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        markCompletedFailed(missionId)
+      }
+    }
+  }
+
+  private fun markCompletedFailed(missionId: String) = _uiState.update {
+    it.copy(
+        markingCompletedIds = it.markingCompletedIds - missionId,
+        completionFailedMissionId = missionId,
+    )
+  }
+
+  /** Marks the failure to close a mission as shown, so it is not reported again. */
+  fun onCompletionFailureShown() {
+    _uiState.update { it.copy(completionFailedMissionId = null) }
+  }
+
+  /**
    * The missions of [teams], or all those of the event when the user is its organizer. A manager is
    * asked for their teams' missions only, so the others are never downloaded, and someone managing
    * no team is asked for nothing at all.
@@ -285,6 +349,7 @@ class AttendanceViewModel(
           startAt = mission.startAt,
           endAt = mission.endAt,
           assignees = mission.assigneeIds.map { AttendanceVolunteer(it, names[it]) },
+          completed = mission.completed,
       )
     }
   }
@@ -476,6 +541,9 @@ class AttendanceViewModel(
      * snackbar, even one an accessibility setting has lengthened, so it never cuts an "Undo" short.
      */
     const val UNDO_TIMEOUT_MILLIS = 30_000L
+
+    /** How long closing a mission waits for the backend before reporting a failure. */
+    const val MARK_COMPLETED_TIMEOUT_MILLIS = 10_000L
 
     /** Builds the factory for `viewModel(factory = ...)`, as this ViewModel takes arguments. */
     fun factory(

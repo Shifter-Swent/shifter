@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
@@ -70,7 +71,12 @@ class ManagerOverviewContentTest {
   private fun setUpRunning(id: String, from: Duration, to: Duration) =
       setUp.copy(id = id, startAt = now.plus(from), endAt = now.plus(to))
 
-  private fun show(state: AttendanceUiState, onRetry: () -> Unit = {}) {
+  private fun show(
+      state: AttendanceUiState,
+      onRetry: () -> Unit = {},
+      onMarkCompleted: (String) -> Unit = {},
+      onCompletionFailureShown: () -> Unit = {},
+  ) {
     compose.setContent {
       ShifterTheme {
         ManagerOverviewContent(
@@ -79,6 +85,8 @@ class ManagerOverviewContentTest {
             now = now,
             onRetry = onRetry,
             zone = utc,
+            onMarkCompleted = onMarkCompleted,
+            onCompletionFailureShown = onCompletionFailureShown,
         )
       }
     }
@@ -253,13 +261,93 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun markCompleted_isOfferedOnARunningMissionOnly() {
+    val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))
+    val closed = setUp.copy(id = "closed", completed = true)
+    show(loaded.copy(missions = listOf(setUp, drinks, over, closed)))
+
+    scrollTo(ManagerOverviewTestTags.markCompleted("m1")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.markCompleted("m2")).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.markCompleted("over")).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.markCompleted("closed")).assertDoesNotExist()
+  }
+
+  @Test
+  fun markCompleted_isNotOfferedToTheOrganizer() {
+    show(loaded.copy(isOrganizer = true))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.markCompleted("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun markCompleted_asksBeforeClosingTheMission() {
+    val marked = mutableListOf<String>()
+    show(loaded, onMarkCompleted = { marked += it })
+
+    scrollTo(ManagerOverviewTestTags.markCompleted("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.MARK_COMPLETED_DIALOG).assertIsDisplayed()
+    compose.onNodeWithText("This can't be undone.").assertIsDisplayed()
+    assertTrue(marked.isEmpty())
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.MARK_COMPLETED_CONFIRM).performClick()
+
+    assertEquals(listOf("m1"), marked)
+    compose.onNodeWithTag(ManagerOverviewTestTags.MARK_COMPLETED_DIALOG).assertDoesNotExist()
+  }
+
+  @Test
+  fun markCompleted_cancelled_closesNothing() {
+    val marked = mutableListOf<String>()
+    show(loaded, onMarkCompleted = { marked += it })
+
+    scrollTo(ManagerOverviewTestTags.markCompleted("m1")).performClick()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MARK_COMPLETED_CANCEL).performClick()
+
+    assertTrue(marked.isEmpty())
+    compose.onNodeWithTag(ManagerOverviewTestTags.MARK_COMPLETED_DIALOG).assertDoesNotExist()
+  }
+
+  @Test
+  fun markCompleted_whileRunning_isDisabled() {
+    show(loaded.copy(markingCompletedIds = setOf("m1")))
+
+    scrollTo(ManagerOverviewTestTags.markCompleted("m1")).assertIsNotEnabled()
+  }
+
+  @Test
+  fun missionClosedByHand_isShownAsCompleted() {
+    show(loaded.copy(missions = listOf(setUp.copy(completed = true))))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.status("m1")).assertTextEquals("Completed")
+  }
+
+  @Test
+  fun failedCompletion_showsASnackbarWhoseRetryClosesTheMissionAgain() {
+    val marked = mutableListOf<String>()
+    var shown = 0
+    show(
+        loaded.copy(completionFailedMissionId = "m1"),
+        onMarkCompleted = { marked += it },
+        onCompletionFailureShown = { shown++ },
+    )
+
+    compose.onNodeWithText("The mission could not be marked as completed.").assertIsDisplayed()
+    compose.onNodeWithText("Retry").performClick()
+    compose.waitForIdle()
+
+    assertEquals(1, shown)
+    assertEquals(listOf("m1"), marked)
+  }
+
+  @Test
   fun missionThatIsOver_stopsWarningButKeepsWhoWasThere() {
     // Two of the three needed came, and the check-in closed an hour ago with the mission.
     val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))
     show(loaded.copy(missions = listOf(over)))
 
     // A warning nobody can act on any more is not shown.
-    compose.onNodeWithTag(ManagerOverviewTestTags.status("over")).assertTextEquals("Finished")
+    compose.onNodeWithTag(ManagerOverviewTestTags.status("over")).assertTextEquals("Completed")
     compose.onNodeWithTag(ManagerOverviewTestTags.counter("over")).assertTextEquals("2/3")
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("over")).performClick()
 
