@@ -143,6 +143,10 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
     }
   }
 
+  override suspend fun markCompleted(eventId: String, missionId: String): Unit = translatingErrors {
+    missionsOf(eventId).document(missionId).update(MissionSchema.COMPLETED, true).await()
+  }
+
   /**
    * The first existing mission [mission] conflicts with, or null. Only a GeoTimed mission of a team
    * can conflict, so only then are that team's missions read.

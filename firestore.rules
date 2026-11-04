@@ -376,15 +376,23 @@ service cloud.firestore {
           return request.resource.data.get('teamId', null);
         }
 
+        // A mission closed by hand stays closed.
+        function keepsCompletion() {
+          return request.resource.data.completed is bool
+            && (request.resource.data.completed || !resource.data.completed);
+        }
+
         allow read: if canReadEventContent(eventId);
-        allow create: if isOrganizer(eventId)
-          || (managesTeam(teamAfter()) && validAssignees(teamAfter(), []));
+        allow create: if request.resource.data.completed is bool
+          && (isOrganizer(eventId)
+              || (managesTeam(teamAfter()) && validAssignees(teamAfter(), [])));
         // Checking the team before and after keeps a manager from moving a mission to a team they
         // do not manage.
-        allow update: if isOrganizer(eventId)
-          || (managesTeam(teamBefore())
-              && managesTeam(teamAfter())
-              && validAssignees(teamAfter(), resource.data.get('assigneeIds', [])));
+        allow update: if keepsCompletion()
+          && (isOrganizer(eventId)
+              || (managesTeam(teamBefore())
+                  && managesTeam(teamAfter())
+                  && validAssignees(teamAfter(), resource.data.get('assigneeIds', []))));
         allow delete: if isOrganizer(eventId) || managesTeam(teamBefore());
 
         // checkIns/{uid}: the proof that volunteer uid was present at the mission. The document id

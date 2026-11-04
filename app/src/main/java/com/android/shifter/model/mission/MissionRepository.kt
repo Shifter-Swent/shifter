@@ -58,4 +58,13 @@ interface MissionRepository {
    * [MissionRepositoryException.NotFound] when the mission does not exist.
    */
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
+
+  /**
+   * Closes the mission identified by [missionId] in the event [eventId] before its end, which
+   * cannot be undone.
+   *
+   * Throws [MissionRepositoryException.NotFound] when the mission does not exist. Offline, it only
+   * returns once the device reconnects, so a caller must time out.
+   */
+  suspend fun markCompleted(eventId: String, missionId: String)
 }

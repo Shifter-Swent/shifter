@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
@@ -166,6 +167,28 @@ class FirestoreMissionRepositoryTest {
         writeRawMission { it + (MissionSchema.START_AT to "2026-06-20T12:00:00Z") }
 
     assertFailsOnField(eventId, missionId, MissionSchema.START_AT)
+  }
+
+  @Test
+  fun getMission_failsLoudlyOnAMissingCompleted() = emulatorTest {
+    // Through the admin API, since the rules refuse a mission without it.
+    val eventId = newEvent()
+    val document = missionsOf(eventId).document()
+    createdDocuments += document
+    val at = Instant.parse("2026-06-20T12:00:00Z")
+    FirestoreEmulatorAdmin.createDocument(
+        document.path,
+        mapOf(
+            MissionSchema.TITLE to "Trier les dons",
+            MissionSchema.DESCRIPTION to "Trier les produits",
+            MissionSchema.VOLUNTEERS_NEEDED to 3.0,
+            MissionSchema.START_AT to at,
+            MissionSchema.END_AT to at,
+            MissionSchema.CREATED_AT to at,
+        ),
+    )
+
+    assertFailsOnField(eventId, document.id, MissionSchema.COMPLETED)
   }
 
   @Test

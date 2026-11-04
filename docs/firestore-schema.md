@@ -180,6 +180,7 @@ time the server received it.
 | `location` | map \| null | `address` (non-blank string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number, both required). Absent or null: no location. A mission with one is "GeoTimed" |
 | `assigneeIds` | list of string | Queried with `array-contains` across all events to list a volunteer's missions |
 | `createdAt` | timestamp | |
+| `completed` | boolean | `true` once closed by hand before its end, which cannot be undone (checked by the rules). A mission past its `endAt` is completed whatever this says: that is computed, never written |
 
 Two GeoTimed missions of the same team must not overlap; adjacent slots are allowed. The app checks
 this before writing (`FirestoreMissionRepository.createMission`), not the rules, and the check is

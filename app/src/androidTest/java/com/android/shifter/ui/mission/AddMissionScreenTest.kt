@@ -610,6 +610,9 @@ private class RecordingMissionRepository : MissionRepository {
       missionId: String,
       assigneeIds: List<String>,
   ) = throw UnsupportedOperationException()
+
+  override suspend fun markCompleted(eventId: String, missionId: String) =
+      throw UnsupportedOperationException()
 }
 
 private class SingleEventRepository(private val event: Event) : EventRepository {
