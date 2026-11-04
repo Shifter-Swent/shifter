@@ -51,8 +51,8 @@ class LiveLocationPublisher(
    * already off when it starts. A session that starts off removes it too, because the volunteer may
    * have turned it off with no session running, from another device, or with the app killed before
    * the removal went out, and nothing else would take it out. Removing a position that is not there
-   * is a no-op, which is what [LiveLocationRepository.removeLocation] being idempotent is for, so
-   * this costs a write only when there is something to remove. No position is read while the
+   * still sends a delete request to the backend. The operation is idempotent: a missing document is
+   * not an error, although the request may fail for other reasons. No position is read while
    * consent is off either: the GPS is not even collected.
    *
    * Cancelling this call removes nothing: the position stays for the next session to replace, since
