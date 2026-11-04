@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
@@ -14,6 +15,7 @@ import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -185,6 +187,31 @@ class UserRepositoryFirestoreEmulatorTest {
 
     assertEquals(UserMode.ORGANIZER, user.mode)
     assertEquals(UserMode.ORGANIZER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAMalformedProfile_savesNoMode() = emulatorTest {
+    // A profile without an email: no client may create it, but the rules let its owner add a mode.
+    step("write malformed profile") {
+      FirestoreEmulatorAdmin.createDocument(
+          "$USERS_COLLECTION/$uid",
+          mapOf(DISPLAY_NAME to "Ada", LOCATION_SHARING_ENABLED to false),
+      )
+    }
+    val profile = db.collection(USERS_COLLECTION).document(uid)
+
+    val thrown =
+        step("sign in as organizer") {
+          runCatching {
+            repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.ORGANIZER)
+          }
+              .exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    val stored = step("read raw profile") { profile.get().await() }
+    assertNull(stored.get(MODE))
+    assertFalse(step("read public profile") { publicProfile(uid).get().await() }.exists())
   }
 
   @Test

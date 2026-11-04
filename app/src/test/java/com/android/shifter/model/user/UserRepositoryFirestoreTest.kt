@@ -55,9 +55,9 @@ class UserRepositoryFirestoreTest {
     // Signed in before: the public profile already exists, unless a test removes it.
     storedPublicProfile(mapOf(DISPLAY_NAME to "Ada"))
     // Runs the transaction body synchronously against the mocked transaction.
-    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } answers
+    every { db.runTransaction(any<Transaction.Function<Any?>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<DocumentSnapshot?>>().apply(transaction))
+          Tasks.forResult(firstArg<Transaction.Function<Any?>>().apply(transaction))
         }
   }
 
@@ -122,13 +122,29 @@ class UserRepositoryFirestoreTest {
   @Test
   fun getOrCreateUser_translatesFirestoreErrors() = runTest {
     val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
-    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
-        Tasks.forException(error)
+    every { db.runTransaction(any<Transaction.Function<Any?>>()) } returns Tasks.forException(error)
 
     val thrown = runCatching { repository.getOrCreateUser(UID, "Ada", "a@b.c") }.exceptionOrNull()
 
     assertTrue(thrown is UserRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAMalformedProfile_writesNothing() = runTest {
+    // No email and no mode: the sign-in fails, and must not leave the mode behind.
+    stored(mapOf(DISPLAY_NAME to "Ada", LOCATION_SHARING_ENABLED to false))
+    storedPublicProfile(null)
+
+    val thrown = runCatching {
+      repository.getOrCreateUser(UID, "Ada", "a@b.c", UserMode.ORGANIZER)
+    }
+        .exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    assertTrue(thrown!!.cause is IllegalStateException)
+    verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test

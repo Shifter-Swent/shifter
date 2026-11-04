@@ -22,8 +22,8 @@ object FirestoreEmulatorAdmin {
 
   /**
    * Creates the document at [path] with [fields], whatever `firestore.rules` say, so a test can
-   * store a document no client may write, such as a malformed one. Each value is a [String] or an
-   * [Instant], stored as a string or a timestamp.
+   * store a document no client may write, such as a malformed one. Each value is a [String], a
+   * [Boolean] or an [Instant], stored as a string, a boolean or a timestamp.
    */
   suspend fun createDocument(path: String, fields: Map<String, Any>) {
     val parent = path.substringBeforeLast('/')
@@ -45,6 +45,7 @@ object FirestoreEmulatorAdmin {
   private fun toValue(value: Any): JSONObject =
       when (value) {
         is String -> JSONObject().put("stringValue", value)
+        is Boolean -> JSONObject().put("booleanValue", value)
         is Instant -> JSONObject().put("timestampValue", value.toString())
         else -> throw IllegalArgumentException("Unsupported field value: $value")
       }

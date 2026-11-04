@@ -45,32 +45,43 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     val ref = db.collection(USERS_COLLECTION).document(uid)
     val publicRef = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
     // A transaction makes check-then-create atomic, so concurrent sign-ins cannot both create.
-    // It returns the existing profile, mapped once the transaction is over.
-    val existing =
+    // It returns the profile, or why the stored one could not be mapped.
+    val profile =
         db.runTransaction { transaction ->
               // A transaction reads everything before it writes.
               val stored = transaction.get(ref).takeIf { it.exists() }
               val hasPublicProfile = transaction.get(publicRef).exists()
               if (stored == null) {
                 transaction.set(ref, newUserFields(displayName, email, mode))
-              } else if (mode != null && stored.get(MODE) == null) {
+                if (!hasPublicProfile) transaction.set(publicRef, publicProfileFields(displayName))
+                return@runTransaction Result.success(
+                    User(uid = uid, displayName = displayName, email = email, mode = mode)
+                )
+              }
+              // Mapped before writing anything: a malformed profile gets neither a mode nor a
+              // public profile, so a sign-in that fails leaves nothing behind. Only this pure call
+              // is guarded, as an IllegalStateException caught around an await() could be a
+              // coroutine cancellation.
+              val user =
+                  try {
+                    userFromFirestore(stored)
+                  } catch (e: IllegalStateException) {
+                    return@runTransaction Result.failure(e)
+                  }
+              // The rules require the public name to be the private one.
+              if (!hasPublicProfile)
+                  transaction.set(publicRef, publicProfileFields(user.displayName))
+              if (mode != null && stored.get(MODE) == null) {
                 // A profile from before modes: it takes the mode of this sign-in. One already
                 // set, even unknown to this version, is never overwritten at sign-in.
                 transaction.update(ref, mapOf(MODE to mode.name))
+                Result.success(user.copy(mode = mode))
+              } else {
+                Result.success(user)
               }
-              // The rules require the public name to be the private one. A malformed private
-              // profile gets no public profile: mapping it below reports it anyway.
-              val name = if (stored == null) displayName else stored.get(DISPLAY_NAME) as? String
-              if (!hasPublicProfile && name != null) {
-                transaction.set(publicRef, publicProfileFields(name))
-              }
-              stored
             }
             .await()
-    existing?.let { stored ->
-      val user = userFromFirestoreOrThrow(stored)
-      if (mode != null && stored.get(MODE) == null) user.copy(mode = mode) else user
-    } ?: User(uid = uid, displayName = displayName, email = email, mode = mode)
+    profile.getOrElse { throw UserRepositoryException.Unknown(it) }
   }
 
   override suspend fun setMode(uid: String, mode: UserMode): Unit = translatingErrors {
