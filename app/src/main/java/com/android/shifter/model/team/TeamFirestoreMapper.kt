@@ -31,6 +31,10 @@ internal object TeamSchema {
    * shares their position with the team's manager. Named here because leaving the team deletes that
    * position in the same commit (#305); the documents themselves belong to the live location
    * repository.
+   *
+   * **To be replaced by `LiveLocationSchema.COLLECTION` once #343 lands**, which names the same
+   * collection. Two names for one collection would let the cleanup delete in an empty collection if
+   * either changed, leaving the position of a volunteer who left readable with nothing failing.
    */
   const val LIVE_LOCATIONS_COLLECTION = "liveLocations"
 

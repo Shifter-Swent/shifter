@@ -40,6 +40,10 @@ interface MembershipRequestRepository {
    * the request can still be rejected. Fails with [MembershipRequestRepositoryException.Unknown] if
    * the request does not exist. Security rules may instead deny the operation with
    * [MembershipRequestRepositoryException.PermissionDenied].
+   *
+   * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
+   * the same transaction (#305), whenever the team is still there to leave. The in-memory fakes do
+   * not model it.
    */
   suspend fun reject(eventId: String, userId: String)
 
@@ -51,6 +55,10 @@ interface MembershipRequestRepository {
    * request: security rules deny anyone else, and a rejected request, with
    * [MembershipRequestRepositoryException.PermissionDenied], so a rejection cannot be undone by
    * applying again.
+   *
+   * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
+   * the same transaction (#305). Only an accepted request names a team to leave: withdrawing a
+   * pending one has no team, and so no position, to take out. The in-memory fakes do not model it.
    */
   suspend fun withdraw(eventId: String, userId: String)
 
