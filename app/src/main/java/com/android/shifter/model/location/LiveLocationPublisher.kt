@@ -55,6 +55,11 @@ class LiveLocationPublisher(
    * not an error, although the request may fail for other reasons. No position is read while
    * consent is off either: the GPS is not even collected.
    *
+   * **[sharingEnabled] must therefore emit the setting as it really is, never a placeholder while
+   * it is still being read.** A flow starting at a default `false` until the volunteer's profile
+   * loads would have a valid position removed and shared again a moment later: the manager sees
+   * them vanish and come back, and every session costs a needless delete.
+   *
    * Cancelling this call removes nothing: the position stays for the next session to replace, since
    * a screen going away is not a volunteer changing their mind. Turning the consent back on starts
    * sharing again.
