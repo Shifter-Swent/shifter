@@ -24,8 +24,12 @@ interface UserRepository {
 
   /**
    * Saves [mode] as how [uid] uses Shifter, on a profile created by [getOrCreateUser]. The choice
-   * is final: it throws [UserRepositoryException.PermissionDenied] when the profile already has a
-   * mode.
+   * is final: it throws [UserRepositoryException.PermissionDenied] when the profile already has
+   * another mode, or when there is no profile. Choosing the mode already set changes nothing and
+   * succeeds, so a retry is safe.
+   *
+   * Offline, the choice is saved locally at once but the call only returns once the device
+   * reconnects: a caller should stop waiting after a timeout, as for the other offline writes.
    */
   suspend fun chooseMode(uid: String, mode: UserMode)
 

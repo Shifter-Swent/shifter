@@ -188,6 +188,27 @@ class UserRepositoryFirestoreEmulatorTest {
   }
 
   @Test
+  fun chooseMode_sameModeTwice_keepsIt() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    step("choose mode") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
+
+    step("choose it again") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
+
+    assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  @Test
+  fun chooseMode_withoutProfile_throwsPermissionDenied() = emulatorTest {
+    val thrown =
+        step("choose mode") {
+          runCatching { repository.chooseMode(uid, UserMode.VOLUNTEER) }.exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+    assertNull(step("read profile") { repository.getUser(uid) })
+  }
+
+  @Test
   fun rules_forbidAnUnknownMode() = emulatorTest {
     step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
 

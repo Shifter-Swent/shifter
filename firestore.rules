@@ -24,7 +24,8 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
 
       // A new name is also written to the public profile in the same commit, so the two never
-      // disagree. The mode is chosen once, after the first sign-in, and never changed.
+      // disagree. The mode is chosen once, after the first sign-in, and never changed: re-sending the
+      // same mode changes no key, so it is allowed as a no-op.
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['displayName', 'locationSharingEnabled', 'mode'])

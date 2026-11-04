@@ -26,11 +26,11 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     }
   }
 
-  /** Like the rules, refuses to change a mode already chosen. */
+  /** Like the rules, refuses another mode than the one chosen, and a uid with no profile. */
   override suspend fun chooseMode(uid: String, mode: UserMode) {
     failure?.let { throw it }
-    val user = checkNotNull(users[uid]) { "No profile for $uid" }
-    if (user.mode != null) throw UserRepositoryException.PermissionDenied()
+    val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
+    if (user.mode != null && user.mode != mode) throw UserRepositoryException.PermissionDenied()
     users[uid] = user.copy(mode = mode)
   }
 

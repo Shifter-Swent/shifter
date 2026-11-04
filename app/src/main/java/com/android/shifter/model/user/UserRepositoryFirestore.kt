@@ -6,7 +6,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
-import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalInstant
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireBoolean
@@ -63,11 +62,10 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             ?: User(uid = uid, displayName = displayName, email = email)
       }
 
-  override suspend fun chooseMode(uid: String, mode: UserMode) {
-    translatingErrors {
-      // The rules refuse it when a mode is already set, so a choice is never overwritten.
-      db.collection(USERS_COLLECTION).document(uid).update(MODE, mode.name).await()
-    }
+  override suspend fun chooseMode(uid: String, mode: UserMode): Unit = translatingErrors {
+    // The rules refuse another mode than the one already set, so a choice is never overwritten.
+    // The same mode changes nothing, so they let it through: a retry succeeds.
+    db.collection(USERS_COLLECTION).document(uid).update(MODE, mode.name).await()
   }
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
@@ -115,7 +113,8 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
      * Throws [IllegalStateException] when a field is missing or has an unexpected type, like the
      * other mappers: a malformed profile is a schema problem, not an empty one. Only
      * [User.createdAt] may be absent, while the server timestamp is still pending, and [User.mode],
-     * until the user chooses it.
+     * until the user chooses it. A mode this version does not know, added by a later one, is read
+     * as `null` rather than failing the whole profile, so an older install can still sign in.
      */
     fun userFromFirestore(snapshot: DocumentSnapshot): User =
         User(
@@ -127,7 +126,6 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             mode =
                 snapshot.optionalString(ENTITY, MODE)?.let { name ->
                   UserMode.entries.firstOrNull { it.name == name }
-                      ?: snapshot.invalidField(ENTITY, MODE)
                 },
         )
 

@@ -296,6 +296,20 @@ class UserRepositoryFirestoreTest {
   }
 
   @Test
+  fun userFromFirestore_withUnknownMode_leavesItNull() {
+    stored(
+        mapOf(
+            DISPLAY_NAME to "Ada",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+            MODE to "ADMIN",
+        )
+    )
+
+    assertNull(UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
   fun userFromFirestore_failsOnMissingOrMistypedFields() {
     val valid =
         mapOf(
@@ -312,7 +326,6 @@ class UserRepositoryFirestoreTest {
             valid + (EMAIL to 42),
             valid + (LOCATION_SHARING_ENABLED to "yes"),
             valid + (CREATED_AT to "2024-01-01"),
-            valid + (MODE to "ADMIN"),
             valid + (MODE to 1),
         )
 

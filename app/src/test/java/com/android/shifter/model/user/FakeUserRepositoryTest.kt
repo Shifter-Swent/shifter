@@ -38,6 +38,26 @@ class FakeUserRepositoryTest {
   }
 
   @Test
+  fun chooseMode_sameModeTwice_keepsIt() = runTest {
+    repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
+
+    repository.chooseMode(ada.uid, UserMode.VOLUNTEER)
+
+    assertEquals(UserMode.VOLUNTEER, repository.getUser(ada.uid)?.mode)
+  }
+
+  @Test
+  fun chooseMode_withoutProfile_throwsPermissionDeniedAndCreatesNothing() = runTest {
+    val thrown = runCatching {
+      repository.chooseMode("uid-2", UserMode.VOLUNTEER)
+    }
+        .exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+    assertNull(repository.getUser("uid-2"))
+  }
+
+  @Test
   fun chooseMode_withFailure_throwsIt() = runTest {
     val failure = UserRepositoryException.Unavailable()
     repository.failure = failure
