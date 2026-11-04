@@ -272,6 +272,39 @@ service cloud.firestore {
           // more.
           allow delete: if signedIn() && request.auth.uid == uid;
         }
+
+        // messages/{messageId}: the team's chat channel. Its members, its manager and the event's
+        // organizer read and send, checked on the team as it is now, so someone removed from the
+        // team, or who withdraws, loses access at once. The check is on the path and the team, not
+        // on the message, so the whole channel can be queried.
+        match /messages/{messageId} {
+          function canChat() {
+            let team = get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId)).data;
+            return signedIn()
+              && (request.auth.uid in team.get('memberIds', [])
+                  || team.get('managerId', null) == request.auth.uid
+                  || isOrganizer(eventId));
+          }
+
+          // senderId and sentAt must equal the signed-in user and the server's time, so nobody can
+          // send in someone else's name or backdate a message. The text is stored trimmed, so a
+          // blank one is refused with the empty one.
+          function isValidMessage() {
+            let data = request.resource.data;
+            return data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+              && data.senderId == request.auth.uid
+              && data.sentAt == request.time
+              && data.text is string
+              && data.text.size() >= 1
+              && data.text.size() <= 1000
+              && data.text == data.text.trim();
+          }
+
+          allow read: if canChat();
+          allow create: if canChat() && isValidMessage();
+          // A message is final, so the channel stays a faithful record of what was said.
+          allow update, delete: if false;
+        }
       }
 
       match /shifts/{shiftId} {
