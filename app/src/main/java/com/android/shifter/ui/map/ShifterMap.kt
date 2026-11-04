@@ -34,6 +34,12 @@ internal const val DEFAULT_ZOOM = 13f
  */
 internal fun GeoPosition.toLatLng() = LatLng(latitude, longitude)
 
+/**
+ * This Maps `LatLng` as a position, at the same edge. Maps already keeps a latitude within -90 to
+ * 90 and wraps a longitude into -180 to 180, so every point the map gives back is a valid one.
+ */
+internal fun LatLng.toGeoPosition() = GeoPosition(latitude, longitude)
+
 /** Keeps a highlighted marker above the others, whose labels may overlap it. */
 private const val HIGHLIGHTED_Z_INDEX = 1f
 
@@ -46,8 +52,12 @@ private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarE
  *
  * The map is drawn in the app's dark style. Without [markerContent], each marker is the default
  * pin, whose title and info pop up when tapped; with it, each marker is drawn by [markerContent],
- * anchored by its bottom centre. Either way, a tap centres the camera on the marker, and a
+ * anchored by its bottom centre. Either way, a tap centres the camera on the marker, unless
+ * [centerOnMarkerClick] is false, which also keeps the default pin's info from popping up, and a
  * [MapMarker.highlighted] marker is drawn above the others.
+ *
+ * [onMapClick] receives the point tapped anywhere but on a marker, which Maps keeps for
+ * [onMarkerClick]; it is how a caller lets the user pick a place, as [LocationPicker] does.
  */
 @Composable
 fun ShifterMap(
@@ -58,6 +68,8 @@ fun ShifterMap(
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
     markerContent: (@Composable (MapMarker) -> Unit)? = null,
+    onMapClick: ((GeoPosition) -> Unit)? = null,
+    centerOnMarkerClick: Boolean = true,
 ) {
   val context = LocalContext.current
   val properties = remember {
@@ -68,6 +80,7 @@ fun ShifterMap(
       cameraPositionState = cameraPositionState,
       properties = properties,
       uiSettings = UI_SETTINGS,
+      onMapClick = { onMapClick?.invoke(it.toGeoPosition()) },
   ) {
     markers.forEach { marker ->
       // Keyed so each marker keeps its own state when the list changes.
@@ -82,7 +95,7 @@ fun ShifterMap(
               zIndex = zIndex,
               onClick = {
                 onMarkerClick(marker)
-                false
+                !centerOnMarkerClick
               },
           )
         } else {
@@ -93,7 +106,7 @@ fun ShifterMap(
               zIndex = zIndex,
               onClick = {
                 onMarkerClick(marker)
-                false
+                !centerOnMarkerClick
               },
           ) {
             markerContent(marker)
