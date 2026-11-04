@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.event.EventDetailsContent
 import com.swent.shifter.ui.settings.SettingsScreen
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -38,7 +39,11 @@ class BackButtonPlacementTest {
 
   @Test
   fun settingsScreen_placesTheCircleAt24Dp() {
-    composeTestRule.setContent { ShifterTheme { SettingsScreen(onBack = {}, onSignOut = {}) } }
+    composeTestRule.setContent {
+      ShifterTheme {
+        SettingsScreen(mode = UserMode.VOLUNTEER, onBack = {}, onChangeMode = {}, onSignOut = {})
+      }
+    }
 
     assertCircleStartsAt24Dp()
   }

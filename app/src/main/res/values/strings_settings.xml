@@ -4,4 +4,8 @@
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_sign_out">Sign out</string>
+    <string name="settings_switch_to_organizer">Switch to Organizer mode</string>
+    <string name="settings_switch_to_volunteer">Switch to Volunteer mode</string>
+    <string name="settings_change_mode_error">Could not change your mode. Check your connection.</string>
+    <string name="settings_retry">Retry</string>
 </resources>

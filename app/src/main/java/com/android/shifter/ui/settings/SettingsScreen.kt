@@ -3,7 +3,7 @@ package com.swent.shifter.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,11 +13,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -28,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import com.swent.shifter.R
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_signoutOutline
@@ -35,21 +41,45 @@ import com.swent.shifter.ui.theme.shifter_signoutOutline
 object SettingsScreenTestTags {
   const val SCREEN = "SettingsScreen"
   const val SIGN_OUT_BUTTON = "SettingsSignOutButton"
+  const val CHANGE_MODE_BUTTON = "SettingsChangeModeButton"
 }
 
 /**
  * [SettingsScreen] wired to its [SettingsViewModel]: signs the user out, then calls [onSignedOut]
- * so the caller can leave the signed-in graph. A failed sign-out is shown as a toast.
+ * so the caller can leave the signed-in graph, or changes their mode, then calls [onModeChanged]
+ * with the new one. A failed sign-out is shown as a toast, a failed change of mode in a Snackbar
+ * with Retry.
  */
 @Composable
 fun SettingsRoute(
     onBack: () -> Unit,
     onSignedOut: () -> Unit,
+    onModeChanged: (UserMode) -> Unit,
     viewModel: SettingsViewModel,
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
 ) {
   val context = LocalContext.current
   val uiState by viewModel.uiState.collectAsState()
+  val snackbarHostState = remember { SnackbarHostState() }
+  val modeChangeError = stringResource(R.string.settings_change_mode_error)
+  val retry = stringResource(R.string.settings_retry)
+
+  LaunchedEffect(uiState.modeChanged) {
+    uiState.modeChanged?.let {
+      onModeChanged(it)
+      viewModel.onModeChangeHandled()
+    }
+  }
+
+  LaunchedEffect(uiState.modeChangeFailed) {
+    if (uiState.modeChangeFailed) {
+      // Reported once dismissed: resetting the flag earlier would restart this effect, cancelling
+      // the Snackbar.
+      val result = snackbarHostState.showSnackbar(modeChangeError, actionLabel = retry)
+      viewModel.onModeChangeErrorShown()
+      if (result == SnackbarResult.ActionPerformed) viewModel.changeMode()
+    }
+  }
 
   LaunchedEffect(uiState.errorMsg) {
     uiState.errorMsg?.let {
@@ -65,30 +95,71 @@ fun SettingsRoute(
     }
   }
 
-  SettingsScreen(onBack = onBack, onSignOut = { viewModel.signOut(credentialManager) })
+  SettingsScreen(
+      mode = uiState.mode,
+      changingMode = uiState.changingMode,
+      onBack = onBack,
+      onChangeMode = viewModel::changeMode,
+      onSignOut = { viewModel.signOut(credentialManager) },
+      snackbarHostState = snackbarHostState,
+  )
 }
 
 /**
- * Profile & Settings screen (Figma "Shifter · Settings"). For now it only holds the header and the
- * Sign out action; the preference sections come later.
+ * Profile & Settings screen (Figma "Shifter · Settings"). For now it holds the header, the change
+ * of [mode] and the Sign out action; the preference sections come later.
  *
- * Stateless: the caller signs the user out and navigates (e.g. `enterApp(SignedOut)`).
+ * Stateless: the caller changes the mode, signs the user out and navigates.
  */
 @Composable
 fun SettingsScreen(
+    mode: UserMode,
     onBack: () -> Unit,
+    onChangeMode: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
+    changingMode: Boolean = false,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
-  Column(
+  Scaffold(
+      modifier = modifier.fillMaxSize().testTag(SettingsScreenTestTags.SCREEN),
+      containerColor = MaterialTheme.colorScheme.background,
+      snackbarHost = { SnackbarHost(snackbarHostState) },
+  ) { padding ->
+    Column(modifier = Modifier.padding(padding)) {
+      ShifterTopBar(title = stringResource(R.string.settings_title), onBack = onBack)
+      Column(
+          modifier = Modifier.padding(16.dp),
+          verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        ChangeModeButton(mode = mode, enabled = !changingMode, onClick = onChangeMode)
+        SignOutButton(onClick = onSignOut)
+      }
+    }
+  }
+}
+
+/** Switches to the mode other than [mode]. */
+@Composable
+private fun ChangeModeButton(mode: UserMode, enabled: Boolean, onClick: () -> Unit) {
+  OutlinedButton(
+      onClick = onClick,
+      enabled = enabled,
       modifier =
-          modifier
-              .fillMaxSize()
-              .background(MaterialTheme.colorScheme.background)
-              .testTag(SettingsScreenTestTags.SCREEN)
+          Modifier.fillMaxWidth().height(48.dp).testTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON),
+      shape = RoundedCornerShape(16.dp),
   ) {
-    ShifterTopBar(title = stringResource(R.string.settings_title), onBack = onBack)
-    Column(modifier = Modifier.padding(16.dp)) { SignOutButton(onClick = onSignOut) }
+    Text(
+        text =
+            stringResource(
+                when (mode) {
+                  UserMode.VOLUNTEER -> R.string.settings_switch_to_organizer
+                  UserMode.ORGANIZER -> R.string.settings_switch_to_volunteer
+                }
+            ),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+    )
   }
 }
 
@@ -118,5 +189,7 @@ private fun SignOutButton(onClick: () -> Unit) {
 @Preview
 @Composable
 private fun SettingsScreenPreview() {
-  ShifterTheme { SettingsScreen(onBack = {}, onSignOut = {}) }
+  ShifterTheme {
+    SettingsScreen(mode = UserMode.VOLUNTEER, onBack = {}, onChangeMode = {}, onSignOut = {})
+  }
 }
