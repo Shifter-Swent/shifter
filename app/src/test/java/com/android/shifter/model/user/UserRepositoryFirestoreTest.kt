@@ -15,6 +15,7 @@ import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.EMAIL
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -142,6 +143,26 @@ class UserRepositoryFirestoreTest {
   }
 
   @Test
+  fun chooseMode_writesTheModeByName() = runTest {
+    every { ref.update(MODE, "ORGANIZER") } returns Tasks.forResult(null)
+
+    repository.chooseMode(UID, UserMode.ORGANIZER)
+
+    verify { ref.update(MODE, "ORGANIZER") }
+  }
+
+  @Test
+  fun chooseMode_whenAlreadyChosen_throwsPermissionDenied() = runTest {
+    // What the rules answer when the profile already has a mode.
+    every { ref.update(MODE, "VOLUNTEER") } returns
+        Tasks.forException(FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
+
+    val thrown = runCatching { repository.chooseMode(UID, UserMode.VOLUNTEER) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
   fun getUser_translatesFirestoreErrors() = runTest {
     val error = FirebaseFirestoreException("denied", Code.PERMISSION_DENIED)
     every { ref.get() } returns Tasks.forException(error)
@@ -252,6 +273,29 @@ class UserRepositoryFirestoreTest {
   }
 
   @Test
+  fun userFromFirestore_mapsTheModeByName() {
+    stored(
+        mapOf(
+            DISPLAY_NAME to "Ada",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+            MODE to "ORGANIZER",
+        )
+    )
+
+    assertEquals(UserMode.ORGANIZER, UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
+  fun userFromFirestore_withoutMode_leavesItNull() {
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
+
+    assertNull(UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
   fun userFromFirestore_failsOnMissingOrMistypedFields() {
     val valid =
         mapOf(
@@ -268,6 +312,8 @@ class UserRepositoryFirestoreTest {
             valid + (EMAIL to 42),
             valid + (LOCATION_SHARING_ENABLED to "yes"),
             valid + (CREATED_AT to "2024-01-01"),
+            valid + (MODE to "ADMIN"),
+            valid + (MODE to 1),
         )
 
     malformed.forEach { fields ->

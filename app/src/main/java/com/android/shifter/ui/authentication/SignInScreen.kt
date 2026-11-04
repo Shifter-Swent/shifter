@@ -44,6 +44,7 @@ import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlinx.coroutines.flow.Flow
@@ -179,6 +180,9 @@ private object PreviewUserRepository : UserRepository {
   override suspend fun getUser(uid: String): User? = null
 
   override suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User =
+      throw UnsupportedOperationException("Preview")
+
+  override suspend fun chooseMode(uid: String, mode: UserMode) =
       throw UnsupportedOperationException("Preview")
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = null

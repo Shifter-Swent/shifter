@@ -6,7 +6,9 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalInstant
+import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireBoolean
 import com.swent.shifter.model.firestore.requireString
 import kotlinx.coroutines.tasks.await
@@ -61,6 +63,13 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             ?: User(uid = uid, displayName = displayName, email = email)
       }
 
+  override suspend fun chooseMode(uid: String, mode: UserMode) {
+    translatingErrors {
+      // The rules refuse it when a mode is already set, so a choice is never overwritten.
+      db.collection(USERS_COLLECTION).document(uid).update(MODE, mode.name).await()
+    }
+  }
+
   override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
     db.collection(PUBLIC_PROFILES_COLLECTION)
         .document(uid)
@@ -75,6 +84,7 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     const val EMAIL = "email"
     const val LOCATION_SHARING_ENABLED = "locationSharingEnabled"
     const val CREATED_AT = "createdAt"
+    const val MODE = "mode"
 
     /** Fields of a newly created profile. Location sharing starts disabled until opt-in. */
     fun newUserFields(displayName: String, email: String): Map<String, Any> =
@@ -104,7 +114,8 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
      *
      * Throws [IllegalStateException] when a field is missing or has an unexpected type, like the
      * other mappers: a malformed profile is a schema problem, not an empty one. Only
-     * [User.createdAt] may be absent, while the server timestamp is still pending.
+     * [User.createdAt] may be absent, while the server timestamp is still pending, and [User.mode],
+     * until the user chooses it.
      */
     fun userFromFirestore(snapshot: DocumentSnapshot): User =
         User(
@@ -113,6 +124,11 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
             email = snapshot.requireString(ENTITY, EMAIL),
             locationSharingEnabled = snapshot.requireBoolean(ENTITY, LOCATION_SHARING_ENABLED),
             createdAt = snapshot.optionalInstant(ENTITY, CREATED_AT),
+            mode =
+                snapshot.optionalString(ENTITY, MODE)?.let { name ->
+                  UserMode.entries.firstOrNull { it.name == name }
+                      ?: snapshot.invalidField(ENTITY, MODE)
+                },
         )
 
     /** Translates a Firestore error into the [UserRepositoryException] callers handle. */

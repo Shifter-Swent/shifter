@@ -24,12 +24,15 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
 
       // A new name is also written to the public profile in the same commit, so the two never
-      // disagree.
+      // disagree. The mode is chosen once, after the first sign-in, and never changed.
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['displayName', 'locationSharingEnabled'])
+             .hasOnly(['displayName', 'locationSharingEnabled', 'mode'])
         && request.resource.data.displayName is string
         && request.resource.data.locationSharingEnabled is bool
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['mode'])
+            || (!('mode' in resource.data)
+                && request.resource.data.mode in ['VOLUNTEER', 'ORGANIZER']))
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName'])
             || getAfter(/databases/$(database)/documents/publicProfiles/$(uid)).data.displayName
                  == request.resource.data.displayName);

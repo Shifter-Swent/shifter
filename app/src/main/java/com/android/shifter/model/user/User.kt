@@ -13,6 +13,8 @@ import java.time.Instant
  *   so `false` by default.
  * @property createdAt Account creation date, set by the server. `null` until the write is
  *   acknowledged.
+ * @property mode How the user uses Shifter. `null` until they choose, after their first sign-in;
+ *   once chosen it never changes.
  */
 data class User(
     val uid: String,
@@ -20,4 +22,5 @@ data class User(
     val email: String,
     val locationSharingEnabled: Boolean = false,
     val createdAt: Instant? = null,
+    val mode: UserMode? = null,
 )

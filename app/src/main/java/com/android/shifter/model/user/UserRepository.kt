@@ -23,6 +23,13 @@ interface UserRepository {
   suspend fun getOrCreateUser(uid: String, displayName: String, email: String): User
 
   /**
+   * Saves [mode] as how [uid] uses Shifter, on a profile created by [getOrCreateUser]. The choice
+   * is final: it throws [UserRepositoryException.PermissionDenied] when the profile already has a
+   * mode.
+   */
+  suspend fun chooseMode(uid: String, mode: UserMode)
+
+  /**
    * Returns the public profile of [uid], or `null` if it does not exist yet. Unlike [getUser], it
    * works for any user, not only the signed-in one: it is how other people's names are shown.
    */

@@ -2,6 +2,7 @@
 package com.swent.shifter.model.user
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.emulatorTest
@@ -9,6 +10,7 @@ import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -157,6 +159,47 @@ class UserRepositoryFirestoreEmulatorTest {
     } catch (e: FirebaseFirestoreException) {
       assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, e.code)
     }
+  }
+
+  @Test
+  fun chooseMode_savesTheModeOnTheProfile() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    assertNull(step("read profile") { repository.getUser(uid) }?.mode)
+
+    step("choose mode") { repository.chooseMode(uid, UserMode.ORGANIZER) }
+
+    assertEquals(UserMode.ORGANIZER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  @Test
+  fun rules_keepTheFirstModeChosen() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    step("choose mode") { repository.chooseMode(uid, UserMode.VOLUNTEER) }
+
+    val thrown =
+        step("choose again") {
+          runCatching { repository.chooseMode(uid, UserMode.ORGANIZER) }.exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+    val profile = db.collection(USERS_COLLECTION).document(uid)
+    assertDenied { profile.update(MODE, FieldValue.delete()).await() }
+    assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  @Test
+  fun rules_forbidAnUnknownMode() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+
+    assertDenied { db.collection(USERS_COLLECTION).document(uid).update(MODE, "ADMIN").await() }
+  }
+
+  @Test
+  fun rules_forbidCreatingProfileWithAModeAlreadyChosen() = emulatorTest {
+    val fields =
+        UserRepositoryFirestore.newUserFields("Ada", "ada@example.com") + (MODE to "ORGANIZER")
+
+    assertDenied { db.collection(USERS_COLLECTION).document(uid).set(fields).await() }
   }
 
   private fun publicProfile(uid: String) = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
