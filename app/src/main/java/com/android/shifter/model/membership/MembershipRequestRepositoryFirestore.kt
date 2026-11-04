@@ -12,6 +12,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.team.TeamSchema
 import kotlinx.coroutines.tasks.await
 
@@ -196,7 +197,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
       update(team, TeamSchema.MANAGER_ID, null)
     }
-    delete(team.collection(TeamSchema.LIVE_LOCATIONS_COLLECTION).document(userId))
+    delete(team.collection(LiveLocationSchema.COLLECTION).document(userId))
   }
 
   /**

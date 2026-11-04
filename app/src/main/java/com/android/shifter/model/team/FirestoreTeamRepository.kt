@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.location.LiveLocationSchema
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -154,12 +155,13 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   }
 
   /**
-   * Where [userId] last shared their position with the manager of [team]. Spelled out from
-   * [TeamSchema] rather than taken from the live location repository, which this repository does
-   * not depend on: only the path is needed, and `docs/firestore-schema.md` records it.
+   * Where [userId] last shared their position with the manager of [team]. Only the path is taken
+   * from [LiveLocationSchema], which names that collection once for the whole module: this
+   * repository does not depend on the live location repository, and `docs/firestore-schema.md`
+   * records the path.
    */
   private fun liveLocationOf(team: DocumentReference, userId: String) =
-      team.collection(TeamSchema.LIVE_LOCATIONS_COLLECTION).document(userId)
+      team.collection(LiveLocationSchema.COLLECTION).document(userId)
 
   private suspend fun Query.fetch(): List<Team> = translatingErrors {
     get().await().documents.map { it.toTeam() }
