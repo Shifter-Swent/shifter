@@ -13,6 +13,7 @@ import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.location.LiveLocation
 import com.swent.shifter.model.location.LiveLocationRepository
+import com.swent.shifter.model.location.LiveLocationRepositoryException
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
@@ -23,6 +24,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,8 +37,13 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -156,13 +163,22 @@ class MapViewModel(
    * screen, their age refreshed every minute even when no new position arrives.
    *
    * Only the current members of a team are shown: the rules let a position stay readable for a
-   * while after its volunteer left the team. A volunteer in several watched teams is shown once, at
-   * their latest position. When the right to read ends, at the end of the event, or when the
-   * positions cannot be read, the list is empty and the rest of the map keeps working.
+   * while after its volunteer left the team. The teams are read again every minute, so a volunteer
+   * who joins or leaves, or a team the user starts or stops managing, shows up or goes within a
+   * minute. A volunteer in several watched teams is shown once, at their latest position.
+   *
+   * A team that can no longer be read just has nobody to show. Any other failure keeps the last
+   * positions, which keep ageing until they are greyed out, and is retried every
+   * [RETRY_DELAY_MILLIS]. Once the map is left, the list is cleared, so coming back never shows old
+   * positions.
    */
   val volunteers: StateFlow<List<VolunteerPin>> =
       volunteerPins()
-          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), emptyList())
+          .stateIn(
+              viewModelScope,
+              SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS, replayExpirationMillis = 0),
+              emptyList(),
+          )
 
   init {
     load()
@@ -240,45 +256,71 @@ class MapViewModel(
           )
           .catch { emit(null) }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   private fun volunteerPins(): Flow<List<VolunteerPin>> {
     val repository = liveLocations ?: return flowOf(emptyList())
     val teamsToWatch = watchedTeams ?: return flowOf(emptyList())
-    return flow {
+    // The teams are read again every minute, and their positions observed again only when they
+    // changed, such as a volunteer who joined or left, or a team the user started or stopped
+    // managing.
+    val locations = flow {
       val userId = currentUserId()
-      val teams = if (userId == null) emptyList() else teamsToWatch.of(eventId, userId)
-      if (teams.isEmpty()) {
-        emit(emptyList())
-        return@flow
-      }
-      val shared =
-          combine(
-              teams.map { team ->
-                repository.observeTeamLocations(eventId, team.id).map { locations ->
-                  locations.filter { it.userId in team.memberIds }
-                }
-              }
-          ) { lists ->
-            lists
-                .flatMap { it }
-                .groupBy { it.userId }
-                .map { (_, locations) -> locations.maxBy { it.measuredAt } }
-          }
+      if (userId == null) emit(emptyList<Team>())
+      else emitAll(everyMinute().map { teamsToWatch.of(eventId, userId) })
+    }
+        .distinctUntilChanged()
+        .flatMapLatest { teams -> latestLocations(repository, teams) }
+        // Offline or any other failure: no position comes meanwhile, so the last ones stay on
+        // the map and keep ageing until they are greyed out, while the read is tried again.
+        .retryWhen { cause, _ ->
+          val retry = cause is Exception
+          if (retry) delay(RETRY_DELAY_MILLIS)
+          retry
+        }
+    return flow {
       // Read once per volunteer; a failed read is not kept, so it is tried again later.
       val names = mutableMapOf<String, String?>()
       emitAll(
-          combine(shared, everyMinute()) { locations, _ -> locations }
-              .map { locations ->
-                val unknown = locations.map { it.userId }.filter { it !in names }
+          combine(locations, everyMinute()) { latest, _ -> latest }
+              .map { latest ->
+                val unknown = latest.map { it.userId }.filter { it !in names }
                 if (unknown.isNotEmpty() && userRepository != null) {
                   names += userRepository.displayNames(unknown)
                 }
                 val now = now()
-                locations.map { it.toPin(names[it.userId], now) }.sortedBy { it.userId }
+                latest.map { it.toPin(names[it.userId], now) }.sortedBy { it.userId }
               }
       )
     }
-        // The end of the event ends the right to read: not an error, just no volunteer to show.
-        .catch { e -> if (e is Exception) emit(emptyList()) else throw e }
+  }
+
+  /**
+   * The latest position of each current member of [teams] who shares it: a volunteer in several of
+   * them is kept once, at their latest position.
+   */
+  private fun latestLocations(
+      repository: LiveLocationRepository,
+      teams: List<Team>,
+  ): Flow<List<LiveLocation>> {
+    if (teams.isEmpty()) return flowOf(emptyList())
+    return combine(
+        teams.map { team ->
+          repository
+              .observeTeamLocations(eventId, team.id)
+              .map { locations -> locations.filter { it.userId in team.memberIds } }
+              // A team that can no longer be read, at the end of the event or once it has another
+              // manager, just has nobody to show: the other teams keep working.
+              .catch { e ->
+                if (e is LiveLocationRepositoryException.PermissionDenied) emit(emptyList())
+                else throw e
+              }
+        }
+    ) { lists ->
+      lists
+          .flatMap { it }
+          .groupBy { it.userId }
+          .map { (_, locations) -> locations.maxBy { it.measuredAt } }
+    }
   }
 
   private fun LiveLocation.toPin(name: String?, now: Instant): VolunteerPin {
@@ -310,6 +352,9 @@ class MapViewModel(
 
     /** How often the age of the positions is refreshed when no new position arrives. */
     const val AGE_REFRESH_MILLIS = 60_000L
+
+    /** How long to wait before reading the positions again after a failure. */
+    const val RETRY_DELAY_MILLIS = 10_000L
 
     /** Emits now, then every [AGE_REFRESH_MILLIS], so an age grows without a new position. */
     private fun everyMinute(): Flow<Unit> = flow {

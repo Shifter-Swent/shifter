@@ -21,12 +21,15 @@ import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset.UTC
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -456,6 +459,173 @@ class MapViewModelTest {
     assertEquals(0, counting.active)
   }
 
+  @Test
+  fun volunteers_whenOneTeamIsRefused_keepShowingTheOtherTeams() = runTest {
+    share("alice", "bar", TENT.position)
+    share("carol", "stage", STAND.position)
+    val refusing =
+        FailsTeam(liveLocations, "bar", LiveLocationRepositoryException.PermissionDenied())
+    val viewModel = open(volunteerMap(refusing))
+    assertEquals(listOf("alice", "carol"), viewModel.volunteers.value.map { it.userId })
+
+    // The organizer gives the bar to another manager while the map is open.
+    refusing.fail()
+    runCurrent()
+
+    assertEquals(listOf("carol"), viewModel.volunteers.value.map { it.userId })
+  }
+
+  @Test
+  fun volunteers_ofARefusedTeam_areNotReadAgain() = runTest {
+    val refusing =
+        FailsTeam(liveLocations, "bar", LiveLocationRepositoryException.PermissionDenied())
+    open(volunteerMap(refusing))
+
+    refusing.fail()
+    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals(1, refusing.observations)
+  }
+
+  @Test
+  fun volunteers_duringAFailure_keepTheirLastPositionAndAge() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 8)
+    val viewModel = open(volunteerMap())
+    assertFalse(viewModel.volunteers.value.single().isStale)
+
+    // Offline: the teams can no longer be read, so no position comes.
+    teams.failure = IllegalStateException("offline")
+    clock = clock.plus(Duration.ofMinutes(3))
+    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    val alice = viewModel.volunteers.value.single()
+    assertEquals(TENT.position, alice.position)
+    assertEquals(11, alice.minutesAgo)
+    assertTrue(alice.isStale)
+  }
+
+  @Test
+  fun volunteers_afterAFailure_comeBackOnTheNextTry() = runTest {
+    teams.failure = IllegalStateException("offline")
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    teams.failure = null
+    share("alice", "bar", TENT.position)
+    advanceTimeBy(MapViewModel.RETRY_DELAY_MILLIS)
+    runCurrent()
+
+    assertEquals("alice", viewModel.volunteers.value.single().userId)
+  }
+
+  @Test
+  fun volunteers_whoLeaveTheTeamWhileTheMapIsOpen_goAfterTheNextRefresh() = runTest {
+    share("alice", "bar", TENT.position)
+    val viewModel = open(volunteerMap())
+
+    teams.removeMember(EVENT.id, "bar", "alice")
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertTrue(viewModel.volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_whoJoinTheTeamWhileTheMapIsOpen_showUpAfterTheNextRefresh() = runTest {
+    share("erin", "bar", TENT.position)
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    teams.addMember(EVENT.id, "bar", "erin")
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals("erin", viewModel.volunteers.value.single().userId)
+  }
+
+  @Test
+  fun volunteers_ofATeamAssignedWhileTheMapIsOpen_showUpAfterTheNextRefresh() = runTest {
+    share("dave", "parking", STAND.position)
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    teams.setManager(EVENT.id, "parking", USER)
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals("dave", viewModel.volunteers.value.single().userId)
+  }
+
+  @Test
+  fun volunteers_ofATeamNoLongerManaged_goAfterTheNextRefresh() = runTest {
+    share("carol", "stage", STAND.position)
+    val viewModel = open(volunteerMap())
+    assertEquals("carol", viewModel.volunteers.value.single().userId)
+
+    teams.setManager(EVENT.id, "stage", "someone-else")
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertTrue(viewModel.volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_whenTheTeamsDoNotChange_areNotObservedAgain() = runTest {
+    val counting = CountsObservations(liveLocations)
+    open(volunteerMap(counting))
+    assertEquals(2, counting.observations)
+
+    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals(2, counting.observations)
+  }
+
+  @Test
+  fun volunteers_afterLeavingTheMap_areForgotten() = runTest {
+    share("alice", "bar", TENT.position)
+    val viewModel = volunteerMap()
+    val screen =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          viewModel.volunteers.collect {}
+        }
+    runCurrent()
+    assertEquals(1, viewModel.volunteers.value.size)
+
+    screen.cancel()
+    advanceTimeBy(MapViewModel.STOP_TIMEOUT_MILLIS + 1)
+
+    // Coming back must not show the old positions and ages before the new read.
+    assertTrue(viewModel.volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_whoseNameCouldNotBeRead_getItOnALaterRefresh() = runTest {
+    users.failure = UserRepositoryException.Unavailable()
+    share("alice", "bar", TENT.position)
+    val viewModel = open(volunteerMap())
+    assertNull(viewModel.volunteers.value.single().name)
+
+    users.failure = null
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals("Alice", viewModel.volunteers.value.single().name)
+  }
+
+  @Test
+  fun volunteers_measuredAheadOfOurClock_areJustMeasured() = runTest {
+    // The volunteer's phone is 3 minutes ahead of ours.
+    share("alice", "bar", TENT.position, minutesAgo = -3)
+
+    val alice = open(volunteerMap()).volunteers.value.single()
+
+    assertEquals(0, alice.minutesAgo)
+    assertFalse(alice.isStale)
+  }
+
   /** Delegates to [repository], counting the team observations started and still running. */
   private class CountsObservations(private val repository: LiveLocationRepository) :
       LiveLocationRepository by repository {
@@ -472,6 +642,43 @@ class MapViewModelTest {
             active--
           }
         }
+  }
+
+  /**
+   * Delegates to [repository], except that the observation of [teamId] running when [fail] is
+   * called fails with [failure]. Later observations of it work again, like a connection that comes
+   * back.
+   */
+  private class FailsTeam(
+      private val repository: LiveLocationRepository,
+      private val teamId: String,
+      private val failure: Exception,
+  ) : LiveLocationRepository by repository {
+    /** How many times [teamId] was observed. */
+    var observations = 0
+    private var trigger: CompletableDeferred<Unit>? = CompletableDeferred()
+
+    fun fail() {
+      trigger?.complete(Unit)
+    }
+
+    override fun observeTeamLocations(eventId: String, teamId: String): Flow<List<LiveLocation>> =
+        if (teamId != this.teamId) repository.observeTeamLocations(eventId, teamId)
+        else
+            flow {
+              observations++
+              val failing = trigger
+              coroutineScope {
+                if (failing != null) {
+                  launch {
+                    failing.await()
+                    trigger = null
+                    throw failure
+                  }
+                }
+                emitAll(repository.observeTeamLocations(eventId, teamId))
+              }
+            }
   }
 
   private fun team(id: String, manager: String, vararg members: String) =
