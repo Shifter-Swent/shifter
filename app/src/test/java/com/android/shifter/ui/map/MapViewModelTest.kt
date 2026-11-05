@@ -476,16 +476,32 @@ class MapViewModelTest {
   }
 
   @Test
-  fun volunteers_ofARefusedTeam_areNotReadAgain() = runTest {
-    val refusing =
-        FailsTeam(liveLocations, "bar", LiveLocationRepositoryException.PermissionDenied())
-    open(volunteerMap(refusing))
+  fun volunteers_ofARefusedTeam_areTriedAgainOnceAMinute() = runTest {
+    liveLocations.failure = LiveLocationRepositoryException.PermissionDenied()
+    val counting = CountsObservations(liveLocations)
+    open(volunteerMap(counting))
+    assertEquals(2, counting.observations)
 
-    refusing.fail()
     advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
     runCurrent()
 
-    assertEquals(1, refusing.observations)
+    // The bar and the stage, tried at once and then after each of the three minutes: no fast loop.
+    assertEquals(8, counting.observations)
+  }
+
+  @Test
+  fun volunteers_whenTheMapIsOpenedBeforeTheEvent_showUpOnceReadingOpens() = runTest {
+    share("alice", "bar", TENT.position)
+    // Too early: the rules refuse to read the positions until the event starts.
+    liveLocations.failure = LiveLocationRepositoryException.PermissionDenied()
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    liveLocations.failure = null
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertEquals("alice", viewModel.volunteers.value.single().userId)
   }
 
   @Test

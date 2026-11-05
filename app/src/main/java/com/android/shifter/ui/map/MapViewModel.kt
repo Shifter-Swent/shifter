@@ -167,10 +167,11 @@ class MapViewModel(
    * who joins or leaves, or a team the user starts or stops managing, shows up or goes within a
    * minute. A volunteer in several watched teams is shown once, at their latest position.
    *
-   * A team that can no longer be read just has nobody to show. Any other failure keeps the last
-   * positions, which keep ageing until they are greyed out, and is retried every
-   * [RETRY_DELAY_MILLIS]. Once the map is left, the list is cleared, so coming back never shows old
-   * positions.
+   * A team that cannot be read just has nobody to show, and is tried again every minute: reading
+   * only opens with the event, so a map opened early shows the volunteers once it starts. Any other
+   * failure keeps the last positions, which keep ageing until they are greyed out, and is retried
+   * every [RETRY_DELAY_MILLIS]. Once the map is left, the list is cleared, so coming back never
+   * shows old positions.
    */
   val volunteers: StateFlow<List<VolunteerPin>> =
       volunteerPins()
@@ -308,11 +309,17 @@ class MapViewModel(
           repository
               .observeTeamLocations(eventId, team.id)
               .map { locations -> locations.filter { it.userId in team.memberIds } }
-              // A team that can no longer be read, at the end of the event or once it has another
-              // manager, just has nobody to show: the other teams keep working.
-              .catch { e ->
-                if (e is LiveLocationRepositoryException.PermissionDenied) emit(emptyList())
-                else throw e
+              // A team that cannot be read, before or after the event or once it has another
+              // manager, just has nobody to show: the other teams keep working. It is tried again
+              // every minute, since reading only opens with the event; a team no longer managed
+              // stops being tried at the next read of the teams.
+              .retryWhen { cause, _ ->
+                val refused = cause is LiveLocationRepositoryException.PermissionDenied
+                if (refused) {
+                  emit(emptyList())
+                  delay(AGE_REFRESH_MILLIS)
+                }
+                refused
               }
         }
     ) { lists ->
