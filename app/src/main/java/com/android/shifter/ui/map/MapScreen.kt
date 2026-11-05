@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.map
 
+import android.content.res.Resources
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,11 +28,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -145,30 +147,33 @@ fun MapContent(
             next.isOngoing -> stringResource(R.string.map_ongoing_mission, next.endTime)
             else -> stringResource(R.string.map_next_mission, next.startTime)
           }
-      val unknownName = stringResource(R.string.map_volunteer_unknown)
-      // The age is part of the marker, so its drawing is redone each time the age changes.
-      val volunteerMarkers = volunteers.map {
-        MapMarker(
-            id = VOLUNTEER_MARKER_PREFIX + it.userId,
-            position = it.position,
-            title = it.name ?: unknownName,
-            info = volunteerAge(it.minutesAgo),
-        )
-      }
-      val staleIds = volunteers.filter { it.isStale }.map { VOLUNTEER_MARKER_PREFIX + it.userId }
+      val resources = LocalResources.current
+      // Each volunteer's marker, with whether their position is stale, rebuilt only when the
+      // volunteers change. The age is part of the marker, so its drawing is redone when it changes.
+      val volunteerMarkers =
+          remember(volunteers, resources) {
+            volunteers.associate {
+              MapMarker(
+                  id = VOLUNTEER_MARKER_PREFIX + it.userId,
+                  position = it.position,
+                  title = it.name ?: resources.getString(R.string.map_volunteer_unknown),
+                  info = volunteerAge(resources, it.minutesAgo),
+              ) to it.isStale
+            }
+          }
       ShifterMap(
           markers =
               uiState.markers.map {
                 if (it.id == next?.markerId) it.copy(caption = nextCaption, highlighted = true)
                 else it
-              } + volunteerMarkers,
-          onMarkerClick = { if (!it.isVolunteer()) onMarkerClick(it) },
+              } + volunteerMarkers.keys,
+          onMarkerClick = { if (it !in volunteerMarkers) onMarkerClick(it) },
           modifier = Modifier.fillMaxSize(),
           myPosition = myPosition,
           cameraPositionState = cameraPositionState,
           markerContent = {
-            if (it.isVolunteer()) VolunteerLabel(it, isStale = it.id in staleIds)
-            else MissionLabel(it)
+            val isStale = volunteerMarkers[it]
+            if (isStale != null) VolunteerLabel(it, isStale) else MissionLabel(it)
           },
       )
       if (uiState.isLoading) {
@@ -264,15 +269,12 @@ internal fun MissionLabel(marker: MapMarker) {
   }
 }
 
-private fun MapMarker.isVolunteer() = id.startsWith(VOLUNTEER_MARKER_PREFIX)
-
 /** How long ago a volunteer's position was measured, as the map says it. */
-@Composable
-internal fun volunteerAge(minutesAgo: Long): String =
-    if (minutesAgo == 0L) stringResource(R.string.map_volunteer_just_now)
+internal fun volunteerAge(resources: Resources, minutesAgo: Long): String =
+    if (minutesAgo == 0L) resources.getString(R.string.map_volunteer_just_now)
     else {
       val minutes = minutesAgo.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-      pluralStringResource(R.plurals.map_volunteer_minutes_ago, minutes, minutes)
+      resources.getQuantityString(R.plurals.map_volunteer_minutes_ago, minutes, minutes)
     }
 
 /**

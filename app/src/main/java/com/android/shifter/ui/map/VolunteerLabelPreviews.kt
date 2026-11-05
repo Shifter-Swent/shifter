@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.model.location.GeoPosition
@@ -22,15 +23,19 @@ private val HERE = GeoPosition(46.52, 6.57)
 @Preview(showBackground = true, backgroundColor = 0xFF151D27)
 @Composable
 private fun VolunteerLabelPreview() {
+  val resources = LocalResources.current
   ShifterTheme {
     Column(
         modifier = Modifier.background(MaterialTheme.colorScheme.background).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      VolunteerLabel(MapMarker("volunteer-1", HERE, "Alice", volunteerAge(0)), isStale = false)
-      VolunteerLabel(MapMarker("volunteer-2", HERE, "Bob", volunteerAge(4)), isStale = false)
-      VolunteerLabel(MapMarker("volunteer-3", HERE, "Carol", volunteerAge(17)), isStale = true)
-      VolunteerLabel(MapMarker("volunteer-4", HERE, "Volunteer", volunteerAge(1)), isStale = false)
+      VolunteerLabel(MapMarker("Alice", HERE, "Alice", volunteerAge(resources, 0)), isStale = false)
+      VolunteerLabel(MapMarker("Bob", HERE, "Bob", volunteerAge(resources, 4)), isStale = false)
+      VolunteerLabel(MapMarker("Carol", HERE, "Carol", volunteerAge(resources, 17)), isStale = true)
+      VolunteerLabel(
+          MapMarker("Volunteer", HERE, "Volunteer", volunteerAge(resources, 1)),
+          isStale = false,
+      )
     }
   }
 }

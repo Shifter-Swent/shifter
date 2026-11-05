@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
@@ -155,9 +156,9 @@ class MapScreenTest {
     compose.setContent {
       ShifterTheme {
         Column {
-          VolunteerLabel(MapMarker("volunteer-alice", HERE, "Alice", volunteerAge(3)), false)
-          Text(volunteerAge(0))
-          Text(volunteerAge(1))
+          VolunteerLabel(MapMarker("volunteer-alice", HERE, "Alice", age(3)), false)
+          Text(age(0))
+          Text(age(1))
         }
       }
     }
@@ -173,15 +174,19 @@ class MapScreenTest {
   @Test
   fun volunteerLabel_whenStale_isGreyedOut() {
     compose.setContent {
-      ShifterTheme {
-        VolunteerLabel(MapMarker("volunteer-carol", HERE, "Carol", volunteerAge(17)), true)
-      }
+      ShifterTheme { VolunteerLabel(MapMarker("volunteer-carol", HERE, "Carol", age(17)), true) }
     }
 
     compose.onNodeWithTag(MapScreenTestTags.STALE_VOLUNTEER).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.VOLUNTEER).assertDoesNotExist()
     compose.onNodeWithText("Carol · 17 min").assertIsDisplayed()
   }
+
+  private fun age(minutesAgo: Long) =
+      volunteerAge(
+          InstrumentationRegistry.getInstrumentation().targetContext.resources,
+          minutesAgo,
+      )
 
   @Test
   fun loaded_withVolunteers_showsTheMapWithoutAnyCard() {
