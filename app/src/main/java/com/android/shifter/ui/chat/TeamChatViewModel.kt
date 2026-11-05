@@ -11,12 +11,10 @@ import com.swent.shifter.model.chat.ChatRules
 import com.swent.shifter.model.chat.TeamChatRepository
 import com.swent.shifter.model.chat.TeamChatRepositoryException
 import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.displayNames
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,9 +59,16 @@ data class TeamChatUiState(
     val draft: String = "",
     val sendFailed: Boolean = false,
 ) {
-  /** Whether [draft] can be sent: not blank, and not too long. */
+  /**
+   * Whether [draft] can be sent: not blank, not too long, once the channel is listed and while the
+   * user may still post in it.
+   */
   val canSend: Boolean
-    get() = draft.isNotBlank() && draft.trim().length <= ChatRules.MAX_TEXT_LENGTH
+    get() =
+        !isLoading &&
+            error != ChatError.NOT_ALLOWED &&
+            draft.isNotBlank() &&
+            draft.trim().length <= ChatRules.MAX_TEXT_LENGTH
 }
 
 /**
@@ -104,6 +109,9 @@ class TeamChatViewModel(
   /** The names loaded so far, by uid; null for a profile that has no name. */
   private val names = mutableMapOf<String, String?>()
 
+  /** The senders whose name was asked for, loaded or not: each is read once per [load]. */
+  private val requested = mutableSetOf<String>()
+
   private var loading: Job? = null
 
   init {
@@ -113,6 +121,8 @@ class TeamChatViewModel(
   /** Starts listening to the channel, again after an error. */
   fun load() {
     loading?.cancel()
+    // A name that failed to load is tried again.
+    requested.retainAll(names.keys)
     _uiState.update { it.copy(isLoading = true, error = null) }
     loading = viewModelScope.launch {
       try {
@@ -131,8 +141,10 @@ class TeamChatViewModel(
               else -> ChatError.UNEXPECTED
             }
         if (error == ChatError.NOT_ALLOWED) {
-          // Access is lost: the messages already shown must not stay readable.
+          // Access is lost: the messages already shown must not stay readable, nor those being
+          // sent.
           received = emptyList()
+          sending = emptyList()
           show()
         }
         _uiState.update { it.copy(isLoading = false, error = error) }
@@ -163,34 +175,26 @@ class TeamChatViewModel(
         return@launch
       } catch (e: Exception) {
         // Gives the text back, unless the user already typed another one.
-        _uiState.update { it.copy(draft = it.draft.ifEmpty { text }, sendFailed = true) }
+        _uiState.update { it.copy(draft = it.draft.ifBlank { text }, sendFailed = true) }
       }
       sending = sending - message
       show()
     }
   }
 
-  /** Loads, in parallel, the names of the senders not loaded yet, then shows them. */
-  private suspend fun loadNames(messages: List<ChatMessage>) {
-    val unknown = messages.map { it.senderId }.distinct().filter { it !in names }
+  /**
+   * Loads, in parallel and apart from the messages, the names of the senders not asked for yet,
+   * then shows them, so that a slow profile read does not hold the next messages back.
+   */
+  private fun loadNames(messages: List<ChatMessage>) {
+    val unknown = messages.map { it.senderId }.distinct().filter { it !in requested }
     if (unknown.isEmpty()) return
-    val loaded = coroutineScope { unknown.map { async { it to name(it) } }.awaitAll() }
-    // A name that failed to load is tried again with the next messages.
-    loaded.forEach { (uid, name) -> name.onSuccess { names[uid] = it } }
-    show()
+    requested += unknown
+    viewModelScope.launch {
+      names += userRepository.displayNames(unknown)
+      show()
+    }
   }
-
-  /** The public name of [uid], null for a profile with none, or a failure to load it. */
-  private suspend fun name(uid: String): Result<String?> =
-      try {
-        Result.success(
-            userRepository.getPublicProfile(uid)?.displayName?.takeIf { it.isNotBlank() }
-        )
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        Result.failure(e)
-      }
 
   private fun show(isLoading: Boolean = _uiState.value.isLoading) {
     val me = currentUserId()

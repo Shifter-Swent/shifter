@@ -6,7 +6,10 @@ import com.swent.shifter.model.chat.ChatRules
 import com.swent.shifter.model.chat.FakeTeamChatRepository
 import com.swent.shifter.model.chat.TeamChatRepositoryException
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -26,7 +29,9 @@ class TeamChatViewModelTest {
   private val users =
       FakeUserRepository(listOf(user(ME, "Liam"), user(OTHER, "Alice"), user(NAMELESS, " ")))
 
-  private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, users) { ME }
+  private val profiles = CountingUserRepository(users)
+
+  private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, profiles) { ME }
 
   private fun receive(id: String, from: String, text: String) =
       chat.add(EVENT, TEAM, ChatMessage(id, from, text, SENT_AT))
@@ -75,13 +80,48 @@ class TeamChatViewModelTest {
 
   @Test
   fun messages_whenTheProfilesFail_areShownWithoutNames() = runTest {
-    users.failure = IllegalStateException("boom")
+    users.failure = UserRepositoryException.Unavailable()
     receive("1", OTHER, "Hello")
 
     val state = viewModel().uiState.value
 
     assertEquals(listOf("Hello"), state.messages.map { it.text })
     assertNull(state.messages.single().senderName)
+  }
+
+  @Test
+  fun messages_whileANameIsLoading_stillShowUpInRealTime() = runTest {
+    val release = CompletableDeferred<Unit>()
+    profiles.release = release
+    val viewModel = viewModel()
+
+    receive("1", OTHER, "Hello")
+    receive("2", OTHER, "Anyone at gate B?")
+
+    val messages = viewModel.uiState.value.messages
+    assertEquals(listOf("Hello", "Anyone at gate B?"), messages.map { it.text })
+    assertEquals(listOf(null, null), messages.map { it.senderName })
+
+    release.complete(Unit)
+
+    assertEquals(listOf("Alice", "Alice"), viewModel.uiState.value.messages.map { it.senderName })
+  }
+
+  @Test
+  fun messages_whenANameFails_readItAgainOnlyOnTheNextLoad() = runTest {
+    users.failure = UserRepositoryException.Unavailable()
+    receive("1", OTHER, "Hello")
+    val viewModel = viewModel()
+
+    receive("2", OTHER, "Anyone at gate B?")
+
+    assertEquals(1, profiles.reads)
+
+    users.failure = null
+    viewModel.load()
+
+    assertEquals(2, profiles.reads)
+    assertEquals(listOf("Alice", "Alice"), viewModel.uiState.value.messages.map { it.senderName })
   }
 
   @Test
@@ -121,6 +161,21 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun messages_whenAccessIsLost_hideThePendingMessagesAndBlockSending() = runTest {
+    chat.confirmation = CompletableDeferred()
+    val viewModel = viewModel()
+    viewModel.onDraftChange("On my way")
+    viewModel.send()
+
+    chat.failure = TeamChatRepositoryException.NotAllowed()
+    viewModel.onDraftChange("Hello?")
+
+    val state = viewModel.uiState.value
+    assertTrue(state.messages.isEmpty())
+    assertFalse(state.canSend)
+  }
+
+  @Test
   fun load_afterAnError_showsTheMessages() = runTest {
     chat.failure = TeamChatRepositoryException.Unavailable()
     val viewModel = viewModel()
@@ -135,9 +190,19 @@ class TeamChatViewModelTest {
 
   @Test
   fun canSend_withBlankOrTooLongText_isFalse() {
-    assertFalse(TeamChatUiState(draft = "   ").canSend)
-    assertFalse(TeamChatUiState(draft = "a".repeat(ChatRules.MAX_TEXT_LENGTH + 1)).canSend)
-    assertTrue(TeamChatUiState(draft = " ${"a".repeat(ChatRules.MAX_TEXT_LENGTH)} ").canSend)
+    val listed = TeamChatUiState(isLoading = false)
+    assertFalse(listed.copy(draft = "   ").canSend)
+    assertFalse(listed.copy(draft = "a".repeat(ChatRules.MAX_TEXT_LENGTH + 1)).canSend)
+    assertTrue(listed.copy(draft = " ${"a".repeat(ChatRules.MAX_TEXT_LENGTH)} ").canSend)
+  }
+
+  @Test
+  fun canSend_whileLoadingOrNotAllowed_isFalse() {
+    assertFalse(TeamChatUiState(draft = "Hi", isLoading = true).canSend)
+    assertFalse(
+        TeamChatUiState(draft = "Hi", isLoading = false, error = ChatError.NOT_ALLOWED).canSend
+    )
+    assertTrue(TeamChatUiState(draft = "Hi", isLoading = false, error = ChatError.OFFLINE).canSend)
   }
 
   @Test
@@ -229,7 +294,7 @@ class TeamChatViewModelTest {
   @Test
   fun send_whenItFails_givesTheTextBack() = runTest {
     val viewModel = viewModel()
-    chat.failure = TeamChatRepositoryException.NotAllowed()
+    chat.failure = TeamChatRepositoryException.Unknown()
     viewModel.onDraftChange("On my way")
 
     viewModel.send()
@@ -241,9 +306,23 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun send_whenItFailsWithABlankDraft_givesTheTextBack() = runTest {
+    val confirmation = CompletableDeferred<Unit>()
+    chat.confirmation = confirmation
+    val viewModel = viewModel()
+    viewModel.onDraftChange("On my way")
+    viewModel.send()
+    viewModel.onDraftChange(" ")
+
+    confirmation.completeExceptionally(TeamChatRepositoryException.NotAllowed())
+
+    assertEquals("On my way", viewModel.uiState.value.draft)
+  }
+
+  @Test
   fun onDraftChange_clearsTheSendFailure() = runTest {
     val viewModel = viewModel()
-    chat.failure = TeamChatRepositoryException.NotAllowed()
+    chat.failure = TeamChatRepositoryException.Unknown()
     viewModel.onDraftChange("On my way")
     viewModel.send()
 
@@ -254,6 +333,19 @@ class TeamChatViewModelTest {
 
   private fun user(uid: String, name: String) =
       User(uid = uid, displayName = name, email = "$uid@example.com", createdAt = SENT_AT)
+
+  /** Counts the profile reads, and holds each one until [release] completes, when set. */
+  private class CountingUserRepository(private val users: FakeUserRepository) :
+      UserRepository by users {
+    var reads = 0
+    var release: CompletableDeferred<Unit>? = null
+
+    override suspend fun getPublicProfile(uid: String): PublicProfile? {
+      reads++
+      release?.await()
+      return users.getPublicProfile(uid)
+    }
+  }
 
   private companion object {
     const val EVENT = "event-1"
