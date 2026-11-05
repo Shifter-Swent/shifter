@@ -136,6 +136,9 @@ private fun Bubble(message: ChatMessageItem, zone: ZoneId) {
   val name =
       if (message.isMine) stringResource(R.string.chat_you)
       else message.senderName ?: stringResource(R.string.chat_unknown_sender)
+  val colors = MaterialTheme.colorScheme
+  // Set here, as a background alone, unlike a Surface, gives the text no color on the bubble.
+  val textColor = if (message.isMine) colors.onPrimaryContainer else colors.onSurface
   Box(modifier = Modifier.fillMaxWidth()) {
     Column(
         horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start,
@@ -143,8 +146,7 @@ private fun Bubble(message: ChatMessageItem, zone: ZoneId) {
             Modifier.align(if (message.isMine) Alignment.CenterEnd else Alignment.CenterStart)
                 .widthIn(max = 280.dp)
                 .background(
-                    if (message.isMine) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.surfaceVariant,
+                    if (message.isMine) colors.primaryContainer else colors.surfaceVariant,
                     RoundedCornerShape(12.dp),
                 )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -152,8 +154,13 @@ private fun Bubble(message: ChatMessageItem, zone: ZoneId) {
                 .semantics(mergeDescendants = true) {}
                 .testTag(TeamChatTestTags.message(message.id)),
     ) {
-      Text(name, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-      Text(message.text, style = MaterialTheme.typography.bodyMedium)
+      Text(
+          name,
+          color = textColor,
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.SemiBold,
+      )
+      Text(message.text, color = textColor, style = MaterialTheme.typography.bodyMedium)
       val status =
           when {
             message.isPending -> stringResource(R.string.chat_sending)
