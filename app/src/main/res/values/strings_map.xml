@@ -5,10 +5,16 @@
     <string name="map_next_mission">NEXT MISSION · %1$s</string>
     <string name="map_ongoing_mission">NOW · until %1$s</string>
     <string name="map_recenter">Recenter the map</string>
+    <string name="map_my_position">Your position</string>
     <string name="map_no_missions">No mission has a place on the map yet.</string>
     <string name="map_error_not_found">This event no longer exists.</string>
     <string name="map_error_offline">You are offline. Check your connection and try again.</string>
     <string name="map_error_unexpected">The map could not be loaded.</string>
     <string name="map_retry">Retry</string>
     <string name="map_close">Close</string>
+    <!-- The location picker: tap the map to place a point. -->
+    <string name="map_picker_hint">Tap the map to place the location</string>
+    <string name="map_picker_selected">Selected: %1$s, %2$s</string>
+    <string name="map_picker_marker">Selected place</string>
+    <string name="map_picker_description">Map to pick a place. Tap it to place the location.</string>
 </resources>

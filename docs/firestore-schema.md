@@ -257,6 +257,7 @@ every access to it is denied.
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted |
 | `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters. No update, no delete |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds`, with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
+| `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds` who is still a participant of the event (a volunteer who withdrew or was rejected stays assigned until unassigned), with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
 requests across all events.
@@ -282,9 +283,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 - **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
   write them, and which assignees a manager adds; malformed documents are caught by the mappers.
-- **Check-ins trust `assigneeIds` only.** A volunteer who withdrew or was rejected stays assigned
-  until the organizer unassigns them, so they can still check themself in; #313 is to also
-  require them to be a participant.
+- **A volunteer who left can still read their missions and check-ins.** They stay in
+  `assigneeIds` until unassigned, and the rules that let a volunteer list their own missions and
+  check-ins do not check participation; #337 is to address it.
 - **Any signed-in user reads an event's teams, `memberIds` included.** The members are uids
   only, but public profiles turn them into names. Events, join codes included, are listable by
   anyone signed in too; #160 is to address both, e.g. with a public subcollection holding only

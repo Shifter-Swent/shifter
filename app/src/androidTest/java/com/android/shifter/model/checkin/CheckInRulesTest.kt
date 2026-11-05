@@ -13,6 +13,11 @@ import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
+import com.swent.shifter.model.membership.AvailabilitySlot
+import com.swent.shifter.model.membership.MembershipRequest
+import com.swent.shifter.model.membership.MembershipRequestRepository
+import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -103,6 +108,23 @@ class CheckInRulesTest {
 
     signIn(organizer)
     assertDenied { checkInRef(outsider).set(checkIn(outsider, MANAGER, by = organizer)).await() }
+  }
+
+  @Test
+  fun create_forAnAssigneeWhoWithdrew_isDenied() = emulatorTest {
+    val former = formerParticipant { user ->
+      signIn(user)
+      withdraw(eventId, user.uid)
+    }
+
+    assertNobodyChecksIn(former)
+  }
+
+  @Test
+  fun create_forAnAssigneeWhoWasRejected_isDenied() = emulatorTest {
+    val former = formerParticipant { user -> reject(eventId, user.uid) }
+
+    assertNobodyChecksIn(former)
   }
 
   @Test
@@ -291,14 +313,59 @@ class CheckInRulesTest {
   }
 
   /**
+   * Makes a new volunteer a participant and a member of [TEAM_ID] through the real flow, assigns
+   * them to both missions, then lets them [leave] the event, as [MembershipRequestRepository] does.
+   * They stay in the missions' `assigneeIds`, like after a withdrawal or a rejection in the app.
+   *
+   * They check in at [GENERAL_MISSION_ID] before leaving, which fails the test if this setup breaks
+   * and so proves that only leaving denies them afterwards. Not at [MISSION_ID]: a check-in is
+   * final, so a second one there would be denied whether or not they left.
+   */
+  private suspend fun formerParticipant(
+      leave: suspend MembershipRequestRepository.(Account) -> Unit
+  ): Account {
+    val user = account()
+    val requests = MembershipRequestRepositoryFirestore(db)
+    paths += "events/$eventId/membershipRequests/${user.uid}"
+    signIn(user)
+    requests.apply(
+        eventId,
+        MembershipRequest(
+            userId = user.uid,
+            teamId = TEAM_ID,
+            availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600))),
+            createdAt = Instant.EPOCH,
+        ),
+    )
+    signIn(organizer)
+    requests.accept(eventId, user.uid)
+    for (missionId in listOf(MISSION_ID, GENERAL_MISSION_ID)) {
+      db.collection("events")
+          .document(eventId)
+          .collection("missions")
+          .document(missionId)
+          .update("assigneeIds", FieldValue.arrayUnion(user.uid))
+          .await()
+    }
+    signIn(user)
+    checkInRef(user, GENERAL_MISSION_ID).set(checkIn(user, SELF, by = user)).await()
+    signIn(organizer)
+    requests.leave(user)
+    return user
+  }
+
+  /**
    * Creates an event of [organizer] with the team [TEAM_ID] led by [manager], a mission of that
-   * team and a mission of no team, both with [volunteer] and [otherVolunteer] assigned.
+   * team and a mission of no team, both with [volunteer] and [otherVolunteer] assigned and
+   * participants.
    */
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
     paths += ref.path
     ref.set(mapOf("organizerId" to organizer.uid)).await()
+    paths +=
+        FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(volunteer.uid, otherVolunteer.uid))
     createTeam(TEAM_ID, manager, ref.id)
     createMission(ref.id, MISSION_ID, TEAM_ID)
     createMission(ref.id, GENERAL_MISSION_ID, teamId = null)
@@ -366,6 +433,14 @@ class CheckInRulesTest {
     const val GENERAL_MISSION_ID = "mission-general"
     const val SELF = "SELF"
     const val MANAGER = "MANAGER"
+  }
+
+  /** Neither [user] themself, the team's manager nor the organizer may check [user] in. */
+  private suspend fun assertNobodyChecksIn(user: Account) {
+    for ((by, method) in listOf(user to SELF, manager to MANAGER, organizer to MANAGER)) {
+      signIn(by)
+      assertDenied { checkInRef(user).set(checkIn(user, method, by = by)).await() }
+    }
   }
 
   private suspend fun assertDenied(block: suspend () -> Unit) {
