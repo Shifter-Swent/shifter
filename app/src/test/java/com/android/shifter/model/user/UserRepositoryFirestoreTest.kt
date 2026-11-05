@@ -15,6 +15,7 @@ import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.EMAIL
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -54,9 +55,9 @@ class UserRepositoryFirestoreTest {
     // Signed in before: the public profile already exists, unless a test removes it.
     storedPublicProfile(mapOf(DISPLAY_NAME to "Ada"))
     // Runs the transaction body synchronously against the mocked transaction.
-    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } answers
+    every { db.runTransaction(any<Transaction.Function<Any?>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<DocumentSnapshot?>>().apply(transaction))
+          Tasks.forResult(firstArg<Transaction.Function<Any?>>().apply(transaction))
         }
   }
 
@@ -121,13 +122,29 @@ class UserRepositoryFirestoreTest {
   @Test
   fun getOrCreateUser_translatesFirestoreErrors() = runTest {
     val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
-    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
-        Tasks.forException(error)
+    every { db.runTransaction(any<Transaction.Function<Any?>>()) } returns Tasks.forException(error)
 
     val thrown = runCatching { repository.getOrCreateUser(UID, "Ada", "a@b.c") }.exceptionOrNull()
 
     assertTrue(thrown is UserRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAMalformedProfile_writesNothing() = runTest {
+    // No email and no mode: the sign-in fails, and must not leave the mode behind.
+    stored(mapOf(DISPLAY_NAME to "Ada", LOCATION_SHARING_ENABLED to false))
+    storedPublicProfile(null)
+
+    val thrown = runCatching {
+      repository.getOrCreateUser(UID, "Ada", "a@b.c", UserMode.ORGANIZER)
+    }
+        .exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+    assertTrue(thrown!!.cause is IllegalStateException)
+    verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
 
   @Test
@@ -139,6 +156,73 @@ class UserRepositoryFirestoreTest {
     assertTrue(thrown is UserRepositoryException.Unknown)
     assertTrue(thrown!!.cause is IllegalStateException)
     verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
+  }
+
+  @Test
+  fun getOrCreateUser_withMode_createsTheProfileWithIt() = runTest {
+    stored(null)
+
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.ORGANIZER, user.mode)
+    verify {
+      transaction.set(
+          ref,
+          UserRepositoryFirestore.newUserFields("Ada", "ada@example.com", UserMode.ORGANIZER),
+      )
+    }
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAProfileWithout_savesIt() = runTest {
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
+
+    val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+    assertEquals(UserMode.ORGANIZER, user.mode)
+    verify { transaction.update(ref, mapOf<String, Any>(MODE to "ORGANIZER")) }
+  }
+
+  @Test
+  fun getOrCreateUser_withModeOnAProfileWithOne_keepsTheStoredMode() = runTest {
+    // An unknown mode, from a later version, is kept as well.
+    listOf("VOLUNTEER", "ADMIN").forEach { storedMode ->
+      stored(
+          mapOf(
+              DISPLAY_NAME to "Ada",
+              EMAIL to "ada@example.com",
+              LOCATION_SHARING_ENABLED to false,
+              MODE to storedMode,
+          )
+      )
+
+      val user = repository.getOrCreateUser(UID, "Ada", "ada@example.com", UserMode.ORGANIZER)
+
+      assertEquals(UserMode.entries.firstOrNull { it.name == storedMode }, user.mode)
+    }
+    verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun setMode_writesTheModeByName() = runTest {
+    every { ref.update(MODE, "ORGANIZER") } returns Tasks.forResult(null)
+
+    repository.setMode(UID, UserMode.ORGANIZER)
+
+    verify { ref.update(MODE, "ORGANIZER") }
+  }
+
+  @Test
+  fun setMode_translatesFirestoreErrors() = runTest {
+    // What the rules answer when there is no profile.
+    every { ref.update(MODE, "VOLUNTEER") } returns
+        Tasks.forException(FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
+
+    val thrown = runCatching { repository.setMode(UID, UserMode.VOLUNTEER) }.exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
   @Test
@@ -252,6 +336,43 @@ class UserRepositoryFirestoreTest {
   }
 
   @Test
+  fun userFromFirestore_mapsTheModeByName() {
+    stored(
+        mapOf(
+            DISPLAY_NAME to "Ada",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+            MODE to "ORGANIZER",
+        )
+    )
+
+    assertEquals(UserMode.ORGANIZER, UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
+  fun userFromFirestore_withoutMode_leavesItNull() {
+    stored(
+        mapOf(DISPLAY_NAME to "Ada", EMAIL to "ada@example.com", LOCATION_SHARING_ENABLED to false)
+    )
+
+    assertNull(UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
+  fun userFromFirestore_withUnknownMode_leavesItNull() {
+    stored(
+        mapOf(
+            DISPLAY_NAME to "Ada",
+            EMAIL to "ada@example.com",
+            LOCATION_SHARING_ENABLED to false,
+            MODE to "ADMIN",
+        )
+    )
+
+    assertNull(UserRepositoryFirestore.userFromFirestore(snapshot).mode)
+  }
+
+  @Test
   fun userFromFirestore_failsOnMissingOrMistypedFields() {
     val valid =
         mapOf(
@@ -268,6 +389,7 @@ class UserRepositoryFirestoreTest {
             valid + (EMAIL to 42),
             valid + (LOCATION_SHARING_ENABLED to "yes"),
             valid + (CREATED_AT to "2024-01-01"),
+            valid + (MODE to 1),
         )
 
     malformed.forEach { fields ->

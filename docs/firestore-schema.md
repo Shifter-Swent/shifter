@@ -67,6 +67,7 @@ eventParticipants/{eventId}
 | `email` | string | |
 | `locationSharingEnabled` | bool | Opt-in, always `false` at creation |
 | `createdAt` | timestamp | Set to the server time on creation. Read as `null` while the write is pending |
+| `mode` | string | `UserMode` by name: `"VOLUNTEER"` or `"ORGANIZER"`. Saved at sign-in from the screen used, when the profile has none; changed in Settings. Absent on profiles from before modes. A value the app does not know is read as no mode |
 
 Only its owner reads it: what others may see of a user lives in their public profile.
 
