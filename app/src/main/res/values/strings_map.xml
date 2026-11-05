@@ -18,6 +18,10 @@
         <item quantity="one">%d min</item>
         <item quantity="other">%d min</item>
     </plurals>
+    <plurals name="map_volunteer_hours_ago">
+        <item quantity="one">%d h</item>
+        <item quantity="other">%d h</item>
+    </plurals>
     <!-- The location picker: tap the map to place a point. -->
     <string name="map_picker_hint">Tap the map to place the location</string>
     <string name="map_picker_selected">Selected: %1$s, %2$s</string>

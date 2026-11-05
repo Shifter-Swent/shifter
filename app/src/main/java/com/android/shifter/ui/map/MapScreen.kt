@@ -269,13 +269,24 @@ internal fun MissionLabel(marker: MapMarker) {
   }
 }
 
-/** How long ago a volunteer's position was measured, as the map says it. */
+/**
+ * How long ago a volunteer's position was measured, as the map says it: in minutes for the first
+ * hour, then in whole hours, so an old position stays short to read.
+ */
 internal fun volunteerAge(resources: Resources, minutesAgo: Long): String =
-    if (minutesAgo == 0L) resources.getString(R.string.map_volunteer_just_now)
-    else {
-      val minutes = minutesAgo.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-      resources.getQuantityString(R.plurals.map_volunteer_minutes_ago, minutes, minutes)
+    when {
+      minutesAgo == 0L -> resources.getString(R.string.map_volunteer_just_now)
+      minutesAgo < MINUTES_PER_HOUR -> {
+        val minutes = minutesAgo.toInt()
+        resources.getQuantityString(R.plurals.map_volunteer_minutes_ago, minutes, minutes)
+      }
+      else -> {
+        val hours = (minutesAgo / MINUTES_PER_HOUR).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        resources.getQuantityString(R.plurals.map_volunteer_hours_ago, hours, hours)
+      }
     }
+
+private const val MINUTES_PER_HOUR = 60L
 
 /**
  * A volunteer as drawn on the map: a small dot on their position, with their name and how old the

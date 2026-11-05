@@ -182,6 +182,14 @@ class MapScreenTest {
     compose.onNodeWithText("Carol · 17 min").assertIsDisplayed()
   }
 
+  @Test
+  fun volunteerAge_fromAnHour_countsWholeHours() {
+    assertEquals("59 min", age(59))
+    assertEquals("1 h", age(60))
+    // Rounded down: the position is at least that old.
+    assertEquals("2 h", age(179))
+  }
+
   private fun age(minutesAgo: Long) =
       volunteerAge(
           InstrumentationRegistry.getInstrumentation().targetContext.resources,

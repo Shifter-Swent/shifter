@@ -19,7 +19,10 @@ import com.swent.shifter.ui.theme.ShifterTheme
 
 private val HERE = GeoPosition(46.52, 6.57)
 
-/** A position just shared, one a few minutes old, one greyed out, and a volunteer with no name. */
+/**
+ * A position just shared, one a few minutes old, one greyed out, one hours old, and a volunteer
+ * with no name.
+ */
 @Preview(showBackground = true, backgroundColor = 0xFF151D27)
 @Composable
 private fun VolunteerLabelPreview() {
@@ -32,6 +35,7 @@ private fun VolunteerLabelPreview() {
       VolunteerLabel(MapMarker("Alice", HERE, "Alice", volunteerAge(resources, 0)), isStale = false)
       VolunteerLabel(MapMarker("Bob", HERE, "Bob", volunteerAge(resources, 4)), isStale = false)
       VolunteerLabel(MapMarker("Carol", HERE, "Carol", volunteerAge(resources, 17)), isStale = true)
+      VolunteerLabel(MapMarker("Dan", HERE, "Dan", volunteerAge(resources, 130)), isStale = true)
       VolunteerLabel(
           MapMarker("Volunteer", HERE, "Volunteer", volunteerAge(resources, 1)),
           isStale = false,
