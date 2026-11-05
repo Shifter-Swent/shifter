@@ -25,7 +25,7 @@ type: Task
      They become the Definition of Done of the PR. -->
 
 - [ ]
-- [ ] `./gradlew check` passes.
+- [ ] `./gradlew check` and `./gradlew ktfmtCheck` pass.
 
 ## Related
 

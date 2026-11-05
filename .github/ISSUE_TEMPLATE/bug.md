@@ -27,7 +27,7 @@ labels: bug
 
 - [ ] The bug no longer happens.
 - [ ] A test that failed before the fix now passes.
-- [ ] `./gradlew check` passes.
+- [ ] `./gradlew check` and `./gradlew ktfmtCheck` pass.
 
 ## Related
 

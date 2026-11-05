@@ -41,7 +41,8 @@
 - [ ] Unit tests: <!-- test classes or names -->
 - [ ] Compose UI tests: <!-- test classes or names -->
 - [ ] `./gradlew check` and `./gradlew ktfmtCheck` pass
-- [ ] `./gradlew connectedDebugAndroidTest` passes (only if instrumented tests are touched)
+- [ ] Instrumented tests against the Firebase emulators: <!-- test classes -->
+- [ ] `./gradlew connectedDebugAndroidTest` passes (when `androidTest/` or Firestore code changes)
 
 ## Related issues
 
@@ -49,4 +50,5 @@
 
 -
 
+<!-- Closes #N, or Part of #N if the issue is only partly done. -->
 Closes #

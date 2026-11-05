@@ -45,8 +45,8 @@ Agreed by the team in #334.
   - When the subject is not enough, add a body wrapped at 72 characters, in two paragraphs starting with `What:` and `Why:`.
   - One kind of change per commit: a refactor and a feature go in separate commits.
   - End with a `Co-Authored-By:` trailer when an AI wrote part of the commit.
-- **Branches**: `<type>/<issue>-<slug>`, in lowercase with hyphens, where the type is the one of the main change: `feature`, `fix`, `refactor`, `test`, `docs` or `chore` (e.g. `fix/325-app-name`).
-  - Always branch from `main`, and update with `git rebase origin/main`, never by merging `main`.
+- **Branches**: `<type>/<issue>-<slug>`, in lowercase with hyphens, where the type is the one of the main change: `feature`, `fix`, `refactor`, `test`, `style`, `docs` or `chore` (e.g. `fix/325-app-name`).
+  - Always branch from `main`, and update with `git rebase origin/main`, never by merging `main`. Then push with `git push --force-with-lease`, and never rebase a branch someone else is pushing to without telling them.
   - A PR that depends on another one waits for it to be merged, then branches from the updated `main`.
 - **Pull requests**: titled like their main commit, and filled from `.github/pull_request_template.md`.
   - The Definition of Done copies the acceptance criteria of the issue, plus the items of "Definition of done" above. Only check what was actually verified; an unchecked box points to Out of scope or Known limitations.
