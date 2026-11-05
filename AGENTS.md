@@ -34,8 +34,25 @@ Writing them down also helps the human team agree on how we build.
 - Make one **bounded, reviewable** change per PR. If it sprawls across unrelated files, split it.
 - Read the failing tests carefully and iterate until `./gradlew check` passes.
 - Stage only the files you changed; never `git add .` or `git add -A` (it can pull in local config like `local.properties`).
-- Commit with an imperative subject of at most 50 characters, capitalized (e.g. `Add user authentication`). Add a body wrapped at 72 characters when the subject is not enough.
+- Commit, branch and open PRs as described in "Commits, branches and PRs" below.
 - **Acknowledge your contributors** at the top of the file: credit the AI that wrote it with a `Co-authored-by` line. 
+
+## Commits, branches and PRs
+
+Agreed by the team in #334.
+
+- **Commits**: `<type>: <Subject>`, where the type is `feat`, `fix`, `refactor`, `test`, `style`, `docs` or `chore`, and the subject is imperative, capitalized, at most 50 characters including the type (e.g. `fix: Show Shifter as the name of the app`).
+  - When the subject is not enough, add a body wrapped at 72 characters, in two paragraphs starting with `What:` and `Why:`.
+  - One kind of change per commit: a refactor and a feature go in separate commits.
+  - End with a `Co-Authored-By:` trailer when an AI wrote part of the commit.
+- **Branches**: `<type>/<issue>-<slug>`, in lowercase with hyphens, where the type is the one of the main change: `feature`, `fix`, `refactor`, `test`, `style`, `docs` or `chore` (e.g. `fix/325-app-name`).
+  - Always branch from `main`, and update with `git rebase origin/main`, never by merging `main`. Then push with `git push --force-with-lease`, and never rebase a branch someone else is pushing to without telling them.
+  - A PR that depends on another one waits for it to be merged, then branches from the updated `main`.
+- **Pull requests**: titled like their main commit, and filled from `.github/pull_request_template.md`.
+  - The Definition of Done copies the acceptance criteria of the issue, plus the items of "Definition of done" above. Only check what was actually verified; an unchecked box points to Out of scope or Known limitations.
+  - End with `Closes #N`, or `Part of #N` when the issue is only partly done.
+- **Merging**: "Create a merge commit" only, once the branch is rebased on `main` and the CI is green; the branch is deleted after the merge.
+- **Issues**: titled in the imperative, and filled from the templates of `.github/ISSUE_TEMPLATE/` (task, bug, user story), with their project fields.
 
 ## Naming
 

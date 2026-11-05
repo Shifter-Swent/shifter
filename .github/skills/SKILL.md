@@ -21,7 +21,8 @@ isolated changes matter as much as correctness.
 ### Scope and PR hygiene
 - The PR does one thing and matches its issue. Unrelated changes (refactors, formatting of untouched files) belong in a separate PR.
 - The PR is small enough to review (rough guide: under ~400 changed lines excluding tests and generated files). Otherwise suggest how to split it.
-- Branch name and commit messages follow the team convention and are in English.
+- Branch name, commit messages and PR title follow "Commits, branches and PRs" in `AGENTS.md` (`<type>/<issue>-<slug>`, `<type>: <Subject>`, `What:` / `Why:` body) and are in English.
+- The PR description follows `.github/pull_request_template.md`: its Definition of Done copies the acceptance criteria of the issue, and only checks what was verified.
 - No commented-out code, leftover debug logs (`Log.d`, `println`), or `TODO`s without a linked issue.
 
 ### Architecture (MVVM)
