@@ -9,11 +9,11 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.model.location.LocationProvider
-import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.location.LiveLocation
 import com.swent.shifter.model.location.LiveLocationRepository
 import com.swent.shifter.model.location.LiveLocationRepositoryException
+import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
@@ -32,17 +32,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -168,10 +166,11 @@ class MapViewModel(
    * minute. A volunteer in several watched teams is shown once, at their latest position.
    *
    * A team that cannot be read just has nobody to show, and is tried again every minute: reading
-   * only opens with the event, so a map opened early shows the volunteers once it starts. Any other
-   * failure keeps the last positions, which keep ageing until they are greyed out, and is retried
-   * every [RETRY_DELAY_MILLIS]. Once the map is left, the list is cleared, so coming back never
-   * shows old positions.
+   * only opens with the event, so a map opened early shows the volunteers once it starts.
+   * [READABLE_AFTER_END] after the event's end, nothing is followed any more, without waiting for a
+   * refusal that may never come. Any other failure keeps the last positions, which keep ageing
+   * until they are greyed out, and is retried every [RETRY_DELAY_MILLIS]. Once the map is left, the
+   * list is cleared, so coming back never shows old positions.
    */
   val volunteers: StateFlow<List<VolunteerPin>> =
       volunteerPins()
@@ -266,8 +265,16 @@ class MapViewModel(
     // managing.
     val locations = flow {
       val userId = currentUserId()
-      if (userId == null) emit(emptyList<Team>())
-      else emitAll(everyMinute().map { teamsToWatch.of(eventId, userId) })
+      // An open listener is only refused on the next change of the team's positions, which may
+      // never come once the event is over: past the end of reading, no team is watched any more.
+      val readableUntil = eventRepository.getEvent(eventId)?.endAt?.plus(READABLE_AFTER_END)
+      if (userId == null || readableUntil == null) emit(emptyList<Team>())
+      else
+          emitAll(
+              everyMinute().map {
+                if (now() > readableUntil) emptyList() else teamsToWatch.of(eventId, userId)
+              }
+          )
     }
         .distinctUntilChanged()
         .flatMapLatest { teams -> latestLocations(repository, teams) }
@@ -309,10 +316,10 @@ class MapViewModel(
           repository
               .observeTeamLocations(eventId, team.id)
               .map { locations -> locations.filter { it.userId in team.memberIds } }
-              // A team that cannot be read, before or after the event or once it has another
-              // manager, just has nobody to show: the other teams keep working. It is tried again
-              // every minute, since reading only opens with the event; a team no longer managed
-              // stops being tried at the next read of the teams.
+              // A team that cannot be read, before the event or once it has another manager, just
+              // has nobody to show: the other teams keep working. It is tried again every minute,
+              // since reading only opens with the event; a team no longer managed stops being tried
+              // at the next read of the teams, and every team once the event is over.
               .retryWhen { cause, _ ->
                 val refused = cause is LiveLocationRepositoryException.PermissionDenied
                 if (refused) {
@@ -362,6 +369,12 @@ class MapViewModel(
 
     /** How long to wait before reading the positions again after a failure. */
     const val RETRY_DELAY_MILLIS = 10_000L
+
+    /**
+     * How long after the event's end the positions can still be read, as `firestore.rules` allow:
+     * the map stops following them then.
+     */
+    val READABLE_AFTER_END: Duration = Duration.ofHours(1)
 
     /** Emits now, then every [AGE_REFRESH_MILLIS], so an age grows without a new position. */
     private fun everyMinute(): Flow<Unit> = flow {

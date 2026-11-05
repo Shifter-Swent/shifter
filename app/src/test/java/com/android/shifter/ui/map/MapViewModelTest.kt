@@ -6,14 +6,14 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.location.FakeLiveLocationRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.model.location.LocationProvider
-import com.swent.shifter.model.location.LocationStatus
-import com.swent.shifter.model.location.FakeLiveLocationRepository
 import com.swent.shifter.model.location.LiveLocation
 import com.swent.shifter.model.location.LiveLocationRepository
 import com.swent.shifter.model.location.LiveLocationRepositoryException
+import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -28,9 +28,9 @@ import java.time.Instant
 import java.time.ZoneOffset.UTC
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -629,6 +629,35 @@ class MapViewModelTest {
     runCurrent()
 
     assertEquals("Alice", viewModel.volunteers.value.single().name)
+  }
+
+  @Test
+  fun volunteers_anHourAfterTheEventEnds_stopBeingFollowed() = runTest {
+    share("alice", "bar", TENT.position)
+    val counting = CountsObservations(liveLocations)
+    val viewModel = open(volunteerMap(counting))
+
+    // Still readable until an hour after the end, as the rules allow.
+    clock = EVENT.endAt + MapViewModel.READABLE_AFTER_END
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+    assertEquals("alice", viewModel.volunteers.value.single().userId)
+
+    // Past it, no refusal comes, but the map stops following the positions on its own.
+    clock = clock.plusSeconds(60)
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+    assertTrue(viewModel.volunteers.value.isEmpty())
+    assertEquals(0, counting.active)
+  }
+
+  @Test
+  fun volunteers_ofAnEventThatNoLongerExists_areNotFollowed() = runTest {
+    events.events.clear()
+    val counting = CountsObservations(liveLocations)
+
+    assertTrue(open(volunteerMap(counting)).volunteers.value.isEmpty())
+    assertEquals(0, counting.observations)
   }
 
   @Test
