@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <string name="chat_empty">No messages yet</string>
+    <string name="chat_error_offline">You are offline. The messages will show once you are back online.</string>
+    <string name="chat_error_not_allowed">You no longer have access to this team\'s channel.</string>
+    <string name="chat_error_unexpected">The messages could not be loaded.</string>
+    <string name="chat_retry">Retry</string>
+    <string name="chat_unknown_sender">Unnamed member</string>
+    <string name="chat_you">You</string>
+    <string name="chat_sending">Sending…</string>
+    <string name="chat_send_failed">The message could not be sent. Try again.</string>
+    <string name="chat_input_placeholder">Write a message</string>
+    <string name="chat_send">Send</string>
+</resources>
