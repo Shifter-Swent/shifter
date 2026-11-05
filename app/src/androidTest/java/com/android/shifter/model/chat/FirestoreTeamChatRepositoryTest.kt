@@ -111,17 +111,18 @@ class FirestoreTeamChatRepositoryTest {
   }
 
   @Test
-  fun messages_withMoreThanTheMaximum_keepsTheMostRecent() = emulatorTest {
-    val start = Instant.parse("2026-07-04T18:00:00Z")
-    for (i in 0..ChatRules.MAX_MESSAGES) {
-      messageAsAdmin("message-$i", member, "Message $i", start.plusSeconds(i.toLong()))
-    }
-    signIn(member)
+  fun messages_withMoreThanTheMaximum_keepsTheMostRecent() =
+      emulatorTest(FULL_CHANNEL_TIMEOUT_MILLIS) {
+        val start = Instant.parse("2026-07-04T18:00:00Z")
+        for (i in 0..ChatRules.MAX_MESSAGES) {
+          messageAsAdmin("message-$i", member, "Message $i", start.plusSeconds(i.toLong()))
+        }
+        signIn(member)
 
-    val listed = repository.messages(eventId, TEAM_ID).first()
+        val listed = repository.messages(eventId, TEAM_ID).first()
 
-    assertEquals((1..ChatRules.MAX_MESSAGES).map { "Message $it" }, listed.texts())
-  }
+        assertEquals((1..ChatRules.MAX_MESSAGES).map { "Message $it" }, listed.texts())
+      }
 
   @Test
   fun messagesAndSend_byAnOutsider_failWithNotAllowed() = emulatorTest {
@@ -308,6 +309,12 @@ class FirestoreTeamChatRepositoryTest {
      * trips around it: the default budget of an emulator test does not leave enough.
      */
     const val OFFLINE_TIMEOUT_MILLIS = 60_000L
+
+    /**
+     * Room to write a full channel, [ChatRules.MAX_MESSAGES] + 1 messages one request each, which
+     * alone can take the default budget of an emulator test on the CI's emulator (#385).
+     */
+    const val FULL_CHANNEL_TIMEOUT_MILLIS = 90_000L
 
     /** The device and the emulator host keep their own clocks, so a little drift is allowed. */
     val CLOCK_TOLERANCE: Duration = Duration.ofMinutes(2)
