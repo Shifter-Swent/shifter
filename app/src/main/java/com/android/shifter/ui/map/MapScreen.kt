@@ -44,7 +44,6 @@ import kotlinx.coroutines.launch
 
 object MapScreenTestTags {
   const val SCREEN = "MapScreen"
-  const val BACK_BUTTON = "MapBackButton"
   const val VENUE = "MapVenue"
   const val LOADING = "MapLoading"
   const val ERROR = "MapError"
@@ -94,9 +93,7 @@ fun MapContent(
 ) {
   Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
     FormHeader(
-        backLabel = stringResource(R.string.map_back),
         title = uiState.eventTitle,
-        backButtonTestTag = MapScreenTestTags.BACK_BUTTON,
         onBack = onBack,
     )
     if (uiState.venue.isNotEmpty()) {

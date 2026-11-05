@@ -80,7 +80,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 object AddMissionScreenTestTags {
-  const val BACK_BUTTON = "AddMissionBackButton"
   const val EVENT_TITLE = "AddMissionEventTitle"
   const val EVENT_PERIOD = "AddMissionEventPeriod"
   const val LOADING_INDICATOR = "AddMissionLoadingIndicator"
@@ -201,9 +200,7 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
   Scaffold(
       topBar = {
         FormHeader(
-            backLabel = stringResource(R.string.add_mission_back),
             title = stringResource(R.string.add_mission_title),
-            backButtonTestTag = AddMissionScreenTestTags.BACK_BUTTON,
             onBack = actions.onBack,
         )
       }

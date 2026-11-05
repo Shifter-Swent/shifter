@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -45,7 +46,6 @@ import com.swent.shifter.ui.theme.shifter_mutedText
 
 /** Tags of the team setup step: its states, the teams it lists and the two actions under them. */
 object TeamSetupScreenTestTags {
-  const val BACK_BUTTON = "TeamSetupBackButton"
   const val LOADING_INDICATOR = "TeamSetupLoadingIndicator"
   const val LOAD_ERROR = "TeamSetupLoadError"
   const val RETRY_BUTTON = "TeamSetupRetryButton"
@@ -65,21 +65,18 @@ object TeamSetupScreenTestTags {
  *   volunteers pick one when they apply; leaving management again does not.
  */
 enum class TeamSetupMode(
-    @get:StringRes val backLabel: Int,
     @get:StringRes val title: Int,
     @get:StringRes val proceedLabel: Int,
     val requiresTeam: Boolean,
 ) {
   /** Part of the event creation flow, between the form and the join code. */
   CREATION(
-      R.string.create_event_back,
       R.string.create_event_title,
       R.string.team_setup_proceed,
       requiresTeam = true,
   ),
   /** Reopened later from the event's Overview, the event long since created. */
   MANAGEMENT(
-      R.string.team_setup_manage_back,
       R.string.team_setup_manage_title,
       R.string.team_setup_done,
       requiresTeam = false,
@@ -162,9 +159,7 @@ fun TeamSetupContent(
   Scaffold(
       topBar = {
         FormHeader(
-            backLabel = stringResource(mode.backLabel),
             title = stringResource(mode.title),
-            backButtonTestTag = TeamSetupScreenTestTags.BACK_BUTTON,
             onBack = onBack,
         )
       },

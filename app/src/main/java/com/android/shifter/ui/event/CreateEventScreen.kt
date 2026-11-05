@@ -66,7 +66,6 @@ import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
 
 object CreateEventScreenTestTags {
-  const val BACK_BUTTON = "CreateEventBackButton"
   const val TITLE_FIELD = "CreateEventTitleField"
   const val DESCRIPTION_FIELD = "CreateEventDescriptionField"
   const val ADDRESS_FIELD = "CreateEventAddressField"
@@ -136,9 +135,7 @@ fun CreateEventContent(
   Scaffold(
       topBar = {
         FormHeader(
-            backLabel = stringResource(R.string.create_event_back),
             title = stringResource(R.string.create_event_title),
-            backButtonTestTag = CreateEventScreenTestTags.BACK_BUTTON,
             onBack = onBack,
         )
       }

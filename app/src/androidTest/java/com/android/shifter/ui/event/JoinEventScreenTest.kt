@@ -37,6 +37,7 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -240,7 +241,7 @@ class JoinEventScreenTest {
         .onNodeWithTag(EventDetailsTestTags.DESCRIPTION)
         .assertTextEquals("A festival by the lake.")
     composeTestRule.onNodeWithTag(EventDetailsTestTags.DATE).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, backClicks)
   }

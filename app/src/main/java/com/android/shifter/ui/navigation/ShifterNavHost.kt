@@ -14,7 +14,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +47,8 @@ import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
+import com.swent.shifter.ui.components.BackButton
+import com.swent.shifter.ui.components.BackButtonInset
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
 import com.swent.shifter.ui.event.EventCreatedScreen
@@ -582,12 +583,11 @@ private fun PlaceholderPage(
 ) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
     if (onBack != null) {
-      TextButton(
+      // The page's own padding is 16 dp: this brings the circle of the button to 24 dp.
+      BackButton(
           onClick = onBack,
-          modifier = Modifier.testTag(NavigationTestTags.GO_BACK_BUTTON),
-      ) {
-        Text("Back")
-      }
+          modifier = Modifier.padding(start = 8.dp - BackButtonInset),
+      )
     }
     Text(destination.title, modifier = Modifier.testTag(NavigationTestTags.TOP_BAR_TITLE))
     content()

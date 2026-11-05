@@ -12,13 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.BackButton
+import com.swent.shifter.ui.components.BackButtonInset
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_signoutOutline
@@ -108,25 +105,11 @@ private fun SettingsHeader(onBack: () -> Unit) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxWidth().background(colors.surfaceContainer)) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 18.dp),
+        modifier =
+            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 24.dp - BackButtonInset),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      IconButton(
-          onClick = onBack,
-          modifier = Modifier.size(38.dp).testTag(NavigationTestTags.GO_BACK_BUTTON),
-          shape = CircleShape,
-          colors =
-              IconButtonDefaults.iconButtonColors(
-                  containerColor = colors.secondaryContainer,
-                  contentColor = colors.onSecondaryContainer,
-              ),
-      ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_chevron_left),
-            contentDescription = stringResource(R.string.content_description_back),
-            modifier = Modifier.size(18.dp),
-        )
-      }
+      BackButton(onClick = onBack)
       Text(
           text = stringResource(R.string.settings_title),
           modifier = Modifier.weight(1f).testTag(NavigationTestTags.TOP_BAR_TITLE),
@@ -136,7 +119,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
           textAlign = TextAlign.Center,
       )
       // Keeps the title centered against the back button.
-      Spacer(modifier = Modifier.size(38.dp))
+      Spacer(modifier = Modifier.size(48.dp))
     }
     HorizontalDivider(color = colors.outlineVariant)
   }

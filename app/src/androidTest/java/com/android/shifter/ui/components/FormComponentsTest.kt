@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -35,16 +36,14 @@ class FormComponentsTest {
     composeTestRule.setContent {
       ShifterTheme {
         FormHeader(
-            backLabel = "My events",
             title = "Create an event",
-            backButtonTestTag = BACK,
             onBack = { backCalls++ },
         )
       }
     }
 
     composeTestRule.onNodeWithText("Create an event").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(BACK).assertTextContains("My events").performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, backCalls)
   }
@@ -142,7 +141,6 @@ class FormComponentsTest {
   }
 
   private companion object {
-    const val BACK = "back"
     const val FIELD = "field"
     const val BUTTON = "button"
     const val LOADING = "loading"

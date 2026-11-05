@@ -39,7 +39,6 @@ import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
 object EventCreatedScreenTestTags {
-  const val BACK_BUTTON = "EventCreatedBackButton"
   const val LOADING_INDICATOR = "EventCreatedLoadingIndicator"
   const val LOAD_ERROR = "EventCreatedLoadError"
   const val RETRY_BUTTON = "EventCreatedRetryButton"
@@ -66,9 +65,7 @@ fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone:
   Scaffold(
       topBar = {
         FormHeader(
-            backLabel = stringResource(R.string.create_event_back),
             title = stringResource(R.string.event_created_title),
-            backButtonTestTag = EventCreatedScreenTestTags.BACK_BUTTON,
             onBack = onDone,
         )
       }
