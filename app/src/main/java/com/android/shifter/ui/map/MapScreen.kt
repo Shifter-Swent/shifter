@@ -294,6 +294,7 @@ internal fun VolunteerLabel(marker: MapMarker, isStale: Boolean) {
     Surface(
         shape = MaterialTheme.shapes.extraSmall,
         color = MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
       Text(
           text = listOfNotNull(marker.title, marker.info).joinToString(" · "),
