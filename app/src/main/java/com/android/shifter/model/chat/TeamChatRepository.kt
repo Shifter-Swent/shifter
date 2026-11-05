@@ -4,8 +4,9 @@ package com.swent.shifter.model.chat
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Sends and observes the messages of a team's chat channel during an event. There is one channel
- * per team of an event. ViewModels depend on this interface, never on an implementation.
+ * Sends and observes the messages of a team's chat channel. There is one channel per team of an
+ * event, and it stays open after the event ends. ViewModels depend on this interface, never on an
+ * implementation.
  *
  * Rules every implementation enforces:
  * - Only the team's members, its manager and the event's organizer can read and send, as the team
@@ -22,9 +23,13 @@ interface TeamChatRepository {
   /**
    * Emits the last [ChatRules.MAX_MESSAGES] messages of the channel of [teamId] in [eventId],
    * oldest first, then again each time one is sent. Emits an empty list when there are none yet.
+   * Offline, the list is read from what this device has cached: opening a channel never read before
+   * then emits an empty list too, even if it has messages.
    *
-   * A message sent from this device but not confirmed yet, typically offline, is emitted at once
-   * with an estimated [ChatMessage.sentAt], so it keeps its place in the list.
+   * A message sent from this device but not confirmed yet, typically offline, is emitted at once,
+   * last, with an estimated [ChatMessage.sentAt], and marked [ChatMessage.pending]. It is emitted
+   * again once the backend confirms it, placed by the time the backend received it: a message
+   * written offline at 10:00 and delivered at 10:30 comes after the ones sent at 10:05.
    *
    * The flow fails with a [TeamChatRepositoryException.NotAllowed] when the collector may not read
    * the channel. That also ends an observation already running, since the right to read can be lost
@@ -45,7 +50,9 @@ interface TeamChatRepository {
    *   implementation gives up waiting for its confirmation. **It does not mean the message was not
    *   sent:** an implementation that queues writes while offline still sends it once the connection
    *   is back, and [messages] keeps showing it. A caller must read it as "not confirmed" rather
-   *   than "not sent", and must not send it again, which would post it twice.
+   *   than "not sent", and must not send it again, which would post it twice. If the backend still
+   *   refuses it once it gets it, for instance because the sender was removed from the team in the
+   *   meantime, it is taken out of [messages] with no error reported anywhere.
    * @throws TeamChatRepositoryException.Unknown on any other failure.
    */
   suspend fun send(eventId: String, teamId: String, text: String)

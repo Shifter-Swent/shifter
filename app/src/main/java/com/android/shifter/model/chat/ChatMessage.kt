@@ -17,12 +17,16 @@ import java.time.Instant
  * @property text what was sent, already trimmed, from 1 to [ChatRules.MAX_TEXT_LENGTH] characters.
  * @property sentAt when the backend received it, set by the backend rather than the sender. For a
  *   message not confirmed yet, typically sent offline, it is an estimate.
+ * @property pending whether the message was sent from this device but not confirmed by the backend
+ *   yet, typically offline. It becomes false once the backend has it, even after
+ *   [TeamChatRepository.send] gave up waiting.
  */
 data class ChatMessage(
     val id: String,
     val senderId: String,
     val text: String,
     val sentAt: Instant,
+    val pending: Boolean = false,
 )
 
 /** The limits of a channel, in one place so they are easy to change. */

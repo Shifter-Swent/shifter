@@ -8,6 +8,7 @@ import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.firestore
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
+import com.swent.shifter.model.chat.FirestoreTeamChatRepository
 import com.swent.shifter.model.checkin.FirestoreCheckInRepository
 import com.swent.shifter.model.event.FirestoreEventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
@@ -52,5 +53,6 @@ object RepositoryProviderFactory {
           missionRepository = FirestoreMissionRepository(firestore),
           teamRepository = FirestoreTeamRepository(firestore),
           checkInRepository = FirestoreCheckInRepository(firestore, auth),
+          teamChatRepository = FirestoreTeamChatRepository(firestore, auth),
       )
 }
