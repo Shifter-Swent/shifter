@@ -64,6 +64,12 @@ enum class ManualCheckInError {
 
   /** Any other failure: the manager may try again. */
   FAILED,
+
+  /**
+   * Made outside the mission's check-in window, which the screen's clock, moved on once a minute,
+   * may not show yet: nothing was sent.
+   */
+  OUTSIDE_WINDOW,
 }
 
 /**
@@ -82,9 +88,8 @@ data class ManualCheckInFailure(val reason: ManualCheckInError, val displayName:
  * @property assignees the people assigned, in the order the mission lists them. How many there are
  *   is how many are expected, never how many are present: presence comes from the check-ins.
  * @property attendanceKnown whether the check-ins of the mission have arrived and are still being
- *   followed. While they are not, nobody is known to be present, the timestamps last collected are
- *   possibly stale, and nobody is reported late: either nothing has arrived yet, or the observation
- *   failed.
+ *   followed. While they are not, nobody is shown present, and nobody is reported late: either
+ *   nothing has arrived yet, or the observation failed, which clears who was shown present.
  * @property attendanceFailed whether the check-ins of this mission could not be observed, which
  *   leaves it listed with its attendance not [known][attendanceKnown] rather than dropping it.
  * @property completed whether the mission was closed by hand before its end.
@@ -408,12 +413,18 @@ class AttendanceViewModel(
    * present, pending or not known to be missing is left alone, so a double tap sends one check-in.
    * Nor can anyone be checked in outside the mission's [checkInWindow], the one of the automatic
    * check-in: the check-in would record the time of the tap as their arrival, before they could be
-   * there or once the mission is over.
+   * there or once the mission is over. That is reported, since the screen may still show the
+   * mission open. Nor once its manager has closed it by hand: the screen no longer offers it.
    */
   fun checkIn(missionId: String, userId: String) {
     val mission = _uiState.value.missions.firstOrNull { it.id == missionId } ?: return
-    if (now() !in checkInWindow(mission.startAt, mission.endAt)) return
+    // Closed by its manager: its attendance is history, and the screen no longer offers the tap.
+    if (mission.completed) return
     val volunteer = mission.missingAssignees.firstOrNull { it.userId == userId } ?: return
+    if (now() !in checkInWindow(mission.startAt, mission.endAt)) {
+      fail(ManualCheckInError.OUTSIDE_WINDOW, volunteer.displayName)
+      return
+    }
     // One undo at a time: the previous check-in is no longer the one the action would undo.
     sendUndoableCheckIn()
     undoable = LocalCheckIn(missionId, userId, volunteer.displayName, now())
@@ -456,8 +467,8 @@ class AttendanceViewModel(
   /** Takes the oldest of [AttendanceUiState.checkInErrors] out once the screen has shown it. */
   fun onCheckInErrorShown() = _uiState.update { it.copy(checkInErrors = it.checkInErrors.drop(1)) }
 
-  private fun fail(reason: ManualCheckInError, checkIn: LocalCheckIn) = _uiState.update {
-    it.copy(checkInErrors = it.checkInErrors + ManualCheckInFailure(reason, checkIn.displayName))
+  private fun fail(reason: ManualCheckInError, displayName: String?) = _uiState.update {
+    it.copy(checkInErrors = it.checkInErrors + ManualCheckInFailure(reason, displayName))
   }
 
   private suspend fun send(checkIn: LocalCheckIn) {
@@ -470,9 +481,9 @@ class AttendanceViewModel(
     } catch (_: CheckInRepositoryException.AlreadyCheckedIn) {
       // Someone checked them in first, e.g. their own phone: they are present, which was the aim.
     } catch (_: CheckInRepositoryException.NotAllowed) {
-      fail(ManualCheckInError.NOT_ALLOWED, checkIn)
+      fail(ManualCheckInError.NOT_ALLOWED, checkIn.displayName)
     } catch (_: Exception) {
-      fail(ManualCheckInError.FAILED, checkIn)
+      fail(ManualCheckInError.FAILED, checkIn.displayName)
     } finally {
       sending -= checkIn
       _uiState.update { it.withAttendance(checkIn.missionId) }

@@ -44,6 +44,21 @@
     <string name="attendance_no_missions">No missions available</string>
     <string name="attendance_load_failed">Could not load the missions.</string>
     <string name="attendance_retry">Retry</string>
+    <!-- Checking a missing volunteer in by hand, by tapping their name. -->
+    <string name="attendance_tap_to_check_in">Tap a name to check them in</string>
+    <string name="attendance_check_in_closed">Check-in is closed: the mission is completed.</string>
+    <string name="attendance_check_in_action">Check in %1$s</string>
+    <string name="attendance_checked_in">%1$s checked in</string>
+    <string name="attendance_undo">Undo</string>
+    <string name="attendance_manual">Manual</string>
+    <string name="attendance_not_synced">Not synced yet</string>
+    <plurals name="attendance_pending_check_ins">
+        <item quantity="one">%1$d check-in is waiting for the network. Keep Shifter open.</item>
+        <item quantity="other">%1$d check-ins are waiting for the network. Keep Shifter open.</item>
+    </plurals>
+    <string name="attendance_check_in_not_allowed">%1$s can no longer be checked in to this mission.</string>
+    <string name="attendance_check_in_failed">Could not check %1$s in. Try again.</string>
+    <string name="attendance_check_in_outside_window">%1$s can\'t be checked in now: check-in is open from 15 minutes before the mission until its end.</string>
     <string name="attendance_expand">Show who is present</string>
     <string name="attendance_collapse">Hide who is present</string>
 </resources>

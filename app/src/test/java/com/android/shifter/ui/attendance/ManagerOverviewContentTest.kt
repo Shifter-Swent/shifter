@@ -2,10 +2,18 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -19,12 +27,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -75,6 +85,10 @@ class ManagerOverviewContentTest {
   private fun show(
       state: AttendanceUiState,
       onRetry: () -> Unit = {},
+      onCheckIn: (String, String) -> Unit = { _, _ -> },
+      onUndoCheckIn: () -> Unit = {},
+      onUndoWindowOver: () -> Unit = {},
+      onCheckInErrorShown: () -> Unit = {},
       onMarkCompleted: (String) -> Unit = {},
       onCompletionFailureShown: () -> Unit = {},
   ) {
@@ -86,6 +100,10 @@ class ManagerOverviewContentTest {
             now = now,
             onRetry = onRetry,
             zone = utc,
+            onCheckIn = onCheckIn,
+            onUndoCheckIn = onUndoCheckIn,
+            onUndoWindowOver = onUndoWindowOver,
+            onCheckInErrorShown = onCheckInErrorShown,
             onMarkCompleted = onMarkCompleted,
             onCompletionFailureShown = onCompletionFailureShown,
         )
@@ -168,6 +186,226 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
     compose.onNodeWithTag(ManagerOverviewTestTags.present("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun tappingAMissingVolunteer_checksThemInToThatMission() {
+    var checkedIn: Pair<String, String>? = null
+    show(loaded, onCheckIn = { missionId, userId -> checkedIn = missionId to userId })
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3")).performClick()
+
+    assertEquals("m1" to "u3", checkedIn)
+  }
+
+  @Test
+  fun missingVolunteer_tellsScreenReadersWhatATapDoes() {
+    show(loaded)
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3"))
+        .assert(
+            SemanticsMatcher("clicks to check Emma in") {
+              it.config.getOrNull(SemanticsActions.OnClick)?.label == "Check in Emma Dubois"
+            }
+        )
+    // Said once for the section, not on every name.
+    compose.onNodeWithText("Tap a name to check them in").assertIsDisplayed()
+  }
+
+  @Test
+  fun presentVolunteer_cannotBeCheckedInAgain() {
+    show(loaded)
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun missionThatIsOver_hasNoTappableNameAndSaysWhy() {
+    // A check-in would record the time of the tap, after the mission, rather than an arrival.
+    val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))
+    show(loaded.copy(missions = listOf(over)))
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("over")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("over", "u3")).assertDoesNotExist()
+    compose.onNodeWithText("Check-in is closed: the mission is completed.").assertIsDisplayed()
+    compose.onNodeWithText("Tap a name to check them in").assertDoesNotExist()
+  }
+
+  @Test
+  fun missionClosedByHand_hasNoTappableNameAndSaysWhy() {
+    // Still running, but closed by its manager: its attendance is history.
+    show(loaded.copy(missions = listOf(setUp.copy(completed = true))))
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3")).assertDoesNotExist()
+    compose.onNodeWithText("Check-in is closed: the mission is completed.").assertIsDisplayed()
+  }
+
+  @Test
+  fun missingVolunteer_hasATouchTargetOfAtLeast48dp() {
+    // One tap writes a check-in that cannot be changed: a hurried tap must not hit the next name.
+    show(loaded)
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3")).assertHeightIsAtLeast(48.dp)
+  }
+
+  @Test
+  fun pendingCheckIn_isMarkedAndCountedInTheBanner() {
+    val pending = alice.copy(checkInPending = true, checkedInManually = true)
+    show(loaded.copy(missions = listOf(setUp.copy(assignees = listOf(pending, thomas, emma)))))
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.pending("m1", "u1")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.manual("m1", "u1")).assertTextEquals("Manual")
+    compose.onNodeWithTag(ManagerOverviewTestTags.pending("m1", "u2")).assertDoesNotExist()
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.PENDING_BANNER)
+        .assertTextEquals("1 check-in is waiting for the network. Keep Shifter open.")
+  }
+
+  @Test
+  fun withEveryCheckInConfirmed_showsNoBanner() {
+    show(loaded)
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.PENDING_BANNER).assertDoesNotExist()
+  }
+
+  @Test
+  fun undoableCheckIn_offersToUndoIt() {
+    var undone = false
+    show(
+        loaded.copy(undoableCheckIn = UndoableCheckIn("m1", "u3", "Emma Dubois")),
+        onUndoCheckIn = { undone = true },
+    )
+
+    compose.onNodeWithText("Emma Dubois checked in").assertIsDisplayed()
+    compose.onNodeWithText("Undo").performClick()
+
+    assertTrue(undone)
+  }
+
+  @Test
+  fun undoSnackbar_goingAwayUnused_endsTheUndoWindow() {
+    var windowOver = false
+    var undone = false
+    show(
+        loaded.copy(undoableCheckIn = UndoableCheckIn("m1", "u3", "Emma Dubois")),
+        onUndoCheckIn = { undone = true },
+        onUndoWindowOver = { windowOver = true },
+    )
+    compose.onNodeWithText("Emma Dubois checked in").assertIsDisplayed()
+
+    // The check-in is only sent once "Undo" is gone, so it can never be tapped too late.
+    compose.mainClock.advanceTimeBy(SHORT_SNACKBAR_MILLIS)
+    compose.waitForIdle()
+
+    assertTrue(windowOver)
+    assertFalse(undone)
+    compose.onNodeWithText("Undo").assertDoesNotExist()
+  }
+
+  @Test
+  fun failedCheckIn_namesTheVolunteer() {
+    var shown = false
+    show(
+        loaded.copy(
+            checkInErrors =
+                listOf(ManualCheckInFailure(ManualCheckInError.NOT_ALLOWED, "Emma Dubois"))
+        ),
+        onCheckInErrorShown = { shown = true },
+    )
+
+    compose
+        .onNodeWithText("Emma Dubois can no longer be checked in to this mission.")
+        .assertIsDisplayed()
+    compose.mainClock.advanceTimeBy(SHORT_SNACKBAR_MILLIS)
+    compose.waitForIdle()
+    assertTrue(shown)
+  }
+
+  @Test
+  fun checkInOutsideTheWindow_saysWhy() {
+    show(
+        loaded.copy(
+            checkInErrors =
+                listOf(ManualCheckInFailure(ManualCheckInError.OUTSIDE_WINDOW, "Emma Dubois"))
+        )
+    )
+
+    compose
+        .onNodeWithText(
+            "Emma Dubois can't be checked in now: check-in is open from 15 minutes before the " +
+                "mission until its end."
+        )
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun sameFailureTwice_isShownTwice() {
+    // The same volunteer refused twice: equal failures, which must not be taken for one.
+    val refused = ManualCheckInFailure(ManualCheckInError.FAILED, "Emma Dubois")
+    var failures by mutableStateOf(listOf(refused, refused))
+    var shown = 0
+    compose.setContent {
+      ShifterTheme {
+        ManagerOverviewContent(
+            state = loaded.copy(checkInErrors = failures),
+            eventTitle = "City Marathon",
+            now = now,
+            onRetry = {},
+            zone = utc,
+            onCheckInErrorShown = {
+              shown++
+              failures = failures.drop(1)
+            },
+        )
+      }
+    }
+
+    repeat(2) {
+      compose.onNodeWithText("Could not check Emma Dubois in. Try again.").assertIsDisplayed()
+      compose.mainClock.advanceTimeBy(SHORT_SNACKBAR_MILLIS)
+      compose.waitForIdle()
+    }
+
+    assertEquals(2, shown)
+    assertTrue(failures.isEmpty())
+  }
+
+  @Test
+  fun secondCheckIn_keepsItsOwnUndo() {
+    var undoable by mutableStateOf(UndoableCheckIn("m1", "u3", "Emma Dubois"))
+    var windowsOver = 0
+    var undone = 0
+    compose.setContent {
+      ShifterTheme {
+        ManagerOverviewContent(
+            state = loaded.copy(undoableCheckIn = undoable),
+            eventTitle = "City Marathon",
+            now = now,
+            onRetry = {},
+            zone = utc,
+            onUndoCheckIn = { undone++ },
+            onUndoWindowOver = { windowsOver++ },
+        )
+      }
+    }
+    compose.onNodeWithText("Emma Dubois checked in").assertIsDisplayed()
+
+    // The ViewModel has sent Emma's at once: her snackbar must go without sending Thomas's.
+    undoable = UndoableCheckIn("m1", "u2", "Thomas Petit")
+    compose.waitForIdle()
+
+    compose.onNodeWithText("Emma Dubois checked in").assertDoesNotExist()
+    compose.onNodeWithText("Thomas Petit checked in").assertIsDisplayed()
+    assertEquals(0, windowsOver)
+    compose.onNodeWithText("Undo").performClick()
+    assertEquals(1, undone)
   }
 
   @Test
@@ -474,5 +712,10 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.RETRY).performClick()
 
     assertEquals(1, retries)
+  }
+
+  private companion object {
+    /** Longer than a short snackbar without accessibility settings, which is 4 s. */
+    const val SHORT_SNACKBAR_MILLIS = 5_000L
   }
 }

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +24,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -102,6 +105,18 @@ object ManagerOverviewTestTags {
 
   fun missing(missionId: String) = "managerOverviewMissing_$missionId"
 
+  /** The name of a missing assignee, which checks them in when tapped. */
+  fun checkIn(missionId: String, userId: String) = "managerOverviewCheckIn_${missionId}_$userId"
+
+  /** Shown on a present assignee whose check-in is not confirmed by the backend yet. */
+  fun pending(missionId: String, userId: String) = "managerOverviewPending_${missionId}_$userId"
+
+  /** Shown on a present assignee checked in by a manager or the organizer. */
+  fun manual(missionId: String, userId: String) = "managerOverviewManual_${missionId}_$userId"
+
+  const val PENDING_BANNER = "managerOverviewPendingBanner"
+  const val SNACKBAR = "managerOverviewSnackbar"
+
   fun markCompleted(missionId: String) = "managerOverviewMarkCompleted_$missionId"
 }
 
@@ -136,6 +151,11 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  *   ticks here: the caller must pass a [Instant] it refreshes regularly, every minute or so, or a
  *   mission will stay "Check-in not open yet" long after it has opened.
  * @param zone the time zone the times are shown in, the device's one in the app.
+ * @param onCheckIn checks a missing assignee in by hand, when their name is tapped.
+ * @param onUndoCheckIn takes back the manual check-in of [AttendanceUiState.undoableCheckIn].
+ * @param onUndoWindowOver called once its "Undo" is gone unused, which sends that check-in.
+ * @param onCheckInErrorShown called once the oldest of [AttendanceUiState.checkInErrors] has been
+ *   shown.
  * @param onMarkCompleted called with a mission the manager has confirmed closing.
  * @param onCompletionFailureShown called once the failure to close a mission has been reported.
  */
@@ -147,6 +167,10 @@ fun ManagerOverviewContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
+    onCheckIn: (missionId: String, userId: String) -> Unit = { _, _ -> },
+    onUndoCheckIn: () -> Unit = {},
+    onUndoWindowOver: () -> Unit = {},
+    onCheckInErrorShown: () -> Unit = {},
     onMarkCompleted: (String) -> Unit = {},
     onCompletionFailureShown: () -> Unit = {},
 ) {
@@ -166,6 +190,8 @@ fun ManagerOverviewContent(
   val missions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
   // By id, so the question survives a configuration change.
   var confirmingMissionId by rememberSaveable { mutableStateOf<String?>(null) }
+  // One host for every message of the screen, so they are shown one after the other rather than
+  // over each other.
   val snackbarHostState = remember { SnackbarHostState() }
   val completionFailed = stringResource(R.string.attendance_mark_completed_failed)
   val retry = stringResource(R.string.attendance_retry)
@@ -181,6 +207,14 @@ fun ManagerOverviewContent(
     onCompletionFailureShown()
     if (result == SnackbarResult.ActionPerformed) onMarkCompleted(missionId)
   }
+  CheckInMessages(
+      host = snackbarHostState,
+      undoable = state.undoableCheckIn,
+      failures = state.checkInErrors,
+      onUndo = onUndoCheckIn,
+      onUndoWindowOver = onUndoWindowOver,
+      onErrorShown = onCheckInErrorShown,
+  )
   Box(modifier = modifier.fillMaxSize()) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag(ManagerOverviewTestTags.SCREEN),
@@ -189,6 +223,7 @@ fun ManagerOverviewContent(
     ) {
       item { Header(eventTitle, state.isOrganizer) }
       if (state.loadFailed) item { LoadError(onRetry) }
+      if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
       item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
       item {
         // Never "0 missions" before there is an answer: that reads as having none.
@@ -210,6 +245,7 @@ fun ManagerOverviewContent(
                   else expandedMissionIds + mission.id
             },
             onMarkCompleted = { confirmingMissionId = mission.id },
+            onCheckIn = { userId -> onCheckIn(mission.id, userId) },
         )
       }
       if (missions.isEmpty()) {
@@ -229,7 +265,10 @@ fun ManagerOverviewContent(
         }
       }
     }
-    SnackbarHost(snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
+    SnackbarHost(
+        snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter).testTag(ManagerOverviewTestTags.SNACKBAR),
+    )
   }
   confirmingMissionId?.let { missionId ->
     MarkCompletedDialog(
@@ -239,6 +278,60 @@ fun ManagerOverviewContent(
         },
         onDismiss = { confirmingMissionId = null },
     )
+  }
+}
+
+/**
+ * Shows in [host] the "checked in · Undo" action of the last manual check-in, and why check-ins
+ * failed, one after the other, oldest first.
+ *
+ * The snackbar decides when the undo window ends: the check-in is only sent once "Undo" is gone
+ * ([onUndoWindowOver]), so it can never be tapped for a check-in already sent, however long an
+ * accessibility setting keeps it on screen.
+ */
+@Composable
+private fun CheckInMessages(
+    host: SnackbarHostState,
+    undoable: UndoableCheckIn?,
+    failures: List<ManualCheckInFailure>,
+    onUndo: () -> Unit,
+    onUndoWindowOver: () -> Unit,
+    onErrorShown: () -> Unit,
+) {
+  val unnamed = stringResource(R.string.attendance_volunteer_unknown)
+  val checkedIn = undoable?.let {
+    stringResource(R.string.attendance_checked_in, it.displayName?.ifBlank { null } ?: unnamed)
+  }
+  val undo = stringResource(R.string.attendance_undo)
+  LaunchedEffect(undoable) {
+    // Only an "Undo" of an earlier check-in, never a failure that is still being shown.
+    host.currentSnackbarData?.takeIf { it.visuals.actionLabel == undo }?.dismiss()
+    if (checkedIn != null) {
+      when (host.showSnackbar(checkedIn, actionLabel = undo, duration = SnackbarDuration.Short)) {
+        SnackbarResult.ActionPerformed -> onUndo()
+        SnackbarResult.Dismissed -> onUndoWindowOver()
+      }
+    }
+  }
+  val failure = failures.firstOrNull()
+  val errorMessage = failure?.let {
+    stringResource(
+        when (it.reason) {
+          ManualCheckInError.NOT_ALLOWED -> R.string.attendance_check_in_not_allowed
+          ManualCheckInError.FAILED -> R.string.attendance_check_in_failed
+          ManualCheckInError.OUTSIDE_WINDOW -> R.string.attendance_check_in_outside_window
+        },
+        it.displayName?.ifBlank { null } ?: unnamed,
+    )
+  }
+  // Keyed on the whole list, not its first failure: once that is shown and taken out, an equal one
+  // behind it, such as the same volunteer refused twice, must still be shown. A failure added while
+  // one is shown shows that one again from the start, so none is cut short.
+  LaunchedEffect(failures) {
+    if (errorMessage != null) {
+      host.showSnackbar(errorMessage, duration = SnackbarDuration.Short)
+      onErrorShown()
+    }
   }
 }
 
@@ -313,6 +406,31 @@ private fun Header(eventTitle: String, isOrganizer: Boolean) {
         style = MaterialTheme.typography.bodySmall,
         color = shifter_mutedText,
         modifier = Modifier.testTag(ManagerOverviewTestTags.SUBTITLE),
+    )
+  }
+}
+
+/**
+ * Check-ins recorded on this phone and not sent yet. Firestore only sends them while the app runs,
+ * so the manager is asked to keep it open rather than to assume they are saved.
+ */
+@Composable
+private fun PendingBanner(count: Int) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Icon(
+        Icons.Filled.CloudOff,
+        contentDescription = null,
+        tint = shifter_warning,
+        modifier = Modifier.size(16.dp),
+    )
+    Text(
+        text = pluralStringResource(R.plurals.attendance_pending_check_ins, count, count),
+        style = MaterialTheme.typography.bodySmall,
+        color = shifter_warning,
+        modifier = Modifier.testTag(ManagerOverviewTestTags.PENDING_BANNER),
     )
   }
 }
@@ -432,6 +550,7 @@ private fun MissionCard(
     zone: ZoneId,
     onToggle: () -> Unit,
     onMarkCompleted: () -> Unit,
+    onCheckIn: (userId: String) -> Unit,
 ) {
   val shape = RoundedCornerShape(18.dp)
   // Nobody can be present before the check-in opens, and nobody is known while it is not.
@@ -544,11 +663,20 @@ private fun MissionCard(
           tint = shifter_success,
           zone = zone,
           testTag = ManagerOverviewTestTags.present(mission.id),
+          missionId = mission.id,
       )
       if (mission.missingAssignees.isNotEmpty()) {
         // Before the start they are merely awaited; only once it has begun are they late.
         val early = status == AttendanceStatus.EARLY
         People(
+            missionId = mission.id,
+            // Once the mission is completed, by hand or past its end, a check-in would record the
+            // tap rather than an arrival, so the names are no longer tappable, and the section says
+            // so.
+            onCheckIn = onCheckIn.takeUnless { status == AttendanceStatus.COMPLETED },
+            hint =
+                if (status == AttendanceStatus.COMPLETED) R.string.attendance_check_in_closed
+                else R.string.attendance_tap_to_check_in,
             label =
                 stringResource(
                     if (early) R.string.attendance_expected else R.string.attendance_missing,
@@ -636,6 +764,9 @@ private fun People(
     tint: Color,
     zone: ZoneId,
     testTag: String,
+    missionId: String,
+    onCheckIn: ((userId: String) -> Unit)? = null,
+    @StringRes hint: Int? = null,
 ) {
   Column(modifier = Modifier.testTag(testTag), verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Text(
@@ -644,21 +775,68 @@ private fun People(
         fontWeight = FontWeight.SemiBold,
         color = shifter_mutedText,
     )
+    // Once for the section rather than on every name; each name still says it to screen readers.
+    if (hint != null) {
+      Text(
+          text = stringResource(hint),
+          style = MaterialTheme.typography.labelSmall,
+          color = shifter_mutedText,
+      )
+    }
     people.forEach { volunteer ->
+      // An id is not a name, so someone whose profile could not be read stays unnamed.
+      val name =
+          volunteer.displayName?.takeIf { it.isNotBlank() }
+              ?: stringResource(R.string.attendance_volunteer_unknown)
       Row(
+          modifier =
+              Modifier.fillMaxWidth()
+                  .then(
+                      if (onCheckIn == null) Modifier
+                      // 48 dp tall at least, since one tap writes a check-in that cannot be
+                      // changed: a hurried tap must not land on the next name.
+                      else
+                          Modifier.heightIn(min = 48.dp)
+                              .clip(RoundedCornerShape(8.dp))
+                              .clickable(
+                                  onClickLabel =
+                                      stringResource(R.string.attendance_check_in_action, name),
+                                  role = Role.Button,
+                              ) {
+                                onCheckIn(volunteer.userId)
+                              }
+                              .testTag(ManagerOverviewTestTags.checkIn(missionId, volunteer.userId))
+                  ),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(8.dp),
       ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
         Text(
-            // An id is not a name, so someone whose profile could not be read stays unnamed.
-            text =
-                volunteer.displayName?.takeIf { it.isNotBlank() }
-                    ?: stringResource(R.string.attendance_volunteer_unknown),
+            text = name,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
+        if (volunteer.checkedInManually) {
+          Text(
+              text = stringResource(R.string.attendance_manual),
+              style = MaterialTheme.typography.labelSmall,
+              color = shifter_mutedText,
+              modifier =
+                  Modifier.testTag(ManagerOverviewTestTags.manual(missionId, volunteer.userId)),
+          )
+        }
+        if (volunteer.checkInPending) {
+          // Not confirmed yet: in its undo window, or waiting for the network.
+          Icon(
+              Icons.Filled.CloudOff,
+              contentDescription = stringResource(R.string.attendance_not_synced),
+              tint = shifter_mutedText,
+              modifier =
+                  Modifier.size(14.dp)
+                      .testTag(ManagerOverviewTestTags.pending(missionId, volunteer.userId)),
+          )
+        }
         volunteer.checkedInAt?.let {
           Text(
               text = TIME.format(it.atZone(zone)),

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -20,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.swent.shifter.R
 import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
@@ -44,6 +48,15 @@ fun EventOverviewScreen(
     modifier: Modifier = Modifier,
 ) {
   val state by viewModel.uiState.collectAsState()
+  // A check-in still in its undo window is sent when the screen is left or the app goes to the
+  // background, rather than lost with them. Not on a rotation: the ViewModel outlives it, and so
+  // does the chance to undo.
+  val activity = LocalActivity.current
+  val sendUnlessRotating = {
+    if (activity?.isChangingConfigurations != true) viewModel.sendUndoableCheckIn()
+  }
+  LifecycleEventEffect(Lifecycle.Event.ON_STOP) { sendUnlessRotating() }
+  DisposableEffect(viewModel) { onDispose { sendUnlessRotating() } }
   when (state.canViewAttendance) {
     true ->
         ManagerOverviewContent(
@@ -52,6 +65,10 @@ fun EventOverviewScreen(
             now = rememberNow(),
             onRetry = viewModel::refresh,
             modifier = modifier,
+            onCheckIn = viewModel::checkIn,
+            onUndoCheckIn = viewModel::undoCheckIn,
+            onUndoWindowOver = viewModel::sendUndoableCheckIn,
+            onCheckInErrorShown = viewModel::onCheckInErrorShown,
             onMarkCompleted = viewModel::markCompleted,
             onCompletionFailureShown = viewModel::onCompletionFailureShown,
         )
