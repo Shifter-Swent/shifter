@@ -717,7 +717,7 @@ class AttendanceViewModelTest {
   }
 
   @Test
-  fun checkIn_afterTheMissionIsOver_doesNothing() = runTest {
+  fun checkIn_afterTheMissionIsOver_sendsNothingAndSaysWhy() = runTest {
     // Over three hours before the tap: a check-in would record the tap, not an arrival.
     val over = addMission("Set up", "logistics", hour = -3, assigneeIds = listOf("ann"))
     open("manager")
@@ -727,10 +727,15 @@ class AttendanceViewModelTest {
 
     assertTrue(checkIns.checkIns.isEmpty())
     assertNull(viewModel.uiState.value.undoableCheckIn)
+    // The screen, moved on once a minute, may still have shown it open.
+    assertEquals(
+        listOf(ManualCheckInFailure(ManualCheckInError.OUTSIDE_WINDOW, "Ann")),
+        viewModel.uiState.value.checkInErrors,
+    )
   }
 
   @Test
-  fun checkIn_beforeTheWindowOpens_doesNothing() = runTest {
+  fun checkIn_beforeTheWindowOpens_sendsNothingAndSaysWhy() = runTest {
     // Starts almost two hours after the tap, while check-in opens 15 minutes before the start.
     val later = addMission("Clean up", "logistics", hour = 3, assigneeIds = listOf("ann"))
     open("manager")
@@ -741,6 +746,10 @@ class AttendanceViewModelTest {
     assertTrue(checkIns.checkIns.isEmpty())
     assertNull(viewModel.uiState.value.undoableCheckIn)
     assertEquals(AttendanceVolunteer("ann", "Ann"), assignee("ann"))
+    assertEquals(
+        listOf(ManualCheckInFailure(ManualCheckInError.OUTSIDE_WINDOW, "Ann")),
+        viewModel.uiState.value.checkInErrors,
+    )
   }
 
   @Test
