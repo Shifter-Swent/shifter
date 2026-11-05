@@ -10,6 +10,7 @@ import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
+import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
@@ -133,8 +134,8 @@ data class AttendanceMission(
  *   never offered to someone whose part in the event is unknown. It is not read from [missions]
  *   being empty: someone allowed to watch may have none.
  * @property undoableCheckIn the manual check-in just made, while it can still be undone.
- * @property checkInError why the last manual check-in was not recorded, until the screen has shown
- *   it.
+ * @property checkInErrors the manual check-ins not recorded, oldest first, each until the screen
+ *   has shown it: several may fail at once when the device is back online.
  */
 data class AttendanceUiState(
     val isLoading: Boolean = true,
@@ -144,15 +145,27 @@ data class AttendanceUiState(
     val canViewAttendance: Boolean? = null,
     val missions: List<AttendanceMission> = emptyList(),
     val undoableCheckIn: UndoableCheckIn? = null,
-    val checkInError: ManualCheckInFailure? = null,
+    val checkInErrors: List<ManualCheckInFailure> = emptyList(),
 ) {
   /** Whether the user is known to watch no mission: not while loading, nor after a failure. */
   val isEmpty: Boolean
     get() = !isLoading && !loadFailed && missions.isEmpty()
 
-  /** How many check-ins are not confirmed by the backend yet, across every mission. */
+  /**
+   * How many check-ins were sent and are not confirmed by the backend yet, across the missions
+   * whose attendance is known. The one still in its undo window is left out: nothing was sent yet.
+   */
   val pendingCheckInCount: Int
-    get() = missions.sumOf { mission -> mission.presentAssignees.count { it.checkInPending } }
+    get() =
+        missions
+            .filter { it.attendanceKnown }
+            .sumOf { mission ->
+              mission.presentAssignees.count {
+                it.checkInPending &&
+                    !(undoableCheckIn?.missionId == mission.id &&
+                        undoableCheckIn.userId == it.userId)
+              }
+            }
 }
 
 /**
@@ -171,9 +184,7 @@ data class AttendanceUiState(
  * checked in first, goes back to what the backend holds.
  *
  * @param now the clock giving the time shown for a check-in not confirmed yet, and telling which
- *   missions are over, replaceable in tests.
- * @param undoTimeoutMillis how long a manual check-in waits for the screen before it is sent
- *   anyway, longer than any "Undo" the screen shows.
+ *   missions are open for check-in, replaceable in tests.
  */
 class AttendanceViewModel(
     private val eventId: String,
@@ -184,7 +195,6 @@ class AttendanceViewModel(
     private val userRepository: UserRepository,
     private val checkInRepository: CheckInRepository,
     private val now: () -> Instant = Instant::now,
-    private val undoTimeoutMillis: Long = UNDO_TIMEOUT_MILLIS,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AttendanceUiState())
@@ -301,14 +311,19 @@ class AttendanceViewModel(
           // Its attendance stops being known rather than being read as nobody present, or, once
           // something was collected, left shown as current when it may already be out of date. The
           // other missions keep theirs, and the missions themselves loaded, so the load has not
-          // failed.
+          // failed. Who was shown present is cleared with it, so an undo, which can no longer be
+          // applied to check-ins not observed, does not leave someone shown present.
           observed.remove(mission.id)
           _uiState.update { state ->
             state.copy(
                 missions =
                     state.missions.map {
                       if (it.id == mission.id)
-                          it.copy(attendanceKnown = false, attendanceFailed = true)
+                          it.copy(
+                              attendanceKnown = false,
+                              attendanceFailed = true,
+                              assignees = it.assignees.map { assignee -> assignee.absent() },
+                          )
                       else it
                     },
             )
@@ -325,12 +340,13 @@ class AttendanceViewModel(
    *
    * Only a missing assignee of a mission whose attendance is known can be checked in: someone
    * present, pending or not known to be missing is left alone, so a double tap sends one check-in.
-   * Nor can anyone be checked in once the mission is over: the check-in would record the time of
-   * the tap rather than of an arrival.
+   * Nor can anyone be checked in outside the mission's [checkInWindow], the one of the automatic
+   * check-in: the check-in would record the time of the tap as their arrival, before they could be
+   * there or once the mission is over.
    */
   fun checkIn(missionId: String, userId: String) {
     val mission = _uiState.value.missions.firstOrNull { it.id == missionId } ?: return
-    if (mission.endAt <= now()) return
+    if (now() !in checkInWindow(mission.startAt, mission.endAt)) return
     val volunteer = mission.missingAssignees.firstOrNull { it.userId == userId } ?: return
     // One undo at a time: the previous check-in is no longer the one the action would undo.
     sendUndoableCheckIn()
@@ -341,7 +357,7 @@ class AttendanceViewModel(
           .withAttendance(missionId)
     }
     undoTimer = viewModelScope.launch {
-      delay(undoTimeoutMillis)
+      delay(UNDO_TIMEOUT_MILLIS)
       sendUndoableCheckIn()
     }
   }
@@ -371,11 +387,11 @@ class AttendanceViewModel(
     viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) { send(checkIn) }
   }
 
-  /** Clears [AttendanceUiState.checkInError] once the screen has shown it. */
-  fun onCheckInErrorShown() = _uiState.update { it.copy(checkInError = null) }
+  /** Takes the oldest of [AttendanceUiState.checkInErrors] out once the screen has shown it. */
+  fun onCheckInErrorShown() = _uiState.update { it.copy(checkInErrors = it.checkInErrors.drop(1)) }
 
   private fun fail(reason: ManualCheckInError, checkIn: LocalCheckIn) = _uiState.update {
-    it.copy(checkInError = ManualCheckInFailure(reason, checkIn.displayName))
+    it.copy(checkInErrors = it.checkInErrors + ManualCheckInFailure(reason, checkIn.displayName))
   }
 
   private suspend fun send(checkIn: LocalCheckIn) {
@@ -446,9 +462,13 @@ class AttendanceViewModel(
           )
       manual != null ->
           copy(checkedInAt = manual.at, checkInPending = true, checkedInManually = true)
-      else -> copy(checkedInAt = null, checkInPending = false, checkedInManually = false)
+      else -> absent()
     }
   }
+
+  /** This assignee with no check-in. */
+  private fun AttendanceVolunteer.absent() =
+      copy(checkedInAt = null, checkInPending = false, checkedInManually = false)
 
   companion object {
     /**
