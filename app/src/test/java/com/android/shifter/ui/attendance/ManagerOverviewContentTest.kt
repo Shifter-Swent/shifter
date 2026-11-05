@@ -341,6 +341,23 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun failedCompletion_withoutRetry_dismissesTheSnackbarAfterAWhile() {
+    val marked = mutableListOf<String>()
+    var shown = 0
+    show(
+        loaded.copy(completionFailedMissionId = "m1"),
+        onMarkCompleted = { marked += it },
+        onCompletionFailureShown = { shown++ },
+    )
+
+    compose.mainClock.advanceTimeBy(11_000)
+    compose.waitForIdle()
+
+    assertEquals(1, shown)
+    assertTrue(marked.isEmpty())
+  }
+
+  @Test
   fun missionThatIsOver_stopsWarningButKeepsWhoWasThere() {
     // Two of the three needed came, and the check-in closed an hour ago with the mission.
     val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))

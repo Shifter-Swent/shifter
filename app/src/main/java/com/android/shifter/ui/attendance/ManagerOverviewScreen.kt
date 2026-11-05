@@ -31,6 +31,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -170,7 +171,13 @@ fun ManagerOverviewContent(
   val retry = stringResource(R.string.attendance_retry)
   LaunchedEffect(state.completionFailedMissionId) {
     val missionId = state.completionFailedMissionId ?: return@LaunchedEffect
-    val result = snackbarHostState.showSnackbar(completionFailed, actionLabel = retry)
+    // With an action, the default duration would never dismiss it.
+    val result =
+        snackbarHostState.showSnackbar(
+            completionFailed,
+            actionLabel = retry,
+            duration = SnackbarDuration.Long,
+        )
     onCompletionFailureShown()
     if (result == SnackbarResult.ActionPerformed) onMarkCompleted(missionId)
   }
