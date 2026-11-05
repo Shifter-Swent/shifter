@@ -46,17 +46,25 @@ class FakeTeamChatRepository(
     }
 
   /**
-   * When set, a message is stored at once, like a write Firestore queues offline, and [send] only
-   * returns once it completes. Completing it with a [TeamChatRepositoryException] stands for the
-   * backend's answer, which [send] throws: [TeamChatRepositoryException.NotAllowed] takes the
-   * message out again, as Firestore rolls a refused write back, while any other one leaves it in
-   * place, as a write that is still queued.
+   * When set, a message is stored at once and [ChatMessage.pending], like a write Firestore queues
+   * offline, and [send] only returns once it completes. Completing it with a
+   * [TeamChatRepositoryException] stands for the backend's answer, which [send] throws:
+   * [TeamChatRepositoryException.NotAllowed] takes the message out again, as Firestore rolls a
+   * refused write back, while any other one leaves it pending, as a write that is still queued.
    */
   var confirmation: CompletableDeferred<Unit>? = null
 
   /** Stores [message] in the channel of [teamId] in [eventId] as is, to set up a test. */
   fun add(eventId: String, teamId: String, message: ChatMessage) {
     state.update { it.copy(stored = it.stored + Stored(eventId, teamId, message)) }
+  }
+
+  /**
+   * Confirms every pending message, as Firestore does once the connection is back, including the
+   * ones [send] gave up waiting for.
+   */
+  fun confirmPending() {
+    state.update { state -> state.copy(stored = state.stored.map { it.confirmed() }) }
   }
 
   override fun messages(eventId: String, teamId: String): Flow<List<ChatMessage>> =
@@ -77,18 +85,26 @@ class FakeTeamChatRepository(
   override suspend fun send(eventId: String, teamId: String, text: String) {
     val trimmed = chatMessageText(text)
     failure?.let { throw it }
-    val stored =
-        Stored(eventId, teamId, ChatMessage("message-${nextId++}", currentUserId, trimmed, clock()))
+    val confirmation = confirmation
+    val message =
+        ChatMessage("message-${nextId++}", currentUserId, trimmed, clock(), confirmation != null)
+    val stored = Stored(eventId, teamId, message)
     state.update { it.copy(stored = it.stored + stored) }
+    if (confirmation == null) return
     try {
-      confirmation?.await()
+      confirmation.await()
     } catch (e: TeamChatRepositoryException.NotAllowed) {
       state.update { it.copy(stored = it.stored - stored) }
       throw e
+    }
+    state.update { state ->
+      state.copy(stored = state.stored.map { if (it == stored) it.confirmed() else it })
     }
   }
 
   private data class State(val stored: List<Stored>, val failure: TeamChatRepositoryException?)
 
-  private data class Stored(val eventId: String, val teamId: String, val message: ChatMessage)
+  private data class Stored(val eventId: String, val teamId: String, val message: ChatMessage) {
+    fun confirmed() = copy(message = message.copy(pending = false))
+  }
 }

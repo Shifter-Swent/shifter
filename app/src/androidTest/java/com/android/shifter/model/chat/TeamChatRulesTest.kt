@@ -165,14 +165,16 @@ class TeamChatRulesTest {
   fun send_withTheMaximumLength_isAllowed() = emulatorTest {
     signIn(member)
 
-    newMessage().set(message(member, "a".repeat(MAX_TEXT_LENGTH))).await()
+    newMessage().set(message(member, "a".repeat(ChatRules.MAX_TEXT_LENGTH))).await()
   }
 
   @Test
   fun send_withATooLongText_isDenied() = emulatorTest {
     signIn(member)
 
-    assertDenied { newMessage().set(message(member, "a".repeat(MAX_TEXT_LENGTH + 1))).await() }
+    assertDenied {
+      newMessage().set(message(member, "a".repeat(ChatRules.MAX_TEXT_LENGTH + 1))).await()
+    }
   }
 
   @Test
@@ -299,6 +301,5 @@ class TeamChatRulesTest {
     const val MESSAGES = "messages"
     const val TEAM_ID = "team-bar"
     const val OTHER_TEAM_ID = "team-logistics"
-    const val MAX_TEXT_LENGTH = 1000
   }
 }

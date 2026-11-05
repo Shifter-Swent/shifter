@@ -31,6 +31,7 @@ class FakeTeamChatRepositoryTest {
     assertEquals(MEMBER, message.senderId)
     assertEquals("Hello team", message.text)
     assertEquals(NOW, message.sentAt)
+    assertFalse(message.pending)
   }
 
   @Test
@@ -117,7 +118,7 @@ class FakeTeamChatRepositoryTest {
       }
 
   @Test
-  fun send_withAConfirmationPending_showsTheMessageBeforeReturning() =
+  fun send_withAConfirmationPending_showsTheMessageAsPendingUntilConfirmed() =
       runTest(UnconfinedTestDispatcher()) {
         val confirmation = CompletableDeferred<Unit>()
         repository.confirmation = confirmation
@@ -125,12 +126,12 @@ class FakeTeamChatRepositoryTest {
         val sending = launch { repository.send(EVENT_ID, TEAM_ID, "Hello team") }
 
         assertFalse(sending.isCompleted)
-        assertEquals(
-            listOf("Hello team"),
-            repository.messages(EVENT_ID, TEAM_ID).first().map { it.text },
-        )
+        val pending = repository.messages(EVENT_ID, TEAM_ID).first().single()
+        assertEquals("Hello team", pending.text)
+        assertTrue(pending.pending)
         confirmation.complete(Unit)
         assertTrue(sending.isCompleted)
+        assertFalse(repository.messages(EVENT_ID, TEAM_ID).first().single().pending)
       }
 
   @Test
@@ -147,7 +148,7 @@ class FakeTeamChatRepositoryTest {
   }
 
   @Test
-  fun send_notConfirmedInTime_keepsTheMessageAndThrowsUnavailable() = runTest {
+  fun send_notConfirmedInTime_keepsTheMessagePendingUntilTheBackendHasIt() = runTest {
     repository.confirmation =
         CompletableDeferred<Unit>().apply {
           completeExceptionally(TeamChatRepositoryException.Unavailable())
@@ -157,10 +158,12 @@ class FakeTeamChatRepositoryTest {
       repository.send(EVENT_ID, TEAM_ID, "Hello team")
     }
     // Not confirmed is not "not sent": the queued message is still shown, and goes out later.
-    assertEquals(
-        listOf("Hello team"),
-        repository.messages(EVENT_ID, TEAM_ID).first().map { it.text },
-    )
+    val queued = repository.messages(EVENT_ID, TEAM_ID).first().single()
+    assertEquals("Hello team", queued.text)
+    assertTrue(queued.pending)
+
+    repository.confirmPending()
+    assertFalse(repository.messages(EVENT_ID, TEAM_ID).first().single().pending)
   }
 
   @Test

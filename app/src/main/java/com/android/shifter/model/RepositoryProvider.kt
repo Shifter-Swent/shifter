@@ -3,6 +3,7 @@
 package com.swent.shifter.model
 
 import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.chat.TeamChatRepository
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepository
@@ -30,4 +31,5 @@ class RepositoryProvider(
     val missionRepository: MissionRepository,
     val teamRepository: TeamRepository,
     val checkInRepository: CheckInRepository,
+    val teamChatRepository: TeamChatRepository,
 )

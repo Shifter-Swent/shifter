@@ -24,7 +24,8 @@ interface TeamChatRepository {
    * oldest first, then again each time one is sent. Emits an empty list when there are none yet.
    *
    * A message sent from this device but not confirmed yet, typically offline, is emitted at once
-   * with an estimated [ChatMessage.sentAt], so it keeps its place in the list.
+   * with an estimated [ChatMessage.sentAt], so it keeps its place in the list, and marked
+   * [ChatMessage.pending]. It is emitted again once the backend confirms it.
    *
    * The flow fails with a [TeamChatRepositoryException.NotAllowed] when the collector may not read
    * the channel. That also ends an observation already running, since the right to read can be lost
