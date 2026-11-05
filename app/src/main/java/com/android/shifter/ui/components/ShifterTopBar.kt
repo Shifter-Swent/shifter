@@ -16,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,7 +41,8 @@ fun ShifterTopBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifi
       BackButton(onClick = onBack)
       Text(
           text = title,
-          modifier = Modifier.weight(1f).testTag(NavigationTestTags.TOP_BAR_TITLE),
+          modifier =
+              Modifier.weight(1f).semantics { heading() }.testTag(NavigationTestTags.TOP_BAR_TITLE),
           color = colors.onSurface,
           fontSize = 16.sp,
           fontWeight = FontWeight.Bold,

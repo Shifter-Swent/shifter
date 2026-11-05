@@ -5,9 +5,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -53,6 +55,13 @@ class ShifterTopBarTest {
     setBar(text = "Create an event")
 
     title.assertTextEquals("Create an event")
+  }
+
+  @Test
+  fun shifterTopBar_marksTheTitleAsAHeading() {
+    setBar()
+
+    title.assert(isHeading())
   }
 
   @Test
