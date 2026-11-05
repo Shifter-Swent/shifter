@@ -154,8 +154,9 @@ final: it is never edited or deleted.
 
 The channel is read with `orderBy(sentAt)` and `limitToLast(100)`, which only needs Firestore's
 automatic single-field index. A message sent offline is shown at once, before the server has set
-`sentAt`: it is read with an estimate of the server time (`ServerTimestampBehavior.ESTIMATE`), so
-it keeps its place in the list instead of being rejected as malformed.
+`sentAt`: it is read with an estimate of the server time (`ServerTimestampBehavior.ESTIMATE`)
+instead of being rejected as malformed. Firestore sorts it last until the server has it, then by the
+time the server received it.
 
 ### `events/{eventId}/shifts/{shiftId}`
 

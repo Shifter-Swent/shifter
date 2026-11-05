@@ -12,6 +12,7 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
@@ -44,7 +45,8 @@ class FirestoreTeamChatRepository(
    * Metadata changes are listened to as well: the backend confirming a pending message changes
    * nothing but its metadata, so it would not be emitted otherwise and would stay
    * [ChatMessage.pending]. The other metadata changes give the same messages again, which are not
-   * emitted twice.
+   * emitted twice. Each snapshot is the whole list, so only the latest one is kept for a slow
+   * collector.
    */
   override fun messages(eventId: String, teamId: String): Flow<List<ChatMessage>> = callbackFlow {
     val registration =
@@ -65,13 +67,15 @@ class FirestoreTeamChatRepository(
     // Keeps the flow open while collected, then removes the listener so Firestore stops it.
     awaitClose { registration.remove() }
   }
+      .conflate()
       .distinctUntilChanged()
 
   /**
    * Writes the message, then waits for the backend to accept it, for at most [SEND_TIMEOUT_MILLIS].
    * Offline, Firestore answers a write only once the server has it (#181), so giving up is reported
    * as [TeamChatRepositoryException.Unavailable]: the write stays queued and goes out once the
-   * connection is back, which is why it must not be sent again.
+   * connection is back, which is why it must not be sent again. Nothing listens to the write after
+   * that: if the rules refuse it on reconnection, Firestore only rolls it back from [messages].
    */
   override suspend fun send(eventId: String, teamId: String, text: String) {
     val trimmed = chatMessageText(text)
