@@ -28,6 +28,11 @@ jobs:
   deploy:
     name: Rules and indexes
     runs-on: ubuntu-latest
+    # Only main reaches production: a run started by hand from another branch stops here
+    if: github.ref == 'refs/heads/main'
+    # The secret lives in this environment, which only main may use, so a workflow edited on
+    # another branch cannot read it either
+    environment: production
 
     steps:
       - name: Checkout
@@ -50,7 +55,10 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
 
-      # The project comes from .firebaserc. Without --force, indexes that exist in production but
-      # not in firestore.indexes.json are only reported, never deleted
+      # The project is named rather than taken from .firebaserc, so editing that file cannot send
+      # the rules elsewhere. Without --force, indexes that exist in production but not in
+      # firestore.indexes.json are only reported, never deleted
       - name: Deploy
-        run: firebase deploy --only firestore:rules,firestore:indexes --non-interactive
+        run: >-
+          firebase deploy --only firestore:rules,firestore:indexes --project shifter-6f86b
+          --non-interactive
