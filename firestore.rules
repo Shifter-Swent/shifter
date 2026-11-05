@@ -72,12 +72,14 @@ service cloud.firestore {
            == request.auth.uid;
     }
 
-    // An accepted volunteer of the event, listed in its participants document.
-    function isParticipant(eventId) {
+    // Whether uid is an accepted volunteer of the event, listed in its participants document.
+    function hasJoined(eventId, uid) {
       let participants = /databases/$(database)/documents/eventParticipants/$(eventId);
-      return signedIn()
-        && exists(participants)
-        && request.auth.uid in get(participants).data.participantIds;
+      return exists(participants) && uid in get(participants).data.participantIds;
+    }
+
+    function isParticipant(eventId) {
+      return signedIn() && hasJoined(eventId, request.auth.uid);
     }
 
     // Who may see the organization of an event: its organizer and its participants.
@@ -281,6 +283,39 @@ service cloud.firestore {
           // more.
           allow delete: if signedIn() && request.auth.uid == uid;
         }
+
+        // messages/{messageId}: the team's chat channel. Its members, its manager and the event's
+        // organizer read and send, checked on the team as it is now, so someone removed from the
+        // team, or who withdraws, loses access at once. The check is on the path and the team, not
+        // on the message, so the whole channel can be queried.
+        match /messages/{messageId} {
+          function canChat() {
+            let team = get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId)).data;
+            return signedIn()
+              && (request.auth.uid in team.get('memberIds', [])
+                  || team.get('managerId', null) == request.auth.uid
+                  || isOrganizer(eventId));
+          }
+
+          // senderId and sentAt must equal the signed-in user and the server's time, so nobody can
+          // send in someone else's name or backdate a message. The text is stored trimmed, so a
+          // blank one is refused with the empty one.
+          function isValidMessage() {
+            let data = request.resource.data;
+            return data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+              && data.senderId == request.auth.uid
+              && data.sentAt == request.time
+              && data.text is string
+              && data.text.size() >= 1
+              && data.text.size() <= 1000
+              && data.text == data.text.trim();
+          }
+
+          allow read: if canChat();
+          allow create: if canChat() && isValidMessage();
+          // A message is final, so the channel stays a faithful record of what was said.
+          allow update, delete: if false;
+        }
       }
 
       match /shifts/{shiftId} {
@@ -354,13 +389,16 @@ service cloud.firestore {
           // Checks the path, not the document, so a missing check-in can be read too.
           allow read: if signedIn() && (request.auth.uid == uid || canManage());
           // checkedInAt and checkedInBy must equal the server's time and the signed-in user, so
-          // nobody can backdate a check-in or pretend someone else recorded it.
+          // nobody can backdate a check-in or pretend someone else recorded it. A volunteer who
+          // withdrew or was rejected stays in assigneeIds until unassigned, so they must also
+          // still be a participant.
           allow create: if signedIn()
             && request.resource.data.keys().hasOnly(['userId', 'method', 'checkedInAt', 'checkedInBy'])
             && request.resource.data.userId == uid
             && request.resource.data.checkedInBy == request.auth.uid
             && request.resource.data.checkedInAt == request.time
             && uid in mission().get('assigneeIds', [])
+            && hasJoined(eventId, uid)
             && ((request.resource.data.method == 'SELF' && request.auth.uid == uid)
                 || (request.resource.data.method == 'MANAGER' && canManage()));
           allow update, delete: if false;

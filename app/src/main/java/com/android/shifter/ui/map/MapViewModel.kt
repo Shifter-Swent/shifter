@@ -9,15 +9,25 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -70,6 +80,8 @@ data class MapUiState(
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  * @param now the clock telling which missions are over, replaceable in tests.
  * @param zone the time zone the mission hours are shown in, replaceable in tests.
+ * @param locationProvider gives the user's position to show on the map; null for a user the map
+ *   does not locate, such as an organizer.
  */
 class MapViewModel(
     private val eventId: String,
@@ -78,10 +90,23 @@ class MapViewModel(
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    locationProvider: LocationProvider? = null,
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+  /**
+   * Where the user is, or null when unknown: no provider, no access, a failed GPS, or no position
+   * yet. Positions only come while the screen collects this, and the last one is forgotten when it
+   * stops, so coming back from the background never shows an old position.
+   */
+  val myPosition: StateFlow<GeoPosition?> =
+      (locationProvider?.positionWhileGranted() ?: flowOf(null)).stateIn(
+          viewModelScope,
+          SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS, replayExpirationMillis = 0),
+          null,
+      )
 
   init {
     load()
@@ -145,6 +170,20 @@ class MapViewModel(
   /** Closes the card of the selected mission. */
   fun clearSelection() = _uiState.update { it.copy(selected = null) }
 
+  /**
+   * The provider's positions, null once access is lost or if the GPS fails: the map still works.
+   * Merged rather than combined, so that getting access back waits for a new position instead of
+   * showing the last one. A position is checked when it arrives, as access may be lost by then.
+   */
+  private fun LocationProvider.positionWhileGranted(): Flow<GeoPosition?> =
+      merge(
+              positions().map { position ->
+                position.takeIf { status.value == LocationStatus.GRANTED }
+              },
+              status.filter { it != LocationStatus.GRANTED }.map { null },
+          )
+          .catch { emit(null) }
+
   /** The marker of this mission, titled with its name and its hours, or null with no location. */
   private fun Mission.toMarker(): MapMarker? {
     val location = location ?: return null
@@ -158,6 +197,9 @@ class MapViewModel(
   }
 
   companion object {
+    /** Keeps the positions coming across a configuration change, not in the background. */
+    const val STOP_TIMEOUT_MILLIS = 5_000L
+
     private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     /**
@@ -169,8 +211,17 @@ class MapViewModel(
         eventRepository: EventRepository,
         missionRepository: MissionRepository,
         currentUserId: () -> String?,
+        locationProvider: LocationProvider? = null,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { MapViewModel(eventId, eventRepository, missionRepository, currentUserId) }
+      initializer {
+        MapViewModel(
+            eventId,
+            eventRepository,
+            missionRepository,
+            currentUserId,
+            locationProvider = locationProvider,
+        )
+      }
     }
   }
 }

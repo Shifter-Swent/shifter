@@ -9,6 +9,7 @@ import java.net.URL
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -24,8 +25,8 @@ object FirestoreEmulatorAdmin {
   /**
    * Creates the document at [path] with [fields], whatever `firestore.rules` say, so a test can
    * store a document no client may write, such as a malformed one. Each value is a [String], a
-   * [Boolean], a [Double], an [Instant] or a nested [Map] of them, stored as a string, a boolean, a
-   * number, a timestamp or a map.
+   * [Boolean], a [Double], an [Instant], a nested [Map] or a [List] of them, stored as a string, a
+   * boolean, a number, a timestamp, a map or an array.
    */
   suspend fun createDocument(path: String, fields: Map<String, Any>) {
     val parent = path.substringBeforeLast('/')
@@ -42,6 +43,17 @@ object FirestoreEmulatorAdmin {
     request("POST", "$parent?documentId=$id", body) { status ->
       check(status in 200..299) { "Emulator setup failed for $path: $status" }
     }
+  }
+
+  /**
+   * Makes [userIds] the participants of the event [eventId], which only the backend writes.
+   *
+   * @return the path of the created document, for the test to clean up.
+   */
+  suspend fun createParticipants(eventId: String, userIds: List<String>): String {
+    val path = "eventParticipants/$eventId"
+    createDocument(path, mapOf("participantIds" to userIds))
+    return path
   }
 
   private fun toValue(value: Any): JSONObject =
@@ -63,6 +75,12 @@ object FirestoreEmulatorAdmin {
                               }
                             },
                         ),
+                )
+        is List<*> ->
+            JSONObject()
+                .put(
+                    "arrayValue",
+                    JSONObject().put("values", JSONArray(value.map { toValue(checkNotNull(it)) })),
                 )
         else -> throw IllegalArgumentException("Unsupported field value: $value")
       }
