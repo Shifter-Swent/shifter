@@ -7,22 +7,30 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -41,6 +49,7 @@ import com.swent.shifter.ui.theme.shifter_tabInactive
 object PeopleScreenTestTags {
   const val PARTICIPANTS_TAB = "PeopleParticipantsTab"
   const val REQUESTS_TAB = "PeopleRequestsTab"
+  const val MANAGER_UPDATE_PROGRESS = "PeopleManagerUpdateProgress"
 }
 
 /**
@@ -52,6 +61,7 @@ object PeopleScreenTestTags {
  *   its manager, after tapping their card.
  * @param onRemoveManager called with the id of a team whose manager the organizer confirmed to
  *   remove, after tapping their card.
+ * @param onManagerChangeFailureShown called once a failed change of manager has been reported.
  */
 @Composable
 fun PeopleScreen(
@@ -64,17 +74,43 @@ fun PeopleScreen(
     onAppointManager: (teamId: String, userId: String) -> Unit,
     onRemoveManager: (teamId: String) -> Unit,
     onNavigate: (Tab) -> Unit,
+    onManagerChangeFailureShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   // The card tapped, as ids so it survives a configuration change and a reload of the list.
   var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+  val snackbarHostState = remember { SnackbarHostState() }
+  val updateFailed = stringResource(R.string.participants_manager_update_failed)
+  val updateRefused = stringResource(R.string.participants_manager_update_refused)
+  val retry = stringResource(R.string.participants_retry)
+  LaunchedEffect(participants.managerChangeFailure) {
+    val failure = participants.managerChangeFailure ?: return@LaunchedEffect
+    if (!failure.canRetry) {
+      snackbarHostState.showSnackbar(updateRefused)
+      onManagerChangeFailureShown()
+      return@LaunchedEffect
+    }
+    // With an action, the default duration is indefinite, and it would never go away.
+    val result =
+        snackbarHostState.showSnackbar(
+            updateFailed,
+            actionLabel = retry,
+            duration = SnackbarDuration.Long,
+        )
+    onManagerChangeFailureShown()
+    if (result == SnackbarResult.ActionPerformed) {
+      if (failure.managerId == null) onRemoveManager(failure.teamId)
+      else onAppointManager(failure.teamId, failure.managerId)
+    }
+  }
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
       topBar = { PeopleTopBar() },
       bottomBar = { OrganizerNavigationBar(onNavigate) },
+      snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
       PeopleTabs(
@@ -90,6 +126,15 @@ fun PeopleScreen(
           },
       )
       if (selectedTab == PARTICIPANTS_TAB) {
+        if (participants.isUpdating) {
+          val updating = stringResource(R.string.participants_manager_updating)
+          LinearProgressIndicator(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .semantics { contentDescription = updating }
+                      .testTag(PeopleScreenTestTags.MANAGER_UPDATE_PROGRESS)
+          )
+        }
         ParticipantsList(
             participants,
             onReloadParticipants,
@@ -114,7 +159,8 @@ fun PeopleScreen(
     ManagerDialog(
         participant = participant,
         team = team,
-        currentManager = group.participants.firstOrNull { it.isManager },
+        currentManager =
+            group.participants.firstOrNull { it.isManager }?.takeUnless { participant.isManager },
         onConfirm = {
           if (participant.isManager) onRemoveManager(teamId) else onAppointManager(teamId, userId)
           selection = null
@@ -193,6 +239,7 @@ private fun PeopleScreenPreview() {
         onAppointManager = { _, _ -> },
         onRemoveManager = {},
         onNavigate = {},
+        onManagerChangeFailureShown = {},
     )
   }
 }

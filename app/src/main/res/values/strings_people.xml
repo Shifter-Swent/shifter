@@ -24,5 +24,7 @@
     <string name="participants_remove_manager_message">%1$s goes back to the members of %2$s.</string>
     <string name="participants_manager_confirm">Confirm</string>
     <string name="participants_manager_cancel">Cancel</string>
-    <string name="participants_manager_update_failed">The manager could not be changed, try again</string>
+    <string name="participants_manager_update_failed">The manager could not be changed</string>
+    <string name="participants_manager_update_refused">This change is no longer possible</string>
+    <string name="participants_manager_updating">Changing the manager</string>
 </resources>
