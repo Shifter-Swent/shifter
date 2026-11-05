@@ -35,8 +35,12 @@ jobs:
     environment: production
 
     steps:
+      # The latest main rather than the commit that started the run: re-running an older run would
+      # otherwise put its outdated rules back in production
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: main
 
       # Same version as the CI
       - name: Install Firebase CLI
