@@ -45,6 +45,11 @@ interface TeamRepository {
    *
    * Throws [IllegalArgumentException] when [managerId] is neither a member nor the current manager,
    * and [TeamRepositoryException.NotFound] when the team does not exist.
+   *
+   * Appointing someone takes them out of the members, so a Firestore-backed implementation deletes
+   * the position they shared with this team in the same write (#305); leaving the team without a
+   * manager deletes nothing, the previous one going back to the members. The in-memory fakes do not
+   * model it.
    */
   suspend fun setManager(eventId: String, teamId: String, managerId: String?)
 
@@ -59,6 +64,10 @@ interface TeamRepository {
   /**
    * Removes [userId] from the members of the team. Removing someone who is not a member has no
    * effect.
+   *
+   * A Firestore-backed implementation also deletes the position [userId] shared with this team, in
+   * the same write (#305), so their former manager stops seeing it; the position they shared with
+   * another team of the event is left alone. The in-memory fakes do not model it.
    *
    * Throws [TeamRepositoryException.NotFound] when the team does not exist.
    */

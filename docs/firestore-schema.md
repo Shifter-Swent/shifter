@@ -255,7 +255,7 @@ every access to it is denied.
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
-| `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted |
+| `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
 | `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters. No update, no delete |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds` who is still a participant of the event (a volunteer who withdrew or was rejected stays assigned until unassigned), with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
@@ -296,7 +296,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   to remove them explicitly. `liveLocations` is the one place the rules already account for it:
   every read and write under a deleted event is denied, since a team's manager would otherwise go
   on reading the positions orphaned under it. Only the volunteer's own delete still works, so the
-  orphans can be cleaned up.
+  orphans can be cleaned up: the organizer's delete is not an exception here, because it is granted
+  by reading the event's `organizerId`, which a deleted event no longer has.
 - **A shared position outlives the consent, until the event's period ends.** Listing
   `liveLocations` is allowed by the path alone, because a condition on each document would make the
   manager's query of the collection fail as soon as one volunteer no longer satisfied it (rules are
@@ -315,11 +316,41 @@ can only be deleted once its volunteer is no longer a participant, and never onc
     again or the event's period ends. Closing that gap needs a backend mechanism (a scheduled
     function deleting positions whose owner has sharing off, or a server-written timestamp), which
     no PR of #305 plans.
-  - **Leaving the team:** a volunteer's own withdrawal can delete it in the same commit as leaving
-    `memberIds`, which the rules already allow. A removal by the organizer cannot: `delete`
-    requires `request.auth.uid == uid`, so nobody but the volunteer may take their position out,
-    and that case is bounded only by the event's period. Granting the manager and the organizer a
-    delete is the smallest fix, and belongs to the PR that implements the cleanup.
+  - **Leaving the team:** done. Every path that takes a volunteer out of a team's `memberIds`
+    deletes their position in the same commit, so the manager stops seeing it at once:
+
+    | Path | Who writes it | Atomic because |
+    |---|---|---|
+    | `MembershipRequestRepository.withdraw` | the volunteer | one transaction, with the request and `memberIds` |
+    | `MembershipRequestRepository.reject` of an accepted volunteer | the organizer | the same transaction as the status and `memberIds` |
+    | `TeamRepository.removeMember` | the organizer | one batch, with the `memberIds` update |
+    | `TeamRepository.setManager`, appointing a member | the organizer | the same transaction that rewrites `memberIds` |
+
+    `delete` is therefore allowed to the volunteer **and** to the event's organizer: a removal the
+    organizer makes cannot wait for the volunteer's device, which may be offline, killed or
+    uninstalled. The manager is deliberately left out, since they write neither `memberIds` nor
+    `managerId` and so never remove anyone. A batch or a transaction commits whole, so a membership
+    change that is refused deletes nothing either.
+
+    What this is **not** is a guarantee that a stored position always matches `memberIds`. Rules
+    *can* inspect the state a commit will leave behind, with `getAfter()` and `existsAfter()`:
+    `membershipRequests` already uses them to require a decision to agree with `memberIds` after
+    the same commit (`isTeamMemberAfter`). What no rule can do is the converse - require a write to
+    `memberIds` to be accompanied by the delete - and the delete here is not conditioned on the
+    after state either. Two gaps follow:
+
+    - **Not enforced, and not enforceable by rules:** an organizer writing `memberIds` directly,
+      rather than through these repositories, removes a volunteer without deleting their position.
+      It then stays readable until the volunteer's app deletes it or the event's period ends,
+      exactly as before. This is the one that matters, and only a backend mechanism closes it.
+    - **Not enforced, but enforceable:** the permission lets the organizer delete the position of a
+      volunteer who is still in the team, because it does not check `memberIds` after the commit.
+      Adding that condition would scope it to the cleanup; it only loses a position the
+      volunteer's app replaces on its next update, so it is left out for now.
+
+    Both are bounded by the event's period, like every read here. Closing the first one properly
+    needs the backend mechanism the consent gap needs too (see above), which no PR of #305
+    plans.
 
   A collection-group query over `liveLocations` is not an option for finding a volunteer's
   positions to delete: there is no `match /{path=**}/liveLocations/{uid}` rule, so the query is
