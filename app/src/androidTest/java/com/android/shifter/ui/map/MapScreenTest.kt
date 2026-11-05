@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -37,6 +38,7 @@ class MapScreenTest {
     compose.setContent {
       ShifterTheme {
         MapContent(
+            title = "Map",
             uiState = uiState,
             onBack = { backs++ },
             onMarkerClick = {},
@@ -49,10 +51,10 @@ class MapScreenTest {
   }
 
   @Test
-  fun loaded_showsTheEventAboveTheMapAndBackLeaves() {
+  fun loaded_showsTheTitleAndVenueAboveTheMapAndBackLeaves() {
     setContent(LOADED)
 
-    compose.onNodeWithText("City Marathon").assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Map")
     compose.onNodeWithTag(MapScreenTestTags.VENUE).assertIsDisplayed()
     compose.onNodeWithText("Event venue").assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
@@ -77,6 +79,7 @@ class MapScreenTest {
       ShifterTheme {
         camera = rememberCameraPositionState()
         MapContent(
+            title = "Map",
             uiState = LOADED,
             onBack = {},
             onMarkerClick = {},
@@ -217,7 +220,6 @@ class MapScreenTest {
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     val LOADED =
         MapUiState(
-            eventTitle = "City Marathon",
             venue = "Place Bellecour",
             center = GeoPosition(46.52, 6.57),
             markers = listOf(WATER),

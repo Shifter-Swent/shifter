@@ -71,15 +71,16 @@ private const val VOLUNTEER_MARKER_PREFIX = "volunteer-"
 /** Zoom the camera opens at once the event is loaded: close enough to tell missions apart. */
 private const val EVENT_ZOOM = 15f
 
-/** The Map tab of an event: its missions on a map, driven by [viewModel]. */
+/** The Map tab of an event, titled [title]: its missions on a map, driven by [viewModel]. */
 @Composable
-fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
+fun MapScreen(title: String, viewModel: MapViewModel, onBack: () -> Unit) {
   val uiState by viewModel.uiState.collectAsState()
   // With the lifecycle, so the GPS stops when the app goes to the background.
   val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
   // Stops following the volunteers' positions while the app is in the background.
   val volunteers by viewModel.volunteers.collectAsStateWithLifecycle()
   MapContent(
+      title = title,
       uiState = uiState,
       onBack = onBack,
       onMarkerClick = viewModel::selectMarker,
@@ -91,7 +92,7 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
 }
 
 /**
- * Stateless map screen: the event's title and venue above a map of its missions.
+ * Stateless map screen: [title] and the event's venue above a map of its missions.
  *
  * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
@@ -100,6 +101,7 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
  */
 @Composable
 fun MapContent(
+    title: String,
     uiState: MapUiState,
     onBack: () -> Unit,
     onMarkerClick: (MapMarker) -> Unit,
@@ -113,7 +115,7 @@ fun MapContent(
 ) {
   Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
     ShifterTopBar(
-        title = uiState.eventTitle,
+        title = title,
         onBack = onBack,
     )
     if (uiState.venue.isNotEmpty()) {
