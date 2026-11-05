@@ -270,8 +270,9 @@ by `userId`.
 
 Collection-group queries need a collection-group index on the filtered field, declared in
 `firestore.indexes.json` (`membershipRequests.userId`, `missions.assigneeIds`, `checkIns.userId`).
-The emulator does not check indexes, so after changing that file, deploy it with
-`firebase deploy --only firestore:indexes`.
+The emulator does not check indexes, so a missing one only fails in production. The "Deploy
+Firestore" workflow deploys `firestore.rules` and `firestore.indexes.json` on every push to `main`
+that changes them; it can also be run by hand from the Actions tab.
 
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
 and, in the same commit, remove themself (and only themself) from `eventParticipants` and from their
