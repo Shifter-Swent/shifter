@@ -1,0 +1,56 @@
+# Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+name: Deploy Firestore
+
+# Deploy the rules and indexes once they reach main, never from a PR: the emulator reads the files
+# directly, but production only gets them through `firebase deploy`. Also runnable by hand from the
+# Actions tab, e.g. to retry
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - firestore.rules
+      - firestore.indexes.json
+      - firebase.json
+      - .github/workflows/deploy-firestore.yml
+  workflow_dispatch:
+
+# The job only reads the repository
+permissions:
+  contents: read
+
+# Never two deployments at once, so the rules of the last push are the ones live
+concurrency:
+  group: deploy-firestore
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Rules and indexes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Same version as the CI
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools@15
+
+      # The FIREBASE_SERVICE_ACCOUNT secret holds the JSON key of a service account that may only
+      # deploy rules and indexes. The Firebase CLI reads it through GOOGLE_APPLICATION_CREDENTIALS
+      - name: Restore service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set"
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/service-account.json" >> "$GITHUB_ENV"
+
+      # The project comes from .firebaserc. Without --force, indexes that exist in production but
+      # not in firestore.indexes.json are only reported, never deleted
+      - name: Deploy
+        run: firebase deploy --only firestore:rules,firestore:indexes --non-interactive
