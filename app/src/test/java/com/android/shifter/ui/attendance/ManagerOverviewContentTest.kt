@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -316,10 +317,17 @@ class ManagerOverviewContentTest {
   }
 
   @Test
-  fun missionClosedByHand_isShownAsCompleted() {
-    show(loaded.copy(missions = listOf(setUp.copy(completed = true))))
+  fun missionAwaitingConfirmation_isShownAsCompletedWithoutAnAction() {
+    show(
+        loaded.copy(
+            missions = listOf(setUp.copy(completed = true)),
+            markingCompletedIds = setOf("m1"),
+        )
+    )
 
     compose.onNodeWithTag(ManagerOverviewTestTags.status("m1")).assertTextEquals("Completed")
+    compose.onNodeWithTag(ManagerOverviewTestTags.markCompleted("m1")).assertDoesNotExist()
+    compose.onNodeWithText("The mission could not be marked as completed.").assertDoesNotExist()
   }
 
   @Test

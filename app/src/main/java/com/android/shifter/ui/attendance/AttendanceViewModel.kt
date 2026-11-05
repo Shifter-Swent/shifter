@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.lifecycle.ViewModel
@@ -24,13 +25,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 
 /**
  * Someone assigned to a mission, with their public name or null when it cannot be read.
@@ -264,7 +263,11 @@ class AttendanceViewModel(
               eventTitle = event.title,
               // The teams already read say whether they manage any, so no role is asked for twice.
               canViewAttendance = isOrganizer || teams.isNotEmpty(),
-              missions = missions,
+              missions =
+                  missions.map { mission ->
+                    if (mission.id in it.markingCompletedIds) mission.copy(completed = true)
+                    else mission
+                  },
           )
         }
         observeAttendance(missions)
@@ -278,33 +281,30 @@ class AttendanceViewModel(
   }
 
   /**
-   * Closes the mission [missionId] by hand. It only shows as completed once the backend has
-   * confirmed; a failure leaves it as it was, reported through
-   * [AttendanceUiState.completionFailedMissionId].
+   * Shows [missionId] as completed immediately while the repository waits for confirmation.
+   * Offline, the write stays queued and the wait continues without blocking the screen. A refusal
+   * restores the previous state and sets [AttendanceUiState.completionFailedMissionId].
    */
   fun markCompleted(missionId: String) {
     if (missionId in _uiState.value.markingCompletedIds) return
+    val mission = _uiState.value.missions.find { it.id == missionId } ?: return
+    if (mission.completed) return
     _uiState.update {
       it.copy(
           markingCompletedIds = it.markingCompletedIds + missionId,
           completionFailedMissionId = null,
+          missions = it.missions.map { if (it.id == missionId) it.copy(completed = true) else it },
       )
     }
     viewModelScope.launch {
       try {
-        // An offline write may never answer (#181): the manager must not wait for it forever.
-        withTimeout(MARK_COMPLETED_TIMEOUT_MILLIS) {
-          missionRepository.markCompleted(eventId, missionId)
-        }
+        // Keep listening so even a refusal after reconnection rolls the optimistic state back.
+        missionRepository.markCompleted(eventId, missionId)
         _uiState.update { state ->
           state.copy(
               markingCompletedIds = state.markingCompletedIds - missionId,
-              missions =
-                  state.missions.map { if (it.id == missionId) it.copy(completed = true) else it },
           )
         }
-      } catch (_: TimeoutCancellationException) {
-        markCompletedFailed(missionId)
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
@@ -317,6 +317,7 @@ class AttendanceViewModel(
     it.copy(
         markingCompletedIds = it.markingCompletedIds - missionId,
         completionFailedMissionId = missionId,
+        missions = it.missions.map { if (it.id == missionId) it.copy(completed = false) else it },
     )
   }
 
@@ -541,9 +542,6 @@ class AttendanceViewModel(
      * snackbar, even one an accessibility setting has lengthened, so it never cuts an "Undo" short.
      */
     const val UNDO_TIMEOUT_MILLIS = 30_000L
-
-    /** How long closing a mission waits for the backend before reporting a failure. */
-    const val MARK_COMPLETED_TIMEOUT_MILLIS = 10_000L
 
     /** Builds the factory for `viewModel(factory = ...)`, as this ViewModel takes arguments. */
     fun factory(
