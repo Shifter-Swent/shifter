@@ -18,6 +18,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -847,6 +848,184 @@ class AddMissionViewModelTest {
     assertTrue(state.errors.isEmpty())
   }
 
+  /** The event of the form, held at [position]. */
+  private fun eventAt(position: GeoPosition) {
+    events = StubEventRepository(event.copy(location = EventLocation("Grand Place", position)))
+  }
+
+  @Test
+  fun pickLocation_opensOnTheCurrentCoordinates() = runTest {
+    openForm()
+    fillLocation("Grand Place, Lille", "50.6366", "3,0635")
+
+    viewModel.onPickLocation()
+
+    assertTrue(state.isPickingLocation)
+    assertEquals(GeoPosition(50.6366, 3.0635), state.locationDraft)
+  }
+
+  @Test
+  fun pickLocation_beforeTheEventLoads_isIgnored() = runTest {
+    events.failure = IllegalStateException("offline")
+    openForm()
+    assertTrue(state.loadFailed)
+
+    viewModel.onPickLocation()
+
+    assertFalse(state.isPickingLocation)
+  }
+
+  @Test
+  fun pickLocation_withoutCoordinates_opensOnTheEvent() = runTest {
+    eventAt(LILLE)
+    openForm()
+
+    viewModel.onPickLocation()
+
+    assertTrue(state.isPickingLocation)
+    assertNull(state.locationDraft)
+    assertEquals(LILLE, state.eventPosition)
+  }
+
+  @Test
+  fun pickLocation_withAnIncompletePoint_opensOnTheEventAndReplacesIt() = runTest {
+    eventAt(LILLE)
+    openForm()
+    // A latitude typed, the longitude not yet.
+    viewModel.onLatitudeChange("50.6")
+
+    viewModel.onPickLocation()
+    assertNull(state.locationDraft)
+    viewModel.onLocationDraftChange(OUCHY)
+    viewModel.onConfirmLocation()
+
+    assertEquals("46.50690", state.latitude)
+    assertEquals("6.62660", state.longitude)
+  }
+
+  @Test
+  fun confirmLocation_fillsTheCoordinatesWithADecimalPoint() = runTest {
+    val defaultLocale = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.FRANCE)
+      openForm()
+
+      viewModel.onPickLocation()
+      viewModel.onLocationDraftChange(OUCHY)
+      viewModel.onConfirmLocation()
+
+      assertFalse(state.isPickingLocation)
+      assertNull(state.locationDraft)
+      assertEquals("46.50690", state.latitude)
+      assertEquals("6.62660", state.longitude)
+    } finally {
+      Locale.setDefault(defaultLocale)
+    }
+  }
+
+  @Test
+  fun confirmLocation_withoutMoving_keepsTheTypedCoordinates() = runTest {
+    openForm()
+    fillLocation("Grand Place, Lille", "50.6366123", "3.0635456")
+
+    viewModel.onPickLocation()
+    viewModel.onConfirmLocation()
+
+    // Not rounded to the five decimals the map gives.
+    assertFalse(state.isPickingLocation)
+    assertEquals("50.6366123", state.latitude)
+    assertEquals("3.0635456", state.longitude)
+  }
+
+  @Test
+  fun locationDraftChange_twice_keepsTheLastPoint() = runTest {
+    openForm()
+    viewModel.onPickLocation()
+
+    viewModel.onLocationDraftChange(LILLE)
+    viewModel.onLocationDraftChange(OUCHY)
+
+    assertEquals(OUCHY, state.locationDraft)
+    // The form is only filled in once the point is confirmed.
+    assertEquals("", state.latitude)
+  }
+
+  @Test
+  fun locationDraftChange_withTheMapClosed_isIgnored() = runTest {
+    openForm()
+
+    viewModel.onLocationDraftChange(OUCHY)
+
+    assertNull(state.locationDraft)
+  }
+
+  @Test
+  fun cancelLocationPicker_keepsTheCoordinates() = runTest {
+    openForm()
+    fillLocation("Grand Place, Lille", "50.6366", "3.0635")
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(OUCHY)
+
+    viewModel.onCancelLocationPicker()
+
+    assertFalse(state.isPickingLocation)
+    assertNull(state.locationDraft)
+    assertEquals("50.6366", state.latitude)
+    assertEquals("3.0635", state.longitude)
+  }
+
+  @Test
+  fun confirmLocation_afterAFailedSubmit_clearsTheCoordinateErrors() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.onAddressChange("Ouchy, Lausanne")
+    viewModel.addMission()
+    assertTrue(MissionFormError.LATITUDE_INVALID in state.errors)
+
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(OUCHY)
+    viewModel.onConfirmLocation()
+
+    assertTrue(state.errors.isEmpty())
+  }
+
+  @Test
+  fun clearLocation_emptiesTheLocationAndAddsAMissionWithoutOne() = runTest {
+    openForm()
+    fillValidForm()
+    fillLocation("Grand Place, Lille", "50.6366", "north")
+    viewModel.addMission()
+    assertTrue(MissionFormError.LONGITUDE_INVALID in state.errors)
+
+    viewModel.onClearLocation()
+
+    assertEquals("", state.address)
+    assertEquals("", state.latitude)
+    assertEquals("", state.longitude)
+    assertTrue(state.errors.isEmpty())
+    viewModel.addMission()
+    advanceUntilIdle()
+    assertNull(missions.created.single().location)
+  }
+
+  @Test
+  fun addMission_afterPicking_savesThePickedPosition() = runTest {
+    openForm()
+    fillValidForm()
+    viewModel.onAddressChange("Ouchy, Lausanne")
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(OUCHY)
+    viewModel.onConfirmLocation()
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(
+        MissionLocation("Ouchy, Lausanne", GeoPosition(46.5069, 6.6266)),
+        missions.created.single().location,
+    )
+  }
+
   @Test
   fun addMission_overlappingAMissionOfTheSameTeam_reportsTheConflictAndClearsOnEdit() = runTest {
     val existing =
@@ -937,6 +1116,11 @@ class AddMissionViewModelTest {
   /** [hour]:[minute] on [dayOfMonth] July 2027. */
   private fun at(dayOfMonth: Int, hour: Int, minute: Int) =
       LocalDateTime.of(2027, 7, dayOfMonth, hour, minute)
+
+  private companion object {
+    val LILLE = GeoPosition(50.6366, 3.0635)
+    val OUCHY = GeoPosition(46.5069, 6.6266)
+  }
 }
 
 /** [EventRepository] that only knows [event]; setting [failure] makes every call throw it. */

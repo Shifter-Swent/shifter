@@ -14,6 +14,7 @@ import com.swent.shifter.model.mission.MissionOverlapException
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.ui.map.formatCoordinate
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -119,6 +120,10 @@ enum class MissionFormError(val field: MissionFormField) {
  *   one of [address], [latitude] or [longitude] is filled, and then all three are required.
  * @property latitude the latitude of the optional location, as typed.
  * @property longitude the longitude of the optional location, as typed.
+ * @property eventPosition where the event takes place, if known: the map opens there when the
+ *   mission has no point yet.
+ * @property isPickingLocation whether the map to pick the location on is open.
+ * @property locationDraft the point picked on the open map, not used until it is confirmed.
  * @property errors the current validation errors. Empty until the organizer or a manager first
  *   tries to submit, so an untouched form is not shown in red; from then on it is kept up to date
  *   on every edit.
@@ -145,6 +150,9 @@ data class AddMissionUiState(
     val address: String = "",
     val latitude: String = "",
     val longitude: String = "",
+    val eventPosition: GeoPosition? = null,
+    val isPickingLocation: Boolean = false,
+    val locationDraft: GeoPosition? = null,
     val errors: Set<MissionFormError> = emptySet(),
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
@@ -176,6 +184,14 @@ data class AddMissionUiState(
   /** Whether the user started to give a location, which then has to be complete. */
   val hasLocation: Boolean
     get() = address.isNotBlank() || latitude.isNotBlank() || longitude.isNotBlank()
+
+  /** The point the typed coordinates give, or null while either of them is missing or invalid. */
+  val position: GeoPosition?
+    get() {
+      val lat = parseCoordinate(latitude, GeoPosition.LATITUDE_RANGE) ?: return null
+      val lng = parseCoordinate(longitude, GeoPosition.LONGITUDE_RANGE) ?: return null
+      return GeoPosition(lat, lng)
+    }
 
   companion object {
     /** A mission records a need for at least one person. */
@@ -224,6 +240,9 @@ class AddMissionViewModel(
   /** Loads the candidates of the selected team; replaced when the team changes. */
   private var candidatesJob: Job? = null
 
+  /** The point of the form when the map was opened, so confirming it unmoved changes nothing. */
+  private var pickerStart: GeoPosition? = null
+
   init {
     loadEvent()
   }
@@ -268,6 +287,7 @@ class AddMissionViewModel(
               teams = teams,
               canChooseGeneral = isOrganizer,
               teamId = teamId,
+              eventPosition = event.location.position,
               // Most events last a single day, which is then the only one to pick.
               day = it.day ?: period.start.toLocalDate(),
           )
@@ -324,6 +344,51 @@ class AddMissionViewModel(
   fun onLatitudeChange(latitude: String) = edit { it.copy(latitude = latitude) }
 
   fun onLongitudeChange(longitude: String) = edit { it.copy(longitude = longitude) }
+
+  /**
+   * Opens the map on the point the coordinates give. With no complete point, e.g. a latitude typed
+   * and not the longitude yet, it opens on the event instead, and the point picked replaces both.
+   * Ignored until the event is known, as the map would not know where it takes place.
+   */
+  fun onPickLocation() {
+    if (_uiState.value.event == null) return
+    pickerStart = _uiState.value.position
+    _uiState.update { it.copy(isPickingLocation = true, locationDraft = pickerStart) }
+  }
+
+  /** Moves the point picked on the open map, without touching the form yet. */
+  fun onLocationDraftChange(position: GeoPosition) {
+    _uiState.update { if (it.isPickingLocation) it.copy(locationDraft = position) else it }
+  }
+
+  /**
+   * Closes the map and fills the coordinates with the point picked. A point left where the map
+   * opened is not written again: the coordinates typed keep their precision, rather than being
+   * rounded to the decimals the map gives.
+   */
+  fun onConfirmLocation() {
+    val draft = _uiState.value.locationDraft
+    if (draft == null || draft == pickerStart) {
+      onCancelLocationPicker()
+      return
+    }
+    edit {
+      it.copy(
+          latitude = formatCoordinate(draft.latitude),
+          longitude = formatCoordinate(draft.longitude),
+          isPickingLocation = false,
+          locationDraft = null,
+      )
+    }
+  }
+
+  /** Closes the map and leaves the coordinates as they were. */
+  fun onCancelLocationPicker() {
+    _uiState.update { it.copy(isPickingLocation = false, locationDraft = null) }
+  }
+
+  /** Empties the address and the coordinates: the mission is then added with no location. */
+  fun onClearLocation() = edit { it.copy(address = "", latitude = "", longitude = "") }
 
   /** Validates the form and, when it is valid, creates the mission. Ignored until it can submit. */
   fun addMission() {

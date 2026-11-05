@@ -128,8 +128,8 @@ internal fun LocationPicker(
               else
                   stringResource(
                       R.string.map_picker_selected,
-                      selected.latitude.coordinate(),
-                      selected.longitude.coordinate(),
+                      formatCoordinate(selected.latitude),
+                      formatCoordinate(selected.longitude),
                   ),
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurface,
@@ -148,4 +148,4 @@ internal fun LocationPicker(
  * Five decimals, about a metre, which is as precise as a tap on a phone gets. In [Locale.ROOT], so
  * a French device does not write the decimal point as a comma.
  */
-private fun Double.coordinate(): String = String.format(Locale.ROOT, "%.5f", this)
+internal fun formatCoordinate(value: Double): String = String.format(Locale.ROOT, "%.5f", value)
