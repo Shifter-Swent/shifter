@@ -63,7 +63,7 @@ Agreed by the team in #334.
 
 - Put the strings of a feature in `res/values/strings_<feature>.xml` (e.g. `strings_mission.xml`), in the file of the feature that owns them; create it if needed.
 - Keep `strings.xml` for the strings shared by several features (e.g. `app_name`, `content_description_back`).
-- A string reused by a step of the same flow stays in the file of the feature that owns it (e.g. `create_event_back`, also used by the team setup of the event creation); move it to `strings.xml` only when unrelated features use it.
+- A string reused by a step of the same flow stays in the file of the feature that owns it (e.g. `create_event_title`, also used by the team setup of the event creation); move it to `strings.xml` only when unrelated features use it.
 
 ## Packages names
 

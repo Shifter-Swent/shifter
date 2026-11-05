@@ -3,7 +3,6 @@
 <resources>
     <!-- Mission creation -->
     <string name="add_mission_title">Add a mission</string>
-    <string name="add_mission_back">Management</string>
     <string name="add_mission_intro">Define the mission, the staff needed and the time slot.</string>
     <string name="add_mission_event_period">%1$s · %2$s–%3$s</string>
     <string name="add_mission_event_period_multi_day">%1$s – %2$s</string>

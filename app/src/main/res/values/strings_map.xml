@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="map_back">My Events</string>
     <string name="map_venue_caption">Event venue</string>
     <string name="map_next_mission">NEXT MISSION · %1$s</string>
     <string name="map_ongoing_mission">NOW · until %1$s</string>

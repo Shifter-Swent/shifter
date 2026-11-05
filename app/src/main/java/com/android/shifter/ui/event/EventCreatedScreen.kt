@@ -33,13 +33,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
 object EventCreatedScreenTestTags {
-  const val BACK_BUTTON = "EventCreatedBackButton"
   const val LOADING_INDICATOR = "EventCreatedLoadingIndicator"
   const val LOAD_ERROR = "EventCreatedLoadError"
   const val RETRY_BUTTON = "EventCreatedRetryButton"
@@ -65,10 +64,8 @@ fun EventCreatedScreen(viewModel: EventCreatedViewModel, onDone: () -> Unit) {
 fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone: () -> Unit) {
   Scaffold(
       topBar = {
-        FormHeader(
-            backLabel = stringResource(R.string.create_event_back),
+        ShifterTopBar(
             title = stringResource(R.string.event_created_title),
-            backButtonTestTag = EventCreatedScreenTestTags.BACK_BUTTON,
             onBack = onDone,
         )
       }

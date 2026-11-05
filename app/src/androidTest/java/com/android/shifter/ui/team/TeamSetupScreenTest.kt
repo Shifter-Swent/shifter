@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -24,6 +25,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -364,7 +366,7 @@ class TeamSetupScreenTest {
   fun header_leavesTheStep() {
     val events = open(FakeTeams())
 
-    composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(listOf("back"), events)
   }

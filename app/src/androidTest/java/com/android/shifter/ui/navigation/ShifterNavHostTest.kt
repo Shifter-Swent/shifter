@@ -45,7 +45,6 @@ import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
-import com.swent.shifter.ui.event.EventDetailsTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.map.MapScreenTestTags
@@ -271,7 +270,7 @@ class ShifterNavHostTest {
     assertEquals(MembershipRequestStatus.PENDING, request?.status)
 
     // The screen's Back returns to the code, then the device Back leaves to the events list.
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
@@ -327,7 +326,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
     composeTestRule.onNodeWithTag(CreateEventScreenTestTags.TITLE_FIELD).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag(CreateEventScreenTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
   }
 
@@ -617,7 +616,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)
@@ -667,7 +666,8 @@ class ShifterNavHostTest {
         .performScrollTo()
         .performClick()
 
-    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+    // The form has a title of its own, so wait for the Overview before reading the title.
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)
@@ -887,7 +887,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
     createMission(event, "Set up the stands", teamId = null)
-    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithText("Set up the stands").fetchSemanticsNodes().isNotEmpty()
