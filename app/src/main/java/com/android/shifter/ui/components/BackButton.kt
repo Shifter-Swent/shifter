@@ -26,6 +26,7 @@ object BackButtonTestTags {
 /**
  * The back button of every screen: a chevron in a circle, placed by the caller's [modifier]. It
  * takes 48 dp in the layout, for its touch target, so its 40 dp circle sits 4 dp inside its edge.
+ * Show one per screen: its test tag is fixed, so two would make tests find two nodes.
  */
 @Composable
 fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
