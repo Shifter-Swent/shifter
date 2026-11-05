@@ -22,10 +22,12 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.ui.map.LocationPickerTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
 import java.time.Instant
@@ -359,6 +361,85 @@ class AddMissionScreenTest {
         .performScrollTo()
         .assertIsDisplayed()
     node(AddMissionScreenTestTags.ADDRESS_RULE).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun pickOnMap_opensThePicker() {
+    var opened = false
+    setContent(loaded, AddMissionActions(onPickLocation = { opened = true }))
+
+    node(AddMissionScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().performClick()
+
+    assertEquals(true, opened)
+  }
+
+  @Test
+  fun pickOnMap_beforeTheEventIsKnown_isDisabled() {
+    // The map would open far from the event, whose place is not known: neither while it loads nor
+    // after it failed to.
+    var state by mutableStateOf(AddMissionUiState())
+    composeTestRule.setContent { ShifterTheme { AddMissionContent(state, AddMissionActions()) } }
+
+    node(AddMissionScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().assertIsNotEnabled()
+
+    state = AddMissionUiState(isLoadingEvent = false, loadFailed = true)
+    node(AddMissionScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().assertIsNotEnabled()
+  }
+
+  @Test
+  fun picking_withAPoint_showsItAndUsesIt() {
+    var confirmed = false
+    setContent(
+        loaded.copy(isPickingLocation = true, locationDraft = GeoPosition(46.5069, 6.6266)),
+        AddMissionActions(onConfirmLocation = { confirmed = true }),
+    )
+
+    node(AddMissionScreenTestTags.LOCATION_PICKER_DIALOG).assertIsDisplayed()
+    node(LocationPickerTestTags.SELECTED).assertTextEquals("Selected: 46.50690, 6.62660")
+    node(AddMissionScreenTestTags.LOCATION_PICKER_CONFIRM).assertIsEnabled().performClick()
+
+    assertEquals(true, confirmed)
+  }
+
+  @Test
+  fun picking_withoutAPoint_cannotBeConfirmed() {
+    setContent(loaded.copy(isPickingLocation = true))
+
+    node(LocationPickerTestTags.HINT).assertIsDisplayed()
+    node(AddMissionScreenTestTags.LOCATION_PICKER_CONFIRM).assertIsNotEnabled()
+  }
+
+  @Test
+  fun closingThePicker_cancelsIt() {
+    var cancelled = false
+    setContent(
+        loaded.copy(isPickingLocation = true, locationDraft = GeoPosition(46.5069, 6.6266)),
+        AddMissionActions(onCancelLocationPicker = { cancelled = true }),
+    )
+
+    node(AddMissionScreenTestTags.LOCATION_PICKER_CLOSE).performClick()
+
+    assertEquals(true, cancelled)
+  }
+
+  @Test
+  fun clearLocation_isOfferedOnlyWithALocation() {
+    var hasLocation by mutableStateOf(true)
+    var cleared = false
+    composeTestRule.setContent {
+      ShifterTheme {
+        AddMissionContent(
+            if (hasLocation) loaded.copy(address = "Grand Place") else loaded,
+            AddMissionActions(onClearLocation = { cleared = true }),
+        )
+      }
+    }
+
+    node(AddMissionScreenTestTags.CLEAR_LOCATION_BUTTON).performScrollTo().performClick()
+    assertEquals(true, cleared)
+
+    hasLocation = false
+    node(AddMissionScreenTestTags.CLEAR_LOCATION_BUTTON).assertDoesNotExist()
   }
 
   @Test

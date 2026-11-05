@@ -22,7 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -59,12 +62,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.swent.shifter.R
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
+import com.swent.shifter.ui.map.LocationPicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
@@ -99,6 +106,11 @@ object AddMissionScreenTestTags {
   const val ADDRESS_RULE = "AddMissionAddressRule"
   const val LATITUDE_FIELD = "AddMissionLatitudeField"
   const val LONGITUDE_FIELD = "AddMissionLongitudeField"
+  const val PICK_ON_MAP_BUTTON = "AddMissionPickOnMapButton"
+  const val CLEAR_LOCATION_BUTTON = "AddMissionClearLocationButton"
+  const val LOCATION_PICKER_DIALOG = "AddMissionLocationPickerDialog"
+  const val LOCATION_PICKER_CLOSE = "AddMissionLocationPickerClose"
+  const val LOCATION_PICKER_CONFIRM = "AddMissionLocationPickerConfirm"
 
   fun teamChip(teamId: String) = "AddMissionTeamChip_$teamId"
 
@@ -145,6 +157,11 @@ fun AddMissionScreen(
               onAddressChange = viewModel::onAddressChange,
               onLatitudeChange = viewModel::onLatitudeChange,
               onLongitudeChange = viewModel::onLongitudeChange,
+              onPickLocation = viewModel::onPickLocation,
+              onLocationDraftChange = viewModel::onLocationDraftChange,
+              onConfirmLocation = viewModel::onConfirmLocation,
+              onCancelLocationPicker = viewModel::onCancelLocationPicker,
+              onClearLocation = viewModel::onClearLocation,
               onSubmit = viewModel::addMission,
               onRetryLoad = viewModel::loadEvent,
               onBack = onBack,
@@ -167,6 +184,11 @@ data class AddMissionActions(
     val onAddressChange: (String) -> Unit = {},
     val onLatitudeChange: (String) -> Unit = {},
     val onLongitudeChange: (String) -> Unit = {},
+    val onPickLocation: () -> Unit = {},
+    val onLocationDraftChange: (GeoPosition) -> Unit = {},
+    val onConfirmLocation: () -> Unit = {},
+    val onCancelLocationPicker: () -> Unit = {},
+    val onClearLocation: () -> Unit = {},
     val onSubmit: () -> Unit = {},
     val onRetryLoad: () -> Unit = {},
     val onBack: () -> Unit = {},
@@ -269,6 +291,13 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
       }
       FormActions(state, actions)
     }
+  }
+  if (state.isPickingLocation) {
+    LocationPickerDialog(
+        draft = state.locationDraft,
+        eventPosition = state.eventPosition,
+        actions = actions,
+    )
   }
 }
 
@@ -567,8 +596,9 @@ private fun Schedule(state: AddMissionUiState, enabled: Boolean, actions: AddMis
 }
 
 /**
- * The optional place of the mission: an address, with the coordinates that put it on the map.
- * Leaving all three empty adds a mission with no location.
+ * The optional place of the mission: an address, with the coordinates that put it on the map, typed
+ * in or picked on a map. Leaving all three empty adds a mission with no location. The fields stay
+ * next to the map, which a screen reader cannot use and which is grey offline.
  */
 @Composable
 private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMissionActions) {
@@ -608,7 +638,88 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
         )
       }
     }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      // The map opens where the event is, which is only known once it has loaded, not while it
+      // loads nor after it failed to.
+      OutlinedButton(
+          onClick = actions.onPickLocation,
+          enabled = enabled && state.event != null,
+          shape = MaterialTheme.shapes.medium,
+          modifier = Modifier.testTag(AddMissionScreenTestTags.PICK_ON_MAP_BUTTON),
+      ) {
+        Icon(Icons.Outlined.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(
+            text = stringResource(R.string.add_mission_pick_on_map),
+            modifier = Modifier.padding(start = 8.dp),
+        )
+      }
+      if (state.hasLocation) {
+        TextButton(
+            onClick = actions.onClearLocation,
+            enabled = enabled,
+            modifier = Modifier.testTag(AddMissionScreenTestTags.CLEAR_LOCATION_BUTTON),
+        ) {
+          Text(stringResource(R.string.add_mission_clear_location))
+        }
+      }
+    }
     Hint(R.string.add_mission_location_hint)
+  }
+}
+
+/**
+ * The map to pick the place of the mission on, over the whole screen, since a map inside the
+ * scrolling form would fight its gestures. The point picked is only used with "Use this place";
+ * closing the dialog, or going back, leaves the coordinates as they were.
+ */
+@Composable
+private fun LocationPickerDialog(
+    draft: GeoPosition?,
+    eventPosition: GeoPosition?,
+    actions: AddMissionActions,
+) {
+  Dialog(
+      onDismissRequest = actions.onCancelLocationPicker,
+      properties = DialogProperties(usePlatformDefaultWidth = false),
+  ) {
+    Surface(
+        modifier = Modifier.fillMaxSize().testTag(AddMissionScreenTestTags.LOCATION_PICKER_DIALOG)
+    ) {
+      Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          IconButton(
+              onClick = actions.onCancelLocationPicker,
+              modifier = Modifier.testTag(AddMissionScreenTestTags.LOCATION_PICKER_CLOSE),
+          ) {
+            Icon(
+                Icons.Filled.Close,
+                contentDescription = stringResource(R.string.add_mission_picker_close),
+            )
+          }
+          Text(
+              text = stringResource(R.string.add_mission_picker_title),
+              style = MaterialTheme.typography.titleMedium,
+              modifier = Modifier.weight(1f),
+          )
+          TextButton(
+              onClick = actions.onConfirmLocation,
+              enabled = draft != null,
+              modifier = Modifier.testTag(AddMissionScreenTestTags.LOCATION_PICKER_CONFIRM),
+          ) {
+            Text(stringResource(R.string.add_mission_picker_confirm))
+          }
+        }
+        LocationPicker(
+            selected = draft,
+            onSelect = actions.onLocationDraftChange,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            initialCenter = eventPosition,
+        )
+      }
+    }
   }
 }
 
