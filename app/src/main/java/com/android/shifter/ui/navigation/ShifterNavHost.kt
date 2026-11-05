@@ -580,6 +580,7 @@ private fun ShifterNavGraph(
                 eventTitle = event.eventTitle,
                 onBack = { nav.leaveEvent(OrganizerTabs) },
                 onNavigate = nav::switchTab,
+                onManagerChangeFailureShown = participants::onManagerChangeFailureShown,
             )
           }
         }

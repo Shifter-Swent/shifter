@@ -10,14 +10,17 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepositoryException
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -44,6 +47,19 @@ class ParticipantsViewModelTest {
   @After fun tearDown() = Dispatchers.resetMain()
 
   private fun viewModel() = ParticipantsViewModel(EVENT_ID, requests, teams, users)
+
+  /** A ViewModel whose changes of manager throw [failure], while its reads keep working. */
+  private fun viewModelWhoseChangeThrows(failure: Exception) =
+      ParticipantsViewModel(
+          EVENT_ID,
+          requests,
+          object : TeamRepository by teams {
+            override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
+              throw failure
+            }
+          },
+          users,
+      )
 
   @Test
   fun load_listsOnlyTheAcceptedRequests() = runTest {
@@ -318,27 +334,204 @@ class ParticipantsViewModelTest {
   }
 
   @Test
-  fun appointManager_whenTheWriteFails_keepsTheListAndShowsTheFailure() = runTest {
+  fun appointManager_whenTheWriteFails_reloadsWithoutLosingTheListOrTheFailure() = runTest {
     request("ann", MembershipRequestStatus.ACCEPTED)
     team("bar", memberIds = listOf("ann"))
     val viewModel = viewModel()
     advanceUntilIdle()
     val before = viewModel.uiState.value.groups
 
+    // Every call fails, so the reload after the failure fails too.
     teams.failure = IllegalStateException("Offline")
     viewModel.appointManager("bar", "ann")
     advanceUntilIdle()
 
-    assertEquals(ParticipantsError.UPDATE_FAILED, viewModel.uiState.value.error)
-    assertFalse(viewModel.uiState.value.isUpdating)
-    assertEquals(before, viewModel.uiState.value.groups)
+    val state = viewModel.uiState.value
+    assertEquals(ManagerChangeFailure("bar", "ann", canRetry = true), state.managerChangeFailure)
+    // The reload failed too, and says so above the list it kept.
+    assertEquals(ParticipantsError.UNEXPECTED, state.error)
+    assertFalse(state.isUpdating)
+    assertFalse(state.isLoading)
+    assertEquals(before, state.groups)
 
     // The next attempt starts clean.
     teams.failure = null
     viewModel.appointManager("bar", "ann")
+    assertNull(viewModel.uiState.value.managerChangeFailure)
     advanceUntilIdle()
-    assertNull(viewModel.uiState.value.error)
+    assertNull(viewModel.uiState.value.managerChangeFailure)
     assertEquals("ann", teamOf("bar").managerId)
+  }
+
+  @Test
+  fun appointManager_whenTheVolunteerLeft_removesThemAndOffersNoRetry() = runTest {
+    listOf("ann", "bob").forEach { request(it, MembershipRequestStatus.ACCEPTED) }
+    team("bar", memberIds = listOf("ann", "bob"))
+    val viewModel = viewModelWhoseChangeThrows(IllegalArgumentException("Not a member"))
+    advanceUntilIdle()
+    assertEquals(listOf("ann", "bob"), viewModel.userIdsOf("bar"))
+
+    requests.withdraw(EVENT_ID, "bob")
+    viewModel.appointManager("bar", "bob")
+    advanceUntilIdle()
+
+    assertEquals(
+        ManagerChangeFailure("bar", "bob", canRetry = false),
+        viewModel.uiState.value.managerChangeFailure,
+    )
+    assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
+  }
+
+  @Test
+  fun removeManager_whenTheTeamWasDeleted_removesItAndOffersNoRetry() = runTest {
+    team("bar")
+    team("kitchen")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    teams.teams.removeAll { it.id == "bar" }
+    viewModel.removeManager("bar")
+    advanceUntilIdle()
+
+    assertEquals(
+        ManagerChangeFailure("bar", null, canRetry = false),
+        viewModel.uiState.value.managerChangeFailure,
+    )
+    assertEquals(
+        listOf("kitchen"),
+        viewModel.uiState.value.groups.map { it.team?.id },
+    )
+  }
+
+  @Test
+  fun appointManager_offersARetryOnlyWhenItCanHelp() = runTest {
+    val canRetryAfter =
+        mapOf(
+            TeamRepositoryException.Unavailable() to true,
+            TeamRepositoryException.Unknown() to true,
+            TeamRepositoryException.PermissionDenied() to false,
+            TeamRepositoryException.NotFound() to false,
+            IllegalArgumentException("Not a member") to false,
+        )
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+
+    canRetryAfter.forEach { (failure, canRetry) ->
+      val viewModel = viewModelWhoseChangeThrows(failure)
+      advanceUntilIdle()
+      viewModel.appointManager("bar", "ann")
+      advanceUntilIdle()
+      assertEquals(
+          "after $failure",
+          canRetry,
+          viewModel.uiState.value.managerChangeFailure?.canRetry,
+      )
+    }
+  }
+
+  @Test
+  fun appointManager_whenTheWriteNeverAnswers_failsAfterTheTimeoutWithARetry() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    val hanging =
+        object : TeamRepository by teams {
+          override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
+            awaitCancellation()
+          }
+        }
+    val viewModel = ParticipantsViewModel(EVENT_ID, requests, hanging, users)
+    advanceUntilIdle()
+
+    viewModel.appointManager("bar", "ann")
+    advanceTimeBy(ParticipantsViewModel.MANAGER_CHANGE_TIMEOUT_MILLIS - 1)
+    assertTrue(viewModel.uiState.value.isUpdating)
+    assertNull(viewModel.uiState.value.managerChangeFailure)
+
+    advanceTimeBy(2)
+    runCurrent()
+    assertFalse(viewModel.uiState.value.isUpdating)
+    assertEquals(
+        ManagerChangeFailure("bar", "ann", canRetry = true),
+        viewModel.uiState.value.managerChangeFailure,
+    )
+  }
+
+  @Test
+  fun appointManager_whenItFailsDuringALoad_replacesThatLoad() = runTest {
+    listOf("ann", "bob").forEach { request(it, MembershipRequestStatus.ACCEPTED) }
+    team("bar", memberIds = listOf("ann", "bob"))
+    // Reads the requests at once but answers a second later, so the load straddles the failure.
+    val slowRequests =
+        object : MembershipRequestRepository by requests {
+          override suspend fun getMembershipRequestsByEId(
+              eventId: String
+          ): List<MembershipRequest> {
+            val read = requests.getMembershipRequestsByEId(eventId)
+            delay(1_000)
+            return read
+          }
+        }
+    val failing =
+        object : TeamRepository by teams {
+          override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
+            throw IllegalArgumentException("Not a member")
+          }
+        }
+    val viewModel = ParticipantsViewModel(EVENT_ID, slowRequests, failing, users)
+    runCurrent()
+    assertTrue(viewModel.uiState.value.isLoading)
+
+    requests.withdraw(EVENT_ID, "bob")
+    viewModel.appointManager("bar", "bob")
+    advanceUntilIdle()
+
+    assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun load_afterAFailedChange_doesNotHideTheFailure() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    val viewModel = viewModelWhoseChangeThrows(TeamRepositoryException.Unavailable())
+    advanceUntilIdle()
+    viewModel.appointManager("bar", "ann")
+    advanceUntilIdle()
+    val failure = viewModel.uiState.value.managerChangeFailure
+
+    viewModel.load()
+    advanceUntilIdle()
+
+    assertEquals(ManagerChangeFailure("bar", "ann", canRetry = true), failure)
+    assertEquals(failure, viewModel.uiState.value.managerChangeFailure)
+  }
+
+  @Test
+  fun load_afterAFailedChange_stillShowsItsOwnFailureWithoutAList() = runTest {
+    team("bar")
+    requests.failure = MembershipRequestRepositoryException.Unavailable()
+    val viewModel = viewModelWhoseChangeThrows(TeamRepositoryException.Unavailable())
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.groups.isEmpty())
+
+    viewModel.removeManager("bar")
+    advanceUntilIdle()
+
+    assertEquals(ParticipantsError.OFFLINE, viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun onManagerChangeFailureShown_clearsTheFailure() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    val viewModel = viewModelWhoseChangeThrows(TeamRepositoryException.Unavailable())
+    advanceUntilIdle()
+    viewModel.appointManager("bar", "ann")
+    advanceUntilIdle()
+
+    viewModel.onManagerChangeFailureShown()
+
+    assertNull(viewModel.uiState.value.managerChangeFailure)
   }
 
   @Test

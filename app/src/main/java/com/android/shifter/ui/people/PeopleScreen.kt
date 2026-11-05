@@ -4,19 +4,28 @@ package com.swent.shifter.ui.people
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
@@ -34,6 +43,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 object PeopleScreenTestTags {
   const val PARTICIPANTS_TAB = "PeopleParticipantsTab"
   const val REQUESTS_TAB = "PeopleRequestsTab"
+  const val UPDATE_PROGRESS = "PeopleUpdateProgress"
 }
 
 /**
@@ -49,6 +59,7 @@ object PeopleScreenTestTags {
  *   picking it from their card.
  * @param eventTitle the event's name, shown in the top bar.
  * @param onBack called to leave the event, from the back button of the top bar.
+ * @param onManagerChangeFailureShown called once a failed change of manager has been reported.
  */
 @Composable
 fun PeopleScreen(
@@ -64,6 +75,7 @@ fun PeopleScreen(
     eventTitle: String,
     onBack: () -> Unit,
     onNavigate: (Tab) -> Unit,
+    onManagerChangeFailureShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -72,11 +84,37 @@ fun PeopleScreen(
   var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
   // The participant being moved, by id for the same reasons.
   var moving by rememberSaveable { mutableStateOf<String?>(null) }
+  val snackbarHostState = remember { SnackbarHostState() }
+  val updateFailed = stringResource(R.string.participants_manager_update_failed)
+  val updateRefused = stringResource(R.string.participants_manager_update_refused)
+  val retry = stringResource(R.string.participants_retry)
+  // In a Snackbar, so it shows wherever the list is scrolled.
+  LaunchedEffect(participants.managerChangeFailure) {
+    val failure = participants.managerChangeFailure ?: return@LaunchedEffect
+    if (!failure.canRetry) {
+      snackbarHostState.showSnackbar(updateRefused)
+      onManagerChangeFailureShown()
+      return@LaunchedEffect
+    }
+    // With an action, the default duration is indefinite, and it would never go away.
+    val result =
+        snackbarHostState.showSnackbar(
+            updateFailed,
+            actionLabel = retry,
+            duration = SnackbarDuration.Long,
+        )
+    onManagerChangeFailureShown()
+    if (result == SnackbarResult.ActionPerformed) {
+      if (failure.managerId == null) onRemoveManager(failure.teamId)
+      else onAppointManager(failure.teamId, failure.managerId)
+    }
+  }
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
       topBar = { ShifterTopBar(eventTitle, onBack) },
       bottomBar = { ShifterNavigationBar(OrganizerTabs.all, OrganizerTabs.People, onNavigate) },
+      snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
       PeopleTabs(
@@ -92,6 +130,15 @@ fun PeopleScreen(
           },
       )
       if (selectedTab == PARTICIPANTS_TAB) {
+        if (participants.isUpdating) {
+          val updating = stringResource(R.string.participants_updating)
+          LinearProgressIndicator(
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .semantics { contentDescription = updating }
+                      .testTag(PeopleScreenTestTags.UPDATE_PROGRESS)
+          )
+        }
         ParticipantsList(
             participants,
             onReloadParticipants,
@@ -190,6 +237,7 @@ private fun PeopleScreenPreview() {
         eventTitle = "City Marathon",
         onBack = {},
         onNavigate = {},
+        onManagerChangeFailureShown = {},
     )
   }
 }
