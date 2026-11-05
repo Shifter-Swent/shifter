@@ -145,6 +145,82 @@ class ParticipantsViewModelTest {
   }
 
   @Test
+  fun load_afterAFirstFailure_showsTheSpinnerOnRetry() = runTest {
+    requests.failure = MembershipRequestRepositoryException.Unavailable()
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    requests.failure = null
+    viewModel.load()
+    assertTrue(viewModel.uiState.value.isLoading)
+    advanceUntilIdle()
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun load_afterASuccess_keepsTheListWithoutSpinnerThenShowsTheChanges() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann", "bob"))
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    request("bob", MembershipRequestStatus.ACCEPTED)
+    viewModel.load()
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
+
+    advanceUntilIdle()
+    assertEquals(listOf("ann", "bob"), viewModel.userIdsOf("bar"))
+  }
+
+  @Test
+  fun load_afterAnEmptyList_doesNotShowTheSpinnerAgain() = runTest {
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    viewModel.load()
+    assertFalse(viewModel.uiState.value.isLoading)
+    advanceUntilIdle()
+  }
+
+  @Test
+  fun load_whenAReloadFails_keepsTheListAndShowsTheError() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    requests.failure = MembershipRequestRepositoryException.Unavailable()
+    viewModel.load()
+    advanceUntilIdle()
+
+    assertEquals(ParticipantsError.OFFLINE, viewModel.uiState.value.error)
+    assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
+  }
+
+  @Test
+  fun load_isIgnoredWhileAReloadRuns() = runTest {
+    var reads = 0
+    val counted =
+        object : MembershipRequestRepository by requests {
+          override suspend fun getMembershipRequestsByEId(
+              eventId: String
+          ): List<MembershipRequest> {
+            reads++
+            return requests.getMembershipRequestsByEId(eventId)
+          }
+        }
+    val viewModel = ParticipantsViewModel(EVENT_ID, counted, teams, users)
+    advanceUntilIdle()
+
+    viewModel.load()
+    viewModel.load()
+    advanceUntilIdle()
+
+    assertEquals(2, reads)
+  }
+
+  @Test
   fun load_mapsEachFailureToItsError() = runTest {
     requests.failure = MembershipRequestRepositoryException.PermissionDenied()
     val viewModel = viewModel()

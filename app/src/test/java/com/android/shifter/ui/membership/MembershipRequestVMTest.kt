@@ -145,17 +145,79 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun decisions_duringReloadOrForUnknownUsers_areIgnored() =
+  fun decisions_forUnknownUsers_areIgnored() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
         vm.accept("unknown")
-        vm.loadRequests()
-        vm.accept("alice")
-        vm.reject("bob")
         advanceUntilIdle()
         coVerify(exactly = 0) { repository.accept(any(), any()) }
-        coVerify(exactly = 0) { repository.reject(any(), any()) }
+      }
+
+  @Test
+  fun decision_duringAReload_isAppliedAndNotOverwrittenByTheReload() =
+      runTest(dispatcher) {
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        val answer = CompletableDeferred<List<MembershipRequest>>()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { answer.await() }
+        vm.loadRequests()
+        runCurrent()
+
+        vm.accept("alice")
+        answer.complete(requests)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.accept("event", "alice") }
+        assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].request.status)
+        assertFalse(vm.uiState.value.isLoading)
+      }
+
+  @Test
+  fun loadRequests_afterASuccess_keepsTheListWithoutSpinnerThenShowsTheChanges() =
+      runTest(dispatcher) {
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        val answer = CompletableDeferred<List<MembershipRequest>>()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { answer.await() }
+
+        vm.loadRequests()
+        runCurrent()
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals(items(requests), vm.uiState.value.requests)
+
+        val updated = requests + request("carol")
+        answer.complete(updated)
+        advanceUntilIdle()
+        assertEquals(items(updated), vm.uiState.value.requests)
+      }
+
+  @Test
+  fun loadRequests_afterAnEmptyList_doesNotShowTheSpinnerAgain() =
+      runTest(dispatcher) {
+        coEvery { repository.getMembershipRequestsByEId("event") } returns emptyList()
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+
+        vm.loadRequests()
+        assertFalse(vm.uiState.value.isLoading)
+        advanceUntilIdle()
+      }
+
+  @Test
+  fun loadRequests_afterAFirstFailure_showsTheSpinnerOnRetry() =
+      runTest(dispatcher) {
+        coEvery { repository.getMembershipRequestsByEId("event") } throws
+            MembershipRequestRepositoryException.Unavailable()
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        coEvery { repository.getMembershipRequestsByEId("event") } returns requests
+
+        vm.loadRequests()
+        assertTrue(vm.uiState.value.isLoading)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoading)
+        assertEquals(items(requests), vm.uiState.value.requests)
       }
 
   @Test

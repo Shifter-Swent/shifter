@@ -22,12 +22,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Why the participants list shows an error. The screen turns each into a translated message. */
+/**
+ * Why the participants list shows an error, above the list when one was loaded. The screen turns
+ * each into a translated message.
+ */
 enum class ParticipantsError {
   OFFLINE,
   PERMISSION_DENIED,
   UNEXPECTED,
-  /** Changing a team's manager failed; unlike the others, the list it was made from stays shown. */
+  /** Changing a team's manager failed. */
   UPDATE_FAILED,
 }
 
@@ -52,6 +55,9 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  *
  * @property groups one group per team of the event, in the order the repository returns them and
  *   including the teams nobody has joined yet, then the participants of no team when there are any.
+ * @property isLoading whether there is no list to show yet because it is being read, which shows
+ *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
+ *   it.
  * @property isUpdating whether a team's manager is being changed.
  */
 data class ParticipantsUiState(
@@ -84,14 +90,17 @@ class ParticipantsViewModel(
   /** The load running, if any: a change of manager replaces it, as it may predate the write. */
   private var loadJob: Job? = null
 
+  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
+  private var loaded = false
+
   init {
     load()
   }
 
   /** Loads the participants again, e.g. to retry after an error. Ignored while loading. */
   fun load() {
-    if (_uiState.value.isLoading) return
-    _uiState.update { it.copy(isLoading = true, error = null) }
+    if (loadJob?.isActive == true) return
+    _uiState.update { it.copy(isLoading = !loaded, error = null) }
     loadJob = viewModelScope.launch {
       try {
         val participantIds =
@@ -102,6 +111,7 @@ class ParticipantsViewModel(
         val teams = teamRepository.getTeamsByEvent(eventId)
         val names = userRepository.displayNames(participantIds)
         _uiState.update { it.copy(groups = group(participantIds, teams, names)) }
+        loaded = true
       } catch (e: CancellationException) {
         throw e
       } catch (e: MembershipRequestRepositoryException.Unavailable) {
@@ -151,9 +161,7 @@ class ParticipantsViewModel(
     }
   }
 
-  private fun showError(error: ParticipantsError) = _uiState.update {
-    it.copy(groups = emptyList(), error = error)
-  }
+  private fun showError(error: ParticipantsError) = _uiState.update { it.copy(error = error) }
 
   companion object {
     /**
