@@ -382,7 +382,13 @@ class CheckInRulesTest {
   private suspend fun createMission(eventId: String, missionId: String, teamId: String?) {
     val ref = db.collection("events").document(eventId).collection("missions").document(missionId)
     paths += ref.path
-    ref.set(mapOf("teamId" to teamId, "assigneeIds" to listOf(volunteer.uid, otherVolunteer.uid)))
+    ref.set(
+            mapOf(
+                "teamId" to teamId,
+                "assigneeIds" to listOf(volunteer.uid, otherVolunteer.uid),
+                "completed" to false,
+            )
+        )
         .await()
   }
 

@@ -52,6 +52,8 @@ fun EventOverviewScreen(
             now = rememberNow(),
             onRetry = viewModel::refresh,
             modifier = modifier,
+            onMarkCompleted = viewModel::markCompleted,
+            onCompletionFailureShown = viewModel::onCompletionFailureShown,
         )
     false -> volunteerOverview()
     // Not known yet, which a first load that failed also leaves it at: neither screen is shown,

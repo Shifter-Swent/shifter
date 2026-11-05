@@ -36,8 +36,8 @@ import org.junit.runner.RunWith
  * one before applying. Only the organizer reads the event's participants, and a volunteer leaves
  * their team only by withdrawing.
  *
- * Documents are written as raw maps: the rules do not look at their content, and the mappers are
- * covered by their own tests.
+ * Documents are written as raw maps with only what the rules look at (see [content]): the mappers
+ * are covered by their own tests.
  */
 @RunWith(AndroidJUnit4::class)
 class EventSubcollectionRulesTest {
@@ -88,7 +88,7 @@ class EventSubcollectionRulesTest {
 
     SUBCOLLECTIONS.forEach { subcollection ->
       val document = newDocument(subcollection)
-      document.set(mapOf("name" to "created")).await()
+      document.set(content(subcollection, "created")).await()
       document.update("name", "updated").await()
 
       assertEquals("updated", document.get(Source.SERVER).await().getString("name"))
@@ -107,7 +107,7 @@ class EventSubcollectionRulesTest {
       assertTrue(document.id in ids(subcollection))
       assertDenied { document.update("name", "changed").await() }
       assertDenied { document.delete().await() }
-      assertDenied { newDocument(subcollection).set(mapOf("name" to "mine")).await() }
+      assertDenied { newDocument(subcollection).set(content(subcollection, "mine")).await() }
     }
   }
 
@@ -120,7 +120,7 @@ class EventSubcollectionRulesTest {
       assertDenied { document.get(Source.SERVER).await() }
       assertDenied { collection(subcollection).get(Source.SERVER).await() }
       assertDenied { document.update("name", "changed").await() }
-      assertDenied { newDocument(subcollection).set(mapOf("name" to "mine")).await() }
+      assertDenied { newDocument(subcollection).set(content(subcollection, "mine")).await() }
     }
   }
 
@@ -250,7 +250,7 @@ class EventSubcollectionRulesTest {
     SUBCOLLECTIONS.forEach { subcollection ->
       val document = collection(subcollection, missingEventId).document()
       paths += document.path
-      assertDenied { document.set(mapOf("name" to "orphan")).await() }
+      assertDenied { document.set(content(subcollection, "orphan")).await() }
     }
     PRIVATE_SUBCOLLECTIONS.forEach { subcollection ->
       assertDenied { collection(subcollection, missingEventId).get(Source.SERVER).await() }
@@ -291,8 +291,16 @@ class EventSubcollectionRulesTest {
 
   private suspend fun writeAsOrganizer(subcollection: String): DocumentReference {
     signIn(organizer)
-    return newDocument(subcollection).also { it.set(mapOf("name" to "original")).await() }
+    return newDocument(subcollection).also { it.set(content(subcollection, "original")).await() }
   }
+
+  /**
+   * A valid document of [subcollection]: the rules require a mission to say whether it is
+   * completed, so a denial in these tests comes from who writes, not from a missing field.
+   */
+  private fun content(subcollection: String, name: String): Map<String, Any> =
+      if (subcollection == "missions") mapOf("name" to name, "completed" to false)
+      else mapOf("name" to name)
 
   private fun collection(subcollection: String, eventId: String = this.eventId) =
       db.collection(EventSchema.COLLECTION).document(eventId).collection(subcollection)

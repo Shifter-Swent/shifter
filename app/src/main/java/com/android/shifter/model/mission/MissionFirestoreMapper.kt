@@ -4,6 +4,7 @@ package com.swent.shifter.model.mission
 import com.google.firebase.firestore.DocumentSnapshot
 import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalString
+import com.swent.shifter.model.firestore.requireBoolean
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireInt
 import com.swent.shifter.model.firestore.requireParentEventId
@@ -36,6 +37,7 @@ internal object MissionSchema {
   const val LOCATION = "location"
   const val ASSIGNEE_IDS = "assigneeIds"
   const val CREATED_AT = "createdAt"
+  const val COMPLETED = "completed"
 
   /** Fields of the [LOCATION] map. */
   object LocationFields {
@@ -61,6 +63,7 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
         MissionSchema.LOCATION to location?.toFirestoreMap(),
         MissionSchema.ASSIGNEE_IDS to assigneeIds,
         MissionSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
+        MissionSchema.COMPLETED to completed,
     )
 
 /**
@@ -87,6 +90,7 @@ internal fun DocumentSnapshot.toMission(): Mission =
         // mission from the person assigned to it.
         assigneeIds = requireStringList(ENTITY, MissionSchema.ASSIGNEE_IDS),
         createdAt = requireInstant(ENTITY, MissionSchema.CREATED_AT),
+        completed = requireBoolean(ENTITY, MissionSchema.COMPLETED),
     )
 
 private fun MissionLocation.toFirestoreMap(): Map<String, Any?> =

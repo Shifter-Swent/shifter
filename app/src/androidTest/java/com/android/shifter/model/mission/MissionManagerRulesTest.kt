@@ -189,6 +189,42 @@ class MissionManagerRulesTest {
   }
 
   @Test
+  fun markCompleted_byTheManager_closesTheMissionForGood() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, member.uid)
+    signIn(manager)
+
+    FirestoreMissionRepository(db).markCompleted(eventId, mission.id)
+
+    assertEquals(true, mission.get(Source.SERVER).await().getBoolean("completed"))
+    assertDenied { mission.update("completed", false).await() }
+  }
+
+  @Test
+  fun markCompleted_byAVolunteerOrAnotherManager_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, member.uid)
+
+    signIn(member)
+    assertDenied { mission.update("completed", true).await() }
+
+    signIn(otherManager)
+    assertDenied { mission.update("completed", true).await() }
+  }
+
+  @Test
+  fun create_withoutCompleted_isDenied() = emulatorTest {
+    signIn(organizer)
+
+    assertDenied { newMission().set(mission(TEAM_ID) - "completed").await() }
+  }
+
+  @Test
+  fun update_withACompletedThatIsNotABoolean_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID)
+
+    assertDenied { mission.update("completed", "yes").await() }
+  }
+
+  @Test
   fun update_byTheManagerOfAnotherTeam_isDenied() = emulatorTest {
     val mission = missionByOrganizer(TEAM_ID)
     signIn(otherManager)
@@ -306,6 +342,7 @@ class MissionManagerRulesTest {
           "teamId" to teamId,
           "volunteersNeeded" to 2,
           "assigneeIds" to assigneeIds.toList(),
+          "completed" to false,
       )
 
   private fun newMission(): DocumentReference =

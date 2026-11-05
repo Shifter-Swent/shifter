@@ -6,6 +6,7 @@
     <string name="overview_manage_teams">Manage teams</string>
     <string name="overview_progress_title">Event progress</string>
     <string name="overview_progress_count">%1$d / %2$d missions completed</string>
+    <string name="overview_mission_completed">✓ Completed</string>
     <string name="overview_progress_percent">%1$d%%</string>
     <string name="overview_progress_scope">All teams · Overall total</string>
     <string name="overview_filter_all">All</string>

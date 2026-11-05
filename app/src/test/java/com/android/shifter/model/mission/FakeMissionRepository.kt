@@ -69,4 +69,11 @@ class FakeMissionRepository : MissionRepository {
     }
     missions[index] = mission.copy(assigneeIds = assigneeIds)
   }
+
+  override suspend fun markCompleted(eventId: String, missionId: String) {
+    failure?.let { throw it }
+    val index = missions.indexOfFirst { it.eventId == eventId && it.id == missionId }
+    if (index < 0) throw MissionRepositoryException.NotFound()
+    missions[index] = missions[index].copy(completed = true)
+  }
 }

@@ -97,6 +97,18 @@ class MissionTest {
   }
 
   /** Checks [expected] both ways, since a conflict does not depend on which mission comes first. */
+  @Test
+  fun isCompleted_beforeItsEnd_isFalseUntilClosedByHand() {
+    assertFalse(isCompleted(completed = false, endAt = at(12), now = at(11)))
+    assertTrue(isCompleted(completed = true, endAt = at(12), now = at(11)))
+  }
+
+  @Test
+  fun isCompleted_fromItsEnd_isTrueWithoutBeingClosed() {
+    assertTrue(isCompleted(completed = false, endAt = at(12), now = at(12)))
+    assertTrue(isCompleted(completed = false, endAt = at(12), now = at(13)))
+  }
+
   private fun assertConflict(expected: Boolean, a: Mission, b: Mission) {
     assertEquals(expected, a.conflictsWith(b))
     assertEquals(expected, b.conflictsWith(a))

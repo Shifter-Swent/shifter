@@ -46,6 +46,14 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
+  fun completedMission_isLabelled() {
+    show(loaded)
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m1")).assertIsDisplayed()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m2")).assertDoesNotExist()
+  }
+
+  @Test
   fun loaded_showsTheProgressOfTheWholeEvent() {
     show(loaded.copy(selectedTeamId = "bar"))
 

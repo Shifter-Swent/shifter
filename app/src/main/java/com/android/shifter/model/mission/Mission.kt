@@ -23,6 +23,7 @@ import java.time.Instant
  *   mission with a location is called GeoTimed.
  * @property assigneeIds ids of the people assigned to the mission, possibly empty.
  * @property createdAt when the mission was first persisted.
+ * @property completed whether the mission was closed by hand before its end; see [isCompleted].
  */
 data class Mission(
     val id: String = "",
@@ -36,6 +37,7 @@ data class Mission(
     val location: MissionLocation? = null,
     val assigneeIds: List<String> = emptyList(),
     val createdAt: Instant,
+    val completed: Boolean = false,
 ) {
 
   /** Whether the mission has a location, which is what puts it on the map. */
@@ -58,6 +60,16 @@ data class Mission(
           startAt < other.endAt &&
           other.startAt < endAt
 }
+
+/**
+ * Whether a mission is completed at [now]: it was closed by hand ([completed]), or its end at
+ * [endAt] has passed.
+ *
+ * It takes the values rather than a [Mission] so a screen holding its own model of one reads the
+ * same rule.
+ */
+fun isCompleted(completed: Boolean, endAt: Instant, now: Instant): Boolean =
+    completed || now >= endAt
 
 /**
  * Where a GeoTimed mission takes place.
