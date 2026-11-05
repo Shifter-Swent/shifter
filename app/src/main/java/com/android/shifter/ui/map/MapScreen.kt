@@ -38,7 +38,7 @@ import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.ui.components.FormHeader
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_warning
 import kotlinx.coroutines.launch
 
@@ -92,14 +92,14 @@ fun MapContent(
     },
 ) {
   Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
-    FormHeader(
+    ShifterTopBar(
         title = uiState.eventTitle,
         onBack = onBack,
     )
     if (uiState.venue.isNotEmpty()) {
       Column(
           modifier =
-              Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)
+              Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
                   .testTag(MapScreenTestTags.VENUE)
       ) {
         Text(

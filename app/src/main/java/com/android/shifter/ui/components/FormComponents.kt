@@ -1,13 +1,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -22,29 +19,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-
-/**
- * Top of a form screen: the [BackButton] calling [onBack], above the screen [title]. Its circle is
- * aligned with the title.
- */
-@Composable
-fun FormHeader(title: String, onBack: () -> Unit) {
-  Column(
-      modifier =
-          Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.background)
-              .padding(start = 24.dp, top = 4.dp, end = 24.dp, bottom = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    BackButton(onClick = onBack, modifier = Modifier.offset(x = -BackButtonInset))
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-    )
-  }
-}
 
 /** The label shown above a form field. */
 @Composable

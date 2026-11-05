@@ -33,8 +33,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
@@ -64,7 +64,7 @@ fun EventCreatedScreen(viewModel: EventCreatedViewModel, onDone: () -> Unit) {
 fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone: () -> Unit) {
   Scaffold(
       topBar = {
-        FormHeader(
+        ShifterTopBar(
             title = stringResource(R.string.event_created_title),
             onBack = onDone,
         )

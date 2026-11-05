@@ -41,9 +41,8 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
-import com.swent.shifter.ui.components.BackButton
-import com.swent.shifter.ui.components.BackButtonInset
 import com.swent.shifter.ui.components.PrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
 import java.time.LocalDate
@@ -83,7 +82,7 @@ fun EventDetailsContent(
 ) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxSize()) {
-    DetailsTopBar(onBack)
+    ShifterTopBar(title = stringResource(R.string.event_details_title), onBack = onBack)
     Column(
         verticalArrangement = Arrangement.spacedBy(20.dp),
         modifier =
@@ -142,31 +141,6 @@ fun EventDetailsContent(
       )
     }
     ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply)
-  }
-}
-
-@Composable
-private fun DetailsTopBar(onBack: () -> Unit) {
-  val colors = MaterialTheme.colorScheme
-  Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(16.dp - BackButtonInset),
-      modifier =
-          Modifier.fillMaxWidth()
-              .padding(
-                  start = 24.dp - BackButtonInset,
-                  top = 12.dp - BackButtonInset,
-                  end = 24.dp,
-                  bottom = 12.dp - BackButtonInset,
-              ),
-  ) {
-    BackButton(onClick = onBack)
-    Text(
-        text = stringResource(R.string.event_details_title),
-        color = colors.onBackground,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-    )
   }
 }
 

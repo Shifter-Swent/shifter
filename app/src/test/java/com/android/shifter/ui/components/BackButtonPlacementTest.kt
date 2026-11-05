@@ -30,8 +30,8 @@ class BackButtonPlacementTest {
   }
 
   @Test
-  fun formHeader_placesTheCircleAt24Dp() {
-    composeTestRule.setContent { ShifterTheme { FormHeader(title = "Title", onBack = {}) } }
+  fun shifterTopBar_placesTheCircleAt24Dp() {
+    composeTestRule.setContent { ShifterTheme { ShifterTopBar(title = "Title", onBack = {}) } }
 
     assertCircleStartsAt24Dp()
   }

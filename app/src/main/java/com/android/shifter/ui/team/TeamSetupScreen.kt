@@ -40,8 +40,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.model.team.Team
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_mutedText
 
 /** Tags of the team setup step: its states, the teams it lists and the two actions under them. */
@@ -158,7 +158,7 @@ fun TeamSetupContent(
   val teamsUnknown = state.loadFailed && state.teams.isEmpty()
   Scaffold(
       topBar = {
-        FormHeader(
+        ShifterTopBar(
             title = stringResource(mode.title),
             onBack = onBack,
         )

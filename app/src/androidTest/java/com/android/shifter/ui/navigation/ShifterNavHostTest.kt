@@ -666,7 +666,8 @@ class ShifterNavHostTest {
         .performScrollTo()
         .performClick()
 
-    waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+    // The form has a title of its own, so wait for the Overview before reading the title.
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(OrganizerEventScreen.Overview.title)

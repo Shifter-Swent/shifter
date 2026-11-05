@@ -58,9 +58,9 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.ui.components.FieldLabel
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
@@ -134,7 +134,7 @@ fun CreateEventContent(
 ) {
   Scaffold(
       topBar = {
-        FormHeader(
+        ShifterTopBar(
             title = stringResource(R.string.create_event_title),
             onBack = onBack,
         )

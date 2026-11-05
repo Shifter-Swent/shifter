@@ -24,13 +24,9 @@ object BackButtonTestTags {
 }
 
 /**
- * Space between the edge of a [BackButton] and its circle: the button takes 48 dp in the layout,
- * for its touch target, around a circle of 40 dp. To align the circle with the content of a screen,
- * move the button towards the edge by this much.
+ * The back button of every screen: a chevron in a circle, placed by the caller's [modifier]. It
+ * takes 48 dp in the layout, for its touch target, so its 40 dp circle sits 4 dp inside its edge.
  */
-val BackButtonInset = 4.dp
-
-/** The back button of every screen: a chevron in a circle, placed by the caller's [modifier]. */
 @Composable
 fun BackButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme

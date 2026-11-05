@@ -18,7 +18,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -29,24 +28,6 @@ import org.junit.runner.RunWith
 class FormComponentsTest {
 
   @get:Rule val composeTestRule = createComposeRule()
-
-  @Test
-  fun formHeader_showsTitleAndCallsOnBack() {
-    var backCalls = 0
-    composeTestRule.setContent {
-      ShifterTheme {
-        FormHeader(
-            title = "Create an event",
-            onBack = { backCalls++ },
-        )
-      }
-    }
-
-    composeTestRule.onNodeWithText("Create an event").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
-
-    assertEquals(1, backCalls)
-  }
 
   @Test
   fun formTextField_showsLabelAndReportsInput() {

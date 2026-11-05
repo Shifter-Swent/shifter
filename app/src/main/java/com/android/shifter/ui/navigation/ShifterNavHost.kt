@@ -48,7 +48,6 @@ import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.components.BackButton
-import com.swent.shifter.ui.components.BackButtonInset
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
 import com.swent.shifter.ui.event.EventCreatedScreen
@@ -583,11 +582,8 @@ private fun PlaceholderPage(
 ) {
   Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
     if (onBack != null) {
-      // The page's own padding is 16 dp: this brings the circle of the button to 24 dp.
-      BackButton(
-          onClick = onBack,
-          modifier = Modifier.padding(start = 8.dp - BackButtonInset),
-      )
+      // With the page's 16 dp and the 4 dp around the button's circle, the circle is at 24 dp.
+      BackButton(onClick = onBack, modifier = Modifier.padding(start = 4.dp))
     }
     Text(destination.title, modifier = Modifier.testTag(NavigationTestTags.TOP_BAR_TITLE))
     content()

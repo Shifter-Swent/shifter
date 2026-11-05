@@ -68,9 +68,9 @@ import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.ui.components.FieldLabel
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.map.LocationPicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -199,7 +199,7 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
   val editable = !state.isSaving
   Scaffold(
       topBar = {
-        FormHeader(
+        ShifterTopBar(
             title = stringResource(R.string.add_mission_title),
             onBack = actions.onBack,
         )
