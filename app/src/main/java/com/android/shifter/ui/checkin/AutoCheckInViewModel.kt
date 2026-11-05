@@ -22,14 +22,20 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -67,6 +73,9 @@ data class AutoCheckInUiState(
  * Checks the signed-in volunteer in to their missions as soon as they are eligible, while the
  * screen collects [uiState]: the positions stop with the collection, so it only runs in the
  * foreground.
+ *
+ * The assigned missions are followed while the screen is open: a mission assigned meanwhile is
+ * checked in to like the others, and one unassigned is no longer tried.
  *
  * Each mission is checked in to at most once: a mission the volunteer is already checked in to is
  * skipped, and new positions are ignored for a mission whose check-in is in flight.
@@ -124,36 +133,54 @@ class AutoCheckInViewModel(
     }
   }
 
+  @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun checkInWhenEligible() = coroutineScope {
     val userId = currentUserId() ?: return@coroutineScope
     // A mission whose window is over cannot become eligible while the screen is open. A window not
     // open yet can, so this is not a check that now is in the window.
     val missions =
-        missionRepository.getMissionsAssignedTo(userId).filter {
-          it.isGeoTimed && now() <= it.checkInWindow().endInclusive
+        missionRepository
+            .observeMissionsAssignedTo(userId)
+            .map { assigned ->
+              assigned.filter { it.isGeoTimed && now() <= it.checkInWindow().endInclusive }
+            }
+            .stateIn(this)
+    // Follows the check-ins of the events the missions belong to, including events that appear
+    // later.
+    val known =
+        missions
+            .map { open -> open.map { it.eventId }.toSet() }
+            .distinctUntilChanged()
+            .flatMapLatest { events -> checkInsTo(events, userId) }
+            .stateIn(this, SharingStarted.Eagerly, KnownCheckIns())
+    // Positions are only read while there is a mission to check in to.
+    missions
+        .map { it.isNotEmpty() }
+        .distinctUntilChanged()
+        .flatMapLatest { any -> if (any) locationProvider.positions() else emptyFlow() }
+        .collect { position ->
+          val time = now()
+          val checkIns = known.value
+          missions.value
+              // Before the check-ins of a mission's event are known, a position could check in to
+              // it twice: the mission waits for the next position.
+              .filter { it.eventId in checkIns.events }
+              .filter { it.key !in tried && it.key !in checkIns.done }
+              .filter { isEligible(it, time, position) }
+              .forEach { mission ->
+                tried += mission.key
+                launch { checkIn(mission, userId) }
+              }
         }
-    if (missions.isEmpty()) return@coroutineScope
-    val checkedIn = MutableStateFlow<Set<Pair<String, String>>?>(null)
-    launch {
-      val events = missions.map { it.eventId }.distinct()
-      combine(events.map { checkInRepository.observeMyCheckIns(it, userId) }) { lists ->
-            lists.flatMap { list -> list.map { it.eventId to it.missionId } }.toSet()
-          }
-          .collect { checkedIn.value = it }
-    }
-    // A position read before the check-ins are known could check in to a mission twice.
-    checkedIn.first { it != null }
-    locationProvider.positions().collect { position ->
-      val time = now()
-      missions
-          .filter { it.key !in tried && it.key !in checkedIn.value.orEmpty() }
-          .filter { isEligible(it, time, position) }
-          .forEach { mission ->
-            tried += mission.key
-            launch { checkIn(mission, userId) }
-          }
-    }
   }
+
+  private fun checkInsTo(events: Set<String>, userId: String): Flow<KnownCheckIns> =
+      if (events.isEmpty()) flowOf(KnownCheckIns())
+      else
+          combine(events.map { checkInRepository.observeMyCheckIns(it, userId) }) { lists ->
+            val done = lists.flatMap { list -> list.map { it.eventId to it.missionId } }
+            KnownCheckIns(events, done.toSet())
+          }
 
   private suspend fun checkIn(mission: Mission, userId: String) {
     try {
@@ -186,6 +213,15 @@ class AutoCheckInViewModel(
 
   private val Mission.key
     get() = eventId to id
+
+  /**
+   * The volunteer's check-ins to the missions of [events]: [done] lists them as (event id, mission
+   * id). A mission of another event is not known to be done or not yet.
+   */
+  private data class KnownCheckIns(
+      val events: Set<String> = emptySet(),
+      val done: Set<Pair<String, String>> = emptySet(),
+  )
 
   companion object {
     /** Keeps the positions coming across a configuration change, not in the background. */

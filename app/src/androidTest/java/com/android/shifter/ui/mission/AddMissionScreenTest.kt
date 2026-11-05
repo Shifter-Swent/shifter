@@ -33,6 +33,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.flow.Flow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -523,6 +524,9 @@ private class RecordingMissionRepository : MissionRepository {
   override suspend fun getMissionsAssignedTo(userId: String): List<Mission> = created.filter {
     userId in it.assigneeIds
   }
+
+  override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> =
+      throw UnsupportedOperationException()
 
   override suspend fun updateAssignees(
       eventId: String,
