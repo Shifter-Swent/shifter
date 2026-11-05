@@ -41,7 +41,8 @@ class FakeCheckInRepository(
    * When set, a check-in is recorded at once as [CheckIn.pending], like a write Firestore queues
    * offline, and is only confirmed, with [checkIn] returning, once it completes. Completing it with
    * a [CheckInRepositoryException] stands for the backend refusing the check-in once online: it is
-   * taken out again, as Firestore rolls the write back, and [checkIn] throws it.
+   * taken out again, as Firestore rolls the write back, and [checkIn] throws it. A [checkIn]
+   * cancelled while it waits leaves its check-in to be settled all the same when this completes.
    */
   var confirmation: CompletableDeferred<Unit>? = null
 
@@ -90,15 +91,18 @@ class FakeCheckInRepository(
       checkIns + recorded
     }
     if (gate != null) {
-      try {
-        gate.await()
-      } catch (e: CheckInRepositoryException) {
-        state.update { checkIns -> checkIns - recorded }
-        throw e
+      // Settled when the gate completes, even if this call was cancelled while waiting: Firestore
+      // still sends a queued write once its caller has stopped waiting for it.
+      gate.invokeOnCompletion { cause ->
+        state.update { checkIns ->
+          when (cause) {
+            null -> checkIns.map { if (it == recorded) it.copy(pending = false) else it }
+            is CheckInRepositoryException -> checkIns - recorded
+            else -> checkIns
+          }
+        }
       }
-      state.update { checkIns ->
-        checkIns.map { if (it == recorded) it.copy(pending = false) else it }
-      }
+      gate.await()
     }
   }
 
