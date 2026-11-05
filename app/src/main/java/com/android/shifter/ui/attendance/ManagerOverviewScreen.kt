@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -62,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.checkin.checkInWindow
+import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -80,6 +83,9 @@ object ManagerOverviewTestTags {
   const val LOAD_ERROR = "managerOverviewLoadError"
   const val RETRY = "managerOverviewRetry"
   const val EMPTY = "managerOverviewEmpty"
+  const val MARK_COMPLETED_DIALOG = "managerOverviewMarkCompletedDialog"
+  const val MARK_COMPLETED_CONFIRM = "managerOverviewMarkCompletedConfirm"
+  const val MARK_COMPLETED_CANCEL = "managerOverviewMarkCompletedCancel"
 
   fun teamChip(teamId: String) = "managerOverviewTeamChip_$teamId"
 
@@ -110,10 +116,14 @@ object ManagerOverviewTestTags {
 
   const val PENDING_BANNER = "managerOverviewPendingBanner"
   const val SNACKBAR = "managerOverviewSnackbar"
+
+  fun markCompleted(missionId: String) = "managerOverviewMarkCompleted_$missionId"
 }
 
 /** What a card says about the attendance of its mission; the first case that holds wins. */
 private enum class AttendanceStatus {
+  /** Closed by hand or past its end: its attendance is history, and no warning can be acted on. */
+  COMPLETED,
   /** The check-in has not opened, so nobody can be present yet, nor late. */
   NOT_OPEN,
   /** The check-ins of the mission could not be observed. */
@@ -122,8 +132,6 @@ private enum class AttendanceStatus {
   WAITING,
   /** The check-in is open but the mission has not started: those not there are not late. */
   EARLY,
-  /** The mission is over: its attendance is history, and no warning can be acted on. */
-  FINISHED,
   /** Fewer people are present than the mission needs, which the manager is warned about. */
   UNDERSTAFFED,
   /** Enough people are present: nothing to report. */
@@ -148,6 +156,8 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  * @param onUndoWindowOver called once its "Undo" is gone unused, which sends that check-in.
  * @param onCheckInErrorShown called once the oldest of [AttendanceUiState.checkInErrors] has been
  *   shown.
+ * @param onMarkCompleted called with a mission the manager has confirmed closing.
+ * @param onCompletionFailureShown called once the failure to close a mission has been reported.
  */
 @Composable
 fun ManagerOverviewContent(
@@ -161,38 +171,133 @@ fun ManagerOverviewContent(
     onUndoCheckIn: () -> Unit = {},
     onUndoWindowOver: () -> Unit = {},
     onCheckInErrorShown: () -> Unit = {},
+    onMarkCompleted: (String) -> Unit = {},
+    onCompletionFailureShown: () -> Unit = {},
 ) {
+  // The teams of the missions the user may watch: no query of its own, and none invented.
+  val teams =
+      remember(state.missions) {
+        state.missions
+            .mapNotNull { mission -> mission.teamId?.let { it to mission.teamName } }
+            .distinctBy { it.first }
+      }
+  var pickedTeamId by rememberSaveable { mutableStateOf<String?>(null) }
+  // By id, so filtering a team out and back leaves the cards opened as they were.
+  var expandedMissionIds by
+      rememberSaveable(stateSaver = ExpandedIdsSaver) { mutableStateOf(emptySet<String>()) }
+  // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
+  val selectedTeamId = pickedTeamId?.takeIf { id -> teams.any { it.first == id } }
+  val missions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
+  // By id, so the question survives a configuration change.
+  var confirmingMissionId by rememberSaveable { mutableStateOf<String?>(null) }
+  // One host for every message of the screen, so they are shown one after the other rather than
+  // over each other.
+  val snackbarHostState = remember { SnackbarHostState() }
+  val completionFailed = stringResource(R.string.attendance_mark_completed_failed)
+  val retry = stringResource(R.string.attendance_retry)
+  LaunchedEffect(state.completionFailedMissionId) {
+    val missionId = state.completionFailedMissionId ?: return@LaunchedEffect
+    // With an action, the default duration would never dismiss it.
+    val result =
+        snackbarHostState.showSnackbar(
+            completionFailed,
+            actionLabel = retry,
+            duration = SnackbarDuration.Long,
+        )
+    onCompletionFailureShown()
+    if (result == SnackbarResult.ActionPerformed) onMarkCompleted(missionId)
+  }
+  CheckInMessages(
+      host = snackbarHostState,
+      undoable = state.undoableCheckIn,
+      failures = state.checkInErrors,
+      onUndo = onUndoCheckIn,
+      onUndoWindowOver = onUndoWindowOver,
+      onErrorShown = onCheckInErrorShown,
+  )
   Box(modifier = modifier.fillMaxSize()) {
-    AttendanceList(state, eventTitle, now, zone, onRetry, onCheckIn)
-    CheckInSnackbar(
-        undoable = state.undoableCheckIn,
-        failures = state.checkInErrors,
-        onUndo = onUndoCheckIn,
-        onUndoWindowOver = onUndoWindowOver,
-        onErrorShown = onCheckInErrorShown,
-        modifier = Modifier.align(Alignment.BottomCenter),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag(ManagerOverviewTestTags.SCREEN),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      item { Header(eventTitle, state.isOrganizer) }
+      if (state.loadFailed) item { LoadError(onRetry) }
+      if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
+      item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
+      item {
+        // Never "0 missions" before there is an answer: that reads as having none.
+        MissionsHeader(missions.size.takeUnless { it == 0 && !state.isLoaded })
+      }
+      items(missions, key = { it.id }) { mission ->
+        MissionCard(
+            mission = mission,
+            status = mission.status(now),
+            expanded = mission.id in expandedMissionIds,
+            canMarkCompleted = !state.isOrganizer && mission.canBeMarkedCompleted(now),
+            isMarkingCompleted = mission.id in state.markingCompletedIds,
+            now = now,
+            zone = zone,
+            // Each card on its own: opening one leaves the others as they are.
+            onToggle = {
+              expandedMissionIds =
+                  if (mission.id in expandedMissionIds) expandedMissionIds - mission.id
+                  else expandedMissionIds + mission.id
+            },
+            onMarkCompleted = { confirmingMissionId = mission.id },
+            onCheckIn = { userId -> onCheckIn(mission.id, userId) },
+        )
+      }
+      if (missions.isEmpty()) {
+        item {
+          when {
+            // A reload keeps the cards already shown instead of replacing them with the spinner.
+            state.isLoading ->
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp).testTag(ManagerOverviewTestTags.LOADING),
+                    strokeWidth = 2.dp,
+                )
+            // Already "loaded, did not fail, nothing there". A team that was picked always has
+            // a mission, since the chips come from the missions, so it alone never empties the
+            // list.
+            state.isEmpty -> EmptyMessage(R.string.attendance_no_missions)
+          }
+        }
+      }
+    }
+    SnackbarHost(
+        snackbarHostState,
+        modifier = Modifier.align(Alignment.BottomCenter).testTag(ManagerOverviewTestTags.SNACKBAR),
+    )
+  }
+  confirmingMissionId?.let { missionId ->
+    MarkCompletedDialog(
+        onConfirm = {
+          confirmingMissionId = null
+          onMarkCompleted(missionId)
+        },
+        onDismiss = { confirmingMissionId = null },
     )
   }
 }
 
 /**
- * The "checked in · Undo" action of the last manual check-in, and why check-ins failed, one after
- * the other, oldest first.
+ * Shows in [host] the "checked in · Undo" action of the last manual check-in, and why check-ins
+ * failed, one after the other, oldest first.
  *
  * The snackbar decides when the undo window ends: the check-in is only sent once "Undo" is gone
  * ([onUndoWindowOver]), so it can never be tapped for a check-in already sent, however long an
  * accessibility setting keeps it on screen.
  */
 @Composable
-private fun CheckInSnackbar(
+private fun CheckInMessages(
+    host: SnackbarHostState,
     undoable: UndoableCheckIn?,
     failures: List<ManualCheckInFailure>,
     onUndo: () -> Unit,
     onUndoWindowOver: () -> Unit,
     onErrorShown: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
-  val host = remember { SnackbarHostState() }
   val unnamed = stringResource(R.string.attendance_volunteer_unknown)
   val checkedIn = undoable?.let {
     stringResource(R.string.attendance_checked_in, it.displayName?.ifBlank { null } ?: unnamed)
@@ -228,77 +333,33 @@ private fun CheckInSnackbar(
       onErrorShown()
     }
   }
-  SnackbarHost(host, modifier = modifier.testTag(ManagerOverviewTestTags.SNACKBAR))
 }
 
+/** Asks before closing a mission, since it cannot be undone. */
 @Composable
-private fun AttendanceList(
-    state: AttendanceUiState,
-    eventTitle: String,
-    now: Instant,
-    zone: ZoneId,
-    onRetry: () -> Unit,
-    onCheckIn: (missionId: String, userId: String) -> Unit,
-) {
-  // The teams of the missions the user may watch: no query of its own, and none invented.
-  val teams =
-      remember(state.missions) {
-        state.missions
-            .mapNotNull { mission -> mission.teamId?.let { it to mission.teamName } }
-            .distinctBy { it.first }
-      }
-  var pickedTeamId by rememberSaveable { mutableStateOf<String?>(null) }
-  // By id, so filtering a team out and back leaves the cards opened as they were.
-  var expandedMissionIds by
-      rememberSaveable(stateSaver = ExpandedIdsSaver) { mutableStateOf(emptySet<String>()) }
-  // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
-  val selectedTeamId = pickedTeamId?.takeIf { id -> teams.any { it.first == id } }
-  val missions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
-  LazyColumn(
-      modifier = Modifier.fillMaxSize().testTag(ManagerOverviewTestTags.SCREEN),
-      contentPadding = PaddingValues(16.dp),
-      verticalArrangement = Arrangement.spacedBy(14.dp),
-  ) {
-    item { Header(eventTitle, state.isOrganizer) }
-    if (state.loadFailed) item { LoadError(onRetry) }
-    if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
-    item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
-    item {
-      // Never "0 missions" before there is an answer: that reads as having none.
-      MissionsHeader(missions.size.takeUnless { it == 0 && !state.isLoaded })
-    }
-    items(missions, key = { it.id }) { mission ->
-      MissionCard(
-          mission = mission,
-          status = mission.status(now),
-          expanded = mission.id in expandedMissionIds,
-          now = now,
-          zone = zone,
-          // Each card on its own: opening one leaves the others as they are.
-          onToggle = {
-            expandedMissionIds =
-                if (mission.id in expandedMissionIds) expandedMissionIds - mission.id
-                else expandedMissionIds + mission.id
-          },
-          onCheckIn = { userId -> onCheckIn(mission.id, userId) },
-      )
-    }
-    if (missions.isEmpty()) {
-      item {
-        when {
-          // A reload keeps the cards already shown instead of replacing them with the spinner.
-          state.isLoading ->
-              CircularProgressIndicator(
-                  modifier = Modifier.size(20.dp).testTag(ManagerOverviewTestTags.LOADING),
-                  strokeWidth = 2.dp,
-              )
-          // Already "loaded, did not fail, nothing there". A team that was picked always has
-          // a mission, since the chips come from the missions, so it alone never empties the list.
-          state.isEmpty -> EmptyMessage(R.string.attendance_no_missions)
+private fun MarkCompletedDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+  AlertDialog(
+      onDismissRequest = onDismiss,
+      modifier = Modifier.testTag(ManagerOverviewTestTags.MARK_COMPLETED_DIALOG),
+      title = { Text(stringResource(R.string.attendance_mark_completed_title)) },
+      text = { Text(stringResource(R.string.attendance_mark_completed_message)) },
+      confirmButton = {
+        TextButton(
+            onClick = onConfirm,
+            modifier = Modifier.testTag(ManagerOverviewTestTags.MARK_COMPLETED_CONFIRM),
+        ) {
+          Text(stringResource(R.string.attendance_mark_completed))
         }
-      }
-    }
-  }
+      },
+      dismissButton = {
+        TextButton(
+            onClick = onDismiss,
+            modifier = Modifier.testTag(ManagerOverviewTestTags.MARK_COMPLETED_CANCEL),
+        ) {
+          Text(stringResource(R.string.attendance_mark_completed_cancel))
+        }
+      },
+  )
 }
 
 /** Whether the load has come back with missions to count: neither running, nor failed. */
@@ -313,11 +374,11 @@ private val AttendanceUiState.isLoaded: Boolean
 private fun AttendanceMission.status(now: Instant): AttendanceStatus {
   val window = checkInWindow(startAt, endAt)
   return when {
+    isCompleted(now) -> AttendanceStatus.COMPLETED
     now < window.start -> AttendanceStatus.NOT_OPEN
     attendanceFailed -> AttendanceStatus.FAILED
     !attendanceKnown -> AttendanceStatus.WAITING
     now < startAt -> AttendanceStatus.EARLY
-    now > window.endInclusive -> AttendanceStatus.FINISHED
     isUnderstaffed -> AttendanceStatus.UNDERSTAFFED
     else -> AttendanceStatus.STAFFED
   }
@@ -483,9 +544,12 @@ private fun MissionCard(
     mission: AttendanceMission,
     status: AttendanceStatus,
     expanded: Boolean,
+    canMarkCompleted: Boolean,
+    isMarkingCompleted: Boolean,
     now: Instant,
     zone: ZoneId,
     onToggle: () -> Unit,
+    onMarkCompleted: () -> Unit,
     onCheckIn: (userId: String) -> Unit,
 ) {
   val shape = RoundedCornerShape(18.dp)
@@ -606,11 +670,12 @@ private fun MissionCard(
         val early = status == AttendanceStatus.EARLY
         People(
             missionId = mission.id,
-            // Once the mission is over, a check-in would record the time of the tap, not of an
-            // arrival, so the names are no longer tappable, and the section says so.
-            onCheckIn = onCheckIn.takeUnless { status == AttendanceStatus.FINISHED },
+            // Once the mission is completed, by hand or past its end, a check-in would record the
+            // tap rather than an arrival, so the names are no longer tappable, and the section says
+            // so.
+            onCheckIn = onCheckIn.takeUnless { status == AttendanceStatus.COMPLETED },
             hint =
-                if (status == AttendanceStatus.FINISHED) R.string.attendance_check_in_closed
+                if (status == AttendanceStatus.COMPLETED) R.string.attendance_check_in_closed
                 else R.string.attendance_tap_to_check_in,
             label =
                 stringResource(
@@ -626,6 +691,16 @@ private fun MissionCard(
                 else ManagerOverviewTestTags.missing(mission.id),
         )
       }
+    }
+
+    if (canMarkCompleted) {
+      FormPrimaryButton(
+          text = stringResource(R.string.attendance_mark_completed),
+          onClick = onMarkCompleted,
+          testTag = ManagerOverviewTestTags.markCompleted(mission.id),
+          enabled = !isMarkingCompleted,
+          isLoading = isMarkingCompleted,
+      )
     }
   }
 }
@@ -653,9 +728,10 @@ private fun StatusLabel(status: AttendanceStatus, testTag: String) {
       label = R.string.attendance_check_in_open
       color = shifter_mutedText
     }
-    AttendanceStatus.FINISHED -> {
-      label = R.string.attendance_finished
-      color = shifter_mutedText
+    AttendanceStatus.COMPLETED -> {
+      label = R.string.attendance_completed
+      color = shifter_success
+      icon = Icons.Filled.Check
     }
     AttendanceStatus.UNDERSTAFFED -> {
       label = R.string.attendance_understaffed
@@ -717,8 +793,11 @@ private fun People(
               Modifier.fillMaxWidth()
                   .then(
                       if (onCheckIn == null) Modifier
+                      // 48 dp tall at least, since one tap writes a check-in that cannot be
+                      // changed: a hurried tap must not land on the next name.
                       else
-                          Modifier.clip(RoundedCornerShape(8.dp))
+                          Modifier.heightIn(min = 48.dp)
+                              .clip(RoundedCornerShape(8.dp))
                               .clickable(
                                   onClickLabel =
                                       stringResource(R.string.attendance_check_in_action, name),

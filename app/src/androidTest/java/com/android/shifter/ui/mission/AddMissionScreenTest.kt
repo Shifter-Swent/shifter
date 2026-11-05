@@ -28,6 +28,7 @@ import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.map.LocationPickerTestTags
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
 import java.time.Instant
@@ -467,7 +468,7 @@ class AddMissionScreenTest {
     var left = 0
     setContent(loaded, AddMissionActions(onSubmit = { submitted++ }, onBack = { left++ }))
 
-    node(AddMissionScreenTestTags.BACK_BUTTON).performClick()
+    node(NavigationTestTags.GO_BACK_BUTTON).performClick()
     node(AddMissionScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
     node(AddMissionScreenTestTags.CANCEL_BUTTON).performScrollTo().performClick()
 
@@ -610,6 +611,9 @@ private class RecordingMissionRepository : MissionRepository {
       missionId: String,
       assigneeIds: List<String>,
   ) = throw UnsupportedOperationException()
+
+  override suspend fun markCompleted(eventId: String, missionId: String) =
+      throw UnsupportedOperationException()
 }
 
 private class SingleEventRepository(private val event: Event) : EventRepository {

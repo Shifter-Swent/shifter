@@ -29,7 +29,12 @@
     <string name="attendance_understaffed">Understaffed</string>
     <string name="attendance_check_in_not_open">Check-in not open yet</string>
     <string name="attendance_check_in_open">Check-in open</string>
-    <string name="attendance_finished">Finished</string>
+    <string name="attendance_completed">Completed</string>
+    <string name="attendance_mark_completed">Mark as completed</string>
+    <string name="attendance_mark_completed_title">Mark this mission as completed?</string>
+    <string name="attendance_mark_completed_message">This can\'t be undone.</string>
+    <string name="attendance_mark_completed_cancel">Cancel</string>
+    <string name="attendance_mark_completed_failed">The mission could not be marked as completed.</string>
     <string name="attendance_waiting">Waiting for attendance data</string>
     <string name="attendance_unavailable">Attendance unavailable</string>
     <string name="attendance_present">PRESENT (%1$d)</string>
@@ -41,7 +46,7 @@
     <string name="attendance_retry">Retry</string>
     <!-- Checking a missing volunteer in by hand, by tapping their name. -->
     <string name="attendance_tap_to_check_in">Tap a name to check them in</string>
-    <string name="attendance_check_in_closed">Check-in is closed: the mission is over.</string>
+    <string name="attendance_check_in_closed">Check-in is closed: the mission is completed.</string>
     <string name="attendance_check_in_action">Check in %1$s</string>
     <string name="attendance_checked_in">%1$s checked in</string>
     <string name="attendance_undo">Undo</string>

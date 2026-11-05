@@ -46,6 +46,7 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.mission.AssigneePicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_success
 import kotlin.math.roundToInt
 
 object OrganizerOverviewScreenTestTags {
@@ -71,6 +72,8 @@ object OrganizerOverviewScreenTestTags {
   fun mission(missionId: String) = "OrganizerOverviewMission_$missionId"
 
   fun assignedCount(missionId: String) = "OrganizerOverviewAssignedCount_$missionId"
+
+  fun completed(missionId: String) = "OrganizerOverviewCompleted_$missionId"
 
   fun assignButton(missionId: String) = "OrganizerOverviewAssignButton_$missionId"
 }
@@ -358,7 +361,6 @@ private fun Missions(state: OrganizerOverviewUiState, onAssign: (String) -> Unit
 
 @Composable
 private fun MissionRow(mission: OverviewMission, teamName: String?, onAssign: () -> Unit) {
-  // TODO: show whether the mission is to do, in progress or completed once missions have a status.
   Row(
       modifier =
           Modifier.fillMaxWidth()
@@ -396,6 +398,15 @@ private fun MissionRow(mission: OverviewMission, teamName: String?, onAssign: ()
           color = shifter_mutedText,
           modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.assignedCount(mission.id)),
       )
+      if (mission.isCompleted) {
+        Text(
+            text = stringResource(R.string.overview_mission_completed),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = shifter_success,
+            modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.completed(mission.id)),
+        )
+      }
     }
     TextButton(
         onClick = onAssign,
@@ -517,7 +528,7 @@ private fun OrganizerOverviewContentPreview() {
                 teams = listOf(OverviewTeam("logistics", "Logistics"), OverviewTeam("bar", "Bar")),
                 missions =
                     listOf(
-                        OverviewMission("1", "Set up the collection", "logistics", false),
+                        OverviewMission("1", "Set up the collection", "logistics", true),
                         OverviewMission("2", "Prepare the counter", "bar", false),
                         OverviewMission("3", "Welcome the volunteers", null, false),
                     ),

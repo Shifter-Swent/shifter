@@ -15,6 +15,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -54,7 +55,7 @@ class MapScreenTest {
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertDoesNotExist()
 
-    compose.onNodeWithTag(MapScreenTestTags.BACK_BUTTON).performClick()
+    compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     assertEquals(1, backs)
   }
 

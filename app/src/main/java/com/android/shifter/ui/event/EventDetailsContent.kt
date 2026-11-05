@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocationOn
@@ -25,7 +23,6 @@ import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +42,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.PrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
 import java.time.LocalDate
@@ -53,7 +51,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 object EventDetailsTestTags {
-  const val BACK_BUTTON = "EventDetailsBackButton"
   const val CATEGORY = "EventDetailsCategory"
   const val DATE = "EventDetailsDate"
   const val VENUE = "EventDetailsVenue"
@@ -85,7 +82,7 @@ fun EventDetailsContent(
 ) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxSize()) {
-    DetailsTopBar(onBack)
+    ShifterTopBar(title = stringResource(R.string.event_details_title), onBack = onBack)
     Column(
         verticalArrangement = Arrangement.spacedBy(20.dp),
         modifier =
@@ -144,37 +141,6 @@ fun EventDetailsContent(
       )
     }
     ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply)
-  }
-}
-
-@Composable
-private fun DetailsTopBar(onBack: () -> Unit) {
-  val colors = MaterialTheme.colorScheme
-  Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(16.dp),
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-  ) {
-    IconButton(
-        onClick = onBack,
-        modifier =
-            Modifier.size(40.dp)
-                .clip(CircleShape)
-                .background(colors.surfaceVariant)
-                .testTag(EventDetailsTestTags.BACK_BUTTON),
-    ) {
-      Icon(
-          Icons.AutoMirrored.Filled.ArrowBack,
-          stringResource(R.string.content_description_back),
-          tint = colors.onSurface,
-      )
-    }
-    Text(
-        text = stringResource(R.string.event_details_title),
-        color = colors.onBackground,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-    )
   }
 }
 

@@ -58,15 +58,14 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.ui.components.FieldLabel
-import com.swent.shifter.ui.components.FormHeader
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
 
 object CreateEventScreenTestTags {
-  const val BACK_BUTTON = "CreateEventBackButton"
   const val TITLE_FIELD = "CreateEventTitleField"
   const val DESCRIPTION_FIELD = "CreateEventDescriptionField"
   const val ADDRESS_FIELD = "CreateEventAddressField"
@@ -135,10 +134,8 @@ fun CreateEventContent(
 ) {
   Scaffold(
       topBar = {
-        FormHeader(
-            backLabel = stringResource(R.string.create_event_back),
+        ShifterTopBar(
             title = stringResource(R.string.create_event_title),
-            backButtonTestTag = CreateEventScreenTestTags.BACK_BUTTON,
             onBack = onBack,
         )
       }

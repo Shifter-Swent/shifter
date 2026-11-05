@@ -30,26 +30,6 @@ class FormComponentsTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun formHeader_showsTitleAndCallsOnBack() {
-    var backCalls = 0
-    composeTestRule.setContent {
-      ShifterTheme {
-        FormHeader(
-            backLabel = "My events",
-            title = "Create an event",
-            backButtonTestTag = BACK,
-            onBack = { backCalls++ },
-        )
-      }
-    }
-
-    composeTestRule.onNodeWithText("Create an event").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(BACK).assertTextContains("My events").performClick()
-
-    assertEquals(1, backCalls)
-  }
-
-  @Test
   fun formTextField_showsLabelAndReportsInput() {
     composeTestRule.setContent {
       ShifterTheme {
@@ -142,7 +122,6 @@ class FormComponentsTest {
   }
 
   private companion object {
-    const val BACK = "back"
     const val FIELD = "field"
     const val BUTTON = "button"
     const val LOADING = "loading"

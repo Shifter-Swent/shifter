@@ -150,6 +150,22 @@ class FakeMissionRepositoryTest {
     )
   }
 
+  @Test
+  fun markCompleted_closesTheMission() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+
+    repository.markCompleted("event-1", created.id)
+
+    assertEquals(true, repository.getMission("event-1", created.id)?.completed)
+  }
+
+  @Test
+  fun markCompleted_ofAnUnknownMission_throwsNotFound() = runTest {
+    val thrown = runCatching { repository.markCompleted("event-1", "nope") }.exceptionOrNull()
+
+    assertTrue(thrown is MissionRepositoryException.NotFound)
+  }
+
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */
   private fun mission(
       eventId: String,

@@ -20,6 +20,7 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -159,7 +160,7 @@ class EventCreatedScreenTest {
     var done = 0
     setContent(loaded, onDone = { done++ })
 
-    node(EventCreatedScreenTestTags.BACK_BUTTON).performClick()
+    node(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, done)
   }

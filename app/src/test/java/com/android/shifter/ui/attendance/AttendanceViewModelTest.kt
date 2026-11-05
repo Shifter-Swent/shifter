@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.lifecycle.ViewModelProvider
@@ -18,6 +19,7 @@ import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
@@ -735,6 +737,22 @@ class AttendanceViewModelTest {
   }
 
   @Test
+  fun checkIn_ofAMissionClosedByHand_sendsNothing() = runTest {
+    // Still running, but its manager closed it: its attendance is history.
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
+    missions.markCompleted("event-1", setUp.id)
+    open("manager")
+
+    viewModel.checkIn(setUp.id, "ann")
+    waitForTheUndoWindow()
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    assertNull(viewModel.uiState.value.undoableCheckIn)
+    // The screen no longer offers the tap, so there is nothing to explain.
+    assertTrue(viewModel.uiState.value.checkInErrors.isEmpty())
+  }
+
+  @Test
   fun checkIn_beforeTheWindowOpens_sendsNothingAndSaysWhy() = runTest {
     // Starts almost two hours after the tap, while check-in opens 15 minutes before the start.
     val later = addMission("Clean up", "logistics", hour = 3, assigneeIds = listOf("ann"))
@@ -969,6 +987,133 @@ class AttendanceViewModelTest {
           .onStart { active++ }
           .onCompletion { active-- }
     }
+  }
+
+  @Test
+  fun load_keepsWhetherTheMissionWasClosedByHand() = runTest {
+    val closed = addMission("Set up", "logistics", hour = 1)
+    addMission("Serve drinks", "bar", hour = 2)
+    missions.markCompleted("event-1", closed.id)
+
+    open("manager")
+
+    assertEquals(listOf(true, false), viewModel.uiState.value.missions.map { it.completed })
+  }
+
+  @Test
+  fun markCompleted_showsCompletedBeforeConfirmation() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open("manager")
+
+    viewModel.markCompleted(mission.id)
+
+    assertEquals(setOf(mission.id), viewModel.uiState.value.markingCompletedIds)
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+    assertTrue(viewModel.uiState.value.markingCompletedIds.isEmpty())
+    assertEquals(true, missions.getMission("event-1", mission.id)?.completed)
+  }
+
+  @Test
+  fun markCompleted_whenItFails_reportsItAndLeavesTheMissionAsItWas() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open("manager")
+    missions.failure = IllegalStateException("backend down")
+
+    viewModel.markCompleted(mission.id)
+    advanceUntilIdle()
+
+    val state = viewModel.uiState.value
+    assertEquals(mission.id, state.completionFailedMissionId)
+    assertFalse(state.missions.single().completed)
+    assertTrue(state.markingCompletedIds.isEmpty())
+
+    viewModel.onCompletionFailureShown()
+
+    assertNull(viewModel.uiState.value.completionFailedMissionId)
+  }
+
+  @Test
+  fun markCompleted_whileOffline_staysCompletedAcrossRefreshThenConfirms() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    val pending = PendingCompletion()
+    viewModel = AttendanceViewModel("event-1", "manager", events, pending, teams, users, checkIns)
+    advanceUntilIdle()
+
+    viewModel.markCompleted(mission.id)
+    advanceTimeBy(60_000)
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+    assertNull(viewModel.uiState.value.completionFailedMissionId)
+    assertEquals(setOf(mission.id), viewModel.uiState.value.markingCompletedIds)
+
+    // Neither a second tap while queued nor one after confirmation sends another write.
+    viewModel.markCompleted(mission.id)
+    pending.confirmation.complete(Unit)
+    advanceUntilIdle()
+    viewModel.markCompleted(mission.id)
+    advanceUntilIdle()
+
+    assertEquals(1, pending.calls)
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+    assertTrue(viewModel.uiState.value.markingCompletedIds.isEmpty())
+    assertEquals(true, missions.getMission("event-1", mission.id)?.completed)
+  }
+
+  @Test
+  fun markCompleted_refusedAfterReconnection_restoresMissionAndReportsFailure() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    val pending = PendingCompletion()
+    viewModel = AttendanceViewModel("event-1", "manager", events, pending, teams, users, checkIns)
+    advanceUntilIdle()
+
+    viewModel.markCompleted(mission.id)
+    advanceTimeBy(60_000)
+    assertTrue(viewModel.uiState.value.missions.single().completed)
+
+    pending.confirmation.completeExceptionally(MissionRepositoryException.PermissionDenied())
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.missions.single().completed)
+    assertEquals(mission.id, viewModel.uiState.value.completionFailedMissionId)
+    assertTrue(viewModel.uiState.value.markingCompletedIds.isEmpty())
+  }
+
+  /** A write awaiting the backend, which may accept or refuse it after reconnection. */
+  private inner class PendingCompletion : MissionRepository by missions {
+    val confirmation = CompletableDeferred<Unit>()
+    var calls = 0
+
+    override suspend fun markCompleted(eventId: String, missionId: String) {
+      calls++
+      confirmation.await()
+      missions.markCompleted(eventId, missionId)
+    }
+  }
+
+  @Test
+  fun canBeMarkedCompleted_isTrueOnlyWhileTheMissionRuns() {
+    val mission =
+        AttendanceMission(
+            id = "m",
+            title = "Set up",
+            teamId = null,
+            teamName = null,
+            volunteersNeeded = 1,
+            startAt = start,
+            endAt = start.plus(Duration.ofHours(1)),
+            assignees = emptyList(),
+        )
+
+    assertFalse(mission.canBeMarkedCompleted(start.minusSeconds(1)))
+    assertTrue(mission.canBeMarkedCompleted(start))
+    assertFalse(mission.canBeMarkedCompleted(mission.endAt))
+    assertFalse(mission.copy(completed = true).canBeMarkedCompleted(start))
   }
 
   /** Records which mission query a load used, to pin down what each role asks the backend for. */

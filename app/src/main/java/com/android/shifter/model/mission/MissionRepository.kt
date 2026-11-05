@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.model.mission
 
 /**
@@ -58,4 +59,15 @@ interface MissionRepository {
    * [MissionRepositoryException.NotFound] when the mission does not exist.
    */
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
+
+  /**
+   * Closes the mission identified by [missionId] in the event [eventId] before its end, which
+   * cannot be undone.
+   *
+   * Throws [MissionRepositoryException.NotFound] when the mission does not exist. Offline, it only
+   * returns once the device reconnects and the backend accepts the write. A caller may show the
+   * mission as completed while waiting, and restore its state if the write is refused. Cancelling
+   * the wait does not cancel a queued write and must not be reported as a refused completion.
+   */
+  suspend fun markCompleted(eventId: String, missionId: String)
 }

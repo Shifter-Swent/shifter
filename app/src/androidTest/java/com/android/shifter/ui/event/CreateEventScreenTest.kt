@@ -24,6 +24,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
 import java.time.Instant
@@ -365,7 +366,7 @@ class CreateEventScreenTest {
     var backCalled = false
     setScreen(RecordingRepository(), onBack = { backCalled = true })
 
-    node(CreateEventScreenTestTags.BACK_BUTTON).performClick()
+    node(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertTrue(backCalled)
   }

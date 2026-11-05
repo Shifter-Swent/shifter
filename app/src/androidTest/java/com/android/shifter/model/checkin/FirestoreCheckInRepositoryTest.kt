@@ -316,6 +316,7 @@ class FirestoreCheckInRepositoryTest {
               mapOf(
                   "teamId" to teamId,
                   "assigneeIds" to listOf(volunteer.uid, otherVolunteer.uid),
+                  "completed" to false,
               )
           )
           .await()

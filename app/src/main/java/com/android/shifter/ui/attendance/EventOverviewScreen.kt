@@ -69,6 +69,8 @@ fun EventOverviewScreen(
             onUndoCheckIn = viewModel::undoCheckIn,
             onUndoWindowOver = viewModel::sendUndoableCheckIn,
             onCheckInErrorShown = viewModel::onCheckInErrorShown,
+            onMarkCompleted = viewModel::markCompleted,
+            onCompletionFailureShown = viewModel::onCompletionFailureShown,
         )
     false -> volunteerOverview()
     // Not known yet, which a first load that failed also leaves it at: neither screen is shown,

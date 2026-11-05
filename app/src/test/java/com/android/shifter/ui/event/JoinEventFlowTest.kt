@@ -20,6 +20,7 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -102,7 +103,7 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithTag(EventDetailsTestTags.VENUE).assertTextEquals("Lausanne")
 
     // Back returns to the code step with the code kept, and the event can be found again.
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .assertTextContains(EVENT.joinCode)
@@ -119,7 +120,7 @@ class JoinEventFlowTest {
     assertEquals(TEAM.id, sentRequests.single().second.teamId)
 
     // Finding the event again shows the request already sent instead of offering to apply.
-    composeTestRule.onNodeWithTag(EventDetailsTestTags.BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()

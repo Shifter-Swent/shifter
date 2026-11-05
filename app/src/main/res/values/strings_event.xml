@@ -3,7 +3,6 @@
 <resources>
     <!-- Event creation -->
     <string name="create_event_title">Create an event</string>
-    <string name="create_event_back">My Events</string>
     <string name="create_event_intro">Fill in your event. All fields are required.</string>
     <string name="create_event_field_title">Event title</string>
     <string name="create_event_field_description">Event description</string>
