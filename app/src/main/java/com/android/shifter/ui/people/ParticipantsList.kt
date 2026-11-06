@@ -131,10 +131,7 @@ fun ParticipantsList(
   }
 }
 
-/**
- * The failure, in the words of the Requests tab, with a way to try again, except after a failed
- * change of manager: reloading would not retry it, and the list is still there to tap again.
- */
+/** The failure, in the words of the Requests tab, with a way to try again. */
 @Composable
 private fun ErrorMessage(error: ParticipantsError, enabled: Boolean, onRetry: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -146,14 +143,12 @@ private fun ErrorMessage(error: ParticipantsError, enabled: Boolean, onRetry: ()
         textAlign = TextAlign.Center,
         modifier = Modifier.testTag(ParticipantsListTestTags.ERROR),
     )
-    if (error != ParticipantsError.UPDATE_FAILED) {
-      TextButton(
-          onClick = onRetry,
-          enabled = enabled,
-          modifier = Modifier.testTag(ParticipantsListTestTags.RETRY_BUTTON),
-      ) {
-        Text(text = stringResource(R.string.participants_retry), fontWeight = FontWeight.SemiBold)
-      }
+    TextButton(
+        onClick = onRetry,
+        enabled = enabled,
+        modifier = Modifier.testTag(ParticipantsListTestTags.RETRY_BUTTON),
+    ) {
+      Text(text = stringResource(R.string.participants_retry), fontWeight = FontWeight.SemiBold)
     }
   }
 }
@@ -238,7 +233,6 @@ private val ParticipantsError.message: Int
         ParticipantsError.OFFLINE -> R.string.participants_error_offline
         ParticipantsError.PERMISSION_DENIED -> R.string.participants_error_permission_denied
         ParticipantsError.UNEXPECTED -> R.string.participants_error_unexpected
-        ParticipantsError.UPDATE_FAILED -> R.string.participants_manager_update_failed
       }
 
 @Preview

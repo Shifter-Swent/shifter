@@ -475,6 +475,7 @@ fun ShifterNavHost(
                 onAppointManager = participants::appointManager,
                 onRemoveManager = participants::removeManager,
                 onNavigate = nav::switchTab,
+                onManagerChangeFailureShown = participants::onManagerChangeFailureShown,
             )
           }
         }
