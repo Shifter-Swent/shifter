@@ -1,0 +1,45 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.swent.shifter.ui.map
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.ui.theme.ShifterTheme
+
+// Previews of VolunteerLabel, kept apart from the screen: they are tooling the IDE renders and no
+// test ever runs, so coverage is told to leave this file alone.
+
+private val HERE = GeoPosition(46.52, 6.57)
+
+/**
+ * A position just shared, one a few minutes old, one greyed out, one hours old, and a volunteer
+ * with no name.
+ */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27)
+@Composable
+private fun VolunteerLabelPreview() {
+  val resources = LocalResources.current
+  ShifterTheme {
+    Column(
+        modifier = Modifier.background(MaterialTheme.colorScheme.background).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      VolunteerLabel(MapMarker("Alice", HERE, "Alice", volunteerAge(resources, 0)), isStale = false)
+      VolunteerLabel(MapMarker("Bob", HERE, "Bob", volunteerAge(resources, 4)), isStale = false)
+      VolunteerLabel(MapMarker("Carol", HERE, "Carol", volunteerAge(resources, 17)), isStale = true)
+      VolunteerLabel(MapMarker("Dan", HERE, "Dan", volunteerAge(resources, 130)), isStale = true)
+      VolunteerLabel(
+          MapMarker("Volunteer", HERE, "Volunteer", volunteerAge(resources, 1)),
+          isStale = false,
+      )
+    }
+  }
+}

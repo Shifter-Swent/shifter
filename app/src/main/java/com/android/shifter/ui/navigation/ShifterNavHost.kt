@@ -64,6 +64,7 @@ import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.map.MapScreen
 import com.swent.shifter.ui.map.MapViewModel
+import com.swent.shifter.ui.map.WatchedTeams
 import com.swent.shifter.ui.membership.MembershipRequestVM
 import com.swent.shifter.ui.mission.AddMissionScreen
 import com.swent.shifter.ui.mission.AddMissionViewModel
@@ -260,6 +261,10 @@ fun ShifterNavHost(
             repositories,
             currentUserId,
             locationProvider,
+            // A manager follows the volunteers of the teams they manage.
+            watchedTeams = { eventId, userId ->
+              repositories.teamRepository.getTeamsManagedBy(eventId, userId)
+            },
         )
         tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
             VolunteerTabs.Discussions,
@@ -512,7 +517,8 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
 
 /**
  * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, and
- * the user's position when given a [locationProvider].
+ * the user's position when given a [locationProvider], and the volunteers of [watchedTeams] who
+ * share their position. Without [watchedTeams], the map shows no volunteer.
  */
 private inline fun <reified T : Tab, reified S : Destination, reified E : EventMode> NavGraphBuilder
     .mapTab(
@@ -522,6 +528,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
     repositories: RepositoryProvider,
     noinline currentUserId: () -> String?,
     locationProvider: LocationProvider? = null,
+    watchedTeams: WatchedTeams? = null,
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
@@ -537,6 +544,9 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             repositories.missionRepository,
                             currentUserId,
                             locationProvider,
+                            liveLocations = repositories.liveLocationRepository,
+                            watchedTeams = watchedTeams,
+                            userRepository = repositories.userRepository,
                         )
                 ),
             onBack = { nav.leaveEvent(tab.set) },

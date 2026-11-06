@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.map
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
@@ -31,7 +33,7 @@ class MapScreenTest {
   private var closes = 0
   private var retries = 0
 
-  private fun setContent(uiState: MapUiState) {
+  private fun setContent(uiState: MapUiState, volunteers: List<VolunteerPin> = emptyList()) {
     compose.setContent {
       ShifterTheme {
         MapContent(
@@ -40,6 +42,7 @@ class MapScreenTest {
             onMarkerClick = {},
             onCloseCard = { closes++ },
             onRetry = { retries++ },
+            volunteers = volunteers,
         )
       }
     }
@@ -148,7 +151,69 @@ class MapScreenTest {
   private fun LatLng.isNear(point: GeoPosition) =
       abs(latitude - point.latitude) < 1e-4 && abs(longitude - point.longitude) < 1e-4
 
+  @Test
+  fun volunteerLabel_showsTheNameAndHowOldThePositionIs() {
+    compose.setContent {
+      ShifterTheme {
+        Column {
+          VolunteerLabel(MapMarker("volunteer-alice", HERE, "Alice", age(3)), false)
+          Text(age(0))
+          Text(age(1))
+        }
+      }
+    }
+
+    compose.onNodeWithTag(MapScreenTestTags.VOLUNTEER).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.STALE_VOLUNTEER).assertDoesNotExist()
+    // The name and the age share one line above the dot.
+    compose.onNodeWithText("Alice · 3 min").assertIsDisplayed()
+    compose.onNodeWithText("now").assertIsDisplayed()
+    compose.onNodeWithText("1 min").assertIsDisplayed()
+  }
+
+  @Test
+  fun volunteerLabel_whenStale_isGreyedOut() {
+    compose.setContent {
+      ShifterTheme { VolunteerLabel(MapMarker("volunteer-carol", HERE, "Carol", age(17)), true) }
+    }
+
+    compose.onNodeWithTag(MapScreenTestTags.STALE_VOLUNTEER).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.VOLUNTEER).assertDoesNotExist()
+    compose.onNodeWithText("Carol · 17 min").assertIsDisplayed()
+  }
+
+  @Test
+  fun volunteerAge_fromAnHour_countsWholeHours() {
+    assertEquals("59 min", age(59))
+    assertEquals("1 h", age(60))
+    // Rounded down: the position is at least that old.
+    assertEquals("2 h", age(179))
+  }
+
+  private fun age(minutesAgo: Long) =
+      volunteerAge(
+          InstrumentationRegistry.getInstrumentation().targetContext.resources,
+          minutesAgo,
+      )
+
+  @Test
+  fun loaded_withVolunteers_showsTheMapWithoutAnyCard() {
+    setContent(
+        LOADED,
+        volunteers =
+            listOf(
+                VolunteerPin("alice", "Alice", HERE, minutesAgo = 2, isStale = false),
+                VolunteerPin("bob", null, HERE, minutesAgo = 12, isStale = true),
+            ),
+    )
+
+    compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.MISSION_CARD).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.ERROR).assertDoesNotExist()
+  }
+
   private companion object {
+    val HERE = GeoPosition(46.52, 6.57)
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     val LOADED =
         MapUiState(
