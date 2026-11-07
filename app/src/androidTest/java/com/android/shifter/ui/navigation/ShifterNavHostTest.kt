@@ -1102,6 +1102,9 @@ class ShifterNavHostTest {
     event.tabs.all.forEach { tab ->
       composeTestRule.runOnUiThread { nav.enterEvent(event) }
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
+      composeTestRule
+          .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+          .assertTextEquals(tab.home.title)
 
       composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
