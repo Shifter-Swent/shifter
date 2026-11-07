@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -70,9 +71,15 @@ private const val VOLUNTEER_MARKER_PREFIX = "volunteer-"
 /** Zoom the camera opens at once the event is loaded: close enough to tell missions apart. */
 private const val EVENT_ZOOM = 15f
 
-/** The Map tab of an event: its missions on a map, driven by [viewModel]. */
+/**
+ * The Map tab of an event: its missions on a map, driven by [viewModel]. See [MapContent] for
+ * [contentPadding].
+ */
 @Composable
-fun MapScreen(viewModel: MapViewModel) {
+fun MapScreen(
+    viewModel: MapViewModel,
+    contentPadding: PaddingValues = PaddingValues(),
+) {
   val uiState by viewModel.uiState.collectAsState()
   // With the lifecycle, so the GPS stops when the app goes to the background.
   val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
@@ -85,6 +92,7 @@ fun MapScreen(viewModel: MapViewModel) {
       onRetry = viewModel::load,
       myPosition = myPosition,
       volunteers = volunteers,
+      contentPadding = contentPadding,
   )
 }
 
@@ -95,6 +103,8 @@ fun MapScreen(viewModel: MapViewModel) {
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
+ * @param contentPadding the space taken by the bars around the screen. The map runs behind the
+ *   bottom one, while its controls, its cards and its logo stay above it.
  */
 @Composable
 fun MapContent(
@@ -107,8 +117,15 @@ fun MapContent(
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
-  Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
+  val bottomPadding = contentPadding.calculateBottomPadding()
+  Column(
+      modifier =
+          Modifier.fillMaxSize()
+              .padding(top = contentPadding.calculateTopPadding())
+              .testTag(MapScreenTestTags.SCREEN)
+  ) {
     if (uiState.venue.isNotEmpty()) {
       Column(
           modifier =
@@ -164,6 +181,7 @@ fun MapContent(
           modifier = Modifier.fillMaxSize(),
           myPosition = myPosition,
           cameraPositionState = cameraPositionState,
+          contentPadding = PaddingValues(bottom = bottomPadding),
           markerContent = {
             val isStale = volunteerMarkers[it]
             if (isStale != null) VolunteerLabel(it, isStale) else MissionLabel(it)
@@ -175,7 +193,11 @@ fun MapContent(
         )
       }
       Column(
-          modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).fillMaxWidth(),
+          modifier =
+              Modifier.align(Alignment.BottomCenter)
+                  .padding(bottom = bottomPadding)
+                  .padding(16.dp)
+                  .fillMaxWidth(),
           horizontalAlignment = Alignment.End,
           verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {

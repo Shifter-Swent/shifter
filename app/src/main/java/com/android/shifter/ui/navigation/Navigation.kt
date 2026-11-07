@@ -3,9 +3,9 @@ package com.swent.shifter.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -120,7 +120,7 @@ object VolunteerTabs : TabSet {
       get() = VolunteerEventScreen.Overview
 
     override val label = "Overview"
-    override val icon = Icons.Filled.Home
+    override val icon = Icons.Outlined.Dashboard
     override val testTag = NavigationTestTags.OVERVIEW_TAB
     override val set
       get() = VolunteerTabs
@@ -237,7 +237,7 @@ object OrganizerTabs : TabSet {
       get() = OrganizerEventScreen.Overview
 
     override val label = "Overview"
-    override val icon = Icons.Filled.Home
+    override val icon = Icons.Outlined.Dashboard
     override val testTag = NavigationTestTags.OVERVIEW_TAB
     override val set
       get() = OrganizerTabs
