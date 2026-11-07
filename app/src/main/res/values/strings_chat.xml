@@ -12,4 +12,8 @@
     <string name="chat_send_failed">The message could not be sent. Try again.</string>
     <string name="chat_input_placeholder">Write a message</string>
     <string name="chat_send">Send</string>
+    <string name="chat_channels_empty_volunteer">You will see your team\'s channel once you are in a team.</string>
+    <string name="chat_channels_empty_organizer">This event has no team yet. Each team you create gets its own channel.</string>
+    <string name="chat_channels_error_offline">You are offline. The channels will show once you are back online.</string>
+    <string name="chat_channels_error_unexpected">The channels could not be loaded.</string>
 </resources>
