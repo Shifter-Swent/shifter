@@ -432,7 +432,7 @@ fun ShifterNavHost(
         }
         navigation<OrganizerTabs.People>(startDestination = OrganizerTabs.People.home) {
           composable<OrganizerEventScreen.People> { entry ->
-            BackHandler { nav.backTo(Organizer.Events) }
+            BackHandler { nav.leaveEvent(OrganizerTabs) }
             // The event's id is in the route of the event graph this screen belongs to.
             val eventId =
                 remember(entry) {
