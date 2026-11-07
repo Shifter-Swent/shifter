@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.activity.compose.LocalActivity
@@ -40,12 +41,14 @@ import kotlinx.coroutines.delay
  *
  * @param volunteerOverview what someone who manages no team of the event sees instead. It is the
  *   stand-in until #204 puts the volunteer's planning there, and the only place to change for it.
+ * @param onAddMission opens the mission creation form, offered to a manager only.
  */
 @Composable
 fun EventOverviewScreen(
     viewModel: AttendanceViewModel,
     volunteerOverview: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    onAddMission: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
   // A check-in still in its undo window is sent when the screen is left or the app goes to the
@@ -71,6 +74,7 @@ fun EventOverviewScreen(
             onCheckInErrorShown = viewModel::onCheckInErrorShown,
             onMarkCompleted = viewModel::markCompleted,
             onCompletionFailureShown = viewModel::onCompletionFailureShown,
+            onAddMission = onAddMission,
         )
     false -> volunteerOverview()
     // Not known yet, which a first load that failed also leaves it at: neither screen is shown,
