@@ -45,7 +45,6 @@ import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -73,7 +72,7 @@ private const val EVENT_ZOOM = 15f
 
 /** The Map tab of an event: its missions on a map, driven by [viewModel]. */
 @Composable
-fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
+fun MapScreen(viewModel: MapViewModel) {
   val uiState by viewModel.uiState.collectAsState()
   // With the lifecycle, so the GPS stops when the app goes to the background.
   val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
@@ -81,7 +80,6 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
   val volunteers by viewModel.volunteers.collectAsStateWithLifecycle()
   MapContent(
       uiState = uiState,
-      onBack = onBack,
       onMarkerClick = viewModel::selectMarker,
       onCloseCard = viewModel::clearSelection,
       onRetry = viewModel::load,
@@ -91,7 +89,7 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
 }
 
 /**
- * Stateless map screen: the event's title and venue above a map of its missions.
+ * Stateless map screen: the event's venue above a map of its missions.
  *
  * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
@@ -101,7 +99,6 @@ fun MapScreen(viewModel: MapViewModel, onBack: () -> Unit) {
 @Composable
 fun MapContent(
     uiState: MapUiState,
-    onBack: () -> Unit,
     onMarkerClick: (MapMarker) -> Unit,
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
@@ -112,10 +109,6 @@ fun MapContent(
     },
 ) {
   Column(modifier = Modifier.fillMaxSize().testTag(MapScreenTestTags.SCREEN)) {
-    ShifterTopBar(
-        title = uiState.eventTitle,
-        onBack = onBack,
-    )
     if (uiState.venue.isNotEmpty()) {
       Column(
           modifier =

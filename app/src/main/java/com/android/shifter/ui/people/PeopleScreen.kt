@@ -4,7 +4,6 @@ package com.swent.shifter.ui.people
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -23,11 +22,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.UnderlinedTab
 import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.membership.MembershipRequestUIState
@@ -52,6 +51,7 @@ object PeopleScreenTestTags {
  *   its manager, after tapping their card.
  * @param onRemoveManager called with the id of a team whose manager the organizer confirmed to
  *   remove, after tapping their card.
+ * @param onBack called to leave the event, from the back button of the top bar.
  */
 @Composable
 fun PeopleScreen(
@@ -63,6 +63,7 @@ fun PeopleScreen(
     onReloadParticipants: () -> Unit,
     onAppointManager: (teamId: String, userId: String) -> Unit,
     onRemoveManager: (teamId: String) -> Unit,
+    onBack: () -> Unit,
     onNavigate: (Tab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,7 +74,7 @@ fun PeopleScreen(
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
-      topBar = { PeopleTopBar() },
+      topBar = { ShifterTopBar(stringResource(R.string.people_title), onBack) },
       bottomBar = { OrganizerNavigationBar(onNavigate) },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
@@ -122,18 +123,6 @@ fun PeopleScreen(
         onDismiss = { selection = null },
     )
   }
-}
-
-/** "People" title, laid out like the My Events header. */
-@Composable
-private fun PeopleTopBar() {
-  Text(
-      text = stringResource(R.string.people_title),
-      color = MaterialTheme.colorScheme.onBackground,
-      fontSize = 22.sp,
-      fontWeight = FontWeight.Bold,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-  )
 }
 
 /** Underlined tabs followed by the full-width divider, like the My Events tabs. */
@@ -192,6 +181,7 @@ private fun PeopleScreenPreview() {
         onReloadParticipants = {},
         onAppointManager = { _, _ -> },
         onRemoveManager = {},
+        onBack = {},
         onNavigate = {},
     )
   }

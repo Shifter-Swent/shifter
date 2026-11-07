@@ -17,7 +17,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -29,7 +28,6 @@ import org.junit.runner.RunWith
 class MapScreenTest {
   @get:Rule val compose = createComposeRule()
 
-  private var backs = 0
   private var closes = 0
   private var retries = 0
 
@@ -38,7 +36,6 @@ class MapScreenTest {
       ShifterTheme {
         MapContent(
             uiState = uiState,
-            onBack = { backs++ },
             onMarkerClick = {},
             onCloseCard = { closes++ },
             onRetry = { retries++ },
@@ -49,17 +46,13 @@ class MapScreenTest {
   }
 
   @Test
-  fun loaded_showsTheEventAboveTheMapAndBackLeaves() {
+  fun loaded_showsTheVenueAboveTheMap() {
     setContent(LOADED)
 
-    compose.onNodeWithText("City Marathon").assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.VENUE).assertIsDisplayed()
     compose.onNodeWithText("Event venue").assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertDoesNotExist()
-
-    compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
-    assertEquals(1, backs)
   }
 
   @Test
@@ -78,7 +71,6 @@ class MapScreenTest {
         camera = rememberCameraPositionState()
         MapContent(
             uiState = LOADED,
-            onBack = {},
             onMarkerClick = {},
             onCloseCard = {},
             onRetry = {},
@@ -217,7 +209,6 @@ class MapScreenTest {
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     val LOADED =
         MapUiState(
-            eventTitle = "City Marathon",
             venue = "Place Bellecour",
             center = GeoPosition(46.52, 6.57),
             markers = listOf(WATER),
