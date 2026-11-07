@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,7 +17,6 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -30,7 +28,6 @@ import org.junit.runner.RunWith
 class MapScreenTest {
   @get:Rule val compose = createComposeRule()
 
-  private var backs = 0
   private var closes = 0
   private var retries = 0
 
@@ -38,9 +35,7 @@ class MapScreenTest {
     compose.setContent {
       ShifterTheme {
         MapContent(
-            title = "Map",
             uiState = uiState,
-            onBack = { backs++ },
             onMarkerClick = {},
             onCloseCard = { closes++ },
             onRetry = { retries++ },
@@ -51,17 +46,13 @@ class MapScreenTest {
   }
 
   @Test
-  fun loaded_showsTheTitleAndVenueAboveTheMapAndBackLeaves() {
+  fun loaded_showsTheVenueAboveTheMap() {
     setContent(LOADED)
 
-    compose.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Map")
     compose.onNodeWithTag(MapScreenTestTags.VENUE).assertIsDisplayed()
     compose.onNodeWithText("Event venue").assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertDoesNotExist()
-
-    compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
-    assertEquals(1, backs)
   }
 
   @Test
@@ -79,9 +70,7 @@ class MapScreenTest {
       ShifterTheme {
         camera = rememberCameraPositionState()
         MapContent(
-            title = "Map",
             uiState = LOADED,
-            onBack = {},
             onMarkerClick = {},
             onCloseCard = {},
             onRetry = {},

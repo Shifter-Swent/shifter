@@ -508,13 +508,7 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
-      TabPage(
-          current = tab,
-          nav = nav,
-          topBar = { ShifterTopBar(tab.home.title, onBack = { nav.leaveEvent(tab.set) }) },
-      ) {
-        if (built) content(entry) else PlaceholderPage { content(entry) }
-      }
+      TabPage(tab, nav) { if (built) content(entry) else PlaceholderPage { content(entry) } }
     }
     screens()
   }
@@ -540,7 +534,6 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
       val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
       TabPage(tab, nav) {
         MapScreen(
-            title = tab.home.title,
             viewModel =
                 viewModel(
                     factory =
@@ -554,8 +547,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             watchedTeams = watchedTeams,
                             userRepository = repositories.userRepository,
                         )
-                ),
-            onBack = { nav.leaveEvent(tab.set) },
+                )
         )
       }
     }
@@ -593,19 +585,14 @@ private fun PlaceholderPage(content: @Composable () -> Unit) {
 }
 
 /**
- * A tab of an event showing [content], under [topBar] when it does not draw its own, with the
- * bottom bar listing the other tabs of the event.
+ * A tab of an event showing [content], under a top bar with its title and a way out of the event,
+ * and above the bottom bar listing the other tabs of the event.
  */
 @Composable
-private fun TabPage(
-    current: Tab,
-    nav: NavigationActions,
-    topBar: @Composable () -> Unit = {},
-    content: @Composable () -> Unit,
-) {
+private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit) {
   BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
-      topBar = topBar,
+      topBar = { ShifterTopBar(current.home.title, onBack = { nav.leaveEvent(current.set) }) },
       bottomBar = {
         NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
           current.set.all.forEach { tab ->
