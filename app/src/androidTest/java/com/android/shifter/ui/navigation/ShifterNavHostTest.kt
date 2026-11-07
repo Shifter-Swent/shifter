@@ -786,6 +786,67 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun volunteerEvent_asAManager_addMissionOpensTheFormAndBackReturns() {
+    val event = acceptedEvent(asManager = true)
+    showApp()
+    openEvent(event)
+    waitForNode(ManagerOverviewTestTags.ADD_MISSION_BUTTON)
+
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).performClick()
+    waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.EVENT_TITLE)
+        .assertTextContains(event.title)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    waitForNode(ManagerOverviewTestTags.SCREEN)
+  }
+
+  @Test
+  fun volunteerEvent_asAManager_savedMissionShowsInTheOverview() {
+    val event = acceptedEvent(asManager = true)
+    showApp()
+    openEvent(event)
+    waitForNode(ManagerOverviewTestTags.ADD_MISSION_BUTTON)
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).performClick()
+    waitForNode(AddMissionScreenTestTags.EVENT_TITLE)
+
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .performTextInput("Sort the litter")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
+        .performTextInput("Separate glass and plastic")
+    // The manager's only team is already picked: no "General", and no team they do not manage.
+    val teamId = teamIds.getValue(event.id)
+    // The start picker opens on the event's start; the end one is moved an hour later.
+    val start = event.startAt.atZone(ZoneId.systemDefault()).toLocalTime()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.END_FIELD).performClick()
+    composeTestRule.onNodeWithContentDescription(dialHour(start.hour + 1)).performClick()
+    composeTestRule.onNodeWithTag(AddMissionScreenTestTags.PICKER_CONFIRM).performClick()
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    waitForNode(ManagerOverviewTestTags.SCREEN)
+    val mission = runBlocking {
+      repositories.missionRepository.getMissionsByEvent(event.id).single()
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    assertEquals("Sort the litter", mission.title)
+    assertEquals(teamId, mission.teamId)
+    // Read again on the way back, so the manager sees the mission they just added.
+    waitForNode(ManagerOverviewTestTags.mission(mission.id))
+  }
+
+  @Test
   fun volunteerEvent_asAVolunteer_opensTheOverviewWithoutTheAttendance() {
     val event = acceptedEvent(asManager = false)
     showApp()

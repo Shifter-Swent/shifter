@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.compose.runtime.getValue
@@ -91,6 +92,7 @@ class ManagerOverviewContentTest {
       onCheckInErrorShown: () -> Unit = {},
       onMarkCompleted: (String) -> Unit = {},
       onCompletionFailureShown: () -> Unit = {},
+      onAddMission: (() -> Unit)? = null,
   ) {
     compose.setContent {
       ShifterTheme {
@@ -106,6 +108,7 @@ class ManagerOverviewContentTest {
             onCheckInErrorShown = onCheckInErrorShown,
             onMarkCompleted = onMarkCompleted,
             onCompletionFailureShown = onCompletionFailureShown,
+            onAddMission = onAddMission,
         )
       }
     }
@@ -712,6 +715,34 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.RETRY).performClick()
 
     assertEquals(1, retries)
+  }
+
+  @Test
+  fun addMission_asAManager_showsTheButtonAndCallsBack() {
+    var opened = 0
+    show(loaded, onAddMission = { opened++ })
+
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON)
+        .assertTextEquals("Add mission")
+        .performClick()
+
+    assertEquals(1, opened)
+  }
+
+  @Test
+  fun addMission_asTheOrganizer_isNotShown() {
+    // The organizer adds missions from their own Overview, General ones included.
+    show(loaded.copy(isOrganizer = true), onAddMission = {})
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun addMission_withoutACallback_isNotShown() {
+    show(loaded)
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertDoesNotExist()
   }
 
   private companion object {

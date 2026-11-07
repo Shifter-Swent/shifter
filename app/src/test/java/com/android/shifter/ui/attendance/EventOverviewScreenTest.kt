@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.compose.material3.Text
@@ -86,7 +87,7 @@ class EventOverviewScreenTest {
   @After fun tearDown() = Dispatchers.resetMain()
 
   /** The screen for [userId], loaded, with a stand-in for the volunteer's planning of #204. */
-  private fun show(userId: String) {
+  private fun show(userId: String, onAddMission: () -> Unit = {}) {
     // Unconfined, so the load the ViewModel starts has answered by the time the screen is read.
     Dispatchers.setMain(UnconfinedTestDispatcher())
     val viewModel = AttendanceViewModel("event-1", userId, events, missions, teams, users, checkIns)
@@ -95,6 +96,7 @@ class EventOverviewScreenTest {
         EventOverviewScreen(
             viewModel = viewModel,
             volunteerOverview = { Text("Volunteer planning") },
+            onAddMission = onAddMission,
         )
       }
     }
@@ -122,6 +124,24 @@ class EventOverviewScreenTest {
 
     compose.onNodeWithText("Volunteer planning").assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertDoesNotExist()
+  }
+
+  @Test
+  fun addMission_asAManager_opensTheForm() {
+    var opened = 0
+    show("manager", onAddMission = { opened++ })
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).performClick()
+
+    assertEquals(1, opened)
+  }
+
+  @Test
+  fun addMission_asAVolunteerWhoManagesNoTeam_isNotShown() {
+    show("ann")
+
+    compose.onNodeWithText("Volunteer planning").assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertDoesNotExist()
   }
 
   @Test
