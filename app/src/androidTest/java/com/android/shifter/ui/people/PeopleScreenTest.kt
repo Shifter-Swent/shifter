@@ -16,6 +16,7 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.membership.MembershipRequestItemUIState
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.membership.MembershipRequestsScreen
+import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.Tab
 import java.time.Instant
@@ -56,6 +57,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onBack = {},
             onNavigate = { destination = it },
         )
       }
@@ -93,6 +95,7 @@ class PeopleScreenTest {
             onReloadParticipants = { reloads++ },
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onBack = {},
             onNavigate = {},
         )
       }
@@ -139,6 +142,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = onAppointManager,
             onRemoveManager = onRemoveManager,
+            onBack = {},
             onNavigate = {},
         )
       }
@@ -203,6 +207,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onBack = {},
             onNavigate = {},
         )
       }
@@ -214,6 +219,31 @@ class PeopleScreenTest {
     participants = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann))))
 
     compose.onNodeWithTag(ManagerDialogTestTags.DIALOG).assertDoesNotExist()
+  }
+
+  @Test
+  fun backButton_callsOnBack() {
+    var backs = 0
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = ParticipantsUiState(),
+            onReloadParticipants = {},
+            onAppointManager = { _, _ -> },
+            onRemoveManager = {},
+            onBack = { backs++ },
+            onNavigate = {},
+        )
+      }
+    }
+
+    compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+    assertEquals(1, backs)
   }
 
   @Test

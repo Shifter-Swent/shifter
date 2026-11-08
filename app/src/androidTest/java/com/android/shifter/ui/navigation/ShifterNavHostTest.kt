@@ -608,6 +608,25 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerEvent_backButtonOnEveryTab_returnsToTheEvents() {
+    val nav = setAppAndGetNavigation()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+
+    assertBackButtonLeavesEveryTab(
+        nav,
+        OrganizerEvent("event-1"),
+        MyEventsTestTags.ORGANIZER_SCREEN,
+    )
+  }
+
+  @Test
+  fun volunteerEvent_backButtonOnEveryTab_returnsToTheEvents() {
+    val nav = setAppAndGetNavigation()
+
+    assertBackButtonLeavesEveryTab(nav, VolunteerEvent("event-1"), MyEventsTestTags.STAFF_SCREEN)
+  }
+
+  @Test
   fun organizerEvent_addMissionOpensTheFormAndBackReturns() {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
@@ -1031,7 +1050,9 @@ class ShifterNavHostTest {
   private fun assertPeopleScreenShown() {
     composeTestRule.onNodeWithText("Participants").assertIsDisplayed()
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).assertIsSelected()
-    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertDoesNotExist()
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(OrganizerEventScreen.People.title)
   }
 
   /** The event opens on the set's home tab, then each tab shows its own screen. */
@@ -1049,12 +1070,19 @@ class ShifterNavHostTest {
     when (tab) {
       OrganizerTabs.People -> assertPeopleScreenShown()
       VolunteerTabs.Map,
-      OrganizerTabs.Map ->
-          composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
-      // The Overview of an event follows the part the reader has in it, so it has no heading of
-      // its own to read: what navigation promises is the tab being the one selected, under the
-      // bar that reaches the others.
+      OrganizerTabs.Map -> {
+        composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
+        composeTestRule
+            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+            .assertTextEquals(tab.home.title)
+      }
+      // What the Overview of an event draws follows the part the reader has in it: what navigation
+      // promises is its title, and the tab being the one selected, under the bar that reaches the
+      // others.
       VolunteerTabs.Overview -> {
+        composeTestRule
+            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+            .assertTextEquals(tab.home.title)
         composeTestRule.onNodeWithTag(tab.testTag).assertIsSelected()
         composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
       }
@@ -1062,6 +1090,25 @@ class ShifterNavHostTest {
           composeTestRule
               .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
               .assertTextEquals(tab.home.title)
+    }
+  }
+
+  /** From each tab of [event], the on-screen back button leads to the list tagged [listTag]. */
+  private fun assertBackButtonLeavesEveryTab(
+      nav: NavigationActions,
+      event: EventMode,
+      listTag: String,
+  ) {
+    event.tabs.all.forEach { tab ->
+      composeTestRule.runOnUiThread { nav.enterEvent(event) }
+      composeTestRule.onNodeWithTag(tab.testTag).performClick()
+      composeTestRule
+          .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+          .assertTextEquals(tab.home.title)
+
+      composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+      composeTestRule.onNodeWithTag(listTag).assertIsDisplayed()
     }
   }
 
