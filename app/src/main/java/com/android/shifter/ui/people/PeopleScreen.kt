@@ -45,6 +45,7 @@ object PeopleScreenTestTags {
  *   its manager, after tapping their card.
  * @param onRemoveManager called with the id of a team whose manager the organizer confirmed to
  *   remove, after tapping their card.
+ * @param eventTitle the event's name, shown in the top bar.
  * @param onBack called to leave the event, from the back button of the top bar.
  */
 @Composable
@@ -57,6 +58,7 @@ fun PeopleScreen(
     onReloadParticipants: () -> Unit,
     onAppointManager: (teamId: String, userId: String) -> Unit,
     onRemoveManager: (teamId: String) -> Unit,
+    eventTitle: String,
     onBack: () -> Unit,
     onNavigate: (Tab) -> Unit,
     modifier: Modifier = Modifier,
@@ -68,7 +70,7 @@ fun PeopleScreen(
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
-      topBar = { ShifterTopBar(stringResource(R.string.people_title), onBack) },
+      topBar = { ShifterTopBar(eventTitle, onBack) },
       bottomBar = { ShifterNavigationBar(OrganizerTabs.all, OrganizerTabs.People, onNavigate) },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
@@ -151,6 +153,7 @@ private fun PeopleScreenPreview() {
         onReloadParticipants = {},
         onAppointManager = { _, _ -> },
         onRemoveManager = {},
+        eventTitle = "City Marathon",
         onBack = {},
         onNavigate = {},
     )

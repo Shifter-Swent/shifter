@@ -188,9 +188,8 @@ class AttendanceViewModelTest {
     assertFalse(state.isLoading)
     assertFalse(state.loadFailed)
     assertTrue(state.isOrganizer)
-    // The organizer watches the whole event, so they may watch its attendance, under its title.
+    // The organizer watches the whole event, so they may watch its attendance.
     assertEquals(true, state.canViewAttendance)
-    assertEquals("Festival", state.eventTitle)
     assertEquals(listOf("Set up", "Welcome", "Serve drinks"), titles())
     assertEquals(listOf("Logistics", null, "Bar"), state.missions.map { it.teamName })
     val setUp = state.missions.first()
@@ -256,7 +255,6 @@ class AttendanceViewModelTest {
     val state = viewModel.uiState.value
     // It comes from the teams they manage, never from having missions to show.
     assertEquals(true, state.canViewAttendance)
-    assertEquals("Festival", state.eventTitle)
     assertTrue(state.isEmpty)
   }
 

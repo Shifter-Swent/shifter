@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.events.EventBadge
+import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
@@ -39,7 +40,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 fun OrgaEventsScreen(
     viewModel: MyEventsViewModel,
     avatarInitial: String,
-    onManageEvent: (eventId: String) -> Unit,
+    onManageEvent: (EventCardUi) -> Unit,
     onCreateEventClick: () -> Unit,
     onVolunteerViewClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -62,7 +63,7 @@ fun OrgaEventsContent(
     state: MyEventsUiState,
     avatarInitial: String,
     onTabSelected: (EventTab) -> Unit,
-    onManageEvent: (eventId: String) -> Unit,
+    onManageEvent: (EventCardUi) -> Unit,
     onCreateEventClick: () -> Unit,
     onVolunteerViewClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -74,7 +75,7 @@ fun OrgaEventsContent(
       onTabSelected = onTabSelected,
       onAvatarClick = onAvatarClick,
       cardAction = { card ->
-        EventCardAction(EventCardActionType.MANAGE_EVENT) { onManageEvent(card.id) }
+        EventCardAction(EventCardActionType.MANAGE_EVENT) { onManageEvent(card) }
       },
       modifier = Modifier.testTag(MyEventsTestTags.ORGANIZER_SCREEN),
   ) {

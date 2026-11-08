@@ -98,7 +98,7 @@ class MyEventsScreensTest : TestCase() {
         OrgaEventsScreen(
             viewModel = viewModel,
             avatarInitial = "J",
-            onManageEvent = { managed += it },
+            onManageEvent = { managed += it.id },
             onCreateEventClick = { createClicks++ },
             onVolunteerViewClick = {},
             onAvatarClick = {},

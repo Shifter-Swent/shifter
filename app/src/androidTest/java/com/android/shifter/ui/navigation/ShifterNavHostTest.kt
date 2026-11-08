@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -458,9 +459,7 @@ class ShifterNavHostTest {
     pressBack()
 
     waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
   }
 
   @Test
@@ -577,7 +576,7 @@ class ShifterNavHostTest {
   fun volunteerEvent_opensOnOverviewAndReachesEveryTab() {
     val nav = setAppAndGetNavigation()
 
-    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1")) }
+    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1", EVENT_TITLE)) }
 
     assertTabsReachable(VolunteerTabs)
     pressBack()
@@ -633,7 +632,7 @@ class ShifterNavHostTest {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
 
-    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1", EVENT_TITLE)) }
 
     assertTabsReachable(OrganizerTabs)
     pressBack()
@@ -647,7 +646,7 @@ class ShifterNavHostTest {
 
     assertBackButtonLeavesEveryTab(
         nav,
-        OrganizerEvent("event-1"),
+        OrganizerEvent("event-1", EVENT_TITLE),
         MyEventsTestTags.ORGANIZER_SCREEN,
     )
   }
@@ -656,22 +655,24 @@ class ShifterNavHostTest {
   fun volunteerEvent_backButtonOnEveryTab_returnsToTheEvents() {
     val nav = setAppAndGetNavigation()
 
-    assertBackButtonLeavesEveryTab(nav, VolunteerEvent("event-1"), MyEventsTestTags.STAFF_SCREEN)
+    assertBackButtonLeavesEveryTab(
+        nav,
+        VolunteerEvent("event-1", EVENT_TITLE),
+        MyEventsTestTags.STAFF_SCREEN,
+    )
   }
 
   @Test
   fun organizerEvent_addMissionOpensTheFormAndBackReturns() {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
-    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1", EVENT_TITLE)) }
 
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsDisplayed()
 
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(EVENT_TITLE)
   }
 
   @Test
@@ -720,9 +721,7 @@ class ShifterNavHostTest {
 
     // The form has a title of its own, so wait for the Overview before reading the title.
     waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
     val mission = runBlocking {
       repositories.missionRepository.getMissionsByEvent(event.id).single()
     }
@@ -738,16 +737,15 @@ class ShifterNavHostTest {
   fun organizerEvent_peopleTabOpensThePeopleScreenAndBackReturns() {
     val nav = setAppAndGetNavigation()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
-    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1")) }
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent("event-1", EVENT_TITLE)) }
 
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
     assertPeopleScreenShown()
 
     // Its own bottom bar leads to the other tabs.
     composeTestRule.onNodeWithTag(OrganizerTabs.Overview.testTag).performClick()
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    composeTestRule.onNodeWithTag(OrganizerTabs.Overview.testTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(EVENT_TITLE)
 
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
     pressBack()
@@ -797,7 +795,7 @@ class ShifterNavHostTest {
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.runOnUiThread {
-      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id, event.title))
     }
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
     val teamBar = ParticipantsListTestTags.teamBar(teamIds.getValue(event.id))
@@ -837,7 +835,7 @@ class ShifterNavHostTest {
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.runOnUiThread {
-      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id, event.title))
     }
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
 
@@ -1028,9 +1026,10 @@ class ShifterNavHostTest {
     waitForNode(MyEventsTestTags.eventCard(event.id))
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventAction(event.id)).performClick()
 
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.Overview.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
+    // Once the attendance is loaded, the name is still only in the top bar.
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
+    composeTestRule.onAllNodesWithText(event.title).assertCountEquals(1)
   }
 
   @Test
@@ -1148,9 +1147,7 @@ class ShifterNavHostTest {
     // Back on the list, which shows the channel rather than opening it again.
     waitForNode(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(VolunteerEventScreen.Discussions.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
   }
 
   /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */
@@ -1168,7 +1165,7 @@ class ShifterNavHostTest {
     }
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.runOnUiThread {
-      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id, event.title))
     }
   }
 
@@ -1294,13 +1291,11 @@ class ShifterNavHostTest {
    */
   private fun setAppAndGetNavigation(): NavigationActions = NavigationActions(signInAndShowApp())
 
-  /** The real People screen is shown, with its own bottom bar on the People tab. */
+  /** The real People screen is shown, under the event's name, with the People tab selected. */
   private fun assertPeopleScreenShown() {
     composeTestRule.onNodeWithText("Participants").assertIsDisplayed()
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).assertIsSelected()
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals(OrganizerEventScreen.People.title)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(EVENT_TITLE)
   }
 
   /** The event opens on the set's home tab, then each tab shows its own screen. */
@@ -1320,25 +1315,23 @@ class ShifterNavHostTest {
       VolunteerTabs.Map,
       OrganizerTabs.Map -> {
         composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
-        composeTestRule
-            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-            .assertTextEquals(tab.home.title)
+        assertEventTabSelected(tab)
       }
       // What the Overview of an event draws follows the part the reader has in it: what navigation
-      // promises is its title, and the tab being the one selected, under the bar that reaches the
-      // others.
+      // promises is the event's name, and the tab being the one selected, under the bar that
+      // reaches the others.
       VolunteerTabs.Overview -> {
-        composeTestRule
-            .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-            .assertTextEquals(tab.home.title)
-        composeTestRule.onNodeWithTag(tab.testTag).assertIsSelected()
+        assertEventTabSelected(tab)
         composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
       }
-      else ->
-          composeTestRule
-              .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-              .assertTextEquals(tab.home.title)
+      else -> assertEventTabSelected(tab)
     }
+  }
+
+  /** [tab] is the one selected, under the name of the event, as every tab of an event shows it. */
+  private fun assertEventTabSelected(tab: Tab, eventTitle: String = EVENT_TITLE) {
+    composeTestRule.onNodeWithTag(tab.testTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(eventTitle)
   }
 
   /** From each tab of [event], the on-screen back button leads to the list tagged [listTag]. */
@@ -1350,9 +1343,7 @@ class ShifterNavHostTest {
     event.tabs.all.forEach { tab ->
       composeTestRule.runOnUiThread { nav.enterEvent(event) }
       composeTestRule.onNodeWithTag(tab.testTag).performClick()
-      composeTestRule
-          .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-          .assertTextEquals(tab.home.title)
+      assertEventTabSelected(tab, event.eventTitle)
 
       composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
@@ -1666,5 +1657,6 @@ class ShifterNavHostTest {
     const val COORDINATE_TOLERANCE = 1e-9
 
     val GENEVA = GeoPosition(46.2044, 6.1432)
+    const val EVENT_TITLE = "City Marathon"
   }
 }

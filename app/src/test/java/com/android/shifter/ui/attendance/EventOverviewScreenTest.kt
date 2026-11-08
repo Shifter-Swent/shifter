@@ -107,7 +107,7 @@ class EventOverviewScreenTest {
     show("manager")
 
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.TITLE).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertIsDisplayed()
     compose.onNodeWithText("Volunteer planning").assertDoesNotExist()
   }
 

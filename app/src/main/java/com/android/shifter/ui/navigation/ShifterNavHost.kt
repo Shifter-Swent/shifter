@@ -163,7 +163,7 @@ fun ShifterNavHost(
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
-            onOpenEvent = { eventId -> nav.enterEvent(VolunteerEvent(eventId)) },
+            onOpenEvent = { card -> nav.enterEvent(VolunteerEvent(card.id, card.title)) },
             onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
@@ -196,9 +196,10 @@ fun ShifterNavHost(
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
-        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(
+        tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview, VolunteerEvent>(
             VolunteerTabs.Overview,
             nav,
+            navController,
             // The Overview lays out its own content, so it is not put in the stand-in page.
             built = true,
             content = { entry ->
@@ -323,7 +324,7 @@ fun ShifterNavHost(
         OrgaEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
-            onManageEvent = { eventId -> nav.enterEvent(OrganizerEvent(eventId)) },
+            onManageEvent = { card -> nav.enterEvent(OrganizerEvent(card.id, card.title)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
             onVolunteerViewClick = { nav.enterApp(Volunteer) },
             onAvatarClick = { nav.navigateTo(Organizer.ProfileSettings) },
@@ -384,9 +385,10 @@ fun ShifterNavHost(
         )
       }
       navigation<OrganizerEvent>(startDestination = OrganizerTabs.home) {
-        tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview>(
+        tab<OrganizerTabs.Overview, OrganizerEventScreen.Overview, OrganizerEvent>(
             OrganizerTabs.Overview,
             nav,
+            navController,
             content = { entry ->
               val eventId =
                   remember(entry) {
@@ -512,6 +514,7 @@ fun ShifterNavHost(
                 onReloadParticipants = participants::load,
                 onAppointManager = participants::appointManager,
                 onRemoveManager = participants::removeManager,
+                eventTitle = eventTitle<OrganizerEvent>(navController, entry),
                 onBack = { nav.leaveEvent(OrganizerTabs) },
                 onNavigate = nav::switchTab,
             )
@@ -548,16 +551,18 @@ fun ShifterNavHost(
  * [content], given its back stack entry, under a bar with its title and a back button leaving the
  * event, and the [screens] opened on top of it.
  */
-private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
+private inline fun <reified T : Tab, reified S : Destination, reified E : EventMode> NavGraphBuilder
+    .tab(
     tab: Tab,
     nav: NavigationActions,
+    navController: NavHostController,
     built: Boolean = false,
     noinline content: @Composable (NavBackStackEntry) -> Unit = {},
     crossinline screens: NavGraphBuilder.() -> Unit = {},
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
-      TabPage(tab, nav) { padding ->
+      TabPage(tab, nav, eventTitle<E>(navController, entry)) { padding ->
         // Consumed, so the content, e.g. its imePadding, does not leave room for the bars again.
         Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
           if (built) content(entry) else PlaceholderPage { content(entry) }
@@ -586,7 +591,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
-      TabPage(tab, nav) { padding ->
+      TabPage(tab, nav, eventTitle<E>(navController, entry)) { padding ->
         MapScreen(
             viewModel =
                 viewModel(
@@ -628,9 +633,10 @@ private inline fun <
     noinline currentUserId: () -> String?,
     noinline channel: (ChatChannel) -> C,
 ) {
-  tab<T, S>(
+  tab<T, S, E>(
       tab,
       nav,
+      navController,
       built = true,
       content = { entry ->
         val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
@@ -673,6 +679,13 @@ private inline fun <
     }
   }
 }
+
+/** The name of the event open in the graph [E], read from its route, kept for [entry]. */
+@Composable
+private inline fun <reified E : EventMode> eventTitle(
+    navController: NavHostController,
+    entry: NavBackStackEntry,
+): String = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventTitle }
 
 /** Goes back from an event to the list of events it was opened from. */
 private fun NavigationActions.leaveEvent(set: TabSet) {
@@ -753,11 +766,12 @@ private fun PlaceholderPage(content: @Composable () -> Unit) {
 private fun TabPage(
     current: Tab,
     nav: NavigationActions,
+    eventTitle: String,
     content: @Composable (PaddingValues) -> Unit,
 ) {
   BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
-      topBar = { ShifterTopBar(current.home.title, onBack = { nav.leaveEvent(current.set) }) },
+      topBar = { ShifterTopBar(eventTitle, onBack = { nav.leaveEvent(current.set) }) },
       bottomBar = { ShifterNavigationBar(current.set.all, current, nav::switchTab) },
   ) { padding ->
     content(padding)

@@ -2,7 +2,6 @@
 <!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <!-- People screen -->
-    <string name="people_title">People</string>
     <string name="people_tab_participants">Participants</string>
     <string name="people_tab_requests">Requests</string>
 

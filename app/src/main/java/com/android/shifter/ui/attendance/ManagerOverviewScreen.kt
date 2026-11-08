@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.annotation.StringRes
@@ -76,7 +77,6 @@ import java.util.Locale
 
 object ManagerOverviewTestTags {
   const val SCREEN = "managerOverviewScreen"
-  const val TITLE = "managerOverviewTitle"
   const val SUBTITLE = "managerOverviewSubtitle"
   const val ALL_TEAMS_CHIP = "managerOverviewTeamChip_All"
   const val MISSION_COUNT = "managerOverviewMissionCount"
@@ -166,7 +166,6 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
 @Composable
 fun ManagerOverviewContent(
     state: AttendanceUiState,
-    eventTitle: String,
     now: Instant,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
@@ -226,7 +225,7 @@ fun ManagerOverviewContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-      item { Header(eventTitle, state.isOrganizer) }
+      item { Header(state.isOrganizer) }
       if (onAddMission != null && !state.isOrganizer) {
         item {
           FormPrimaryButton(
@@ -398,19 +397,10 @@ private fun AttendanceMission.status(now: Instant): AttendanceStatus {
   }
 }
 
-/**
- * The event being watched, named after the part the reader has in it; the tabs are navigation's.
- */
+/** The part the reader has in the event watched. The event's name is in the top bar of the tab. */
 @Composable
-private fun Header(eventTitle: String, isOrganizer: Boolean) {
+private fun Header(isOrganizer: Boolean) {
   Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-    Text(
-        text = eventTitle,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.testTag(ManagerOverviewTestTags.TITLE),
-    )
     Text(
         text =
             stringResource(

@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.membership.AvailabilitySlot
@@ -57,6 +58,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = { destination = it },
         )
@@ -95,6 +97,7 @@ class PeopleScreenTest {
             onReloadParticipants = { reloads++ },
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -142,6 +145,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = onAppointManager,
             onRemoveManager = onRemoveManager,
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -224,6 +228,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -239,7 +244,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun backButton_callsOnBack() {
+  fun topBar_showsTheEventNameAndBackCallsOnBack() {
     var backs = 0
     compose.setContent {
       MaterialTheme {
@@ -252,12 +257,14 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = { backs++ },
             onNavigate = {},
         )
       }
     }
 
+    compose.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("City Marathon")
     compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, backs)
