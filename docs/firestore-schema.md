@@ -321,12 +321,16 @@ can only be deleted once its volunteer is no longer a participant, and never onc
     What the manager still sees while the change has not reached the server:
 
     - **Offline:** the batch is saved on the device and sent as a whole once it reconnects, also
-      after the app was closed. Until then the manager sees the **last position shared before going
-      offline**, and no newer one: queued writes reach the server in order, so a position queued
-      after the change arrives after the setting and is refused.
+      after the app was closed. Until then the manager sees the **last position this device shared
+      before going offline**, and no newer one from it: a device sends its queued writes in order,
+      so a position it queued after the change arrives after the setting and is refused.
+    - **Another device of the same user:** the rules check the consent stored on the server, so a
+      device that is online keeps publishing until the server receives the change.
     - **A team the device never loaded:** offline, the teams come from the cache, so a team never
-      opened on this device is missed. Its position is removed by the publisher at its next
-      session, which removes it whenever the consent is off (#377).
+      opened on this device is missed. The publisher removes its position at its next session in
+      that team, since it removes it whenever the consent is off (#377). Sessions only run while
+      the event is ongoing: if none comes before the end, the position stays stored but nobody can
+      read it once the event's period is over.
     - **Uninstalled, or never reconnected:** the batch never leaves the device, and the position
       stays readable until the event's period ends.
   - **Leaving the team:** done. Every path that takes a volunteer out of a team's `memberIds`

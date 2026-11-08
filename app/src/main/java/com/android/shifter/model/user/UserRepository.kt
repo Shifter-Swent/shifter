@@ -55,10 +55,11 @@ interface UserRepository {
    * says, so the manager stops seeing it exactly when the server receives the new setting, and
    * never sees one without the other. [sharedIn] is ignored when turning it on.
    *
-   * Offline, the change is saved locally at once and sent as a whole when the device reconnects,
-   * also if the app is closed meanwhile; until then the manager still sees the last position. The
-   * call only returns once the server has it, so a caller should stop waiting after a timeout, as
-   * for [setMode].
+   * Offline, the change is queued and sent as a whole when the device reconnects, also if the app
+   * is closed meanwhile; until then the manager still sees the last position. It is visible at once
+   * on this device only if the profile is already cached, for instance read with [getUser]: without
+   * a local copy, there is nothing to apply it to until the server answers. The call only returns
+   * once the server has it, so a caller should stop waiting after a timeout, as for [setMode].
    */
   suspend fun setLocationSharing(uid: String, enabled: Boolean, sharedIn: Collection<Team>)
 

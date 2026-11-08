@@ -290,19 +290,25 @@ class UserRepositoryFirestoreEmulatorTest {
   @Test
   fun setLocationSharing_savesTheConsentAndOnlyTurningItOffDeletesThePositions() = emulatorTest {
     step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
-    val team = runningEventWithTeam()
+    // A volunteer accepted to two events, so the batch spans two teams of different events.
+    val teams = listOf(runningEventWithTeam("first"), runningEventWithTeam("second"))
 
-    step("turn on") { repository.setLocationSharing(uid, true, listOf(team)) }
+    step("turn on") { repository.setLocationSharing(uid, true, teams) }
     assertEquals(true, step("read profile") { repository.getUser(uid) }?.locationSharingEnabled)
-    step("share") { shareLocation(team) }
+    teams.forEach { step("share in ${it.eventId}") { shareLocation(it) } }
     // Turning it on deletes nothing, even with teams given.
-    step("turn on again") { repository.setLocationSharing(uid, true, listOf(team)) }
-    assertTrue(step("read position") { positionOf(team).get(Source.SERVER).await() }.exists())
+    step("turn on again") { repository.setLocationSharing(uid, true, teams) }
+    teams.forEach { assertTrue(step("read position") { serverPositionExists(it) }) }
 
-    step("turn off") { repository.setLocationSharing(uid, false, listOf(team)) }
+    step("turn off") { repository.setLocationSharing(uid, false, teams) }
 
     assertEquals(false, step("read profile") { repository.getUser(uid) }?.locationSharingEnabled)
-    assertFalse(step("read position") { positionOf(team).get(Source.SERVER).await() }.exists())
+    teams.forEach {
+      assertFalse(
+          "position left in ${it.eventId}",
+          step("read position") { serverPositionExists(it) },
+      )
+    }
   }
 
   /**
@@ -332,7 +338,7 @@ class UserRepositoryFirestoreEmulatorTest {
       step("send the queued change") { turningOff.await() }
     }
 
-    assertFalse(step("read position") { positionOf(team).get(Source.SERVER).await() }.exists())
+    assertFalse(step("read position") { serverPositionExists(team) })
     val stored = step("read profile") { profileRef().get(Source.SERVER).await() }
     assertEquals(false, stored.getBoolean(LOCATION_SHARING_ENABLED))
   }
@@ -347,9 +353,11 @@ class UserRepositoryFirestoreEmulatorTest {
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
-  /** An event running now, with a team of which the signed-in user is a member. */
-  private suspend fun runningEventWithTeam(): Team {
-    val eventId = "event-$uid"
+  /**
+   * An event running now, named after [name], with a team of which the signed-in user is a member.
+   */
+  private suspend fun runningEventWithTeam(name: String = "event"): Team {
+    val eventId = "$name-$uid"
     val now = Instant.now()
     step("create event") {
       FirestoreEmulatorAdmin.createDocument(
@@ -391,6 +399,9 @@ class UserRepositoryFirestoreEmulatorTest {
 
   private fun positionOf(team: Team) =
       db.document("events/${team.eventId}/teams/${team.id}/liveLocations/$uid")
+
+  private suspend fun serverPositionExists(team: Team) =
+      positionOf(team).get(Source.SERVER).await().exists()
 
   private fun profileRef() = db.collection(USERS_COLLECTION).document(uid)
 
