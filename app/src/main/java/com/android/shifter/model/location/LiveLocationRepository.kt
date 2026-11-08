@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import java.time.Instant
@@ -34,8 +35,10 @@ import kotlinx.coroutines.flow.Flow
  * - **Consent:** the publishing logic must not share a position while the volunteer's
  *   [locationSharingEnabled][com.swent.shifter.model.user.User.locationSharingEnabled] is off, and
  *   `firestore.rules` refuse the write on their own if it tries. Turning it off stops the updates
- *   but does not remove the position already shared: the publishing logic has to call
- *   [removeLocation], and `docs/firestore-schema.md` records what that leaves open.
+ *   but the rules do not hide the position already shared:
+ *   [UserRepository.setLocationSharing][com.swent.shifter.model.user.UserRepository.setLocationSharing]
+ *   deletes it with the setting, the publishing logic calls [removeLocation] for what that missed,
+ *   and `docs/firestore-schema.md` records what is still left open.
  * - **Staleness:** how old a position may be before it is ignored is left to the consumer, which
  *   knows [LiveLocation.measuredAt]. The rules only bound it in the future, so a wrong device clock
  *   cannot make a position look fresh for ever.
