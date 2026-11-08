@@ -551,7 +551,8 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       TabPage(tab, nav) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        // Consumed, so the content, e.g. its imePadding, does not leave room for the bars again.
+        Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
           if (built) content(entry) else PlaceholderPage { content(entry) }
         }
       }

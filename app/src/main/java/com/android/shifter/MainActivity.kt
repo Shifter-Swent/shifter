@@ -15,10 +15,12 @@ import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.navigation.ShifterNavHost
 import com.swent.shifter.ui.theme.ShifterTheme
+import com.swent.shifter.ui.theme.enableShifterEdgeToEdge
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    enableShifterEdgeToEdge()
     val repositories = RepositoryProviderFactory.production
     // Firebase restores the previous session synchronously, so a returning user skips sign-in.
     val isSignedIn = repositories.authRepository.currentUser() != null
