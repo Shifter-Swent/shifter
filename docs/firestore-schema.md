@@ -183,8 +183,10 @@ time the server received it.
 | `completed` | boolean | `true` once closed by hand before its end, which cannot be undone (checked by the rules). A mission past its `endAt` is completed whatever this says: that is computed, never written |
 
 Two GeoTimed missions of the same team must not overlap; adjacent slots are allowed. The app checks
-this before writing (`FirestoreMissionRepository.createMission`), not the rules, and the check is
-not atomic.
+this before writing (`FirestoreMissionRepository.createMission` and `updateMission`), not the
+rules, and the check is not atomic. `updateMission` only writes `title`, `description`,
+`volunteersNeeded`, `startAt`, `endAt` and `location`. It refuses a `volunteersNeeded` lower than
+the number of `assigneeIds`, and keeps the check-ins.
 
 ### `events/{eventId}/missions/{missionId}/checkIns/{uid}`
 

@@ -612,6 +612,8 @@ private class RecordingMissionRepository : MissionRepository {
       assigneeIds: List<String>,
   ) = throw UnsupportedOperationException()
 
+  override suspend fun updateMission(mission: Mission) = throw UnsupportedOperationException()
+
   override suspend fun markCompleted(eventId: String, missionId: String) =
       throw UnsupportedOperationException()
 }

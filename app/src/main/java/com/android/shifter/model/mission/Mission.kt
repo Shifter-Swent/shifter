@@ -59,6 +59,43 @@ data class Mission(
           eventId == other.eventId &&
           startAt < other.endAt &&
           other.startAt < endAt
+
+  /**
+   * This mission with the values [MissionRepository.updateMission] saves taken from [edited]: its
+   * title, description, schedule, location and volunteers needed. Everything else, including the
+   * team and the assignees, is kept.
+   */
+  fun withEditableFieldsOf(edited: Mission): Mission =
+      copy(
+          title = edited.title,
+          description = edited.description,
+          volunteersNeeded = edited.volunteersNeeded,
+          startAt = edited.startAt,
+          endAt = edited.endAt,
+          location = edited.location,
+      )
+}
+
+/**
+ * Checks the input of [MissionRepository.updateMission] that needs no stored data, so every
+ * implementation rejects it the same way, with an [IllegalArgumentException].
+ */
+internal fun requireValidUpdate(mission: Mission) {
+  require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
+  require(mission.id.isNotEmpty()) { "Only a created mission can be updated" }
+  require(mission.startAt < mission.endAt) { "A mission must end after it starts" }
+  require(mission.volunteersNeeded >= 1) { "A mission needs at least one volunteer" }
+}
+
+/**
+ * Throws [IllegalArgumentException] when [edited] needs fewer volunteers than the people already
+ * assigned to the [stored] mission.
+ */
+internal fun requireRoomForAssignees(stored: Mission, edited: Mission) {
+  require(edited.volunteersNeeded >= stored.assigneeIds.size) {
+    "A mission with ${stored.assigneeIds.size} assignees cannot need only " +
+        "${edited.volunteersNeeded} volunteers"
+  }
 }
 
 /**

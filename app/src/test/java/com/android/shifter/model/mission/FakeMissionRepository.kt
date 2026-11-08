@@ -70,6 +70,20 @@ class FakeMissionRepository : MissionRepository {
     missions[index] = mission.copy(assigneeIds = assigneeIds)
   }
 
+  override suspend fun updateMission(mission: Mission) {
+    failure?.let { throw it }
+    requireValidUpdate(mission)
+    val index = missions.indexOfFirst { it.eventId == mission.eventId && it.id == mission.id }
+    if (index < 0) throw MissionRepositoryException.NotFound()
+    val stored = missions[index]
+    val updated = stored.withEditableFieldsOf(mission)
+    missions
+        .firstOrNull { it.id != mission.id && updated.conflictsWith(it) }
+        ?.let { throw MissionOverlapException(it) }
+    requireRoomForAssignees(stored, mission)
+    missions[index] = updated
+  }
+
   override suspend fun markCompleted(eventId: String, missionId: String) {
     failure?.let { throw it }
     val index = missions.indexOfFirst { it.eventId == eventId && it.id == missionId }
