@@ -1,0 +1,453 @@
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+package com.swent.shifter.model.location
+
+import com.swent.shifter.model.membership.MembershipRequestRepositoryException
+import java.time.Duration
+import java.time.Instant
+import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * [LiveLocationCoordinator] against a double for the sessions, so what is asserted is which
+ * sessions exist rather than what a publisher does with a GPS.
+ *
+ * Time is virtual: [elapse] moves the test scheduler and the coordinator's clock together, so a
+ * refresh happens exactly when the test says and never because the suite was slow.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class LiveLocationCoordinatorTest {
+
+  private val sessions = FakeSessions()
+
+  /** What the resolver answers, or throws when [failure] is set. */
+  private var eligible: List<LiveLocationTarget> = emptyList()
+  private var failure: Exception? = null
+
+  /** When true, the resolver never answers, as a stalled repository read would not. */
+  private var hanging = false
+
+  private var clock = START
+  private val consent = MutableStateFlow(true)
+  private val refreshes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+  /** How many times the resolver was asked, which shows whether the refreshing is blocked. */
+  private var resolveCalls = 0
+
+  private val targets = LiveLocationTargets {
+    resolveCalls++
+    failure?.let { throw it }
+    if (hanging) awaitCancellation()
+    eligible
+  }
+
+  private val coordinator =
+      LiveLocationCoordinator(targets, sessions, INTERVAL, STALENESS, now = { clock })
+
+  @Test
+  fun run_withOneEligibleTarget_startsOneSession() = runTest {
+    eligible = listOf(BAR)
+
+    start()
+
+    assertEquals(listOf(BAR), sessions.started)
+    assertEquals(setOf(BAR), sessions.active)
+  }
+
+  @Test
+  fun run_withTargetsInSeveralEventsAndTeams_startsOneSessionEach() = runTest {
+    eligible = listOf(BAR, STAGE, OTHER_EVENT_BAR)
+
+    start()
+
+    assertEquals(setOf(BAR, STAGE, OTHER_EVENT_BAR), sessions.active)
+    assertEquals(3, sessions.started.size)
+  }
+
+  @Test
+  fun run_withTheSameTargetTwice_startsOneSession() = runTest {
+    // Two teams of the same event differ by teamId alone, so a pair is only ever one session.
+    eligible = listOf(BAR, BAR)
+
+    start()
+
+    assertEquals(listOf(BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenARefreshAnswersTheSameTargets_keepsTheSessionsRunning() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    elapse(INTERVAL)
+    elapse(INTERVAL)
+
+    assertEquals(2, sessions.started.size)
+    assertEquals(setOf(BAR, STAGE), sessions.active)
+  }
+
+  @Test
+  fun run_whenATargetBecomesEligible_startsItsSession() = runTest {
+    eligible = listOf(BAR)
+    start()
+
+    eligible = listOf(BAR, STAGE)
+    elapse(INTERVAL)
+
+    assertEquals(listOf(BAR, STAGE), sessions.started)
+    assertEquals(setOf(BAR, STAGE), sessions.active)
+  }
+
+  @Test
+  fun run_whenATargetStopsBeingEligible_cancelsItsSessionOnly() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    eligible = listOf(STAGE)
+    elapse(INTERVAL)
+
+    assertEquals(setOf(STAGE), sessions.active)
+  }
+
+  @Test
+  fun run_whenARefreshOmitsATargetAndThenAnswersItAgain_cancelsThenRestartsIt() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    // A read that lost one event to a per-event repository failure looks exactly like this: a
+    // success with fewer targets. The session goes at once rather than after STALENESS.
+    eligible = listOf(STAGE)
+    elapse(INTERVAL)
+    assertEquals(setOf(STAGE), sessions.active)
+
+    eligible = listOf(BAR, STAGE)
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR, STAGE), sessions.active)
+    assertEquals(listOf(BAR, STAGE, BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenNothingIsEligibleAnyMore_cancelsEverySession() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    eligible = emptyList()
+    elapse(INTERVAL)
+
+    assertTrue(sessions.active.isEmpty())
+  }
+
+  @Test
+  fun run_whenARefreshIsTriggered_reconcilesWithoutWaitingForTheInterval() = runTest {
+    start()
+
+    eligible = listOf(BAR)
+    refreshes.emit(Unit)
+    runCurrent()
+
+    assertEquals(setOf(BAR), sessions.active)
+  }
+
+  @Test
+  fun run_cancelled_cancelsEverySession() = runTest {
+    eligible = listOf(BAR, STAGE)
+    val running = start()
+
+    running.cancelAndJoin()
+
+    assertTrue(sessions.active.isEmpty())
+  }
+
+  @Test
+  fun run_whenEligibilityCannotBeReadAtFirst_startsNothingAndRetries() = runTest {
+    failure = unavailable()
+    eligible = listOf(BAR)
+
+    start()
+    assertTrue(sessions.started.isEmpty())
+
+    failure = null
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR), sessions.active)
+  }
+
+  @Test
+  fun run_whenEligibilityCannotBeRead_keepsTheSessionsUntilTheStalenessHasPassed() = runTest {
+    eligible = listOf(BAR)
+    start()
+    failure = unavailable()
+
+    // STALENESS is three intervals, so the first two refreshes keep the sessions and the third,
+    // the first one at or past the bound, drops them.
+    elapse(INTERVAL)
+    assertEquals(setOf(BAR), sessions.active)
+    elapse(INTERVAL)
+    assertEquals(setOf(BAR), sessions.active)
+
+    elapse(INTERVAL)
+
+    assertTrue(sessions.active.isEmpty())
+  }
+
+  @Test
+  fun run_whenEligibilityNeverAnswers_timesOutAndStillCancelsTheSessions() = runTest {
+    eligible = listOf(BAR)
+    start()
+
+    // A read that neither answers nor throws would block the refreshing, and with it the staleness
+    // check, if the refresh were not bounded. The ticks are buffered, so one still arrives per
+    // interval and the timeout is what lets the next one be taken.
+    hanging = true
+
+    elapse(INTERVAL) // A refresh is taken and hangs, holding the only answer there is.
+    assertEquals(2, resolveCalls)
+    assertEquals(setOf(BAR), sessions.active)
+
+    // That one was interrupted by its timeout, which is the only way another can be taken: a
+    // refresh left hanging would leave this at two for ever. Unread, but not yet stale enough.
+    elapse(INTERVAL)
+    assertEquals(3, resolveCalls)
+    assertEquals(setOf(BAR), sessions.active)
+
+    elapse(INTERVAL) // The timeout now lands at the bound.
+
+    assertTrue(sessions.active.isEmpty())
+  }
+
+  @Test
+  fun run_whenEligibilityAnswersAgainAfterHanging_startsTheSessionsAgain() = runTest {
+    eligible = listOf(BAR)
+    start()
+    hanging = true
+    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
+    assertTrue(sessions.active.isEmpty())
+
+    hanging = false
+    elapse(INTERVAL)
+
+    // Started twice, so this is a second session and not the first one still running: a timeout
+    // that never fired would leave that one alive and looking just as eligible.
+    assertEquals(listOf(BAR, BAR), sessions.started)
+    assertEquals(setOf(BAR), sessions.active)
+  }
+
+  @Test
+  fun run_whenEligibilityComesBackAfterTheStaleness_startsTheSessionsAgain() = runTest {
+    eligible = listOf(BAR)
+    start()
+    failure = unavailable()
+
+    // One refresh per interval up to the bound; which refresh cancels is held down above.
+    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
+    assertTrue(sessions.active.isEmpty())
+
+    failure = null
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR), sessions.active)
+    assertEquals(listOf(BAR, BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenOneSessionFails_leavesTheOthersRunning() = runTest {
+    sessions.failing += BAR
+    eligible = listOf(BAR, STAGE)
+    val faults = mutableListOf<Throwable>()
+
+    start(faults)
+
+    assertEquals(setOf(STAGE), sessions.active)
+    assertEquals(1, faults.size)
+  }
+
+  @Test
+  fun run_whenOneSessionFails_startsItAgainAtTheNextRefresh() = runTest {
+    sessions.failing += BAR
+    eligible = listOf(BAR)
+    val faults = mutableListOf<Throwable>()
+    start(faults)
+
+    sessions.failing -= BAR
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR), sessions.active)
+    assertEquals(listOf(BAR, BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenASessionEndsOnItsOwn_startsItAgainAtTheNextRefresh() = runTest {
+    sessions.completing += BAR
+    eligible = listOf(BAR)
+    start()
+
+    elapse(INTERVAL)
+
+    assertEquals(listOf(BAR, BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenTheConsentChanges_forwardsEveryValueAsItIs() = runTest {
+    eligible = listOf(BAR)
+    start()
+
+    consent.value = false
+    runCurrent()
+    consent.value = true
+    runCurrent()
+
+    // No placeholder before the first real value, and the change reached the session without any
+    // refresh: not a single interval passed in this test.
+    assertEquals(listOf(true, false, true), sessions.consentSeen[BAR])
+  }
+
+  @Test
+  fun run_withTheConsentOff_stillStartsTheSession() = runTest {
+    // The session is what takes the position out again, so consent off is not "no session".
+    consent.value = false
+    eligible = listOf(BAR)
+
+    start()
+
+    assertEquals(setOf(BAR), sessions.active)
+    assertEquals(listOf(false), sessions.consentSeen[BAR])
+  }
+
+  @Test
+  fun run_givesEverySessionTheSameConsentFlow() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    consent.value = false
+    runCurrent()
+
+    assertEquals(listOf(true, false), sessions.consentSeen[BAR])
+    assertEquals(listOf(true, false), sessions.consentSeen[STAGE])
+  }
+
+  @Test
+  fun of_addressesTheSessionWithTheTargetsEventAndTeam() =
+      runTest(UnconfinedTestDispatcher()) {
+        val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
+        val provider = FakeLocationProvider()
+        val publisher = LiveLocationPublisher(provider, repository, now = { clock })
+        backgroundScope.launch {
+          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true))
+        }
+
+        provider.emit(GENEVA)
+
+        assertEquals(
+            listOf(LiveLocation(VOLUNTEER, GENEVA, clock)),
+            repository.observeTeamLocations(BAR.eventId, BAR.teamId).first(),
+        )
+        // Nothing under the pair the other way round, which a transposed adapter would write to.
+        assertEquals(
+            emptyList<LiveLocation>(),
+            repository.observeTeamLocations(BAR.teamId, BAR.eventId).first(),
+        )
+      }
+
+  /** The kind of failure a repository raises when the backend cannot be reached. */
+  private fun unavailable() = MembershipRequestRepositoryException.Unavailable()
+
+  /**
+   * Starts the coordinator and lets its first refresh run, reporting faults to [faults].
+   *
+   * In [TestScope.backgroundScope], since [LiveLocationCoordinator.run] only ends when it is
+   * cancelled: the test would otherwise wait for it for ever.
+   */
+  private fun TestScope.start(faults: MutableList<Throwable> = mutableListOf()): Job {
+    val running =
+        backgroundScope.launch(CoroutineExceptionHandler { _, e -> faults += e }) {
+          coordinator.run(consent, refreshes)
+        }
+    runCurrent()
+    return running
+  }
+
+  /**
+   * Moves the scheduler and the coordinator's clock by [duration], then runs what is due.
+   *
+   * The clock moves first, so everything the step runs reads it at the end of the step. A test that
+   * cares which refresh observes which staleness therefore walks one [INTERVAL] at a time rather
+   * than jumping, a jump letting the first refresh of the step already see the final clock.
+   */
+  private fun TestScope.elapse(duration: Duration) {
+    clock += duration
+    advanceTimeBy(duration.toKotlinDuration())
+    runCurrent()
+  }
+
+  /**
+   * A double for [LiveLocationSessions] recording the sessions asked for, the ones running, and the
+   * consent each one saw.
+   */
+  private class FakeSessions : LiveLocationSessions {
+
+    /** Every target a session was started for, in order, restarts included. */
+    val started = mutableListOf<LiveLocationTarget>()
+
+    /** The targets with a session running right now. */
+    val active = mutableSetOf<LiveLocationTarget>()
+
+    /** What each session read from the consent flow, in order. */
+    val consentSeen = mutableMapOf<LiveLocationTarget, MutableList<Boolean>>()
+
+    /** Targets whose session fails at once, as an unexpected fault would. */
+    val failing = mutableSetOf<LiveLocationTarget>()
+
+    /** Targets whose session returns at once instead of running until cancelled. */
+    val completing = mutableSetOf<LiveLocationTarget>()
+
+    override suspend fun publish(target: LiveLocationTarget, sharingEnabled: Flow<Boolean>) {
+      started += target
+      if (target in failing) throw IllegalStateException("The session of $target failed")
+      if (target in completing) return
+      active += target
+      try {
+        sharingEnabled.collect { consentSeen.getOrPut(target) { mutableListOf() } += it }
+        // A consent flow that completes does not end the session, as the real publisher's does not.
+        awaitCancellation()
+      } finally {
+        active -= target
+      }
+    }
+  }
+
+  private companion object {
+    val START: Instant = Instant.parse("2026-11-08T14:00:00Z")
+
+    val INTERVAL: Duration = Duration.ofMinutes(1)
+
+    /** How many refreshes [STALENESS] spans, so a test can walk up to the bound one at a time. */
+    const val STALENESS_REFRESHES = 3
+
+    /** Three refreshes' worth, so a test can fail two of them and still keep the sessions. */
+    val STALENESS: Duration = INTERVAL.multipliedBy(STALENESS_REFRESHES.toLong())
+
+    const val VOLUNTEER = "volunteer"
+    val GENEVA = GeoPosition(46.2044, 6.1432)
+
+    val BAR = LiveLocationTarget("event", "team-bar")
+    val STAGE = LiveLocationTarget("event", "team-stage")
+    val OTHER_EVENT_BAR = LiveLocationTarget("other-event", "team-bar")
+  }
+}
