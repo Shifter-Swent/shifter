@@ -42,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserMode
@@ -188,6 +189,12 @@ private object PreviewUserRepository : UserRepository {
 
   override suspend fun setMode(uid: String, mode: UserMode) =
       throw UnsupportedOperationException("Preview")
+
+  override suspend fun setLocationSharing(
+      uid: String,
+      enabled: Boolean,
+      sharedIn: Collection<Team>,
+  ) = throw UnsupportedOperationException("Preview")
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = null
 }

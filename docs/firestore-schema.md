@@ -313,12 +313,22 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   nobody reads the position any more, whatever happened to the consent or the membership. Inside
   the period, only a delete hides it, and only the volunteer themself may delete it:
 
-  - **Sharing turned off:** the publishing PR has to delete the position in the same step as the
-    setting. That covers the app's own path, not an app that is offline, killed or uninstalled at
-    that moment: the position then stays readable to the manager until the volunteer's app runs
-    again or the event's period ends. Closing that gap needs a backend mechanism (a scheduled
-    function deleting positions whose owner has sharing off, or a server-written timestamp), which
-    no PR of #305 plans.
+  - **Sharing turned off:** done (#404). `UserRepository.setLocationSharing` writes
+    the setting and deletes the volunteer's position in each of their teams **in one batch**, so
+    the server receives both at once and the manager stops seeing the position at that moment.
+    The teams are those of every event the volunteer was accepted to.
+
+    What the manager still sees while the change has not reached the server:
+
+    - **Offline:** the batch is saved on the device and sent as a whole once it reconnects, also
+      after the app was closed. Until then the manager sees the **last position shared before going
+      offline**, and no newer one: queued writes reach the server in order, so a position queued
+      after the change arrives after the setting and is refused.
+    - **A team the device never loaded:** offline, the teams come from the cache, so a team never
+      opened on this device is missed. Its position is removed by the publisher at its next
+      session, which removes it whenever the consent is off (#377).
+    - **Uninstalled, or never reconnected:** the batch never leaves the device, and the position
+      stays readable until the event's period ends.
   - **Leaving the team:** done. Every path that takes a volunteer out of a team's `memberIds`
     deletes their position in the same commit, so the manager stops seeing it at once:
 
