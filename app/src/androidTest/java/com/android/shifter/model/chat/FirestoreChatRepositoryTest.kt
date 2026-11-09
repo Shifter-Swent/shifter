@@ -117,6 +117,9 @@ class FirestoreChatRepositoryTest {
     assertFailsWith<ChatRepositoryException.NotAllowed> {
       repository.send(channel, "Briefing at 18:00", announcement = true)
     }
+
+    // The refused announcement is taken out of the channel again.
+    assertEquals(listOf("Hello team"), repository.messages(channel).first().texts())
   }
 
   @Test
