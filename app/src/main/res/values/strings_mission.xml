@@ -52,6 +52,25 @@
     <string name="add_mission_error_conflict">Overlaps \"%1$s\" of the same team (%2$s – %3$s). Change the time slot or the team.</string>
     <string name="add_mission_error_save_failed">Could not add the mission. Try again.</string>
 
+    <!-- Editing an existing mission, in the same form -->
+    <string name="edit_mission_title">Edit the mission</string>
+    <string name="edit_mission_submit">Save the changes</string>
+    <string name="edit_mission_save_failed">Could not save the changes. Try again.</string>
+    <string name="edit_mission_load_failed">Could not load the mission.</string>
+    <string name="edit_mission_not_allowed">Only the organizer and the manager of its team can change this mission.</string>
+    <string name="edit_mission_not_found">This mission no longer exists.</string>
+    <string name="edit_mission_completed">This mission is completed and can no longer be changed.</string>
+    <string name="edit_mission_slot_not_editable">This mission lasts a day or more, which this form cannot show: it cannot be changed here.</string>
+    <string name="edit_mission_error_conflict">Overlaps \"%1$s\" of the same team (%2$s – %3$s). Change the time slot.</string>
+    <plurals name="edit_mission_assigned">
+        <item quantity="one">%1$d person is assigned. Change who from the Overview.</item>
+        <item quantity="other">%1$d people are assigned. Change who from the Overview.</item>
+    </plurals>
+    <plurals name="edit_mission_below_assignees">
+        <item quantity="one">%1$d person is already assigned: the mission needs at least as many volunteers.</item>
+        <item quantity="other">%1$d people are already assigned: the mission needs at least as many volunteers.</item>
+    </plurals>
+
     <!-- Assigning people to a mission -->
     <string name="assignee_picker_label">Assigned people (optional)</string>
     <string name="assignee_picker_count">Assigned: %1$d/%2$d</string>

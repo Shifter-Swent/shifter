@@ -316,6 +316,16 @@ sealed interface OrganizerEventScreen : Destination {
       get() = OrganizerTabs.Overview
   }
 
+  /** Edit form of the mission [missionId], opened on top of the event's Overview. */
+  @Serializable
+  data class EditMission(val missionId: String) : OrganizerEventScreen {
+    override val title
+      get() = "Edit mission"
+
+    override val tab
+      get() = OrganizerTabs.Overview
+  }
+
   /** Teams of an event that already exists, opened on top of its Overview. */
   @Serializable
   data object ManageTeams : OrganizerEventScreen {

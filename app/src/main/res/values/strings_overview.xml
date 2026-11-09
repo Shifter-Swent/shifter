@@ -26,4 +26,6 @@
     <string name="overview_assign_save">Save</string>
     <string name="overview_assign_cancel">Cancel</string>
     <string name="overview_assign_failed">Could not save who is assigned. Try again.</string>
+    <!-- What tapping a mission does, read by screen readers -->
+    <string name="overview_edit_mission">Edit the mission</string>
 </resources>

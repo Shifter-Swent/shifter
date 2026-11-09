@@ -58,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -112,6 +113,11 @@ object AddMissionScreenTestTags {
   const val LOCATION_PICKER_DIALOG = "AddMissionLocationPickerDialog"
   const val LOCATION_PICKER_CLOSE = "AddMissionLocationPickerClose"
   const val LOCATION_PICKER_CONFIRM = "AddMissionLocationPickerConfirm"
+  const val ASSIGNED_COUNT = "AddMissionAssignedCount"
+  const val BELOW_ASSIGNEES = "AddMissionBelowAssignees"
+  const val NOT_FOUND = "AddMissionNotFound"
+  const val COMPLETED = "AddMissionCompleted"
+  const val SLOT_NOT_EDITABLE = "AddMissionSlotNotEditable"
 
   fun teamChip(teamId: String) = "AddMissionTeamChip_$teamId"
 
@@ -119,11 +125,12 @@ object AddMissionScreenTestTags {
 }
 
 /**
- * Lets the organizer of an event, or the manager of one of its teams, add a mission to it.
+ * Lets the organizer of an event, or the manager of one of its teams, add a mission to it, or edit
+ * one when [viewModel] was given a mission.
  *
- * @param onMissionSaved called once with the persisted mission, e.g. to go back to the management
- *   screen and confirm it.
- * @param onBack called when the organizer leaves without adding the mission.
+ * @param onMissionSaved called once with the persisted mission, added or edited, e.g. to go back to
+ *   the management screen and confirm it.
+ * @param onBack called when the organizer leaves without saving.
  */
 @Composable
 fun AddMissionScreen(
@@ -198,11 +205,15 @@ data class AddMissionActions(
 /** Stateless form of [AddMissionScreen]: renders [state] and reports every interaction. */
 @Composable
 fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
-  val editable = !state.isSaving
+  // A completed mission can no longer be changed, so its fields are disabled too.
+  val editable = !state.isSaving && !state.missionCompleted
   Scaffold(
       topBar = {
         ShifterTopBar(
-            title = stringResource(R.string.add_mission_title),
+            title =
+                stringResource(
+                    if (state.isEditing) R.string.edit_mission_title else R.string.add_mission_title
+                ),
             onBack = actions.onBack,
         )
       }
@@ -222,12 +233,30 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
       EventContext(state, actions.onRetryLoad)
       if (state.notAllowed) {
         Text(
-            text = stringResource(R.string.add_mission_not_allowed),
+            text =
+                stringResource(
+                    if (state.isEditing) R.string.edit_mission_not_allowed
+                    else R.string.add_mission_not_allowed
+                ),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag(AddMissionScreenTestTags.NOT_ALLOWED),
         )
         return@Column
+      }
+      // Nothing to type in before the mission arrives, as it would overwrite what was typed.
+      if (state.isEditing && !state.missionLoaded) return@Column
+      if (state.missionNotFound) {
+        ErrorText(R.string.edit_mission_not_found, AddMissionScreenTestTags.NOT_FOUND)
+        return@Column
+      }
+      if (state.missionCompleted) {
+        ErrorText(R.string.edit_mission_completed, AddMissionScreenTestTags.COMPLETED)
+      } else if (state.slotNotEditable) {
+        ErrorText(
+            R.string.edit_mission_slot_not_editable,
+            AddMissionScreenTestTags.SLOT_NOT_EDITABLE,
+        )
       }
       MissionTextField(
           value = state.title,
@@ -252,7 +281,8 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
             teams = state.teams,
             canChooseGeneral = state.canChooseGeneral,
             selectedId = state.teamId,
-            enabled = editable,
+            // An edited mission keeps its team, changed from nowhere yet.
+            enabled = editable && !state.isEditing,
             onTeamChange = actions.onTeamChange,
         )
       }
@@ -263,8 +293,29 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
           onIncrease = actions.onIncreaseVolunteers,
           onDecrease = actions.onDecreaseVolunteers,
       )
-      // Who may be assigned depends on the team, known once the event has loaded.
-      if (state.event != null) {
+      state.belowAssignees?.let { count ->
+        Text(
+            text = pluralStringResource(R.plurals.edit_mission_below_assignees, count, count),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(AddMissionScreenTestTags.BELOW_ASSIGNEES),
+        )
+      }
+      // The assignees of an existing mission are changed from the Overview, not here.
+      if (state.isEditing) {
+        Text(
+            text =
+                pluralStringResource(
+                    R.plurals.edit_mission_assigned,
+                    state.assigneeCount,
+                    state.assigneeCount,
+                ),
+            style = MaterialTheme.typography.bodySmall,
+            color = shifter_mutedText,
+            modifier = Modifier.testTag(AddMissionScreenTestTags.ASSIGNED_COUNT),
+        )
+      } else if (state.event != null) {
+        // Who may be assigned depends on the team, known once the event has loaded.
         AssigneePicker(
             selection = state.assignees,
             limit = state.volunteersNeeded,
@@ -278,18 +329,17 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
 
       state.conflict?.let { conflict ->
         Text(
-            text = formatConflict(conflict),
+            text = formatConflict(conflict, state.isEditing),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.testTag(AddMissionScreenTestTags.CONFLICT_ERROR),
         )
       }
       if (state.saveFailed) {
-        Text(
-            text = stringResource(R.string.add_mission_error_save_failed),
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag(AddMissionScreenTestTags.SAVE_ERROR),
+        ErrorText(
+            if (state.isEditing) R.string.edit_mission_save_failed
+            else R.string.add_mission_error_save_failed,
+            AddMissionScreenTestTags.SAVE_ERROR,
         )
       }
       FormActions(state, actions)
@@ -302,6 +352,17 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
         actions = actions,
     )
   }
+}
+
+/** A message in the error colour, such as why the form cannot be saved. */
+@Composable
+private fun ErrorText(@StringRes text: Int, testTag: String) {
+  Text(
+      text = stringResource(text),
+      color = MaterialTheme.colorScheme.error,
+      style = MaterialTheme.typography.bodySmall,
+      modifier = Modifier.testTag(testTag),
+  )
 }
 
 /** Which event the mission is added to, and when it takes place. */
@@ -333,7 +394,11 @@ private fun EventContext(state: AddMissionUiState, onRetryLoad: () -> Unit) {
       state.loadFailed ->
           Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = stringResource(R.string.add_mission_load_failed),
+                text =
+                    stringResource(
+                        if (state.isEditing) R.string.edit_mission_load_failed
+                        else R.string.add_mission_load_failed
+                    ),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f).testTag(AddMissionScreenTestTags.LOAD_ERROR),
@@ -871,7 +936,10 @@ private fun TimeField(
 private fun FormActions(state: AddMissionUiState, actions: AddMissionActions) {
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
     FormPrimaryButton(
-        text = stringResource(R.string.add_mission_submit),
+        text =
+            stringResource(
+                if (state.isEditing) R.string.edit_mission_submit else R.string.add_mission_submit
+            ),
         onClick = actions.onSubmit,
         testTag = AddMissionScreenTestTags.SUBMIT_BUTTON,
         enabled = state.canSubmit,
@@ -914,9 +982,10 @@ private fun formatPeriod(event: EventPeriod): String =
 
 /** "Overlaps "Bar shift" of the same team (Fri 20 Jun 2025 14:00 – 16:00)." */
 @Composable
-private fun formatConflict(conflict: MissionConflict): String =
+private fun formatConflict(conflict: MissionConflict, isEditing: Boolean): String =
     stringResource(
-        R.string.add_mission_error_conflict,
+        if (isEditing) R.string.edit_mission_error_conflict
+        else R.string.add_mission_error_conflict,
         conflict.title,
         conflict.start.format(DATE_TIME_FORMAT),
         conflict.end.format(
