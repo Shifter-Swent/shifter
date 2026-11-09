@@ -523,6 +523,19 @@ service cloud.firestore {
             && (request.resource.data.completed || !resource.data.completed);
         }
 
+        // A completed mission, closed by hand or past its end, keeps its details: its title,
+        // description, schedule, location, volunteers needed and team. Its assignees may still
+        // change, and its volunteers may still be checked in.
+        function keepsDetailsOnceCompleted() {
+          let end = resource.data.get('endAt', null);
+          let completed = resource.data.get('completed', false) == true
+            || (end is timestamp && end <= request.time);
+          return !completed
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(
+                 ['title', 'description', 'volunteersNeeded', 'startAt', 'endAt', 'location',
+                  'teamId']);
+        }
+
         allow read: if canReadEventContent(eventId);
         allow create: if request.resource.data.completed is bool
           && (isOrganizer(eventId)
@@ -530,6 +543,7 @@ service cloud.firestore {
         // Checking the team before and after keeps a manager from moving a mission to a team they
         // do not manage.
         allow update: if keepsCompletion()
+          && keepsDetailsOnceCompleted()
           && (isOrganizer(eventId)
               || (managesTeam(teamBefore())
                   && managesTeam(teamAfter())

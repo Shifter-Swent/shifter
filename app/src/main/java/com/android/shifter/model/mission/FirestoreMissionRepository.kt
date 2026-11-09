@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.swent.shifter.model.event.EventSchema
+import java.time.Clock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.awaitClose
@@ -22,9 +23,13 @@ import kotlinx.coroutines.tasks.await
  *
  * All Firebase types stay inside this class and the [toMission] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
- * Firestore errors are rethrown as [MissionRepositoryException].
+ * Firestore errors are rethrown as [MissionRepositoryException]. [clock] tells [updateMission]
+ * whether a mission is past its end, and is injected so tests can fix it.
  */
-class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : MissionRepository {
+class FirestoreMissionRepository(
+    private val firestore: FirebaseFirestore,
+    private val clock: Clock = Clock.systemUTC(),
+) : MissionRepository {
 
   private fun missionsOf(eventId: String) =
       firestore
@@ -176,19 +181,22 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
    * and completion, and its check-ins are left as they are.
    *
    * The overlap check reads the team's missions before the write, so like in [createMission] it is
-   * not atomic. The limit on [Mission.volunteersNeeded] depends on the stored assignees, so it is
-   * checked in a transaction, as in [updateAssignees]. Like every transaction, it needs a
-   * connection.
+   * not atomic. The completion and the limit on [Mission.volunteersNeeded] depend on the stored
+   * mission, so they are checked again in a transaction, as in [updateAssignees]. Like every
+   * transaction, it needs a connection. `firestore.rules` refuses the change of a completed mission
+   * too, measured by the server's clock.
    */
   override suspend fun updateMission(mission: Mission) {
     requireValidUpdate(mission)
     val document = missionsOf(mission.eventId).document(mission.id)
     translatingErrors {
       val stored = document.get().await().toStoredMission(mission)
+      requireNotCompleted(stored, clock.instant())
       findConflict(stored.withEditableFieldsOf(mission))?.let { throw MissionOverlapException(it) }
       firestore
           .runTransaction { transaction ->
             val current = transaction.get(document).toStoredMission(mission)
+            requireNotCompleted(current, clock.instant())
             requireRoomForAssignees(current, mission)
             transaction.update(document, mission.toEditableFieldsMap())
             null

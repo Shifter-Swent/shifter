@@ -2,6 +2,7 @@
 package com.swent.shifter.model.mission
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.firestore.DocumentReference
@@ -22,6 +23,7 @@ import com.swent.shifter.model.team.FirestoreTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.toFirestoreMap
 import java.time.Instant
+import java.util.Date
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -334,6 +336,48 @@ class MissionManagerRulesTest {
     assertTrue(db.document(checkIn).get(Source.SERVER).await().exists())
   }
 
+  @Test
+  fun update_ofAMissionPastItsEnd_changingItsDetails_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, endAt = Timestamp(Date(0)))
+
+    assertDenied { mission.update("title", "Too late").await() }
+    signIn(manager)
+    assertDenied { mission.update("volunteersNeeded", 5).await() }
+  }
+
+  @Test
+  fun update_ofAMissionClosedByHand_changingItsDetails_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID)
+    mission.update("completed", true).await()
+
+    assertDenied { mission.update("title", "Too late").await() }
+    signIn(manager)
+    assertDenied { mission.update("description", "Too late").await() }
+  }
+
+  @Test
+  fun update_ofACompletedMission_changingItsAssigneesOnly_isAllowed() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, member.uid, endAt = Timestamp(Date(0)))
+    mission.update("completed", true).await()
+
+    signIn(manager)
+    mission.update("assigneeIds", emptyList<String>()).await()
+
+    signIn(organizer)
+    assertEquals(
+        emptyList<String>(),
+        mission.get(Source.SERVER).await().get("assigneeIds"),
+    )
+  }
+
+  @Test
+  fun update_ofACompletedMission_changingItsTeam_isDenied() = emulatorTest {
+    val mission = missionByOrganizer(TEAM_ID, endAt = Timestamp(Date(0)))
+
+    assertDenied { mission.update("teamId", OTHER_TEAM_ID).await() }
+    assertDenied { mission.update("teamId", null).await() }
+  }
+
   /**
    * Creates the event, owned by [organizer], with the two teams its volunteers apply to. The teams
    * are complete, so the team repository can read them.
@@ -387,20 +431,28 @@ class MissionManagerRulesTest {
   private suspend fun missionByOrganizer(
       teamId: String?,
       vararg assigneeIds: String,
+      endAt: Timestamp? = null,
   ): DocumentReference {
     signIn(organizer)
-    return newMission().also { it.set(mission(teamId, *assigneeIds)).await() }
+    return newMission().also { it.set(mission(teamId, *assigneeIds, endAt = endAt)).await() }
   }
 
-  /** The fields the rules look at, plus a title for the updates that change something else. */
-  private fun mission(teamId: String?, vararg assigneeIds: String): Map<String, Any?> =
+  /**
+   * The fields the rules look at, plus a title for the updates that change something else. With no
+   * [endAt], the mission never ends for the rules.
+   */
+  private fun mission(
+      teamId: String?,
+      vararg assigneeIds: String,
+      endAt: Timestamp? = null,
+  ): Map<String, Any?> =
       mapOf(
           "title" to "Accueil",
           "teamId" to teamId,
           "volunteersNeeded" to 2,
           "assigneeIds" to assigneeIds.toList(),
           "completed" to false,
-      )
+      ) + listOfNotNull(endAt?.let { "endAt" to it })
 
   /** A complete mission of [TEAM_ID], created by the organizer, assigned to [member]. */
   private suspend fun missionThroughRepository(): Mission {
