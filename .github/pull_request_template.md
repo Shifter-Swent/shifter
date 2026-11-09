@@ -43,6 +43,7 @@
 - [ ] `./gradlew check` and `./gradlew ktfmtCheck` pass
 - [ ] Instrumented tests against the Firebase emulators: <!-- test classes -->
 - [ ] `./gradlew connectedDebugAndroidTest` passes (when `androidTest/` or Firestore code changes)
+- [ ] Figma updated (when a screen is added or changed)
 
 ## Related issues
 
