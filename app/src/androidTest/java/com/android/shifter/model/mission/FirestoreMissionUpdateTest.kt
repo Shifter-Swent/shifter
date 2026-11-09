@@ -118,6 +118,8 @@ class FirestoreMissionUpdateTest {
             created.copy(id = ""),
             created.copy(endAt = created.startAt),
             created.copy(volunteersNeeded = 0),
+            // Invalid and missing: the input is checked first, so this is not a NotFound.
+            created.copy(id = "missing", volunteersNeeded = 0),
         )
         .forEach { invalid ->
           val failure = runCatching { repository.updateMission(invalid) }.exceptionOrNull()
@@ -182,11 +184,31 @@ class FirestoreMissionUpdateTest {
     }
         .exceptionOrNull()
 
-    assertTrue(
-        "expected IllegalArgumentException, but was: $failure",
-        failure is IllegalArgumentException,
+    assertEquals(
+        "expected VolunteersBelowAssigneesException, but was: $failure",
+        2,
+        (failure as? VolunteersBelowAssigneesException)?.assigneeCount,
     )
     assertEquals(created, stored(created))
+  }
+
+  @Test
+  fun updateMission_ontoTheSlotOfAnotherTeam_isAccepted() = emulatorTest {
+    val eventId = newEvent()
+    val other = create(mission(eventId, at = HALL))
+    val created =
+        create(
+            mission(eventId, at = HALL)
+                .copy(
+                    teamId = "team-bar",
+                    startAt = Instant.parse("2030-06-20T15:00:00Z"),
+                    endAt = Instant.parse("2030-06-20T16:00:00Z"),
+                )
+        )
+
+    repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+
+    assertEquals(other.startAt, stored(created).startAt)
   }
 
   @Test

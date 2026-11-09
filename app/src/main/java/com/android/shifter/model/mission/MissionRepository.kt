@@ -75,8 +75,8 @@ interface MissionRepository {
    * @throws MissionRepositoryException.NotFound when the mission does not exist.
    * @throws MissionOverlapException when the new values make the mission
    *   [conflict][Mission.conflictsWith] with another mission of its stored team.
-   * @throws IllegalArgumentException when [Mission.volunteersNeeded] is lower than the number of
-   *   people already assigned.
+   * @throws VolunteersBelowAssigneesException when [Mission.volunteersNeeded] is lower than the
+   *   number of people already assigned.
    */
   suspend fun updateMission(mission: Mission)
 

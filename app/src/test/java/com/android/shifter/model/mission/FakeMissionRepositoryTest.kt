@@ -251,6 +251,8 @@ class FakeMissionRepositoryTest {
             created.copy(id = ""),
             created.copy(endAt = created.startAt),
             created.copy(volunteersNeeded = 0),
+            // Invalid and missing: the input is checked first, so this is not a NotFound.
+            created.copy(id = "missing", volunteersNeeded = 0),
         )
         .forEach { invalid ->
           val failure = runCatching { repository.updateMission(invalid) }.exceptionOrNull()
@@ -303,8 +305,31 @@ class FakeMissionRepositoryTest {
     }
         .exceptionOrNull()
 
-    assertTrue(failure is IllegalArgumentException)
+    assertEquals(2, (failure as? VolunteersBelowAssigneesException)?.assigneeCount)
     assertEquals(created, repository.getMission("event-1", created.id))
+  }
+
+  @Test
+  fun updateMission_ontoTheSlotOfAnotherTeam_isAccepted() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(mission("event-1", startHour = 11, teamId = "team-2", at = HALL))
+
+    repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+
+    assertEquals(other.startAt, repository.getMission("event-1", created.id)?.startAt)
+  }
+
+  @Test
+  fun updateMission_withoutLocation_ontoAnOccupiedSlot_isAccepted() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created = repository.createMission(mission("event-1", startHour = 11, teamId = "team-1"))
+
+    repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+
+    assertEquals(other.startAt, repository.getMission("event-1", created.id)?.startAt)
   }
 
   @Test

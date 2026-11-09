@@ -196,7 +196,7 @@ class MissionManagerRulesTest {
     val mission = missionByOrganizer(TEAM_ID, member.uid)
     signIn(manager)
 
-    FirestoreMissionRepository(db).markCompleted(eventId, mission.id)
+    missions.markCompleted(eventId, mission.id)
 
     assertEquals(true, mission.get(Source.SERVER).await().getBoolean("completed"))
     assertDenied { mission.update("completed", false).await() }
@@ -258,11 +258,10 @@ class MissionManagerRulesTest {
 
   @Test
   fun createMissionAndUpdateAssignees_byTheManager_writeThroughTheRepository() = emulatorTest {
-    val repository = FirestoreMissionRepository(db)
     signIn(manager)
 
     val created =
-        repository.createMission(
+        missions.createMission(
             Mission(
                 eventId = eventId,
                 title = "Trier les dons alimentaires",
@@ -275,9 +274,9 @@ class MissionManagerRulesTest {
             )
         )
     paths += "${EventSchema.COLLECTION}/$eventId/missions/${created.id}"
-    repository.updateAssignees(eventId, created.id, listOf(member.uid))
+    missions.updateAssignees(eventId, created.id, listOf(member.uid))
 
-    assertEquals(listOf(member.uid), repository.getMission(eventId, created.id)?.assigneeIds)
+    assertEquals(listOf(member.uid), missions.getMission(eventId, created.id)?.assigneeIds)
   }
 
   @Test

@@ -65,7 +65,7 @@ data class Mission(
    * title, description, schedule, location and volunteers needed. Everything else, including the
    * team and the assignees, is kept.
    */
-  fun withEditableFieldsOf(edited: Mission): Mission =
+  internal fun withEditableFieldsOf(edited: Mission): Mission =
       copy(
           title = edited.title,
           description = edited.description,
@@ -88,13 +88,12 @@ internal fun requireValidUpdate(mission: Mission) {
 }
 
 /**
- * Throws [IllegalArgumentException] when [edited] needs fewer volunteers than the people already
- * assigned to the [stored] mission.
+ * Throws [VolunteersBelowAssigneesException] when [edited] needs fewer volunteers than the people
+ * already assigned to the [stored] mission.
  */
 internal fun requireRoomForAssignees(stored: Mission, edited: Mission) {
-  require(edited.volunteersNeeded >= stored.assigneeIds.size) {
-    "A mission with ${stored.assigneeIds.size} assignees cannot need only " +
-        "${edited.volunteersNeeded} volunteers"
+  if (edited.volunteersNeeded < stored.assigneeIds.size) {
+    throw VolunteersBelowAssigneesException(stored.assigneeIds.size)
   }
 }
 
