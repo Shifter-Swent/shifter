@@ -66,6 +66,7 @@ import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
+import com.swent.shifter.ui.location.LiveLocationPublishing
 import com.swent.shifter.ui.map.MapScreen
 import com.swent.shifter.ui.map.MapViewModel
 import com.swent.shifter.ui.map.WatchedTeams
@@ -121,6 +122,10 @@ fun ShifterNavHost(
   // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
   // session already gone at launch. exitToSignIn does nothing when already on sign-in.
   LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
+
+  // Shares the signed-in volunteer's position while the app is in the foreground, whatever the
+  // screen below. Here at the root so it survives navigation, rather than on an event screen.
+  LiveLocationPublishing(repositories = repositories, locationProvider = locationProvider)
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
