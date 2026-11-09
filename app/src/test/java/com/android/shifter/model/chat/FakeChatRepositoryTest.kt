@@ -35,6 +35,46 @@ class FakeChatRepositoryTest {
   }
 
   @Test
+  fun send_byDefault_isNotAnAnnouncement() = runTest {
+    repository.send(CHANNEL, "Hello team")
+
+    assertFalse(repository.messages(CHANNEL).first().single().announcement)
+  }
+
+  @Test
+  fun send_asAnAnnouncement_recordsIt() = runTest {
+    repository.announcingChannels = setOf(CHANNEL)
+
+    repository.send(CHANNEL, "Briefing at 18:00", announcement = true)
+
+    assertTrue(repository.messages(CHANNEL).first().single().announcement)
+  }
+
+  @Test
+  fun send_asAnAnnouncementByDefault_throwsAndSendsNothing() = runTest {
+    assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+      repository.send(CHANNEL, "Briefing at 18:00", announcement = true)
+    }
+
+    assertEquals(emptyList<ChatMessage>(), repository.messages(CHANNEL).first())
+    // A normal message still goes through.
+    repository.send(CHANNEL, "Hello team")
+    assertEquals(1, repository.messages(CHANNEL).first().size)
+  }
+
+  @Test
+  fun send_asAnAnnouncementInAnotherChannel_throwsAndSendsNothing() = runTest {
+    repository.announcingChannels = setOf(CHANNEL)
+    val otherTeam = ChatChannelId.Team(EVENT_ID, OTHER_TEAM_ID)
+
+    assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+      repository.send(otherTeam, "Briefing at 18:00", announcement = true)
+    }
+
+    assertEquals(emptyList<ChatMessage>(), repository.messages(otherTeam).first())
+  }
+
+  @Test
   fun send_givesEachMessageItsOwnId() = runTest {
     repository.send(CHANNEL, "First")
     repository.send(CHANNEL, "Second")

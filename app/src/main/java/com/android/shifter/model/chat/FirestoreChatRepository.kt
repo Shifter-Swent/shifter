@@ -83,7 +83,7 @@ class FirestoreChatRepository(
    * connection is back, which is why it must not be sent again. Nothing listens to the write after
    * that: if the rules refuse it on reconnection, Firestore only rolls it back from [messages].
    */
-  override suspend fun send(channel: ChatChannelId, text: String) {
+  override suspend fun send(channel: ChatChannelId, text: String, announcement: Boolean) {
     val trimmed = chatMessageText(text)
     val senderId = auth.currentUser?.uid ?: throw ChatRepositoryException.NotAllowed()
     val document = messagesOf(channel).document()
@@ -91,7 +91,7 @@ class FirestoreChatRepository(
         try {
           // `Task<Void>.await()` answers null when it succeeds, hence the explicit marker.
           withTimeoutOrNull(SEND_TIMEOUT_MILLIS.milliseconds) {
-            document.set(newMessageFields(senderId, trimmed)).await()
+            document.set(newMessageFields(senderId, trimmed, announcement)).await()
             true
           }
         } catch (e: FirebaseFirestoreException) {

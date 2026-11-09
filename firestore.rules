@@ -89,16 +89,19 @@ service cloud.firestore {
 
     // A new chat message, the same in every channel. senderId and sentAt must equal the signed-in
     // user and the server's time, so nobody can send in someone else's name or backdate a message.
-    // The text is stored trimmed, so a blank one is refused with the empty one.
+    // The text is stored trimmed, so a blank one is refused with the empty one. announcement may
+    // be absent, as it is in the messages of the clients that predate it; who may send one is up
+    // to each channel.
     function isValidMessage() {
       let data = request.resource.data;
-      return data.keys().hasOnly(['senderId', 'text', 'sentAt'])
+      return data.keys().hasOnly(['senderId', 'text', 'sentAt', 'announcement'])
         && data.senderId == request.auth.uid
         && data.sentAt == request.time
         && data.text is string
         && data.text.size() >= 1
         && data.text.size() <= 1000
-        && data.text == data.text.trim();
+        && data.text == data.text.trim()
+        && data.get('announcement', false) is bool;
     }
 
     match /events/{eventId} {
@@ -323,17 +326,28 @@ service cloud.firestore {
         // team, or who withdraws, loses access at once. The check is on the path and the team, not
         // on the message, so the whole channel can be queried.
         match /messages/{messageId} {
+          function team() {
+            return get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId)).data;
+          }
+
           function canChat() {
-            let team = get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId)).data;
             return signedIn()
-              && (request.auth.uid in team.get('memberIds', [])
-                  || team.get('managerId', null) == request.auth.uid
+              && (request.auth.uid in team().get('memberIds', [])
+                  || team().get('managerId', null) == request.auth.uid
                   || isOrganizer(eventId));
           }
 
+          // Only the team's manager sends announcements in its channel, not the organizer: a team
+          // with no manager has none.
+          function mayAnnounce() {
+            return !request.resource.data.get('announcement', false)
+              || team().get('managerId', null) == request.auth.uid;
+          }
+
           allow read: if canChat();
-          allow create: if canChat() && isValidMessage();
-          // A message is final, so the channel stays a faithful record of what was said.
+          allow create: if canChat() && isValidMessage() && mayAnnounce();
+          // A message is final, so the channel stays a faithful record of what was said, and is
+          // never turned into an announcement or back.
           allow update, delete: if false;
         }
       }
@@ -344,8 +358,13 @@ service cloud.firestore {
       // they are now, so someone who withdraws or is rejected loses access at once. The check is on
       // the path, not on the message, so the whole channel can be queried.
       match /channels/general/messages/{messageId} {
+        // Only the organizer sends announcements here, not the managers nor the participants.
+        function mayAnnounce() {
+          return !request.resource.data.get('announcement', false) || isOrganizer(eventId);
+        }
+
         allow read: if canReadEventContent(eventId);
-        allow create: if canReadEventContent(eventId) && isValidMessage();
+        allow create: if canReadEventContent(eventId) && isValidMessage() && mayAnnounce();
         // A message is final, like in a team's channel.
         allow update, delete: if false;
       }

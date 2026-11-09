@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.Flow
  *   now: someone who stops being one, for instance removed from the team, loses access at once.
  * - A message is sent in the name of the signed-in user, and the backend sets [ChatMessage.sentAt],
  *   so nobody can send in someone else's name or backdate a message.
- * - A message is final: it can be neither edited nor deleted, by anyone.
+ * - Only the person heading a channel, given by its [ChatChannelId], can send an announcement.
+ * - A message is final: it can be neither edited nor deleted, by anyone, nor turned into an
+ *   announcement or back.
  *
  * Every method throws, or every flow fails with, a [ChatRepositoryException] when the operation
  * fails, except [send] for an invalid text.
@@ -38,13 +40,15 @@ interface ChatRepository {
   fun messages(channel: ChatChannelId): Flow<List<ChatMessage>>
 
   /**
-   * Sends [text], trimmed, to [channel], in the signed-in user's name, and waits for the backend to
-   * confirm it, for a bounded time. [messages] already emits the message while this call waits.
+   * Sends [text], trimmed, to [channel], in the signed-in user's name, as an [announcement] or not,
+   * and waits for the backend to confirm it, for a bounded time. [messages] already emits the
+   * message while this call waits.
    *
    * @throws IllegalArgumentException if the trimmed text is empty or longer than
    *   [ChatRules.MAX_TEXT_LENGTH]; nothing is sent, whatever the state of the backend.
-   * @throws ChatRepositoryException.NotAllowed if the rules above deny it; the message is taken out
-   *   of [messages] again.
+   * @throws ChatRepositoryException.NotAllowed if the rules above deny it, including an
+   *   announcement by someone not heading the channel; the message is taken out of [messages]
+   *   again.
    * @throws ChatRepositoryException.Unavailable when the backend cannot be reached, or when an
    *   implementation gives up waiting for its confirmation. **It does not mean the message was not
    *   sent:** an implementation that queues writes while offline still sends it once the connection
@@ -54,5 +58,5 @@ interface ChatRepository {
    *   meantime, it is taken out of [messages] with no error reported anywhere.
    * @throws ChatRepositoryException.Unknown on any other failure.
    */
-  suspend fun send(channel: ChatChannelId, text: String)
+  suspend fun send(channel: ChatChannelId, text: String, announcement: Boolean = false)
 }

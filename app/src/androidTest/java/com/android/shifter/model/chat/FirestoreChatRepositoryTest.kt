@@ -92,10 +92,34 @@ class FirestoreChatRepositoryTest {
     repository.send(channel, "  Hello team  ")
 
     val stored = db.collection("$teamPath/messages").get(Source.SERVER).await().documents.single()
-    assertEquals(setOf("senderId", "text", "sentAt"), stored.data?.keys)
+    assertEquals(setOf("senderId", "text", "sentAt", "announcement"), stored.data?.keys)
+    assertEquals(false, stored.getBoolean("announcement"))
     val message = repository.messages(channel).first().single()
     assertEquals(ChatMessage(stored.id, member.uid, "Hello team", message.sentAt), message)
     assertNear(before, message.sentAt)
+  }
+
+  @Test
+  fun send_asAnAnnouncementByTheManager_isReadAsAnAnnouncement() = emulatorTest {
+    signIn(manager)
+
+    repository.send(channel, "Briefing at 18:00", announcement = true)
+
+    assertTrue(repository.messages(channel).first().single().announcement)
+  }
+
+  @Test
+  fun send_asAnAnnouncementByAMember_failsWithNotAllowed() = emulatorTest {
+    signIn(member)
+    // A normal message of the same member goes through.
+    repository.send(channel, "Hello team")
+
+    assertFailsWith<ChatRepositoryException.NotAllowed> {
+      repository.send(channel, "Briefing at 18:00", announcement = true)
+    }
+
+    // The refused announcement is taken out of the channel again.
+    assertEquals(listOf("Hello team"), repository.messages(channel).first().texts())
   }
 
   @Test

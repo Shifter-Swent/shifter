@@ -48,6 +48,17 @@ internal fun DocumentSnapshot.requireBoolean(entity: String, field: String): Boo
     get(field) as? Boolean ?: invalidField(entity, field)
 
 /**
+ * Reads a boolean that older documents may not have: an absent or null field means it was never
+ * set, so both map to null. A present value of another type is rejected.
+ */
+internal fun DocumentSnapshot.optionalBoolean(entity: String, field: String): Boolean? =
+    when (val value = get(field)) {
+      null -> null
+      is Boolean -> value
+      else -> invalidField(entity, field)
+    }
+
+/**
  * Reads an optional string: an absent or null field means the entity has no value for it, so both
  * map to null. A present value of another type is rejected like a wrongly typed required field,
  * because mapping it to null would turn a schema problem into "there is nothing here".

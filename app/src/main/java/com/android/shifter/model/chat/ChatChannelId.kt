@@ -12,14 +12,16 @@ sealed interface ChatChannelId {
 
   /**
    * The channel of the team [teamId] of [eventId]: its members, its manager and the event's
-   * organizer read and send, as the team is now.
+   * organizer read and send, as the team is now. Only its manager sends announcements, not its
+   * members nor the organizer, so a team with no manager has none.
    */
   data class Team(override val eventId: String, val teamId: String) : ChatChannelId
 
   /**
    * The general channel of [eventId], where everyone in the event talks: its organizer and its
    * accepted participants, the managers of its teams included, as they are now. A pending applicant
-   * cannot read it, and someone who withdraws or is rejected loses access at once.
+   * cannot read it, and someone who withdraws or is rejected loses access at once. Only the
+   * organizer sends announcements, not the managers nor the participants.
    */
   data class General(override val eventId: String) : ChatChannelId
 }
