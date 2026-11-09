@@ -6,10 +6,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.chat.ChatMessage
+import com.swent.shifter.model.chat.ChatRepository
+import com.swent.shifter.model.chat.ChatRepositoryException
 import com.swent.shifter.model.chat.ChatRules
-import com.swent.shifter.model.chat.TeamChatRepository
-import com.swent.shifter.model.chat.TeamChatRepositoryException
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
 import java.time.Instant
@@ -75,20 +76,20 @@ data class TeamChatUiState(
  * Shows the channel of the team [teamId] of the event [eventId] in real time, with the senders'
  * names, and sends the user's messages.
  *
- * A message sent stays pending until [TeamChatRepository.send] returns, i.e. until the server has
+ * A message sent stays pending until [ChatRepository.send] returns, i.e. until the server has
  * confirmed it. Offline, the repository already lists it: that message is the one shown as pending.
  *
- * When [TeamChatRepository.send] gives up with [TeamChatRepositoryException.Unavailable], the
- * message is not confirmed but still queued, and the backend sends it once the connection is back:
- * it stays pending and its text is not given back, since sending it again would post it twice. Any
- * other failure means it was not sent: its text goes back into the draft.
+ * When [ChatRepository.send] gives up with [ChatRepositoryException.Unavailable], the message is
+ * not confirmed but still queued, and the backend sends it once the connection is back: it stays
+ * pending and its text is not given back, since sending it again would post it twice. Any other
+ * failure means it was not sent: its text goes back into the draft.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
 class TeamChatViewModel(
     private val eventId: String,
     private val teamId: String,
-    private val chatRepository: TeamChatRepository,
+    private val chatRepository: ChatRepository,
     private val userRepository: UserRepository,
     private val currentUserId: () -> String?,
 ) : ViewModel() {
@@ -126,7 +127,7 @@ class TeamChatViewModel(
     _uiState.update { it.copy(isLoading = true, error = null) }
     loading = viewModelScope.launch {
       try {
-        chatRepository.messages(eventId, teamId).collect { messages ->
+        chatRepository.messages(ChatChannelId.Team(eventId, teamId)).collect { messages ->
           received = messages
           show(isLoading = false)
           loadNames(messages)
@@ -136,8 +137,8 @@ class TeamChatViewModel(
       } catch (e: Exception) {
         val error =
             when (e) {
-              is TeamChatRepositoryException.Unavailable -> ChatError.OFFLINE
-              is TeamChatRepositoryException.NotAllowed -> ChatError.NOT_ALLOWED
+              is ChatRepositoryException.Unavailable -> ChatError.OFFLINE
+              is ChatRepositoryException.NotAllowed -> ChatError.NOT_ALLOWED
               else -> ChatError.UNEXPECTED
             }
         if (error == ChatError.NOT_ALLOWED) {
@@ -167,10 +168,10 @@ class TeamChatViewModel(
     show()
     viewModelScope.launch {
       try {
-        chatRepository.send(eventId, teamId, text)
+        chatRepository.send(ChatChannelId.Team(eventId, teamId), text)
       } catch (e: CancellationException) {
         throw e
-      } catch (e: TeamChatRepositoryException.Unavailable) {
+      } catch (e: ChatRepositoryException.Unavailable) {
         // Not confirmed, but still queued: it stays pending and is not offered to be sent again.
         return@launch
       } catch (e: Exception) {
@@ -236,7 +237,7 @@ class TeamChatViewModel(
     fun factory(
         eventId: String,
         teamId: String,
-        chatRepository: TeamChatRepository,
+        chatRepository: ChatRepository,
         userRepository: UserRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {

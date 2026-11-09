@@ -30,21 +30,24 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * [FirestoreTeamChatRepository] against the emulators, with the real `firestore.rules`.
+ * [FirestoreChatRepository] against the emulators, with the real `firestore.rules`.
  * `TeamChatRulesTest` covers each rule on its own; these tests check what the repository makes of
  * them: the document it writes, the errors it throws, and what its flow emits.
  */
 @RunWith(AndroidJUnit4::class)
-class FirestoreTeamChatRepositoryTest {
+class FirestoreChatRepositoryTest {
   private val auth = FirestoreEmulator.auth
   private val db = FirestoreEmulator.firestore
-  private val repository = FirestoreTeamChatRepository(db, auth)
+  private val repository = FirestoreChatRepository(db, auth)
   private val paths = mutableSetOf<String>()
   private lateinit var organizer: Account
   private lateinit var manager: Account
   private lateinit var member: Account
   private lateinit var outsider: Account
   private lateinit var eventId: String
+
+  private val channel
+    get() = ChatChannelId.Team(eventId, TEAM_ID)
 
   private val teamPath
     get() = "events/$eventId/teams/$TEAM_ID"
@@ -79,11 +82,11 @@ class FirestoreTeamChatRepositoryTest {
     signIn(member)
     val before = Instant.now()
 
-    repository.send(eventId, TEAM_ID, "  Hello team  ")
+    repository.send(channel, "  Hello team  ")
 
     val stored = db.collection("$teamPath/messages").get(Source.SERVER).await().documents.single()
     assertEquals(setOf("senderId", "text", "sentAt"), stored.data?.keys)
-    val message = repository.messages(eventId, TEAM_ID).first().single()
+    val message = repository.messages(channel).first().single()
     assertEquals(ChatMessage(stored.id, member.uid, "Hello team", message.sentAt), message)
     assertNear(before, message.sentAt)
   }
@@ -92,11 +95,11 @@ class FirestoreTeamChatRepositoryTest {
   fun messages_emitsEmptyThenEachMessageOldestFirst() = emulatorTest {
     signIn(member)
     coroutineScope {
-      val emissions = repository.messages(eventId, TEAM_ID).produceIn(this)
+      val emissions = repository.messages(channel).produceIn(this)
       try {
         assertEquals(emptyList<ChatMessage>(), emissions.receive())
 
-        repository.send(eventId, TEAM_ID, "First")
+        repository.send(channel, "First")
         assertEquals(listOf("First"), emissions.receiveUntil { it.size == 1 }.texts())
 
         // Through the admin API, so the member stays signed in and the listener keeps their access.
@@ -119,7 +122,7 @@ class FirestoreTeamChatRepositoryTest {
         }
         signIn(member)
 
-        val listed = repository.messages(eventId, TEAM_ID).first()
+        val listed = repository.messages(channel).first()
 
         assertEquals((1..ChatRules.MAX_MESSAGES).map { "Message $it" }, listed.texts())
       }
@@ -128,15 +131,11 @@ class FirestoreTeamChatRepositoryTest {
   fun messagesAndSend_byAnOutsider_failWithNotAllowed() = emulatorTest {
     signIn(outsider)
 
-    assertFailsWith<TeamChatRepositoryException.NotAllowed> {
-      repository.messages(eventId, TEAM_ID).first()
-    }
-    assertFailsWith<TeamChatRepositoryException.NotAllowed> {
-      repository.send(eventId, TEAM_ID, "Hello team")
-    }
+    assertFailsWith<ChatRepositoryException.NotAllowed> { repository.messages(channel).first() }
+    assertFailsWith<ChatRepositoryException.NotAllowed> { repository.send(channel, "Hello team") }
   }
 
-  /** The promise of [TeamChatRepository.messages]: losing access ends an open observation. */
+  /** The promise of [ChatRepository.messages]: losing access ends an open observation. */
   @Test
   fun messages_afterBeingRemovedFromTheTeam_failsWithNotAllowed() = emulatorTest {
     signIn(member)
@@ -146,7 +145,7 @@ class FirestoreTeamChatRepositoryTest {
     // scope with the very error it expects.
     val failure = runCatching {
       step("denial") {
-        repository.messages(eventId, TEAM_ID).collect {
+        repository.messages(channel).collect {
           // Only once the listener is active, so the refusal cannot be it never having been
           // allowed.
           if (removed) return@collect
@@ -168,7 +167,7 @@ class FirestoreTeamChatRepositoryTest {
     assertTrue("the listener never emitted", removed)
     assertTrue(
         "Expected NotAllowed, got ${failure.exceptionOrNull()}",
-        failure.exceptionOrNull() is TeamChatRepositoryException.NotAllowed,
+        failure.exceptionOrNull() is ChatRepositoryException.NotAllowed,
     )
   }
 
@@ -181,13 +180,11 @@ class FirestoreTeamChatRepositoryTest {
     )
     signIn(member)
 
-    assertFailsWith<TeamChatRepositoryException.Unknown> {
-      repository.messages(eventId, TEAM_ID).first()
-    }
+    assertFailsWith<ChatRepositoryException.Unknown> { repository.messages(channel).first() }
   }
 
   /**
-   * The promise of [TeamChatRepository.send] offline: the message is listed at once as pending, the
+   * The promise of [ChatRepository.send] offline: the message is listed at once as pending, the
    * call gives up with `Unavailable` rather than waiting, and the message still goes out once the
    * connection is back, which the flow reports by emitting it again, confirmed.
    */
@@ -196,14 +193,14 @@ class FirestoreTeamChatRepositoryTest {
       emulatorTest(OFFLINE_TIMEOUT_MILLIS) {
         signIn(member)
         coroutineScope {
-          val emissions = repository.messages(eventId, TEAM_ID).produceIn(this)
+          val emissions = repository.messages(channel).produceIn(this)
           try {
             assertEquals(emptyList<ChatMessage>(), emissions.receive())
             db.disableNetwork().await()
             val before = Instant.now()
             val sending =
                 async(start = CoroutineStart.UNDISPATCHED) {
-                  runCatching { repository.send(eventId, TEAM_ID, "Hello team") }
+                  runCatching { repository.send(channel, "Hello team") }
                 }
 
             val pending = emissions.receiveUntil { it.isNotEmpty() }.single()
@@ -213,7 +210,7 @@ class FirestoreTeamChatRepositoryTest {
             val failure = step("offline send") { sending.await() }.exceptionOrNull()
             assertTrue(
                 "Expected Unavailable, got $failure",
-                failure is TeamChatRepositoryException.Unavailable,
+                failure is ChatRepositoryException.Unavailable,
             )
 
             db.enableNetwork().await()
@@ -305,7 +302,7 @@ class FirestoreTeamChatRepositoryTest {
     const val TEAM_ID = "team-bar"
 
     /**
-     * Room for [FirestoreTeamChatRepository.SEND_TIMEOUT_MILLIS] to expire for real, plus the round
+     * Room for [FirestoreChatRepository.SEND_TIMEOUT_MILLIS] to expire for real, plus the round
      * trips around it: the default budget of an emulator test does not leave enough.
      */
     const val OFFLINE_TIMEOUT_MILLIS = 60_000L

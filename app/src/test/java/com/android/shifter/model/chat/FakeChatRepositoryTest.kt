@@ -19,15 +19,15 @@ import org.junit.Test
  * Covers the contract the fake shares with the backend, so the ViewModels built against it see the
  * same messages and the same errors as with the Firestore repository.
  */
-class FakeTeamChatRepositoryTest {
+class FakeChatRepositoryTest {
 
-  private val repository = FakeTeamChatRepository(currentUserId = MEMBER, clock = { NOW })
+  private val repository = FakeChatRepository(currentUserId = MEMBER, clock = { NOW })
 
   @Test
   fun send_recordsTheSenderTheTrimmedTextAndTheTime() = runTest {
-    repository.send(EVENT_ID, TEAM_ID, "  Hello team  ")
+    repository.send(CHANNEL, "  Hello team  ")
 
-    val message = repository.messages(EVENT_ID, TEAM_ID).first().single()
+    val message = repository.messages(CHANNEL).first().single()
     assertEquals(MEMBER, message.senderId)
     assertEquals("Hello team", message.text)
     assertEquals(NOW, message.sentAt)
@@ -36,54 +36,54 @@ class FakeTeamChatRepositoryTest {
 
   @Test
   fun send_givesEachMessageItsOwnId() = runTest {
-    repository.send(EVENT_ID, TEAM_ID, "First")
-    repository.send(EVENT_ID, TEAM_ID, "Second")
+    repository.send(CHANNEL, "First")
+    repository.send(CHANNEL, "Second")
 
-    val ids = repository.messages(EVENT_ID, TEAM_ID).first().map { it.id }
+    val ids = repository.messages(CHANNEL).first().map { it.id }
     assertEquals(2, ids.toSet().size)
   }
 
   @Test
   fun send_withABlankText_throwsAndSendsNothing() = runTest {
-    assertThrowsSuspending<IllegalArgumentException> { repository.send(EVENT_ID, TEAM_ID, "  ") }
+    assertThrowsSuspending<IllegalArgumentException> { repository.send(CHANNEL, "  ") }
 
-    assertEquals(emptyList<ChatMessage>(), repository.messages(EVENT_ID, TEAM_ID).first())
+    assertEquals(emptyList<ChatMessage>(), repository.messages(CHANNEL).first())
   }
 
   @Test
   fun send_withATooLongText_throwsAndSendsNothing() = runTest {
     assertThrowsSuspending<IllegalArgumentException> {
-      repository.send(EVENT_ID, TEAM_ID, "a".repeat(ChatRules.MAX_TEXT_LENGTH + 1))
+      repository.send(CHANNEL, "a".repeat(ChatRules.MAX_TEXT_LENGTH + 1))
     }
 
-    assertEquals(emptyList<ChatMessage>(), repository.messages(EVENT_ID, TEAM_ID).first())
+    assertEquals(emptyList<ChatMessage>(), repository.messages(CHANNEL).first())
   }
 
   @Test
   fun send_withABlankTextWhileTheBackendFails_throwsForTheText() = runTest {
-    repository.failure = TeamChatRepositoryException.Unavailable()
+    repository.failure = ChatRepositoryException.Unavailable()
 
     // The text is checked before the backend is reached, so the user is told what to fix rather
     // than to check their connection.
-    assertThrowsSuspending<IllegalArgumentException> { repository.send(EVENT_ID, TEAM_ID, "  ") }
+    assertThrowsSuspending<IllegalArgumentException> { repository.send(CHANNEL, "  ") }
   }
 
   @Test
   fun messages_areOldestFirst() = runTest {
-    repository.add(EVENT_ID, TEAM_ID, message("later", NOW.plusSeconds(60)))
-    repository.add(EVENT_ID, TEAM_ID, message("earlier", NOW))
+    repository.add(CHANNEL, message("later", NOW.plusSeconds(60)))
+    repository.add(CHANNEL, message("earlier", NOW))
 
-    val texts = repository.messages(EVENT_ID, TEAM_ID).first().map { it.text }
+    val texts = repository.messages(CHANNEL).first().map { it.text }
 
     assertEquals(listOf("earlier", "later"), texts)
   }
 
   @Test
   fun messages_sentAtTheSameTime_stayInSendingOrder() = runTest {
-    repository.send(EVENT_ID, TEAM_ID, "First")
-    repository.send(EVENT_ID, TEAM_ID, "Second")
+    repository.send(CHANNEL, "First")
+    repository.send(CHANNEL, "Second")
 
-    val texts = repository.messages(EVENT_ID, TEAM_ID).first().map { it.text }
+    val texts = repository.messages(CHANNEL).first().map { it.text }
 
     assertEquals(listOf("First", "Second"), texts)
   }
@@ -91,11 +91,9 @@ class FakeTeamChatRepositoryTest {
   @Test
   fun messages_withMoreThanTheMaximum_keepsTheMostRecent() = runTest {
     val count = ChatRules.MAX_MESSAGES + 5
-    repeat(count) { i ->
-      repository.add(EVENT_ID, TEAM_ID, message("$i", NOW.plusSeconds(i.toLong())))
-    }
+    repeat(count) { i -> repository.add(CHANNEL, message("$i", NOW.plusSeconds(i.toLong()))) }
 
-    val texts = repository.messages(EVENT_ID, TEAM_ID).first().map { it.text }
+    val texts = repository.messages(CHANNEL).first().map { it.text }
 
     assertEquals((5 until count).map { "$it" }, texts)
   }
@@ -104,11 +102,11 @@ class FakeTeamChatRepositoryTest {
   fun messages_emitsOnlyTheChannelsMessagesAsTheyArrive() =
       runTest(UnconfinedTestDispatcher()) {
         val emissions = mutableListOf<List<ChatMessage>>()
-        backgroundScope.launch { repository.messages(EVENT_ID, TEAM_ID).toList(emissions) }
+        backgroundScope.launch { repository.messages(CHANNEL).toList(emissions) }
 
-        repository.send(EVENT_ID, TEAM_ID, "Hello team")
-        repository.send(EVENT_ID, OTHER_TEAM_ID, "Other team")
-        repository.send(OTHER_EVENT_ID, TEAM_ID, "Other event")
+        repository.send(CHANNEL, "Hello team")
+        repository.send(ChatChannelId.Team(EVENT_ID, OTHER_TEAM_ID), "Other team")
+        repository.send(ChatChannelId.Team(OTHER_EVENT_ID, TEAM_ID), "Other event")
 
         // Only the message to the channel is emitted: the other two leave its list unchanged.
         assertEquals(
@@ -123,58 +121,56 @@ class FakeTeamChatRepositoryTest {
         val confirmation = CompletableDeferred<Unit>()
         repository.confirmation = confirmation
 
-        val sending = launch { repository.send(EVENT_ID, TEAM_ID, "Hello team") }
+        val sending = launch { repository.send(CHANNEL, "Hello team") }
 
         assertFalse(sending.isCompleted)
-        val pending = repository.messages(EVENT_ID, TEAM_ID).first().single()
+        val pending = repository.messages(CHANNEL).first().single()
         assertEquals("Hello team", pending.text)
         assertTrue(pending.pending)
         confirmation.complete(Unit)
         assertTrue(sending.isCompleted)
-        assertFalse(repository.messages(EVENT_ID, TEAM_ID).first().single().pending)
+        assertFalse(repository.messages(CHANNEL).first().single().pending)
       }
 
   @Test
   fun send_refusedOnceConfirmed_takesTheMessageOutAndThrows() = runTest {
     repository.confirmation =
         CompletableDeferred<Unit>().apply {
-          completeExceptionally(TeamChatRepositoryException.NotAllowed())
+          completeExceptionally(ChatRepositoryException.NotAllowed())
         }
 
-    assertThrowsSuspending<TeamChatRepositoryException.NotAllowed> {
-      repository.send(EVENT_ID, TEAM_ID, "Hello team")
+    assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+      repository.send(CHANNEL, "Hello team")
     }
-    assertEquals(emptyList<ChatMessage>(), repository.messages(EVENT_ID, TEAM_ID).first())
+    assertEquals(emptyList<ChatMessage>(), repository.messages(CHANNEL).first())
   }
 
   @Test
   fun send_notConfirmedInTime_keepsTheMessagePendingUntilTheBackendHasIt() = runTest {
     repository.confirmation =
         CompletableDeferred<Unit>().apply {
-          completeExceptionally(TeamChatRepositoryException.Unavailable())
+          completeExceptionally(ChatRepositoryException.Unavailable())
         }
 
-    assertThrowsSuspending<TeamChatRepositoryException.Unavailable> {
-      repository.send(EVENT_ID, TEAM_ID, "Hello team")
+    assertThrowsSuspending<ChatRepositoryException.Unavailable> {
+      repository.send(CHANNEL, "Hello team")
     }
     // Not confirmed is not "not sent": the queued message is still shown, and goes out later.
-    val queued = repository.messages(EVENT_ID, TEAM_ID).first().single()
+    val queued = repository.messages(CHANNEL).first().single()
     assertEquals("Hello team", queued.text)
     assertTrue(queued.pending)
 
     repository.confirmPending()
-    assertFalse(repository.messages(EVENT_ID, TEAM_ID).first().single().pending)
+    assertFalse(repository.messages(CHANNEL).first().single().pending)
   }
 
   @Test
   fun failure_whileCollected_endsTheFlowAfterItsMessages() =
       runTest(UnconfinedTestDispatcher()) {
         val emissions = mutableListOf<List<ChatMessage>>()
-        val removed = TeamChatRepositoryException.NotAllowed()
-        val collection = async {
-          runCatching { repository.messages(EVENT_ID, TEAM_ID).toList(emissions) }
-        }
-        repository.send(EVENT_ID, TEAM_ID, "Hello team")
+        val removed = ChatRepositoryException.NotAllowed()
+        val collection = async { runCatching { repository.messages(CHANNEL).toList(emissions) } }
+        repository.send(CHANNEL, "Hello team")
 
         // The member is removed from the team while the channel is open.
         repository.failure = removed
@@ -188,19 +184,19 @@ class FakeTeamChatRepositoryTest {
 
   @Test
   fun failure_isThrownByEveryCall() = runTest {
-    val failure = TeamChatRepositoryException.NotAllowed()
+    val failure = ChatRepositoryException.NotAllowed()
     repository.failure = failure
 
     assertSame(
         failure,
-        assertThrowsSuspending<TeamChatRepositoryException.NotAllowed> {
-          repository.send(EVENT_ID, TEAM_ID, "Hello team")
+        assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+          repository.send(CHANNEL, "Hello team")
         },
     )
     assertSame(
         failure,
-        assertThrowsSuspending<TeamChatRepositoryException.NotAllowed> {
-          repository.messages(EVENT_ID, TEAM_ID).first()
+        assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+          repository.messages(CHANNEL).first()
         },
     )
   }
@@ -221,6 +217,7 @@ class FakeTeamChatRepositoryTest {
     const val OTHER_EVENT_ID = "event-2"
     const val TEAM_ID = "team-1"
     const val OTHER_TEAM_ID = "team-2"
+    val CHANNEL = ChatChannelId.Team(EVENT_ID, TEAM_ID)
     const val MEMBER = "member-1"
     val NOW: Instant = Instant.parse("2026-11-04T18:02:00Z")
   }

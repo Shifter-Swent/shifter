@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
  *
  * The rules only accept well-formed messages, so the malformed bodies these tests need are written
  * with [FirestoreEmulatorAdmin]. The signed-in user is a member of the team, which the rules let
- * read its channel. A pending message is covered by `FirestoreTeamChatRepositoryTest`.
+ * read its channel. A pending message is covered by `FirestoreChatRepositoryTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class ChatMessageFirestoreMapperTest {
