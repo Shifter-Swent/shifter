@@ -33,7 +33,7 @@ interface ChatRepository {
    *
    * The flow fails with a [ChatRepositoryException.NotAllowed] when the collector may not read the
    * channel. That also ends an observation already running, since the right to read can be lost
-   * while it is open: the collector is removed from the team, or withdraws.
+   * while it is open: for instance, the collector is removed from the team, or withdraws.
    */
   fun messages(channel: ChatChannelId): Flow<List<ChatMessage>>
 

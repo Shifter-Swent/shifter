@@ -10,8 +10,8 @@ sealed class ChatRepositoryException(message: String, cause: Throwable? = null) 
 
   /**
    * The signed-in user may not read or send to this channel: they are not one of its members, given
-   * by its [ChatChannelId]. Also thrown when the channel's team does not exist, which the backend
-   * does not tell apart.
+   * by its [ChatChannelId]. Also thrown when the channel does not exist (for a team channel, its
+   * team), which the backend does not tell apart.
    */
   class NotAllowed(cause: Throwable? = null) :
       ChatRepositoryException("Access to the chat channel is not allowed", cause)
