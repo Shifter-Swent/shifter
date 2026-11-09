@@ -10,6 +10,7 @@ import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import java.time.Clock
@@ -1111,6 +1112,286 @@ class AddMissionViewModelTest {
         at(21, 14, 0) to at(21, 14, 0),
         missionSlot(day, LocalTime.of(14, 0), LocalTime.of(14, 0)),
     )
+  }
+
+  /**
+   * A mission of [teamId] on the event day, from [startHour] for an hour and a half in the hall,
+   * needing 3 people, with [assigneeIds] assigned.
+   */
+  private suspend fun storedMission(
+      vararg assigneeIds: String,
+      startHour: Int = 14,
+      teamId: String = "logistics",
+  ): Mission =
+      missions.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Sort the food donations",
+              description = "Sort the products.",
+              teamId = teamId,
+              volunteersNeeded = 3,
+              startAt = eventDay.atTime(startHour, 0).atZone(zone).toInstant(),
+              endAt = eventDay.atTime(startHour + 1, 30).atZone(zone).toInstant(),
+              location = MissionLocation("Hall B", LILLE),
+              assigneeIds = assigneeIds.toList(),
+              createdAt = Instant.parse("2027-05-01T08:00:00Z"),
+          )
+      )
+
+  /** Opens the form on the mission [missionId] and lets it load. */
+  private fun TestScope.openEdit(missionId: String) {
+    viewModel =
+        AddMissionViewModel(
+            event.id,
+            missions,
+            events,
+            teamRepository,
+            candidates,
+            { userId },
+            clock,
+            missionId,
+        )
+    advanceUntilIdle()
+  }
+
+  @Test
+  fun edit_prefillsTheFormWithTheMission() = runTest {
+    val stored = storedMission("ana")
+
+    openEdit(stored.id)
+
+    assertTrue(state.isEditing)
+    assertEquals("Sort the food donations", state.title)
+    assertEquals("Sort the products.", state.description)
+    assertEquals("logistics", state.teamId)
+    assertEquals(3, state.volunteersNeeded)
+    assertEquals(eventDay, state.day)
+    assertEquals(LocalTime.of(14, 0), state.startTime)
+    assertEquals(LocalTime.of(15, 30), state.endTime)
+    assertEquals("Hall B", state.address)
+    assertEquals(LILLE, state.position)
+    assertEquals(1, state.assigneeCount)
+  }
+
+  @Test
+  fun edit_save_updatesTheMissionWithoutCreatingOne() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Welcome the donors")
+    viewModel.onEndTimeChange(LocalTime.of(16, 0))
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    val expected =
+        stored.copy(
+            title = "Welcome the donors",
+            endAt = eventDay.atTime(16, 0).atZone(zone).toInstant(),
+        )
+    assertEquals(listOf(expected), missions.created)
+    assertEquals(expected, state.createdMission)
+  }
+
+  @Test
+  fun edit_keepsTheTeamAndTheAssignees() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+
+    viewModel.onTeamChange("bar")
+    viewModel.onToggleAssignee("ben")
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals("logistics", state.teamId)
+    assertEquals(listOf("ana"), missions.created.single().assigneeIds)
+    assertTrue(state.assignees.selectedIds.isEmpty())
+  }
+
+  @Test
+  fun edit_overlapping_reportsTheConflict() = runTest {
+    val other = storedMission()
+    val stored = storedMission(startHour = 16)
+    openEdit(stored.id)
+
+    viewModel.onStartTimeChange(LocalTime.of(14, 0))
+    viewModel.onEndTimeChange(LocalTime.of(15, 30))
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(other.title, state.conflict?.title)
+    assertNull(state.createdMission)
+  }
+
+  @Test
+  fun edit_belowTheAssignees_reportsTheCount() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+    // Two more people are assigned from the Overview while the form is open.
+    missions.updateAssignees(event.id, stored.id, listOf("ana", "ben", "cleo"))
+
+    repeat(2) { viewModel.onDecreaseVolunteers() }
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(3, state.belowAssignees)
+    assertEquals(3, state.minVolunteers)
+    // Raised back to the people assigned, so the stepper starts from a valid need.
+    assertEquals(3, state.volunteersNeeded)
+    assertNull(state.createdMission)
+  }
+
+  @Test
+  fun edit_decreaseVolunteers_stopsAtTheAssigneeCount() = runTest {
+    openEdit(storedMission("ana", "ben").id)
+
+    repeat(3) { viewModel.onDecreaseVolunteers() }
+
+    assertEquals(2, state.volunteersNeeded)
+  }
+
+  @Test
+  fun edit_ofAMissingMission_showsNotFound() = runTest {
+    openEdit("missing")
+
+    assertTrue(state.missionNotFound)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_ofACompletedMission_cannotBeSaved() = runTest {
+    val stored = storedMission()
+    missions.markCompleted(event.id, stored.id)
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Too late")
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertTrue(state.missionCompleted)
+    assertFalse(state.canSubmit)
+    assertEquals("Sort the food donations", missions.created.single().title)
+  }
+
+  @Test
+  fun edit_invalidValues_showTheFieldErrors() = runTest {
+    val stored = storedMission()
+    openEdit(stored.id)
+
+    viewModel.onTitleChange(" ")
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(MissionFormError.TITLE_EMPTY, state.errorFor(MissionFormField.TITLE))
+    assertEquals(stored, missions.created.single())
+  }
+
+  /** The event now ends at 06:00 the next day, so night missions fit in it. */
+  private fun extendTheEventOverNight() {
+    events =
+        StubEventRepository(
+            event.copy(endAt = eventDay.plusDays(1).atTime(6, 0).atZone(zone).toInstant())
+        )
+  }
+
+  /** The stored mission once [change] is saved on it directly, as another device would. */
+  private suspend fun changed(stored: Mission, change: (Mission) -> Mission): Mission {
+    missions.updateMission(change(stored))
+    return checkNotNull(missions.getMission(event.id, stored.id))
+  }
+
+  @Test
+  fun edit_crossingMidnight_roundTripsUnchanged() = runTest {
+    extendTheEventOverNight()
+    val night =
+        changed(storedMission()) {
+          it.copy(
+              startAt = eventDay.atTime(22, 0).atZone(zone).toInstant(),
+              endAt = eventDay.plusDays(1).atTime(2, 0).atZone(zone).toInstant(),
+          )
+        }
+    openEdit(night.id)
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertTrue(state.endsNextDay)
+    assertEquals(listOf(night), missions.created)
+  }
+
+  @Test
+  fun edit_untouchedLocation_keepsTheExactCoordinates() = runTest {
+    val precise = MissionLocation("Hall B", GeoPosition(50.636612345, 3.063598765))
+    val stored = changed(storedMission()) { it.copy(location = precise) }
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Welcome the donors")
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertEquals(precise, missions.created.single().location)
+  }
+
+  @Test
+  fun edit_ofADayLongMission_cannotBeSaved() = runTest {
+    extendTheEventOverNight()
+    val dayLong =
+        changed(storedMission()) {
+          it.copy(
+              startAt = eventDay.atTime(10, 0).atZone(zone).toInstant(),
+              endAt = eventDay.plusDays(1).atTime(10, 0).atZone(zone).toInstant(),
+          )
+        }
+
+    openEdit(dayLong.id)
+
+    assertTrue(state.slotNotEditable)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_saveFailure_reportsIt() = runTest {
+    openEdit(storedMission().id)
+    missions.failure = IllegalStateException("backend down")
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertTrue(state.saveFailed)
+    assertNull(state.createdMission)
+  }
+
+  @Test
+  fun edit_missionDeletedMeanwhile_showsNotFound() = runTest {
+    openEdit(storedMission().id)
+    missions.failure = MissionRepositoryException.NotFound()
+
+    viewModel.addMission()
+    advanceUntilIdle()
+
+    assertTrue(state.missionNotFound)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_byTheManagerOfAnotherTeam_isNotAllowed() = runTest {
+    val bar = storedMission(teamId = "bar")
+    userId = managerId
+
+    openEdit(bar.id)
+
+    assertTrue(state.notAllowed)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_byTheManagerOfItsTeam_isAllowed() = runTest {
+    val stored = storedMission()
+    userId = managerId
+
+    openEdit(stored.id)
+
+    assertFalse(state.notAllowed)
+    assertTrue(state.canSubmit)
   }
 
   /** [hour]:[minute] on [dayOfMonth] July 2027. */
