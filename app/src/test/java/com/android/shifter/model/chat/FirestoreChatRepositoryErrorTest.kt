@@ -17,25 +17,28 @@ import org.junit.Test
  * The mocked Firestore answers no call, so reaching it would throw a `MockKException` instead of
  * the expected error: the `send` tests fail if it writes before checking.
  */
-class FirestoreTeamChatRepositoryErrorTest {
+class FirestoreChatRepositoryErrorTest {
 
   @Test
   fun toRepositoryException_translatesFirestoreErrors() {
     fun map(code: Code) =
-        FirestoreTeamChatRepository.toRepositoryException(FirebaseFirestoreException("", code))
-    assertTrue(map(Code.PERMISSION_DENIED) is TeamChatRepositoryException.NotAllowed)
-    assertTrue(map(Code.UNAUTHENTICATED) is TeamChatRepositoryException.NotAllowed)
-    assertTrue(map(Code.UNAVAILABLE) is TeamChatRepositoryException.Unavailable)
-    assertTrue(map(Code.DEADLINE_EXCEEDED) is TeamChatRepositoryException.Unavailable)
-    assertTrue(map(Code.INTERNAL) is TeamChatRepositoryException.Unknown)
+        FirestoreChatRepository.toRepositoryException(FirebaseFirestoreException("", code))
+    assertTrue(map(Code.PERMISSION_DENIED) is ChatRepositoryException.NotAllowed)
+    assertTrue(map(Code.UNAUTHENTICATED) is ChatRepositoryException.NotAllowed)
+    assertTrue(map(Code.UNAVAILABLE) is ChatRepositoryException.Unavailable)
+    assertTrue(map(Code.DEADLINE_EXCEEDED) is ChatRepositoryException.Unavailable)
+    assertTrue(map(Code.INTERNAL) is ChatRepositoryException.Unknown)
   }
 
   @Test
   fun send_withABlankText_throwsWithoutWriting() = runTest {
     val auth = mockk<FirebaseAuth> { every { currentUser?.uid } returns "user-1" }
-    val repository = FirestoreTeamChatRepository(mockk<FirebaseFirestore>(), auth)
+    val repository = FirestoreChatRepository(mockk<FirebaseFirestore>(), auth)
 
-    val thrown = runCatching { repository.send("event-1", "team-1", "   ") }.exceptionOrNull()
+    val thrown = runCatching {
+      repository.send(ChatChannelId.Team("event-1", "team-1"), "   ")
+    }
+        .exceptionOrNull()
 
     assertTrue("Expected IllegalArgumentException, got $thrown", thrown is IllegalArgumentException)
   }
@@ -43,10 +46,13 @@ class FirestoreTeamChatRepositoryErrorTest {
   @Test
   fun send_whenSignedOut_throwsNotAllowedWithoutWriting() = runTest {
     val auth = mockk<FirebaseAuth> { every { currentUser } returns null }
-    val repository = FirestoreTeamChatRepository(mockk<FirebaseFirestore>(), auth)
+    val repository = FirestoreChatRepository(mockk<FirebaseFirestore>(), auth)
 
-    val thrown = runCatching { repository.send("event-1", "team-1", "Hello") }.exceptionOrNull()
+    val thrown = runCatching {
+      repository.send(ChatChannelId.Team("event-1", "team-1"), "Hello")
+    }
+        .exceptionOrNull()
 
-    assertTrue("Expected NotAllowed, got $thrown", thrown is TeamChatRepositoryException.NotAllowed)
+    assertTrue("Expected NotAllowed, got $thrown", thrown is ChatRepositoryException.NotAllowed)
   }
 }

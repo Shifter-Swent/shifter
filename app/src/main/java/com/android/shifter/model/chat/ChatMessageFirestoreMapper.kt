@@ -12,12 +12,12 @@ import com.swent.shifter.model.firestore.requireString
 private const val ENTITY = "ChatMessage"
 
 /**
- * Names of the messages subcollection and of every field of a message document. The event and the
- * team are carried by the path `/events/{eventId}/teams/{teamId}/messages/{messageId}`.
+ * Names of the messages subcollection and of every field of a message document. The channel is
+ * carried by the path, such as `/events/{eventId}/teams/{teamId}/messages/{messageId}`.
  */
 internal object ChatMessageSchema {
 
-  /** The `messages` subcollection of each `/events/{eventId}/teams/{teamId}` document. */
+  /** The `messages` subcollection of each channel, such as `/events/{eventId}/teams/{teamId}`. */
   const val COLLECTION = "messages"
 
   const val SENDER_ID = "senderId"
@@ -40,7 +40,7 @@ internal fun newMessageFields(senderId: String, text: String): Map<String, Any> 
  * Rebuilds the [ChatMessage] stored in this document, taking [ChatMessage.id] from the document id.
  *
  * A message whose write is still pending has no server time yet: it is read with an estimate of it,
- * as [TeamChatRepository.messages] promises, and marked [ChatMessage.pending].
+ * as [ChatRepository.messages] promises, and marked [ChatMessage.pending].
  *
  * Throws [IllegalStateException] when a field is missing or has an unexpected type.
  */

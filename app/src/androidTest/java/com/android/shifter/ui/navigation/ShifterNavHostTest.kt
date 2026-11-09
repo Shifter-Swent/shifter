@@ -829,7 +829,7 @@ class ShifterNavHostTest {
             repositories.missionRepository,
             UnreadableTeams(),
             repositories.checkInRepository,
-            repositories.teamChatRepository,
+            repositories.chatRepository,
             repositories.liveLocationRepository,
         )
     )
