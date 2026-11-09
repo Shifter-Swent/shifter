@@ -20,6 +20,15 @@ internal object ChatMessageSchema {
   /** The `messages` subcollection of each channel, such as `/events/{eventId}/teams/{teamId}`. */
   const val COLLECTION = "messages"
 
+  /**
+   * The `channels` subcollection of each `/events/{eventId}` document, holding the channels of the
+   * whole event, such as [GENERAL].
+   */
+  const val CHANNELS = "channels"
+
+  /** The id of the event's general channel in [CHANNELS]. */
+  const val GENERAL = "general"
+
   const val SENDER_ID = "senderId"
   const val TEXT = "text"
   const val SENT_AT = "sentAt"

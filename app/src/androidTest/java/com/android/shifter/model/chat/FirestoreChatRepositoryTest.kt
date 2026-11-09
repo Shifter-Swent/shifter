@@ -31,8 +31,9 @@ import org.junit.runner.RunWith
 
 /**
  * [FirestoreChatRepository] against the emulators, with the real `firestore.rules`.
- * `TeamChatRulesTest` covers each rule on its own; these tests check what the repository makes of
- * them: the document it writes, the errors it throws, and what its flow emits.
+ * `TeamChatRulesTest` and `GeneralChatRulesTest` cover each rule on their own; these tests check
+ * what the repository makes of them: the document it writes, the errors it throws, and what its
+ * flow emits.
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreChatRepositoryTest {
@@ -51,6 +52,12 @@ class FirestoreChatRepositoryTest {
 
   private val teamPath
     get() = "events/$eventId/teams/$TEAM_ID"
+
+  private val general
+    get() = ChatChannelId.General(eventId)
+
+  private val generalPath
+    get() = "events/$eventId/channels/general"
 
   @Before
   fun setUp() = emulatorTest {
@@ -183,6 +190,76 @@ class FirestoreChatRepositoryTest {
     assertFailsWith<ChatRepositoryException.Unknown> { repository.messages(channel).first() }
   }
 
+  @Test
+  fun general_sendAndMessages_byAParticipant_storesTheMessageUnderTheEvent() = emulatorTest {
+    signIn(member)
+    coroutineScope {
+      val emissions = repository.messages(general).produceIn(this)
+      try {
+        assertEquals(emptyList<ChatMessage>(), emissions.receive())
+
+        repository.send(general, "  Hello everyone  ")
+
+        val listed = emissions.receiveUntil { list -> list.any { !it.pending } }.single()
+        assertEquals("Hello everyone", listed.text)
+        assertEquals(member.uid, listed.senderId)
+        val stored = db.collection("$generalPath/messages").get(Source.SERVER).await()
+        assertEquals(listOf(listed.id), stored.documents.map { it.id })
+        // Not in the team's channel, though the member is in the team.
+        assertEquals(emptyList<ChatMessage>(), repository.messages(channel).first())
+      } finally {
+        emissions.cancel()
+      }
+    }
+  }
+
+  @Test
+  fun general_byTheOrganizer_isAllowed() = emulatorTest {
+    signIn(organizer)
+
+    repository.send(general, "Welcome to the festival")
+
+    assertEquals(listOf("Welcome to the festival"), repository.messages(general).first().texts())
+  }
+
+  @Test
+  fun general_byAnOutsider_failsWithNotAllowed() = emulatorTest {
+    signIn(outsider)
+
+    assertFailsWith<ChatRepositoryException.NotAllowed> { repository.messages(general).first() }
+    assertFailsWith<ChatRepositoryException.NotAllowed> {
+      repository.send(general, "Hello everyone")
+    }
+  }
+
+  /** Like for a team: leaving the event ends an open observation of its general channel. */
+  @Test
+  fun general_afterLeavingTheEvent_failsWithNotAllowed() = emulatorTest {
+    signIn(member)
+    var left = false
+
+    // Collected here rather than through a channel, as in the team's case above.
+    val failure = runCatching {
+      step("denial") {
+        repository.messages(general).collect {
+          if (left) return@collect
+          left = true
+          // Through the admin API, so the member stays signed in.
+          FirestoreEmulatorAdmin.deleteDocument(participantsPath)
+          FirestoreEmulatorAdmin.createParticipants(eventId, listOf(manager.uid))
+          // The rules are checked again when the query's result changes.
+          messageAsAdmin("after", manager, "Doors open", Instant.now(), generalPath)
+        }
+      }
+    }
+
+    assertTrue("the listener never emitted", left)
+    assertTrue(
+        "Expected NotAllowed, got ${failure.exceptionOrNull()}",
+        failure.exceptionOrNull() is ChatRepositoryException.NotAllowed,
+    )
+  }
+
   /**
    * The promise of [ChatRepository.send] offline: the message is listed at once as pending, the
    * call gives up with `Unavailable` rather than waiting, and the message still goes out once the
@@ -226,7 +303,10 @@ class FirestoreChatRepositoryTest {
         }
       }
 
-  /** Creates an event of [organizer] with the team [TEAM_ID], led by [manager], of [member]. */
+  /**
+   * Creates an event of [organizer] with the team [TEAM_ID], led by [manager], of [member], both
+   * participants of the event.
+   */
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
@@ -235,12 +315,25 @@ class FirestoreChatRepositoryTest {
     val team = ref.collection("teams").document(TEAM_ID)
     paths += team.path
     team.set(mapOf("managerId" to manager.uid, "memberIds" to listOf(member.uid))).await()
+    paths += FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(manager.uid, member.uid))
     return ref.id
   }
 
-  /** Stores a message of [sender] sent at [sentAt], whatever the rules say about it. */
-  private suspend fun messageAsAdmin(id: String, sender: Account, text: String, sentAt: Instant) {
-    val path = "$teamPath/messages/$id"
+  private val participantsPath
+    get() = "eventParticipants/$eventId"
+
+  /**
+   * Stores a message of [sender] sent at [sentAt] in the channel at [channelPath], whatever the
+   * rules say about it.
+   */
+  private suspend fun messageAsAdmin(
+      id: String,
+      sender: Account,
+      text: String,
+      sentAt: Instant,
+      channelPath: String = teamPath,
+  ) {
+    val path = "$channelPath/messages/$id"
     paths += path
     FirestoreEmulatorAdmin.createDocument(
         path,
@@ -248,11 +341,16 @@ class FirestoreChatRepositoryTest {
     )
   }
 
-  /** The paths of every message of the channel, read as the organizer, who may read them all. */
+  /**
+   * The paths of every message of the team's and the general channels, read as the organizer, who
+   * may read them all.
+   */
   private suspend fun channelPaths(): List<String> {
     signIn(organizer)
-    return db.collection("$teamPath/messages").get(Source.SERVER).await().documents.map {
-      it.reference.path
+    return listOf(teamPath, generalPath).flatMap { channelPath ->
+      db.collection("$channelPath/messages").get(Source.SERVER).await().documents.map {
+        it.reference.path
+      }
     }
   }
 
