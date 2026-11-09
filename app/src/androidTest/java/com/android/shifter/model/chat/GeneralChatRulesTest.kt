@@ -153,6 +153,33 @@ class GeneralChatRulesTest {
   }
 
   @Test
+  fun access_afterBeingRejected_isDenied() = emulatorTest {
+    val sent = sentByParticipant()
+
+    // As the app rejects an accepted volunteer: the request, the participants and the team, in one
+    // commit by the organizer.
+    signIn(organizer)
+    db.batch()
+        .update(requestRef(eventId, participant), "status", "REJECTED")
+        .update(participantsRef(), "participantIds", FieldValue.arrayRemove(participant.uid))
+        .update(teamRef(), "memberIds", FieldValue.arrayRemove(participant.uid))
+        .commit()
+        .await()
+
+    assertNoAccess(participant, sent)
+  }
+
+  @Test
+  fun send_asAnAnnouncementByAParticipant_isDenied() = emulatorTest {
+    // A normal message of the same participant goes through.
+    sentByParticipant()
+
+    assertDenied {
+      newMessage().set(message(participant, "Briefing at 18:00") + ("announcement" to true)).await()
+    }
+  }
+
+  @Test
   fun send_withAnotherSenderId_isDenied() = emulatorTest {
     signIn(participant)
 
