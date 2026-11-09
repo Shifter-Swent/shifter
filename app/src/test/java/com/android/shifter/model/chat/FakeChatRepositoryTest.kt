@@ -43,7 +43,7 @@ class FakeChatRepositoryTest {
 
   @Test
   fun send_asAnAnnouncement_recordsIt() = runTest {
-    repository.canAnnounce = true
+    repository.announcingChannels = setOf(CHANNEL)
 
     repository.send(CHANNEL, "Briefing at 18:00", announcement = true)
 
@@ -60,6 +60,18 @@ class FakeChatRepositoryTest {
     // A normal message still goes through.
     repository.send(CHANNEL, "Hello team")
     assertEquals(1, repository.messages(CHANNEL).first().size)
+  }
+
+  @Test
+  fun send_asAnAnnouncementInAnotherChannel_throwsAndSendsNothing() = runTest {
+    repository.announcingChannels = setOf(CHANNEL)
+    val otherTeam = ChatChannelId.Team(EVENT_ID, OTHER_TEAM_ID)
+
+    assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+      repository.send(otherTeam, "Briefing at 18:00", announcement = true)
+    }
+
+    assertEquals(emptyList<ChatMessage>(), repository.messages(otherTeam).first())
   }
 
   @Test
