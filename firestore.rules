@@ -358,10 +358,13 @@ service cloud.firestore {
       // they are now, so someone who withdraws or is rejected loses access at once. The check is on
       // the path, not on the message, so the whole channel can be queried.
       match /channels/general/messages/{messageId} {
+        // Only the organizer sends announcements here, not the managers nor the participants.
+        function mayAnnounce() {
+          return !request.resource.data.get('announcement', false) || isOrganizer(eventId);
+        }
+
         allow read: if canReadEventContent(eventId);
-        allow create: if canReadEventContent(eventId)
-          && isValidMessage()
-          && !request.resource.data.get('announcement', false);
+        allow create: if canReadEventContent(eventId) && isValidMessage() && mayAnnounce();
         // A message is final, like in a team's channel.
         allow update, delete: if false;
       }

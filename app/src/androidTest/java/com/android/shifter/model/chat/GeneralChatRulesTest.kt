@@ -180,6 +180,28 @@ class GeneralChatRulesTest {
   }
 
   @Test
+  fun send_asAnAnnouncementByTheOrganizer_isReadAsAnAnnouncement() = emulatorTest {
+    signIn(organizer)
+    val ref = newMessage()
+
+    ref.set(message(organizer, "Doors open at 18:00") + ("announcement" to true)).await()
+
+    assertEquals(true, ref.get(Source.SERVER).await().getBoolean("announcement"))
+  }
+
+  @Test
+  fun send_asAnAnnouncementByAManager_isDenied() = emulatorTest {
+    signIn(manager)
+    // A normal message of the same manager goes through.
+    newMessage().set(message(manager, "The bar opens at 18:00")).await()
+
+    // Though they announce in their team's channel.
+    assertDenied {
+      newMessage().set(message(manager, "Briefing at 18:00") + ("announcement" to true)).await()
+    }
+  }
+
+  @Test
   fun send_withAnotherSenderId_isDenied() = emulatorTest {
     signIn(participant)
 
