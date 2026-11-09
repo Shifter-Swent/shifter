@@ -23,7 +23,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -263,8 +262,11 @@ private fun SavedTeamCard(team: Team) {
 
 /**
  * A team the event already has, editable in place over a [CreateTeamViewModel] of its own (#226). A
- * field is saved when it loses the focus, the icon as soon as it is picked, and whatever is left
- * when the card leaves the screen; a failed save is reported in a Snackbar.
+ * field is saved when it loses the focus, which leaving the screen also does, and the icon as soon
+ * as it is picked; a failed save is reported in a Snackbar.
+ *
+ * The card keeps the values of [team] it first opened on: a reload that brings newer ones, saved
+ * meanwhile by another organizer, does not change it, and its next save writes all three fields.
  */
 @Composable
 private fun EditableTeamCard(
@@ -276,13 +278,7 @@ private fun EditableTeamCard(
       viewModel(key = "$EDIT_TEAM_FORM_KEY${team.id}", factory = factory)
   val state by form.uiState.collectAsState()
   val failure = stringResource(R.string.team_setup_save_failed)
-  LaunchedEffect(state.saveFailed) {
-    if (state.saveFailed) {
-      snackbarHostState.showSnackbar(failure)
-      form.onSaveFailureShown()
-    }
-  }
-  DisposableEffect(form) { onDispose { form.saveChanges() } }
+  LaunchedEffect(form) { form.saveFailures.collect { snackbarHostState.showSnackbar(failure) } }
   Box(modifier = Modifier.testTag(TeamSetupScreenTestTags.savedTeam(team.id))) {
     CreateTeamContent(
         state = state,

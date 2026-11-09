@@ -10,8 +10,11 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -437,6 +440,15 @@ class CreateTeamViewModelTest {
     advanceUntilIdle()
   }
 
+  /** Every failed save reported from now on, as the screen collects them. */
+  private fun TestScope.saveFailures(): List<Unit> {
+    val failures = mutableListOf<Unit>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.saveFailures.toList(failures)
+    }
+    return failures
+  }
+
   @Test
   fun editing_opensOnTheTeamWithoutWaitingForASubmitToShowErrors() {
     editLogistics()
@@ -454,6 +466,8 @@ class CreateTeamViewModelTest {
   fun saveChanges_writesTheTrimmedFieldsAndKeepsTheRest() = runTest {
     editLogistics()
 
+    val failures = saveFailures()
+
     viewModel.onNameChange("  Supply ")
     viewModel.onIconChange("wine")
     save()
@@ -462,18 +476,19 @@ class CreateTeamViewModelTest {
         listOf(logistics.copy(name = "Supply", icon = "wine")),
         teams.teams,
     )
-    assertFalse(state.saveFailed)
+    assertEquals(emptyList<Unit>(), failures)
   }
 
   @Test
   fun saveChanges_withNothingChanged_writesNothing() = runTest {
     editLogistics()
+    val failures = saveFailures()
     teams.failure = IllegalStateException("must not be called")
 
     viewModel.onNameChange("Logistics ")
     save()
 
-    assertFalse(state.saveFailed)
+    assertEquals(emptyList<Unit>(), failures)
   }
 
   @Test
@@ -492,18 +507,37 @@ class CreateTeamViewModelTest {
   @Test
   fun saveChanges_thatFails_isReportedThenTriedAgain() = runTest {
     editLogistics()
-    teams.failure = IllegalStateException("offline")
+    val failures = saveFailures()
+    teams.failure = IllegalStateException("denied")
 
     viewModel.onDescriptionChange("Bring the water")
     save()
+    // Typing on does not take the failure back.
+    viewModel.onDescriptionChange("Bring the water around")
 
-    assertTrue(state.saveFailed)
-    viewModel.onSaveFailureShown()
-    assertFalse(state.saveFailed)
+    assertEquals(listOf(Unit), failures)
     // The change was not saved, so the next save sends it again.
     teams.failure = null
     save()
-    assertEquals("Bring the water", teams.teams.single().description)
+    assertEquals("Bring the water around", teams.teams.single().description)
+  }
+
+  @Test
+  fun saveChanges_twoFailingInARow_goBackToWhatTheBackendHolds() = runTest {
+    editLogistics()
+    teams.failure = IllegalStateException("denied")
+
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    viewModel.onNameChange("Bar")
+    viewModel.saveChanges()
+    advanceUntilIdle()
+    // Back to the first value, which the backend never took: it is sent again.
+    teams.failure = null
+    viewModel.onNameChange("Supply")
+    save()
+
+    assertEquals("Supply", teams.teams.single().name)
   }
 
   @Test

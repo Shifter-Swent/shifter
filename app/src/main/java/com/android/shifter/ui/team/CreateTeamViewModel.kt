@@ -11,9 +11,12 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import java.time.Clock
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -107,8 +110,19 @@ class CreateTeamViewModel(
   /** Becomes true on the first submit, after which errors follow every edit. */
   private var submitAttempted = team != null
 
-  /** The team edited, as last saved, or null when the form creates one. */
+  /** The team edited, as last sent to the backend, or null when the form creates one. */
   private var saved: Team? = team
+
+  /** The team edited, as the backend last confirmed it, which a failed save goes back to. */
+  private var confirmed: Team? = team
+
+  private val _saveFailures = Channel<Unit>(Channel.CONFLATED)
+
+  /**
+   * One element per failed save of the team edited, for the screen to report once. An event rather
+   * than a flag of [uiState], so typing on does not take the report away.
+   */
+  val saveFailures: Flow<Unit> = _saveFailures.receiveAsFlow()
 
   fun onNameChange(name: String) = edit { it.copy(name = name) }
 
@@ -153,8 +167,8 @@ class CreateTeamViewModel(
 
   /**
    * Saves the team edited, when the form is valid and differs from what was last saved: an invalid
-   * field keeps its error, and the team its last saved value. A failure sets
-   * [CreateTeamUiState.saveFailed], and the next call tries again. Does nothing for a new team.
+   * field keeps its error, and the team its last saved value. A failure is sent to [saveFailures],
+   * and the next call tries again from what the backend confirmed. Does nothing for a new team.
    */
   fun saveChanges() {
     val previous = saved ?: return
@@ -171,18 +185,14 @@ class CreateTeamViewModel(
     viewModelScope.launch {
       try {
         teamRepository.updateTeam(eventId, next.id, next.name, next.description, next.icon)
+        confirmed = next
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
-        if (saved == next) saved = previous
-        _uiState.update { it.copy(saveFailed = true) }
+        saved = confirmed
+        _saveFailures.trySend(Unit)
       }
     }
-  }
-
-  /** Clears [CreateTeamUiState.saveFailed] once the screen has reported it. */
-  fun onSaveFailureShown() {
-    _uiState.update { it.copy(saveFailed = false) }
   }
 
   /**

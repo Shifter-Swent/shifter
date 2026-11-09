@@ -289,7 +289,21 @@ class TeamSetupScreenTest {
     // Moving on to the description is leaving the name.
     inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
 
-    composeTestRule.waitUntil { teams.teams.single().name == "Supply" }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun editingASavedTeam_savesTheDescriptionOnceItLosesTheFocus() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD)
+        .performTextReplacement("Bring the water")
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      teams.teams.single().description == "Bring the water"
+    }
   }
 
   @Test
@@ -300,7 +314,7 @@ class TeamSetupScreenTest {
     inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).performClick()
     composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).performClick()
 
-    composeTestRule.waitUntil { teams.teams.single().icon == TeamIcon.WINE.id }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().icon == TeamIcon.WINE.id }
   }
 
   @Test
@@ -328,12 +342,13 @@ class TeamSetupScreenTest {
     inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
     inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
 
-    composeTestRule.waitUntil {
-      composeTestRule
-          .onAllNodesWithText(context.getString(R.string.team_setup_save_failed))
-          .fetchSemanticsNodes()
-          .isNotEmpty()
+    val failure = context.getString(R.string.team_setup_save_failed)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(failure).fetchSemanticsNodes().isNotEmpty()
     }
+    // Typing on leaves the report on screen.
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performTextInput(" more")
+    composeTestRule.onNodeWithText(failure).assertIsDisplayed()
   }
 
   @Test
@@ -353,9 +368,10 @@ class TeamSetupScreenTest {
     }
 
     inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    // The field still has the focus, which it loses as the screen goes.
     shown = false
 
-    composeTestRule.waitUntil { teams.teams.single().name == "Supply" }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
   }
 
   @Test
@@ -502,5 +518,10 @@ class TeamSetupScreenTest {
     composeTestRule
         .onNodeWithTag(TeamSetupScreenTestTags.SUBTITLE)
         .assertTextEquals(context.getString(R.string.team_setup_subtitle))
+  }
+
+  private companion object {
+    /** Long enough for a slow CI emulator, where the default second is tight. */
+    const val TIMEOUT_MILLIS = 5_000L
   }
 }
