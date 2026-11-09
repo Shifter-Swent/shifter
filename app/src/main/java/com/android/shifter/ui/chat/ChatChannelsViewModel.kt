@@ -10,6 +10,8 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,7 +56,7 @@ class ChatChannelsViewModel(
     load()
   }
 
-  /** Lists the channels, again after an error or when the user's teams may have changed. */
+  /** Lists the channels, and again after an error. */
   fun load() {
     loading?.cancel()
     _uiState.value = ChatChannelsUiState(asOrganizer)
@@ -67,9 +69,12 @@ class ChatChannelsViewModel(
               asOrganizer -> teamRepository.getTeamsByEvent(eventId)
               // An empty list would say the user is in no team: the error lets them retry.
               userId == null -> error("No signed-in user to list the teams of")
-              else ->
-                  teamRepository.getTeamsOfMember(eventId, userId) +
-                      teamRepository.getTeamsManagedBy(eventId, userId)
+              // Independent queries, run together so a volunteer waits for one round trip.
+              else -> coroutineScope {
+                val member = async { teamRepository.getTeamsOfMember(eventId, userId) }
+                val managed = async { teamRepository.getTeamsManagedBy(eventId, userId) }
+                member.await() + managed.await()
+              }
             }
         val channels =
             teams
