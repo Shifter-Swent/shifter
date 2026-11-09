@@ -1,13 +1,20 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -26,7 +33,7 @@ class ChatChannelsContentTest {
       ShifterTheme {
         ChatChannelsContent(
             state = state,
-            onOpenChannel = { opened += it },
+            onOpenChannel = { opened += it.teamId },
             onRetry = { retries++ },
         )
       }
@@ -88,7 +95,62 @@ class ChatChannelsContentTest {
     composeTestRule.onNodeWithText("The channels could not be loaded.").assertIsDisplayed()
   }
 
+  @Test
+  fun singleChannel_opensItOnce() {
+    val recompositions = mutableIntStateOf(0)
+    showScreen(listOf(team("bar", "Bar")), recompositions)
+
+    composeTestRule.waitForIdle()
+    // Redrawing the list must not open the channel a second time.
+    recompositions.intValue++
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("bar"), opened)
+  }
+
+  @Test
+  fun severalChannels_opensNone() {
+    showScreen(listOf(team("bar", "Bar"), team("kitchen", "Kitchen")))
+
+    tag(ChatChannelsTestTags.channel("kitchen")).assertIsDisplayed()
+
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  /**
+   * The screen with its ViewModel, as a volunteer of [teams]. Reading [recompositions] redraws it
+   * each time the value changes.
+   */
+  private fun showScreen(
+      teams: List<Team>,
+      recompositions: MutableIntState = mutableIntStateOf(0),
+  ) {
+    val viewModel =
+        ChatChannelsViewModel(EVENT, asOrganizer = false, FakeTeamRepository(teams)) { ME }
+    composeTestRule.setContent {
+      ShifterTheme {
+        Column {
+          Text("Redrawn ${recompositions.intValue} times")
+          ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
+        }
+      }
+    }
+  }
+
+  private fun team(id: String, name: String) =
+      Team(
+          id = id,
+          eventId = EVENT,
+          name = name,
+          description = "",
+          icon = "wine",
+          memberIds = listOf(ME),
+          createdAt = Instant.EPOCH,
+      )
+
   private companion object {
+    const val EVENT = "event-1"
+    const val ME = "me"
     val CHANNELS = listOf(ChatChannel("bar", "Bar", "wine"), ChatChannel("kitchen", "Kitchen", ""))
   }
 }

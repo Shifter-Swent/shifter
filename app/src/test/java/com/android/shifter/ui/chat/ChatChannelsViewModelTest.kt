@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import androidx.lifecycle.SavedStateHandle
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepositoryException
@@ -81,6 +82,45 @@ class ChatChannelsViewModelTest {
     assertFalse(state.isLoading)
     assertEquals(ChatError.UNEXPECTED, state.error)
     assertTrue(state.channels.isEmpty())
+  }
+
+  @Test
+  fun load_withASingleChannel_offersToOpenIt() = runTest {
+    val viewModel = viewModel(userId = OTHER)
+
+    assertEquals(
+        ChatChannel("security", "Security", "truck"),
+        viewModel.uiState.value.channelToOpen,
+    )
+  }
+
+  @Test
+  fun load_withSeveralChannels_offersNoneToOpen() = runTest {
+    assertNull(viewModel().uiState.value.channelToOpen)
+  }
+
+  @Test
+  fun onChannelOpened_neverOffersItAgain() = runTest {
+    val viewModel = viewModel(userId = OTHER)
+
+    viewModel.onChannelOpened()
+    viewModel.load()
+
+    // Back on the list, the channel is listed rather than opened again.
+    assertNull(viewModel.uiState.value.channelToOpen)
+    assertEquals(listOf("security"), viewModel.uiState.value.channels.map { it.teamId })
+  }
+
+  @Test
+  fun onChannelOpened_afterTheAppWasKilled_neverOffersItAgain() = runTest {
+    val savedState = SavedStateHandle()
+    ChatChannelsViewModel(EVENT, false, teams, savedState) { OTHER }.onChannelOpened()
+
+    // Android restores the navigation and recreates the ViewModel with the state it saved.
+    val restored = ChatChannelsViewModel(EVENT, false, teams, savedState) { OTHER }
+
+    assertNull(restored.uiState.value.channelToOpen)
+    assertEquals(listOf("security"), restored.uiState.value.channels.map { it.teamId })
   }
 
   @Test

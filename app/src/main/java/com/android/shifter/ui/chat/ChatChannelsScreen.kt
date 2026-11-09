@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -47,14 +48,23 @@ object ChatChannelsTestTags {
   fun channel(teamId: String) = "chatChannel_$teamId"
 }
 
-/** The channels of an event listed by [viewModel]; [onOpenChannel] opens one, by its team's id. */
+/**
+ * The channels of an event listed by [viewModel]; [onOpenChannel] opens one. The only channel the
+ * user can open is opened at once, the first time it is listed.
+ */
 @Composable
 fun ChatChannelsScreen(
     viewModel: ChatChannelsViewModel,
-    onOpenChannel: (String) -> Unit,
+    onOpenChannel: (ChatChannel) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  uiState.channelToOpen?.let { channel ->
+    LaunchedEffect(channel) {
+      viewModel.onChannelOpened()
+      onOpenChannel(channel)
+    }
+  }
   ChatChannelsContent(uiState, onOpenChannel, viewModel::load, modifier)
 }
 
@@ -65,7 +75,7 @@ fun ChatChannelsScreen(
 @Composable
 fun ChatChannelsContent(
     state: ChatChannelsUiState,
-    onOpenChannel: (String) -> Unit,
+    onOpenChannel: (ChatChannel) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -96,7 +106,7 @@ fun ChatChannelsContent(
       else ->
           LazyColumn(modifier = Modifier.fillMaxSize().testTag(ChatChannelsTestTags.LIST)) {
             items(state.channels, key = { it.teamId }) { channel ->
-              ChannelRow(channel) { onOpenChannel(channel.teamId) }
+              ChannelRow(channel) { onOpenChannel(channel) }
               HorizontalDivider(color = shifter_divider)
             }
           }
