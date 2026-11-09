@@ -114,7 +114,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun simultaneousDecisions_preserveBothResultsAndBlockDoubleClicksAndReload() =
+  fun simultaneousDecisions_preserveBothResultsAndBlockDoubleClicksAndDelayTheReload() =
       runTest(dispatcher) {
         val alice = CompletableDeferred<Unit>()
         val bob = CompletableDeferred<Unit>()
@@ -132,16 +132,20 @@ class MembershipRequestVMTest {
         bob.complete(Unit)
         runCurrent()
         assertEquals(setOf("alice"), vm.uiState.value.processingRequestIds)
+        coVerify(exactly = 1) { repository.getMembershipRequestsByEId("event") }
+        val decided =
+            listOf(
+                requests[0].copy(status = MembershipRequestStatus.ACCEPTED),
+                requests[1].copy(status = MembershipRequestStatus.REJECTED),
+            )
+        coEvery { repository.getMembershipRequestsByEId("event") } returns decided
         alice.complete(Unit)
         advanceUntilIdle()
-        assertEquals(
-            listOf(MembershipRequestStatus.ACCEPTED, MembershipRequestStatus.REJECTED),
-            vm.uiState.value.requests.map { it.request.status },
-        )
+        assertEquals(items(decided), vm.uiState.value.requests)
         assertTrue(vm.uiState.value.processingRequestIds.isEmpty())
         coVerify(exactly = 1) { repository.accept("event", "alice") }
         coVerify(exactly = 0) { repository.reject("event", "alice") }
-        coVerify(exactly = 1) { repository.getMembershipRequestsByEId("event") }
+        coVerify(exactly = 2) { repository.getMembershipRequestsByEId("event") }
       }
 
   @Test
@@ -155,22 +159,86 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun decision_duringAReload_isAppliedAndNotOverwrittenByTheReload() =
+  fun decision_duringAReload_isAppliedThenReloadsOnceWritten() =
       runTest(dispatcher) {
         val vm = MembershipRequestVM("event", repository, userRepository)
         advanceUntilIdle()
-        val answer = CompletableDeferred<List<MembershipRequest>>()
-        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { answer.await() }
+        val stale = CompletableDeferred<List<MembershipRequest>>()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { stale.await() }
         vm.loadRequests()
         runCurrent()
 
+        val written = CompletableDeferred<Unit>()
+        coEvery { repository.accept("event", "alice") } coAnswers { written.await() }
         vm.accept("alice")
-        answer.complete(requests)
+        stale.complete(requests)
+        runCurrent()
+        assertEquals(MembershipRequestStatus.PENDING, vm.uiState.value.requests[0].request.status)
+
+        // A request received meanwhile shows once the decision is written.
+        val updated =
+            listOf(requests[0].copy(status = MembershipRequestStatus.ACCEPTED), requests[1]) +
+                request("carol")
+        coEvery { repository.getMembershipRequestsByEId("event") } returns updated
+        written.complete(Unit)
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.accept("event", "alice") }
-        assertEquals(MembershipRequestStatus.ACCEPTED, vm.uiState.value.requests[0].request.status)
+        assertEquals(items(updated), vm.uiState.value.requests)
         assertFalse(vm.uiState.value.isLoading)
+        coVerify(exactly = 3) { repository.getMembershipRequestsByEId("event") }
+      }
+
+  @Test
+  fun decisions_duringAReload_reloadOnceAfterTheLastOneEvenIfItDidNotCancelIt() =
+      runTest(dispatcher) {
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers
+            {
+              CompletableDeferred<List<MembershipRequest>>().await()
+            }
+        vm.loadRequests()
+        runCurrent()
+        val alice = CompletableDeferred<Unit>()
+        val bob = CompletableDeferred<Unit>()
+        coEvery { repository.accept("event", "alice") } coAnswers { alice.await() }
+        coEvery { repository.accept("event", "bob") } coAnswers { bob.await() }
+        // Alice's decision cancels the reload, Bob's finds none to cancel and finishes last.
+        vm.accept("alice")
+        vm.accept("bob")
+        runCurrent()
+        coEvery { repository.getMembershipRequestsByEId("event") } returns requests
+        alice.complete(Unit)
+        runCurrent()
+        coVerify(exactly = 2) { repository.getMembershipRequestsByEId("event") }
+
+        bob.complete(Unit)
+        advanceUntilIdle()
+        coVerify(exactly = 3) { repository.getMembershipRequestsByEId("event") }
+      }
+
+  @Test
+  fun failedDecision_keepsItsErrorAndLeavesTheReloadForTheNextCall() =
+      runTest(dispatcher) {
+        val vm = MembershipRequestVM("event", repository, userRepository)
+        advanceUntilIdle()
+        val stale = CompletableDeferred<List<MembershipRequest>>()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { stale.await() }
+        vm.loadRequests()
+        runCurrent()
+        coEvery { repository.accept("event", "alice") } throws
+            MembershipRequestRepositoryException.Unavailable()
+        vm.accept("alice")
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.errorMsg!!.contains("unavailable"))
+        coVerify(exactly = 2) { repository.getMembershipRequestsByEId("event") }
+
+        coEvery { repository.accept("event", "alice") } returns Unit
+        coEvery { repository.getMembershipRequestsByEId("event") } returns requests
+        vm.accept("alice")
+        advanceUntilIdle()
+        assertNull(vm.uiState.value.errorMsg)
+        coVerify(exactly = 3) { repository.getMembershipRequestsByEId("event") }
       }
 
   @Test

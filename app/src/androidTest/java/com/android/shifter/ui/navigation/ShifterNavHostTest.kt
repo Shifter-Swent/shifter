@@ -775,6 +775,8 @@ class ShifterNavHostTest {
             missionRepository = repositories.missionRepository,
             teamRepository = repositories.teamRepository,
             checkInRepository = repositories.checkInRepository,
+            chatRepository = repositories.chatRepository,
+            liveLocationRepository = repositories.liveLocationRepository,
         )
     lateinit var navController: NavHostController
     composeTestRule.setContent {

@@ -53,13 +53,21 @@ class MembershipRequestVM(
   /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
   private var loaded = false
 
+  /** A load was cancelled or refused by a decision: it runs once no decision is being written. */
+  private var reloadPending = false
+
   init {
     loadRequests()
   }
 
   fun loadRequests() {
-    // Avoid overlapping reads or a stale reload replacing a decision in progress.
-    if (loadJob?.isActive == true || _uiState.value.processingRequestIds.isNotEmpty()) return
+    if (loadJob?.isActive == true) return
+    // A read started now could answer before the decision is written and bring the old status back.
+    if (_uiState.value.processingRequestIds.isNotEmpty()) {
+      reloadPending = true
+      return
+    }
+    reloadPending = false
     _uiState.update { it.copy(isLoading = !loaded, errorMsg = null) }
     loadJob = viewModelScope.launch {
       try {
@@ -95,7 +103,10 @@ class MembershipRequestVM(
     val request = state.requests.firstOrNull { it.request.userId == userId }?.request ?: return
     if (request.id in state.processingRequestIds) return
     // It read the requests before this decision, so its answer would bring the old status back.
-    loadJob?.cancel()
+    if (loadJob?.isActive == true) {
+      loadJob?.cancel()
+      reloadPending = true
+    }
     _uiState.update {
       it.copy(processingRequestIds = it.processingRequestIds + request.id, errorMsg = null)
     }
@@ -120,6 +131,9 @@ class MembershipRequestVM(
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {
         _uiState.update { it.copy(processingRequestIds = it.processingRequestIds - request.id) }
+        // Only the last decision to finish gets past the check in loadRequests. After a failed
+        // one, the reload waits for the next call, so that it does not clear the error.
+        if (reloadPending && _uiState.value.errorMsg == null) loadRequests()
       }
     }
   }
