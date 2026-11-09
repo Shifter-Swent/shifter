@@ -70,7 +70,7 @@ data class NextMission(
  * What the map screen shows: the event, a marker for each of its missions that has a location, and
  * the mission tapped last.
  *
- * @property venue the event's address, shown under its title.
+ * @property venue the event's address, shown above the map.
  * @property center where the camera opens: the venue when it has coordinates, else the first
  *   mission. Null keeps the map's default position.
  * @property selected the marker of the mission tapped last, shown in a card over the map.
@@ -78,7 +78,6 @@ data class NextMission(
  *   none left.
  */
 data class MapUiState(
-    val eventTitle: String = "",
     val venue: String = "",
     val center: GeoPosition? = null,
     val markers: List<MapMarker> = emptyList(),
@@ -216,7 +215,6 @@ class MapViewModel(
         val center = event.location.position ?: markers.firstOrNull()?.position
         _uiState.update {
           it.copy(
-              eventTitle = event.title,
               venue = event.location.address,
               center = center,
               markers = markers,

@@ -2,17 +2,25 @@
 package com.swent.shifter.model.user
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
+import java.time.Duration
+import java.time.Instant
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -39,7 +47,17 @@ class UserRepositoryFirestoreEmulatorTest {
     uid = auth.signInForFirestore { auth.signInAnonymously().await() }.user!!.uid
   }
 
-  @After fun signOut() = auth.signOut()
+  /** Documents created by a test, deleted after it, children first. */
+  private val cleanup = mutableListOf<String>()
+
+  @After
+  fun signOut() = emulatorTest {
+    try {
+      step("cleanup") { cleanup.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
+    } finally {
+      auth.signOut()
+    }
+  }
 
   @Test
   fun getOrCreateUser_createsProfileOnFirstSignIn() = emulatorTest {
@@ -269,6 +287,124 @@ class UserRepositoryFirestoreEmulatorTest {
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
+  @Test
+  fun setLocationSharing_savesTheConsentAndOnlyTurningItOffDeletesThePositions() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    // A volunteer accepted to two events, so the batch spans two teams of different events.
+    val teams = listOf(runningEventWithTeam("first"), runningEventWithTeam("second"))
+
+    step("turn on") { repository.setLocationSharing(uid, true, teams) }
+    assertEquals(true, step("read profile") { repository.getUser(uid) }?.locationSharingEnabled)
+    teams.forEach { step("share in ${it.eventId}") { shareLocation(it) } }
+    // Turning it on deletes nothing, even with teams given.
+    step("turn on again") { repository.setLocationSharing(uid, true, teams) }
+    teams.forEach { assertTrue(step("read position") { serverPositionExists(it) }) }
+
+    step("turn off") { repository.setLocationSharing(uid, false, teams) }
+
+    assertEquals(false, step("read profile") { repository.getUser(uid) }?.locationSharingEnabled)
+    teams.forEach {
+      assertFalse(
+          "position left in ${it.eventId}",
+          step("read position") { serverPositionExists(it) },
+      )
+    }
+  }
+
+  /**
+   * Turned off offline, the consent and the deletion are queued together and reach the server
+   * together once the device reconnects, so the manager stops seeing the position at that moment.
+   */
+  @Test
+  fun setLocationSharing_offOffline_deletesThePositionOnceBackOnline() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    val team = runningEventWithTeam()
+    step("turn on") { repository.setLocationSharing(uid, true, emptyList()) }
+    step("share") { shareLocation(team) }
+    // As Settings does before showing the switch, so the device has the profile to update.
+    step("read profile") { repository.getUser(uid) }
+
+    db.disableNetwork().await()
+    coroutineScope {
+      val turningOff = async { repository.setLocationSharing(uid, false, listOf(team)) }
+      try {
+        // Not confirmed while offline, but already what this device reads.
+        assertNull(withTimeoutOrNull(OFFLINE_WAIT_MILLIS) { turningOff.await() })
+        val cached = step("read cached profile") { profileRef().get(Source.CACHE).await() }
+        assertEquals(false, cached.getBoolean(LOCATION_SHARING_ENABLED))
+      } finally {
+        db.enableNetwork().await()
+      }
+      step("send the queued change") { turningOff.await() }
+    }
+
+    assertFalse(step("read position") { serverPositionExists(team) })
+    val stored = step("read profile") { profileRef().get(Source.SERVER).await() }
+    assertEquals(false, stored.getBoolean(LOCATION_SHARING_ENABLED))
+  }
+
+  @Test
+  fun setLocationSharing_withoutProfile_throwsPermissionDenied() = emulatorTest {
+    val thrown =
+        step("turn on") {
+          runCatching { repository.setLocationSharing(uid, true, emptyList()) }.exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  /**
+   * An event running now, named after [name], with a team of which the signed-in user is a member.
+   */
+  private suspend fun runningEventWithTeam(name: String = "event"): Team {
+    val eventId = "$name-$uid"
+    val now = Instant.now()
+    step("create event") {
+      FirestoreEmulatorAdmin.createDocument(
+          "events/$eventId",
+          mapOf(
+              "organizerId" to "organizer",
+              "startAt" to now.minus(Duration.ofHours(1)),
+              "endAt" to now.plus(Duration.ofHours(1)),
+          ),
+      )
+      FirestoreEmulatorAdmin.createDocument(
+          "events/$eventId/teams/$TEAM_ID",
+          mapOf("managerId" to "manager", "memberIds" to listOf(uid)),
+      )
+    }
+    cleanup += listOf("events/$eventId/teams/$TEAM_ID", "events/$eventId")
+    return Team(
+        id = TEAM_ID,
+        eventId = eventId,
+        name = "Bar",
+        description = "",
+        icon = "",
+        createdAt = now,
+    )
+  }
+
+  /** Shares a position in [team] as the signed-in user, as the location publisher would. */
+  private suspend fun shareLocation(team: Team) {
+    cleanup.add(0, positionOf(team).path)
+    positionOf(team)
+        .set(
+            mapOf(
+                "position" to mapOf("latitude" to 46.2044, "longitude" to 6.1432),
+                "measuredAt" to Timestamp.now(),
+            )
+        )
+        .await()
+  }
+
+  private fun positionOf(team: Team) =
+      db.document("events/${team.eventId}/teams/${team.id}/liveLocations/$uid")
+
+  private suspend fun serverPositionExists(team: Team) =
+      positionOf(team).get(Source.SERVER).await().exists()
+
+  private fun profileRef() = db.collection(USERS_COLLECTION).document(uid)
+
   private fun publicProfile(uid: String) = db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
 
   private suspend fun signInAsAnotherUser() {
@@ -283,5 +419,12 @@ class UserRepositoryFirestoreEmulatorTest {
         (failure as? FirebaseFirestoreException)?.code ==
             FirebaseFirestoreException.Code.PERMISSION_DENIED,
     )
+  }
+
+  private companion object {
+    const val TEAM_ID = "team-bar"
+
+    /** How long to check that a write made offline is not confirmed. */
+    const val OFFLINE_WAIT_MILLIS = 2_000L
   }
 }

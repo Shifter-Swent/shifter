@@ -6,10 +6,14 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.firestore.optionalInstant
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireBoolean
 import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.location.LiveLocationSchema
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamSchema
 import kotlinx.coroutines.tasks.await
 
 const val USERS_COLLECTION = "users"
@@ -88,6 +92,30 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     // An update, not a set: the rules refuse it when there is no profile, rather than creating one.
     db.collection(USERS_COLLECTION).document(uid).update(MODE, mode.name).await()
   }
+
+  override suspend fun setLocationSharing(
+      uid: String,
+      enabled: Boolean,
+      sharedIn: Collection<Team>,
+  ): Unit = translatingErrors {
+    val batch = db.batch()
+    // An update, not a set: the rules refuse it when there is no profile, rather than creating one.
+    batch.update(db.collection(USERS_COLLECTION).document(uid), LOCATION_SHARING_ENABLED, enabled)
+    if (!enabled) sharedIn.forEach { batch.delete(liveLocationOf(it, uid)) }
+    batch.commit().await()
+  }
+
+  /**
+   * Where [uid] last shared their position with the manager of [team]. Only the path is taken from
+   * the schemas, as in the team repository: this one does not depend on the live location one.
+   */
+  private fun liveLocationOf(team: Team, uid: String) =
+      db.collection(EventSchema.COLLECTION)
+          .document(team.eventId)
+          .collection(TeamSchema.COLLECTION)
+          .document(team.id)
+          .collection(LiveLocationSchema.COLLECTION)
+          .document(uid)
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
     db.collection(PUBLIC_PROFILES_COLLECTION)

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import com.swent.shifter.model.team.Team
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -43,6 +44,24 @@ interface UserRepository {
    * reconnects: a caller should stop waiting after a timeout, as for the other offline writes.
    */
   suspend fun setMode(uid: String, mode: UserMode)
+
+  /**
+   * Turns [uid]'s consent to share their location with their managers on or off, on a profile
+   * created by [getOrCreateUser]. Throws [UserRepositoryException.PermissionDenied] when there is
+   * no profile.
+   *
+   * Turning it off also deletes the position [uid] shared in each team of [sharedIn], **in the same
+   * commit**: the rules let a manager read a position until it is deleted, whatever the consent
+   * says, so the manager stops seeing it exactly when the server receives the new setting, and
+   * never sees one without the other. [sharedIn] is ignored when turning it on.
+   *
+   * Offline, the change is queued and sent as a whole when the device reconnects, also if the app
+   * is closed meanwhile; until then the manager still sees the last position. It is visible at once
+   * on this device only if the profile is already cached, for instance read with [getUser]: without
+   * a local copy, there is nothing to apply it to until the server answers. The call only returns
+   * once the server has it, so a caller should stop waiting after a timeout, as for [setMode].
+   */
+  suspend fun setLocationSharing(uid: String, enabled: Boolean, sharedIn: Collection<Team>)
 
   /**
    * Returns the public profile of [uid], or `null` if it does not exist yet. Unlike [getUser], it

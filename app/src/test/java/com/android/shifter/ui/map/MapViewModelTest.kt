@@ -160,7 +160,7 @@ class MapViewModelTest {
     collectPosition(viewModel)
 
     assertNull(viewModel.myPosition.value)
-    assertEquals(EVENT.title, viewModel.uiState.value.eventTitle)
+    assertEquals(EVENT.location.address, viewModel.uiState.value.venue)
   }
 
   @Test
@@ -237,7 +237,6 @@ class MapViewModelTest {
 
     val state = viewModel().uiState.value
 
-    assertEquals(EVENT.title, state.eventTitle)
     assertEquals(EVENT.location.address, state.venue)
     assertEquals(GeoPosition(46.52, 6.57), state.center)
     assertEquals(
@@ -283,7 +282,7 @@ class MapViewModelTest {
     missions.failure = null
     viewModel.load()
     assertNull(viewModel.uiState.value.error)
-    assertEquals(EVENT.title, viewModel.uiState.value.eventTitle)
+    assertEquals(EVENT.location.address, viewModel.uiState.value.venue)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 

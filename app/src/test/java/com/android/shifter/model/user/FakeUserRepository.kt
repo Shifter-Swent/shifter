@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import com.swent.shifter.model.team.Team
 import java.time.Instant
 
 /**
@@ -38,6 +39,17 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     failure?.let { throw it }
     val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
     users[uid] = user.copy(mode = mode)
+  }
+
+  /** Like the rules, refuses a uid with no profile. */
+  override suspend fun setLocationSharing(
+      uid: String,
+      enabled: Boolean,
+      sharedIn: Collection<Team>,
+  ) {
+    failure?.let { throw it }
+    val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
+    users[uid] = user.copy(locationSharingEnabled = enabled)
   }
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? {

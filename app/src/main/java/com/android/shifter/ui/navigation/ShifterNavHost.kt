@@ -47,7 +47,7 @@ import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
-import com.swent.shifter.ui.components.BackButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
 import com.swent.shifter.ui.event.EventCreatedScreen
@@ -188,7 +188,7 @@ fun ShifterNavHost(
         tab<VolunteerTabs.Overview, VolunteerEventScreen.Overview>(
             VolunteerTabs.Overview,
             nav,
-            // The Overview draws itself, so it is not put under the stand-in title.
+            // The Overview lays out its own content, so it is not put in the stand-in page.
             built = true,
             content = { entry ->
               val eventId =
@@ -430,7 +430,7 @@ fun ShifterNavHost(
         }
         navigation<OrganizerTabs.People>(startDestination = OrganizerTabs.People.home) {
           composable<OrganizerEventScreen.People> { entry ->
-            BackHandler { nav.backTo(Organizer.Events) }
+            BackHandler { nav.leaveEvent(OrganizerTabs) }
             // The event's id is in the route of the event graph this screen belongs to.
             val eventId =
                 remember(entry) {
@@ -471,6 +471,7 @@ fun ShifterNavHost(
                 onReloadParticipants = participants::load,
                 onAppointManager = participants::appointManager,
                 onRemoveManager = participants::removeManager,
+                onBack = { nav.leaveEvent(OrganizerTabs) },
                 onNavigate = nav::switchTab,
             )
           }
@@ -493,7 +494,8 @@ fun ShifterNavHost(
 
 /**
  * Registers [tab] as its own graph, so it keeps its own back stack: its home screen, showing
- * [content], given its back stack entry, under its title, and the [screens] opened on top of it.
+ * [content], given its back stack entry, under a bar with its title and a back button leaving the
+ * event, and the [screens] opened on top of it.
  */
 private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.tab(
     tab: Tab,
@@ -504,9 +506,7 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
-      TabPage(tab, nav) {
-        if (built) content(entry) else PlaceholderPage(tab.home) { content(entry) }
-      }
+      TabPage(tab, nav) { if (built) content(entry) else PlaceholderPage { content(entry) } }
     }
     screens()
   }
@@ -545,8 +545,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             watchedTeams = watchedTeams,
                             userRepository = repositories.userRepository,
                         )
-                ),
-            onBack = { nav.leaveEvent(tab.set) },
+                )
         )
       }
     }
@@ -614,31 +613,21 @@ private fun RefreshOnReturn(refresh: () -> Unit) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (shownOnce) refresh() else shownOnce = true }
 }
 
-/**
- * Stand-in for a screen that is not built yet: its title, a Back button when given one, and the
- * [content] that links to the screens already built.
- */
+/** Stand-in for a screen that is not built yet: the padded page of its [content], if any. */
 @Composable
-private fun PlaceholderPage(
-    destination: Destination,
-    onBack: (() -> Unit)? = null,
-    content: @Composable () -> Unit = {},
-) {
-  Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-    if (onBack != null) {
-      // With the page's 16 dp and the 4 dp around the button's circle, the circle is at 24 dp.
-      BackButton(onClick = onBack, modifier = Modifier.padding(start = 4.dp))
-    }
-    Text(destination.title, modifier = Modifier.testTag(NavigationTestTags.TOP_BAR_TITLE))
-    content()
-  }
+private fun PlaceholderPage(content: @Composable () -> Unit) {
+  Column(modifier = Modifier.fillMaxSize().padding(16.dp)) { content() }
 }
 
-/** A tab of an event showing [content], with the bottom bar listing the other tabs of the event. */
+/**
+ * A tab of an event showing [content], under a top bar with its title and a way out of the event,
+ * and above the bottom bar listing the other tabs of the event.
+ */
 @Composable
 private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit) {
   BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
+      topBar = { ShifterTopBar(current.home.title, onBack = { nav.leaveEvent(current.set) }) },
       bottomBar = {
         NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
           current.set.all.forEach { tab ->
@@ -651,7 +640,7 @@ private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable (
             )
           }
         }
-      }
+      },
   ) { padding ->
     Box(modifier = Modifier.padding(padding)) { content() }
   }
