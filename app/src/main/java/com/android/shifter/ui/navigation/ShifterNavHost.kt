@@ -201,8 +201,7 @@ fun ShifterNavHost(
               val userId = currentUserId()
               // No session: authState above is already on its way back to sign-in, and nobody is
               // the manager of anything, so no event is loaded on behalf of an empty user.
-              if (userId == null) PlaceholderPage(VolunteerEventScreen.Overview)
-              else {
+              if (userId != null) {
                 val viewModel: AttendanceViewModel =
                     viewModel(
                         factory =
