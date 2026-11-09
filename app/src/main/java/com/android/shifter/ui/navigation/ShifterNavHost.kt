@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,11 @@ import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
+import com.swent.shifter.ui.chat.ChatChannel
+import com.swent.shifter.ui.chat.ChatChannelsScreen
+import com.swent.shifter.ui.chat.ChatChannelsViewModel
+import com.swent.shifter.ui.chat.TeamChatScreen
+import com.swent.shifter.ui.chat.TeamChatViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.components.ShifterNavigationBar
@@ -262,9 +268,19 @@ fun ShifterNavHost(
               repositories.teamRepository.getTeamsManagedBy(eventId, userId)
             },
         )
-        tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
+        discussionsTab<
             VolunteerTabs.Discussions,
+            VolunteerEventScreen.Discussions,
+            VolunteerEventScreen.Channel,
+            VolunteerEvent,
+        >(
+            VolunteerTabs.Discussions,
+            asOrganizer = false,
             nav,
+            navController,
+            repositories,
+            currentUserId,
+            channel = { VolunteerEventScreen.Channel(it.teamId, it.name) },
         )
       }
     }
@@ -482,9 +498,19 @@ fun ShifterNavHost(
             repositories,
             currentUserId,
         )
-        tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
+        discussionsTab<
             OrganizerTabs.Discussions,
+            OrganizerEventScreen.Discussions,
+            OrganizerEventScreen.Channel,
+            OrganizerEvent,
+        >(
+            OrganizerTabs.Discussions,
+            asOrganizer = true,
             nav,
+            navController,
+            repositories,
+            currentUserId,
+            channel = { OrganizerEventScreen.Channel(it.teamId, it.name) },
         )
       }
     }
@@ -550,6 +576,70 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                         )
                 ),
             contentPadding = padding,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Registers the Discussions [tab] of the event open in the graph [E]: the channels the user can
+ * open, every team's for its organizer ([asOrganizer]), and on top of it the channel of a team, as
+ * the destination [channel] makes of it, under a bar with the team's name.
+ */
+private inline fun <
+    reified T : Tab,
+    reified S : Destination,
+    reified C : ChannelScreen,
+    reified E : EventMode,
+> NavGraphBuilder.discussionsTab(
+    tab: Tab,
+    asOrganizer: Boolean,
+    nav: NavigationActions,
+    navController: NavHostController,
+    repositories: RepositoryProvider,
+    noinline currentUserId: () -> String?,
+    noinline channel: (ChatChannel) -> C,
+) {
+  tab<T, S>(
+      tab,
+      nav,
+      built = true,
+      content = { entry ->
+        val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
+        ChatChannelsScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        ChatChannelsViewModel.factory(
+                            eventId,
+                            asOrganizer,
+                            repositories.teamRepository,
+                            currentUserId,
+                        )
+                ),
+            onOpenChannel = { nav.navigateTo(channel(it)) },
+        )
+      },
+  ) {
+    composable<C> { entry ->
+      val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
+      val route = remember(entry) { entry.toRoute<C>() }
+      Scaffold(topBar = { ShifterTopBar(route.title, onBack = nav::goBack) }) { padding ->
+        TeamChatScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        TeamChatViewModel.factory(
+                            eventId,
+                            route.teamId,
+                            repositories.chatRepository,
+                            repositories.userRepository,
+                            currentUserId,
+                        )
+                ),
+            // The bar's height is already taken, so the field only rises by the keyboard's.
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         )
       }
     }

@@ -42,6 +42,8 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.chat.ChatChannelsTestTags
+import com.swent.shifter.ui.chat.TeamChatTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -912,6 +914,50 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithText("Set up the stands").fetchSemanticsNodes().isNotEmpty()
     }
+  }
+
+  @Test
+  fun organizerDiscussions_opensTheChannelOfTheTeamPicked() {
+    val event = createEvent(signIn())
+    val bar = createTeam(event, "Bar")
+    openOrganizerEvent(event)
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+
+    // Every team of the event is listed, so none opens by itself.
+    waitForNode(ChatChannelsTestTags.channel(bar.id))
+    composeTestRule
+        .onNodeWithTag(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.channel(bar.id)).performClick()
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Bar")
+  }
+
+  @Test
+  fun volunteerDiscussions_withASingleTeam_opensItsChannelAndBackShowsTheList() {
+    val event = acceptedEvent(asManager = false)
+    showApp()
+    openEvent(event)
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+
+    // Their only team's channel opens at once, under the team's name.
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals("Litter pickers")
+
+    pressBack()
+
+    // Back on the list, which shows the channel rather than opening it again.
+    waitForNode(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(VolunteerEventScreen.Discussions.title)
   }
 
   /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */
