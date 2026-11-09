@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Figma "Navigation symbol" of the Settings location row (node 444:5070). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="16"
+    android:viewportHeight="16">
+  <path
+      android:pathData="M1.3328,8H3.33296M3.33296,8C3.33296,10.5775 5.42246,12.667 8,12.667M3.33296,8C3.33296,5.42246 5.42246,3.33296 8,3.33296M8,12.667C10.5775,12.667 12.667,10.5775 12.667,8M8,12.667V14.6672M8,3.33296C10.5775,3.33296 12.667,5.42246 12.667,8M8,3.33296V1.3328M12.667,8H14.6672M10.0002,8C10.0002,9.10466 9.10466,10.0002 8,10.0002C6.89534,10.0002 5.99984,9.10466 5.99984,8C5.99984,6.89534 6.89534,5.99984 8,5.99984C9.10466,5.99984 10.0002,6.89534 10.0002,8Z"
+      android:strokeWidth="1.8"
+      android:strokeColor="#9FC9FF"
+      android:strokeLineCap="round" />
+</vector>

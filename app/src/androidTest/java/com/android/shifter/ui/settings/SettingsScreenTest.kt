@@ -65,6 +65,9 @@ class SettingsScreenTest {
 
     sharingSwitch().assertIsOn().assertIsEnabled()
     composeTestRule
+        .onNodeWithText(context.getString(R.string.settings_privacy_section).uppercase())
+        .assertIsDisplayed()
+    composeTestRule
         .onNodeWithText(context.getString(R.string.settings_location_sharing_explanation))
         .assertIsDisplayed()
     composeTestRule

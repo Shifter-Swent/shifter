@@ -3,13 +3,17 @@ package com.swent.shifter.ui.settings
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -28,8 +32,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,6 +46,8 @@ import com.swent.shifter.R
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
+import com.swent.shifter.ui.theme.shifter_locationIconBackground
+import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_signoutOutline
 
 object SettingsScreenTestTags {
@@ -118,8 +126,8 @@ fun SettingsRoute(
 }
 
 /**
- * Profile & Settings screen (Figma "Shifter · Settings"): the location sharing switch, the change
- * of mode and the Sign out action.
+ * Profile & Settings screen (Figma "Shifter · Settings"): the Privacy and location section, with
+ * the location sharing switch, the change of mode and the Sign out action.
  *
  * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switch.
  * The switch is disabled while the setting is unknown or being saved.
@@ -142,9 +150,9 @@ fun SettingsScreen(
   ) { padding ->
     Column(
         modifier = Modifier.padding(padding).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
-      LocationSharingSetting(state, onLocationSharingChange)
+      PrivacySection(state, onLocationSharingChange)
       ChangeModeButton(mode = state.mode, enabled = !state.changingMode, onClick = onChangeMode)
       SignOutButton(onClick = onSignOut)
     }
@@ -175,37 +183,78 @@ private fun ChangeModeButton(mode: UserMode, enabled: Boolean, onClick: () -> Un
   }
 }
 
+/** Figma "Settings section" Privacy and location: a muted title over a rounded card of rows. */
 @Composable
-private fun LocationSharingSetting(state: SettingsUiState, onChange: (Boolean) -> Unit) {
-  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-          text = stringResource(R.string.settings_location_sharing_title),
-          style = MaterialTheme.typography.titleSmall,
-          modifier = Modifier.weight(1f),
-      )
-      Switch(
-          checked = state.locationSharing == true,
-          onCheckedChange = onChange,
-          enabled = state.locationSharing != null && !state.savingLocationSharing,
-          modifier = Modifier.testTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH),
-      )
-    }
+private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boolean) -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Text(
-        text = stringResource(R.string.settings_location_sharing_explanation),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        text = stringResource(R.string.settings_privacy_section).uppercase(),
+        color = shifter_mutedText,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
     )
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(22.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainer)
+    ) {
+      LocationSharingRow(state, onLocationSharingChange)
+    }
     state.locationSharingNotice?.let { notice ->
       Text(
           text = stringResource(notice.message),
-          style = MaterialTheme.typography.bodySmall,
+          fontSize = 11.sp,
+          lineHeight = 16.sp,
           color =
               if (notice == LocationSharingNotice.SAVED_OFFLINE) MaterialTheme.colorScheme.onSurface
               else MaterialTheme.colorScheme.error,
-          modifier = Modifier.testTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE),
+          modifier =
+              Modifier.padding(horizontal = 14.dp)
+                  .testTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE),
       )
     }
+  }
+}
+
+/** Figma "Settings row" Location: an icon, the setting and its explanation, then the switch. */
+@Composable
+private fun LocationSharingRow(state: SettingsUiState, onChange: (Boolean) -> Unit) {
+  Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 16.dp),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+        modifier =
+            Modifier.size(32.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(shifter_locationIconBackground),
+        contentAlignment = Alignment.Center,
+    ) {
+      Image(painter = painterResource(R.drawable.ic_location_target), contentDescription = null)
+    }
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+      Text(
+          text = stringResource(R.string.settings_location_sharing_title),
+          color = MaterialTheme.colorScheme.onSurface,
+          fontSize = 13.sp,
+          lineHeight = 18.sp,
+          fontWeight = FontWeight.SemiBold,
+      )
+      Text(
+          text = stringResource(R.string.settings_location_sharing_explanation),
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontSize = 11.sp,
+          lineHeight = 16.sp,
+      )
+    }
+    Switch(
+        checked = state.locationSharing == true,
+        onCheckedChange = onChange,
+        enabled = state.locationSharing != null && !state.savingLocationSharing,
+        modifier = Modifier.testTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH),
+    )
   }
 }
 

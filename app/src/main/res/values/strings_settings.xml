@@ -10,6 +10,7 @@
     <string name="settings_retry">Retry</string>
 
     <!-- Location sharing (#404) -->
+    <string name="settings_privacy_section">Privacy and location</string>
     <string name="settings_location_sharing_title">Share my location with my manager</string>
     <string name="settings_location_sharing_explanation">During an event, the manager of each of your teams and the organizer see where you are while Shifter is open. Turning it off removes the position they see.</string>
     <string name="settings_location_sharing_load_failed">Your location sharing setting could not be loaded. Check your connection and open Settings again.</string>
