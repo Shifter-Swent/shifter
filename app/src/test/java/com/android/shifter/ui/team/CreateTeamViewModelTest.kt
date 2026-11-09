@@ -1,8 +1,10 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -407,5 +409,109 @@ class CreateTeamViewModelTest {
     val created = teams.teams.single()
     assertEquals(eventId, created.eventId)
     assertEquals(now, created.createdAt)
+  }
+
+  // ── Editing a team (#226) ──
+
+  private val logistics =
+      Team(
+          id = "logistics",
+          eventId = eventId,
+          name = "Logistics",
+          description = "Move the equipment around the site",
+          icon = "truck",
+          managerId = "manager",
+          memberIds = listOf("volunteer"),
+          createdAt = now,
+      )
+
+  /** Edits [logistics], which the backend already holds. */
+  private fun editLogistics() {
+    teams.teams += logistics
+    viewModel = CreateTeamViewModel(eventId, teams, clock, logistics)
+  }
+
+  /** Saves and lets the write complete. */
+  private fun TestScope.save() {
+    viewModel.saveChanges()
+    advanceUntilIdle()
+  }
+
+  @Test
+  fun editing_opensOnTheTeamWithoutWaitingForASubmitToShowErrors() {
+    editLogistics()
+
+    assertEquals("Logistics", state.name)
+    assertEquals("truck", state.icon)
+    assertEquals("Move the equipment around the site", state.description)
+    assertTrue(state.isEditable)
+    // There is no submit, so an error shows as soon as it appears.
+    viewModel.onNameChange(" ")
+    assertEquals(TeamFormError.NAME_EMPTY, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_writesTheTrimmedFieldsAndKeepsTheRest() = runTest {
+    editLogistics()
+
+    viewModel.onNameChange("  Supply ")
+    viewModel.onIconChange("wine")
+    save()
+
+    assertEquals(
+        listOf(logistics.copy(name = "Supply", icon = "wine")),
+        teams.teams,
+    )
+    assertFalse(state.saveFailed)
+  }
+
+  @Test
+  fun saveChanges_withNothingChanged_writesNothing() = runTest {
+    editLogistics()
+    teams.failure = IllegalStateException("must not be called")
+
+    viewModel.onNameChange("Logistics ")
+    save()
+
+    assertFalse(state.saveFailed)
+  }
+
+  @Test
+  fun saveChanges_withAnInvalidField_keepsTheSavedTeam() = runTest {
+    editLogistics()
+
+    viewModel.onNameChange("")
+    save()
+    viewModel.onNameChange(name(CreateTeamViewModel.NAME_MAX_LENGTH + 1))
+    save()
+
+    assertEquals(listOf(logistics), teams.teams)
+    assertEquals(TeamFormError.NAME_TOO_LONG, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_thatFails_isReportedThenTriedAgain() = runTest {
+    editLogistics()
+    teams.failure = IllegalStateException("offline")
+
+    viewModel.onDescriptionChange("Bring the water")
+    save()
+
+    assertTrue(state.saveFailed)
+    viewModel.onSaveFailureShown()
+    assertFalse(state.saveFailed)
+    // The change was not saved, so the next save sends it again.
+    teams.failure = null
+    save()
+    assertEquals("Bring the water", teams.teams.single().description)
+  }
+
+  @Test
+  fun saveChanges_onANewTeam_doesNothing() = runTest {
+    fillValidForm()
+
+    save()
+
+    assertEquals(emptyList<Team>(), teams.teams)
   }
 }

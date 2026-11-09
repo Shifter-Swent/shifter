@@ -54,6 +54,20 @@ interface TeamRepository {
   suspend fun setManager(eventId: String, teamId: String, managerId: String?)
 
   /**
+   * Replaces the [name], [description] and [icon] of the team, and only them: its members and its
+   * manager are left as they are, even when they change at the same time.
+   *
+   * Throws [TeamRepositoryException.NotFound] when the team does not exist.
+   */
+  suspend fun updateTeam(
+      eventId: String,
+      teamId: String,
+      name: String,
+      description: String,
+      icon: String,
+  )
+
+  /**
    * Adds [userId] to the members of the team. Adding a member twice has no effect.
    *
    * Throws [IllegalArgumentException] when [userId] manages the team, and

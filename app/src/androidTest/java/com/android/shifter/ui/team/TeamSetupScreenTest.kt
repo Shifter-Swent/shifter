@@ -3,7 +3,10 @@
 package com.swent.shifter.ui.team
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -15,11 +18,13 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
@@ -74,6 +79,18 @@ class TeamSetupScreenTest {
         emptyList()
 
     override suspend fun setManager(eventId: String, teamId: String, managerId: String?) = Unit
+
+    override suspend fun updateTeam(
+        eventId: String,
+        teamId: String,
+        name: String,
+        description: String,
+        icon: String,
+    ) {
+      failure?.let { throw it }
+      val index = teams.indexOfFirst { it.id == teamId }
+      teams[index] = teams[index].copy(name = name, description = description, icon = icon)
+    }
 
     override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
 
@@ -138,7 +155,7 @@ class TeamSetupScreenTest {
           hasTestTag(tag) and hasAnyAncestor(hasTestTag(TeamSetupScreenTestTags.ACTIVE_FORM))
       )
 
-  /** A node of the read-only card of the team [teamId]. */
+  /** A node of the card of the team [teamId]. */
   private fun inSavedTeam(teamId: String, tag: String) =
       composeTestRule
           .onAllNodesWithTag(tag)
@@ -252,17 +269,93 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun savedTeams_cannotBeEdited() {
-    open(FakeTeams(listOf(team("team-1", "Logistics"))))
+  fun savedTeams_withoutAWayToEdit_areReadOnly() {
+    show(TeamSetupUiState(isLoading = false, teams = listOf(team("team-1", "Logistics"))))
 
-    // The three interactive parts of the card, all of them read-only on a persisted team.
+    // TeamSetupContent alone draws the saved teams read-only; the screen makes them editable.
     inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).assertIsNotEnabled()
     inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).assertIsNotEnabled()
     inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).assertIsNotEnabled()
-    // Nothing opened the icon picker, so there is no icon to pick either.
+  }
+
+  @Test
+  fun editingASavedTeam_savesAFieldOnceItLosesTheFocus() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    composeTestRule.waitForIdle()
+    assertEquals("Logistics", teams.teams.single().name)
+    // Moving on to the description is leaving the name.
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
+    composeTestRule.waitUntil { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun editingASavedTeam_savesTheIconAsSoonAsItIsPicked() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).performClick()
+
+    composeTestRule.waitUntil { teams.teams.single().icon == TeamIcon.WINE.id }
+  }
+
+  @Test
+  fun editingASavedTeam_withAnEmptyName_showsTheErrorAndKeepsTheTeam() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
     composeTestRule
-        .onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK))
-        .assertDoesNotExist()
+        .onNodeWithText(context.getString(R.string.create_team_error_name_empty))
+        .assertIsDisplayed()
+    composeTestRule.waitForIdle()
+    assertEquals("Logistics", teams.teams.single().name)
+  }
+
+  @Test
+  fun editingASavedTeam_thatFailsToSave_showsASnackbar() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+    composeTestRule.waitForIdle()
+    teams.failure = IllegalStateException("denied")
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
+    composeTestRule.waitUntil {
+      composeTestRule
+          .onAllNodesWithText(context.getString(R.string.team_setup_save_failed))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+  }
+
+  @Test
+  fun leavingTheScreen_savesWhatTheFocusedFieldHolds() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    var shown by mutableStateOf(true)
+    composeTestRule.setContent {
+      ShifterTheme {
+        if (shown) {
+          TeamSetupScreen(
+              viewModel = remember { TeamSetupViewModel(eventId, teams) },
+              onBack = {},
+              onProceed = {},
+          )
+        }
+      }
+    }
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    shown = false
+
+    composeTestRule.waitUntil { teams.teams.single().name == "Supply" }
   }
 
   @Test

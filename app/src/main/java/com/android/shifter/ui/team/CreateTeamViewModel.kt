@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -84,6 +85,9 @@ data class CreateTeamUiState(
  * is created without a manager and without members, which the organizer assigns afterwards from the
  * team itself; its staffing need is configured on its own later, for the same reason.
  *
+ * Given an existing [team], it edits that team instead (#226): the form opens on its values, shows
+ * its errors as they appear, and [saveChanges] writes them, with no submit.
+ *
  * @param clock source of the current time, used to stamp [Team.createdAt]. Inject a fixed clock in
  *   tests.
  */
@@ -91,13 +95,20 @@ class CreateTeamViewModel(
     private val eventId: String,
     private val teamRepository: TeamRepository,
     private val clock: Clock = Clock.systemDefaultZone(),
+    team: Team? = null,
 ) : ViewModel() {
 
-  private val _uiState = MutableStateFlow(CreateTeamUiState())
+  private val _uiState =
+      MutableStateFlow(
+          team?.let { CreateTeamUiState(it.name, it.icon, it.description) } ?: CreateTeamUiState()
+      )
   val uiState: StateFlow<CreateTeamUiState> = _uiState.asStateFlow()
 
   /** Becomes true on the first submit, after which errors follow every edit. */
-  private var submitAttempted = false
+  private var submitAttempted = team != null
+
+  /** The team edited, as last saved, or null when the form creates one. */
+  private var saved: Team? = team
 
   fun onNameChange(name: String) = edit { it.copy(name = name) }
 
@@ -138,6 +149,40 @@ class CreateTeamViewModel(
         _uiState.update { it.copy(isSaving = false, saveFailed = true) }
       }
     }
+  }
+
+  /**
+   * Saves the team edited, when the form is valid and differs from what was last saved: an invalid
+   * field keeps its error, and the team its last saved value. A failure sets
+   * [CreateTeamUiState.saveFailed], and the next call tries again. Does nothing for a new team.
+   */
+  fun saveChanges() {
+    val previous = saved ?: return
+    val form = _uiState.value
+    if (validate(form).isNotEmpty()) return
+    val next =
+        previous.copy(
+            name = form.name.trim(),
+            description = form.description.trim(),
+            icon = checkNotNull(form.icon).trim(),
+        )
+    if (next == previous) return
+    saved = next
+    viewModelScope.launch {
+      try {
+        teamRepository.updateTeam(eventId, next.id, next.name, next.description, next.icon)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        if (saved == next) saved = previous
+        _uiState.update { it.copy(saveFailed = true) }
+      }
+    }
+  }
+
+  /** Clears [CreateTeamUiState.saveFailed] once the screen has reported it. */
+  fun onSaveFailureShown() {
+    _uiState.update { it.copy(saveFailed = false) }
   }
 
   /**
@@ -184,8 +229,9 @@ class CreateTeamViewModel(
         eventId: String,
         teamRepository: TeamRepository,
         clock: Clock = Clock.systemDefaultZone(),
+        team: Team? = null,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { CreateTeamViewModel(eventId, teamRepository, clock) }
+      initializer { CreateTeamViewModel(eventId, teamRepository, clock, team) }
     }
   }
 }

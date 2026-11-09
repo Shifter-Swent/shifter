@@ -68,6 +68,16 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
     }
   }
 
+  override suspend fun updateTeam(
+      eventId: String,
+      teamId: String,
+      name: String,
+      description: String,
+      icon: String,
+  ) {
+    update(eventId, teamId) { it.copy(name = name, description = description, icon = icon) }
+  }
+
   override suspend fun removeMember(eventId: String, teamId: String, userId: String) {
     update(eventId, teamId) { it.copy(memberIds = it.memberIds - userId) }
   }

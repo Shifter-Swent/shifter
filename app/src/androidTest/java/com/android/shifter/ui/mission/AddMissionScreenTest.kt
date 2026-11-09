@@ -664,6 +664,14 @@ private class EventTeams(private val teams: List<Team>) : TeamRepository {
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) =
       throw UnsupportedOperationException()
 
+  override suspend fun updateTeam(
+      eventId: String,
+      teamId: String,
+      name: String,
+      description: String,
+      icon: String,
+  ) = throw UnsupportedOperationException()
+
   override suspend fun addMember(eventId: String, teamId: String, userId: String) =
       throw UnsupportedOperationException()
 

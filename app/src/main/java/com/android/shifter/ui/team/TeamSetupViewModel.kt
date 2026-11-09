@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -92,6 +93,10 @@ class TeamSetupViewModel(
    */
   fun newTeamFactory(): ViewModelProvider.Factory =
       CreateTeamViewModel.factory(eventId, teamRepository)
+
+  /** Builds the factory of the [CreateTeamViewModel] that edits [team], one of this event's. */
+  fun editTeamFactory(team: Team): ViewModelProvider.Factory =
+      CreateTeamViewModel.factory(eventId, teamRepository, team = team)
 
   companion object {
     /**

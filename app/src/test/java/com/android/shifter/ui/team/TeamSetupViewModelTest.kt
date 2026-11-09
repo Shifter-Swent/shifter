@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -212,6 +213,23 @@ class TeamSetupViewModelTest {
     assertEquals(eventId, created.eventId)
     assertEquals("Logistics", created.name)
     assertEquals(listOf("Logistics"), teams.teams.map { it.name })
+  }
+
+  @Test
+  fun editTeamFactory_editsThatTeam() = runTest {
+    val logistics = team("logistics", "Logistics").copy(description = "Move the equipment")
+    teams.teams += logistics
+    open()
+
+    val editTeam =
+        viewModel
+            .editTeamFactory(logistics)
+            .create(CreateTeamViewModel::class.java, CreationExtras.Empty)
+    editTeam.onNameChange("Supply")
+    editTeam.saveChanges()
+    advanceUntilIdle()
+
+    assertEquals(listOf("Supply"), teams.teams.map { it.name })
   }
 
   @Test
