@@ -348,7 +348,7 @@ class UserRepositoryFirestoreEmulatorTest {
   }
 
   @Test
-  fun observeLocationSharing_emitsTheCurrentValueThenRemoteChanges() = emulatorTest {
+  fun observeLocationSharing_emitsTheCurrentValueThenEachChange() = emulatorTest {
     step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
     val seen = MutableStateFlow(emptyList<Boolean>())
     coroutineScope {
@@ -359,7 +359,7 @@ class UserRepositoryFirestoreEmulatorTest {
       // The first snapshot is the stored value, off by default, with no placeholder before it.
       step("await current") { seen.first { it.lastOrNull() == false } }
       step("turn on") { repository.setLocationSharing(uid, true, emptyList()) }
-      // A remote change reaches the listener.
+      // The listener then reflects the change.
       step("await on") { seen.first { it.lastOrNull() == true } }
 
       collector.cancel()
@@ -369,8 +369,7 @@ class UserRepositoryFirestoreEmulatorTest {
   /**
    * Firestore fires the snapshot listener on a local write before the server confirms it, so a
    * volunteer turning sharing off offline stops GPS at once, without waiting for
-   * [UserRepository.setLocationSharing] to return. The check-in and the publisher both rely on
-   * this.
+   * [UserRepository.setLocationSharing] to return. The live-location publisher relies on this.
    */
   @Test
   fun observeLocationSharing_seesALocalOffBeforeTheServerConfirmsIt() = emulatorTest {
