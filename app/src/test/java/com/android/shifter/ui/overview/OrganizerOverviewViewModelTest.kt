@@ -2,6 +2,12 @@
 package com.swent.shifter.ui.overview
 
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
@@ -40,6 +46,7 @@ class OrganizerOverviewViewModelTest {
   private lateinit var missions: FakeMissionRepository
   private lateinit var repository: SlowMissionRepository
   private lateinit var teams: FakeTeamRepository
+  private lateinit var events: CountingEventRepository
   private lateinit var viewModel: OrganizerOverviewViewModel
 
   /** Who may be assigned to a mission of each team; null is "General". */
@@ -66,6 +73,7 @@ class OrganizerOverviewViewModelTest {
         FakeTeamRepository(
             listOf(team("logistics", "Logistics"), team("bar", "Bar"), team("other", "Other", "x"))
         )
+    events = CountingEventRepository(FakeEventRepository().apply { this.events += event() })
   }
 
   @After
@@ -80,6 +88,20 @@ class OrganizerOverviewViewModelTest {
           name = name,
           description = "",
           icon = "truck",
+          createdAt = start,
+      )
+
+  private fun event(joinCode: String = "ABC234") =
+      Event(
+          id = eventId,
+          organizerId = "organizer-1",
+          title = "Paléo Festival",
+          description = "",
+          type = EventType.MUSIC,
+          startAt = start,
+          endAt = start.plus(Duration.ofDays(1)),
+          location = EventLocation("Nyon"),
+          joinCode = joinCode,
           createdAt = start,
       )
 
@@ -110,13 +132,14 @@ class OrganizerOverviewViewModelTest {
     get() = viewModel.uiState.value.assigning
 
   private fun TestScope.open() {
-    viewModel = OrganizerOverviewViewModel(eventId, repository, teams, candidates, now = { clock })
+    viewModel =
+        OrganizerOverviewViewModel(eventId, repository, teams, candidates, events, now = { clock })
     advanceUntilIdle()
   }
 
   @Test
   fun init_startsLoading() {
-    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates)
+    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates, events)
 
     assertTrue(viewModel.uiState.value.isLoading)
   }
@@ -593,11 +616,88 @@ class OrganizerOverviewViewModelTest {
     addMission("Set up", "logistics", hour = 1)
 
     viewModel =
-        OrganizerOverviewViewModel.factory(eventId, missions, teams, candidates)
+        OrganizerOverviewViewModel.factory(eventId, missions, teams, candidates, events)
             .create(OrganizerOverviewViewModel::class.java, CreationExtras.Empty)
     advanceUntilIdle()
 
     assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
+  }
+
+  @Test
+  fun init_loadsTheEventsJoinCode() = runTest {
+    open()
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun refresh_doesNotReadTheJoinCodeAgain() = runTest {
+    open()
+
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(1, events.reads)
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun joinCode_whenTheEventCannotBeRead_isUnknownAndTheMissionsStillLoad() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    events.failure = EventRepositoryException.Unavailable()
+
+    open()
+
+    assertNull(viewModel.uiState.value.joinCode)
+    assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
+    assertFalse(viewModel.uiState.value.loadFailed)
+  }
+
+  @Test
+  fun refresh_afterTheJoinCodeFailed_readsItAgain() = runTest {
+    events.failure = EventRepositoryException.Unavailable()
+    open()
+
+    events.failure = null
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun joinCode_ofAMissingEvent_isUnknown() = runTest {
+    events.delegate.events.clear()
+
+    open()
+
+    assertNull(viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun joinCode_ofAnEventWithoutCode_isUnknown() = runTest {
+    events.delegate.events.clear()
+    events.delegate.events += event(joinCode = "")
+
+    open()
+
+    assertNull(viewModel.uiState.value.joinCode)
+  }
+}
+
+/**
+ * Delegates to [delegate], counting the reads of an event and failing them when [failure] is set.
+ */
+private class CountingEventRepository(val delegate: FakeEventRepository) :
+    EventRepository by delegate {
+
+  var reads = 0
+  var failure: Exception? = null
+
+  override suspend fun getEvent(eventId: String): Event? {
+    reads++
+    failure?.let { throw it }
+    return delegate.getEvent(eventId)
   }
 }
 

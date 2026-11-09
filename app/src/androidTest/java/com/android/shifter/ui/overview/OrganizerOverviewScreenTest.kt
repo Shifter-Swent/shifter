@@ -1,17 +1,23 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.overview
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.swent.shifter.R
+import com.swent.shifter.ui.event.FakeClipboard
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -42,7 +48,67 @@ class OrganizerOverviewScreenTest {
       state: OrganizerOverviewUiState,
       actions: OrganizerOverviewActions = OrganizerOverviewActions(),
   ) {
-    compose.setContent { ShifterTheme { OrganizerOverviewContent(state, actions) } }
+    compose.setContent {
+      ShifterTheme {
+        CompositionLocalProvider(LocalClipboard provides clipboard) {
+          OrganizerOverviewContent(state, actions)
+        }
+      }
+    }
+  }
+
+  private val clipboard = FakeClipboard()
+
+  private fun string(id: Int) =
+      InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+  @Test
+  fun loaded_showsTheInvitationCodeFirst() {
+    show(loaded.copy(joinCode = "ABC234"))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertIsDisplayed()
+        .assertTextEquals("ABC234")
+    compose.onNodeWithText(string(R.string.join_code_label_short)).assertIsDisplayed()
+  }
+
+  @Test
+  fun joinCodeNotLoaded_showsNoCodeCard() {
+    show(loaded)
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE).assertDoesNotExist()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun copy_putsTheCodeInTheClipboardAndConfirmsIt() {
+    show(loaded.copy(joinCode = "ABC234"))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
+
+    compose.waitUntil { clipboard.text != null }
+    assertEquals("ABC234", clipboard.text)
+    compose.onNodeWithText(string(R.string.join_code_copied)).assertIsDisplayed()
+  }
+
+  @Test
+  fun copy_whenTheClipboardRefuses_saysTheCopyFailed() {
+    clipboard.failure = SecurityException("Clipboard access denied")
+    show(loaded.copy(joinCode = "ABC234"))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
+
+    compose.waitUntil {
+      compose
+          .onAllNodesWithText(string(R.string.join_code_copy_failed))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.onNodeWithText(string(R.string.join_code_copied)).assertDoesNotExist()
+    assertEquals(null, clipboard.text)
   }
 
   @Test

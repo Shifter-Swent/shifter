@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.mission.isCompleted
@@ -64,6 +65,7 @@ data class AssignState(
  * @property selectedTeamId the team whose missions are listed, or null to list them all.
  * @property loadFailed whether the last load failed. Data from an earlier load is kept and shown.
  * @property assigning the assignees being edited, or null when no mission is being assigned.
+ * @property joinCode the code volunteers enter to join the event, or null until it is loaded.
  */
 data class OrganizerOverviewUiState(
     val isLoading: Boolean = true,
@@ -72,6 +74,7 @@ data class OrganizerOverviewUiState(
     val missions: List<OverviewMission> = emptyList(),
     val selectedTeamId: String? = null,
     val assigning: AssignState? = null,
+    val joinCode: String? = null,
 ) {
   /** The missions of the selected team, or all of them when none is selected. */
   val visibleMissions: List<OverviewMission>
@@ -92,13 +95,15 @@ data class OrganizerOverviewUiState(
 
 /**
  * Loads the missions and teams of the event [eventId] for its management screen, filters the
- * missions by team, and assigns people to a mission.
+ * missions by team, and assigns people to a mission. Also loads the event's join code, read once
+ * from [eventRepository] since it never changes.
  */
 class OrganizerOverviewViewModel(
     private val eventId: String,
     private val missionRepository: MissionRepository,
     private val teamRepository: TeamRepository,
     private val assigneeCandidates: AssigneeCandidates,
+    private val eventRepository: EventRepository,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
 
@@ -106,13 +111,18 @@ class OrganizerOverviewViewModel(
   val uiState: StateFlow<OrganizerOverviewUiState> = _uiState.asStateFlow()
 
   private var candidatesJob: Job? = null
+  private var joinCodeJob: Job? = null
 
   init {
     refresh()
   }
 
-  /** Loads the missions and teams again, e.g. after a mission was added or a load failed. */
+  /**
+   * Loads the missions and teams again, e.g. after a mission was added or a load failed, and the
+   * join code if it is not known yet.
+   */
   fun refresh() {
+    loadJoinCode()
     _uiState.update { it.copy(isLoading = true, loadFailed = false) }
     viewModelScope.launch {
       try {
@@ -144,6 +154,26 @@ class OrganizerOverviewViewModel(
         throw e
       } catch (_: Exception) {
         _uiState.update { it.copy(isLoading = false, loadFailed = true) }
+      }
+    }
+  }
+
+  /**
+   * Reads the event's join code, unless it is already known or being read. On a failure it stays
+   * unknown and the screen shows no code, and the next [refresh] tries again. Read apart from the
+   * missions, so neither failing hides the other.
+   */
+  private fun loadJoinCode() {
+    if (_uiState.value.joinCode != null || joinCodeJob?.isActive == true) return
+    joinCodeJob = viewModelScope.launch {
+      try {
+        // Empty until the backend assigns one: not a code to show.
+        val joinCode = eventRepository.getEvent(eventId)?.joinCode?.takeIf { it.isNotBlank() }
+        _uiState.update { it.copy(joinCode = joinCode) }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        // Stays unknown, to be read again by the next refresh.
       }
     }
   }
@@ -302,9 +332,16 @@ class OrganizerOverviewViewModel(
         missionRepository: MissionRepository,
         teamRepository: TeamRepository,
         assigneeCandidates: AssigneeCandidates,
+        eventRepository: EventRepository,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
-        OrganizerOverviewViewModel(eventId, missionRepository, teamRepository, assigneeCandidates)
+        OrganizerOverviewViewModel(
+            eventId,
+            missionRepository,
+            teamRepository,
+            assigneeCandidates,
+            eventRepository,
+        )
       }
     }
   }

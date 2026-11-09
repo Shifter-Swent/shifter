@@ -1,9 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -59,9 +61,15 @@ class EventCreatedScreenTest {
       onDone: () -> Unit = {},
   ) {
     composeTestRule.setContent {
-      ShifterTheme { EventCreatedContent(state, onRetry = onRetry, onDone = onDone) }
+      ShifterTheme {
+        CompositionLocalProvider(LocalClipboard provides clipboard) {
+          EventCreatedContent(state, onRetry = onRetry, onDone = onDone)
+        }
+      }
     }
   }
+
+  private val clipboard = FakeClipboard()
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
@@ -102,6 +110,24 @@ class EventCreatedScreenTest {
 
     node(EventCreatedScreenTestTags.JOIN_CODE).assertIsDisplayed().assertTextEquals("ABC234")
     composeTestRule.onNodeWithText(string(R.string.event_created_code_label)).assertIsDisplayed()
+  }
+
+  @Test
+  fun copy_putsTheCodeInTheClipboardAndConfirmsIt() {
+    setContent(loaded)
+
+    node(EventCreatedScreenTestTags.COPY_BUTTON).performScrollTo().performClick()
+
+    composeTestRule.waitUntil { clipboard.text != null }
+    assertEquals("ABC234", clipboard.text)
+    composeTestRule.onNodeWithText(string(R.string.join_code_copied)).assertIsDisplayed()
+  }
+
+  @Test
+  fun whileLoading_offersNothingToCopy() {
+    setContent(EventCreatedUiState())
+
+    node(EventCreatedScreenTestTags.COPY_BUTTON).assertDoesNotExist()
   }
 
   @Test
