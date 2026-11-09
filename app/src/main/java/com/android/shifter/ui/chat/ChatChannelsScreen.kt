@@ -123,6 +123,9 @@ private fun ChannelRow(channel: ChatChannel, onClick: () -> Unit) {
           tint = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       Spacer(Modifier.width(16.dp))
+    } else {
+      // The width of the icon and its spacer, so every name starts at the same place.
+      Spacer(Modifier.width(40.dp))
     }
     Text(
         channel.name,

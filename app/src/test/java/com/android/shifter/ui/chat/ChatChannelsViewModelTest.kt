@@ -67,8 +67,20 @@ class ChatChannelsViewModelTest {
   }
 
   @Test
-  fun load_signedOut_listsNoChannel() = runTest {
-    assertTrue(viewModel(userId = null).uiState.value.channels.isEmpty())
+  fun load_asOrganizerWithoutUserId_listsEveryTeamOfTheEvent() = runTest {
+    val state = viewModel(asOrganizer = true, userId = null).uiState.value
+
+    assertNull(state.error)
+    assertEquals(listOf("Bar", "kitchen", "Security"), state.channels.map { it.name })
+  }
+
+  @Test
+  fun load_asVolunteerWithoutUserId_showsTheUnexpectedError() = runTest {
+    val state = viewModel(userId = null).uiState.value
+
+    assertFalse(state.isLoading)
+    assertEquals(ChatError.UNEXPECTED, state.error)
+    assertTrue(state.channels.isEmpty())
   }
 
   @Test

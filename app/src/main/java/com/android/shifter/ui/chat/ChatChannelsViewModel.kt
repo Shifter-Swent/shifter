@@ -63,8 +63,10 @@ class ChatChannelsViewModel(
         val userId = currentUserId()
         val teams =
             when {
-              userId == null -> emptyList()
+              // Every team of the event, which needs no user id.
               asOrganizer -> teamRepository.getTeamsByEvent(eventId)
+              // An empty list would say the user is in no team: the error lets them retry.
+              userId == null -> error("No signed-in user to list the teams of")
               else ->
                   teamRepository.getTeamsOfMember(eventId, userId) +
                       teamRepository.getTeamsManagedBy(eventId, userId)
