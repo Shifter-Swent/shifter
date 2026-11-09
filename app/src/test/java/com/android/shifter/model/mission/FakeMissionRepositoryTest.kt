@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -10,8 +11,9 @@ import org.junit.Test
 
 /**
  * Covers the assignee rules of [FakeMissionRepository.createMission], and the contract of
- * [FakeMissionRepository.getMissionsAssignedTo] and [FakeMissionRepository.updateAssignees], so the
- * ViewModels tested with the fake behave as with the Firestore repository.
+ * [FakeMissionRepository.getMissionsAssignedTo], [FakeMissionRepository.updateAssignees] and
+ * [FakeMissionRepository.updateMission], so the ViewModels tested with the fake behave as with the
+ * Firestore repository.
  */
 class FakeMissionRepositoryTest {
 
@@ -166,12 +168,189 @@ class FakeMissionRepositoryTest {
     assertTrue(thrown is MissionRepositoryException.NotFound)
   }
 
+  @Test
+  fun updateMission_savesTheNewValuesOnTheSameMission() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+    val edited =
+        created.copy(
+            title = "Sort the food",
+            description = "In the hall",
+            volunteersNeeded = 4,
+            startAt = created.startAt.plusSeconds(3600),
+            endAt = created.endAt.plusSeconds(7200),
+            location = HALL,
+        )
+
+    repository.updateMission(edited)
+
+    assertEquals(listOf(edited), repository.created)
+  }
+
+  @Test
+  fun updateMission_keepsTheTeamAssigneesAndCompletion() = runTest {
+    val created =
+        repository.createMission(
+            mission("event-1", startHour = 9, "user-1", teamId = "team-1")
+                .copy(volunteersNeeded = 2)
+        )
+
+    repository.updateMission(
+        created.copy(
+            title = "Renamed",
+            teamId = "team-2",
+            assigneeIds = emptyList(),
+            createdAt = Instant.EPOCH,
+            completed = true,
+        )
+    )
+
+    assertEquals(created.copy(title = "Renamed"), repository.getMission("event-1", created.id))
+  }
+
+  @Test
+  fun updateMission_overlappingWithTooFewVolunteers_reportsTheOverlapFirst() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(
+            mission("event-1", startHour = 11, "user-1", "user-2", teamId = "team-1", at = HALL)
+        )
+
+    val failure = runCatching {
+      repository.updateMission(
+          created.copy(startAt = other.startAt, endAt = other.endAt, volunteersNeeded = 1)
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionOverlapException)
+  }
+
+  @Test
+  fun updateMission_withAnotherTeam_stillChecksTheOverlapOfItsTeam() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(mission("event-1", startHour = 11, teamId = "team-1", at = HALL))
+
+    val failure = runCatching {
+      repository.updateMission(
+          created.copy(teamId = "team-2", startAt = other.startAt, endAt = other.endAt)
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionOverlapException)
+  }
+
+  @Test
+  fun updateMission_withAnInvalidMission_isRejected() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+
+    listOf(
+            created.copy(id = ""),
+            created.copy(endAt = created.startAt),
+            created.copy(volunteersNeeded = 0),
+            // Invalid and missing: the input is checked first, so this is not a NotFound.
+            created.copy(id = "missing", volunteersNeeded = 0),
+        )
+        .forEach { invalid ->
+          val failure = runCatching { repository.updateMission(invalid) }.exceptionOrNull()
+          assertTrue("$invalid: $failure", failure is IllegalArgumentException)
+        }
+    assertEquals(listOf(created), repository.created)
+  }
+
+  @Test
+  fun updateMission_throwsTheConfiguredFailure() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+    val failure = IllegalStateException("backend down")
+    repository.failure = failure
+
+    assertSame(failure, runCatching { repository.updateMission(created) }.exceptionOrNull())
+  }
+
+  @Test
+  fun updateMission_overlappingAnotherMissionOfTheTeam_isRejected() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(mission("event-1", startHour = 11, teamId = "team-1", at = HALL))
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+    }
+        .exceptionOrNull()
+
+    assertEquals(other, (failure as? MissionOverlapException)?.conflictingMission)
+    assertEquals(created, repository.getMission("event-1", created.id))
+  }
+
+  @Test
+  fun updateMission_keepingItsOwnSlot_isAccepted() = runTest {
+    val created =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+
+    repository.updateMission(created.copy(title = "Renamed"))
+
+    assertEquals("Renamed", repository.getMission("event-1", created.id)?.title)
+  }
+
+  @Test
+  fun updateMission_withFewerVolunteersThanAssigned_isRejected() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9, "user-1", "user-2"))
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(volunteersNeeded = 1))
+    }
+        .exceptionOrNull()
+
+    assertEquals(2, (failure as? VolunteersBelowAssigneesException)?.assigneeCount)
+    assertEquals(created, repository.getMission("event-1", created.id))
+  }
+
+  @Test
+  fun updateMission_ontoTheSlotOfAnotherTeam_isAccepted() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(mission("event-1", startHour = 11, teamId = "team-2", at = HALL))
+
+    repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+
+    assertEquals(other.startAt, repository.getMission("event-1", created.id)?.startAt)
+  }
+
+  @Test
+  fun updateMission_withoutLocation_ontoAnOccupiedSlot_isAccepted() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created = repository.createMission(mission("event-1", startHour = 11, teamId = "team-1"))
+
+    repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+
+    assertEquals(other.startAt, repository.getMission("event-1", created.id)?.startAt)
+  }
+
+  @Test
+  fun updateMission_failsOnAMissingMission() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(id = "nope"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionRepositoryException.NotFound)
+  }
+
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */
   private fun mission(
       eventId: String,
       startHour: Int,
       vararg assigneeIds: String,
       teamId: String? = null,
+      at: MissionLocation? = null,
   ) =
       Mission(
           eventId = eventId,
@@ -181,7 +360,12 @@ class FakeMissionRepositoryTest {
           volunteersNeeded = maxOf(1, assigneeIds.size),
           startAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds(startHour * 3600L),
           endAt = Instant.parse("2027-06-20T00:00:00Z").plusSeconds((startHour + 1) * 3600L),
+          location = at,
           assigneeIds = assigneeIds.toList(),
           createdAt = Instant.parse("2027-06-01T00:00:00Z"),
       )
+
+  private companion object {
+    val HALL = MissionLocation("Hall 1", GeoPosition(46.52, 6.57))
+  }
 }

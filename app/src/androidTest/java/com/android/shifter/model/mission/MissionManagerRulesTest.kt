@@ -12,6 +12,8 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
+import com.swent.shifter.model.checkin.CheckInMethod
+import com.swent.shifter.model.checkin.FirestoreCheckInRepository
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
@@ -36,7 +38,7 @@ import org.junit.runner.RunWith
  * never more than needed, and cannot move a mission to a team they do not manage. Missions of no
  * team ("General") stay the organizer's.
  *
- * Most writes use raw maps, so the rules are checked on their own; two tests go through
+ * Most writes use raw maps, so the rules are checked on their own; the others go through
  * [FirestoreMissionRepository], the way the app writes.
  */
 @RunWith(AndroidJUnit4::class)
@@ -44,6 +46,7 @@ class MissionManagerRulesTest {
 
   private val auth = FirestoreEmulator.auth
   private val db = FirestoreEmulator.firestore
+  private val missions = FirestoreMissionRepository(db)
 
   /** Paths deleted in [cleanUp] through the emulator's admin API, whatever the rules allow. */
   private val paths = mutableSetOf<String>()
@@ -193,7 +196,7 @@ class MissionManagerRulesTest {
     val mission = missionByOrganizer(TEAM_ID, member.uid)
     signIn(manager)
 
-    FirestoreMissionRepository(db).markCompleted(eventId, mission.id)
+    missions.markCompleted(eventId, mission.id)
 
     assertEquals(true, mission.get(Source.SERVER).await().getBoolean("completed"))
     assertDenied { mission.update("completed", false).await() }
@@ -255,11 +258,10 @@ class MissionManagerRulesTest {
 
   @Test
   fun createMissionAndUpdateAssignees_byTheManager_writeThroughTheRepository() = emulatorTest {
-    val repository = FirestoreMissionRepository(db)
     signIn(manager)
 
     val created =
-        repository.createMission(
+        missions.createMission(
             Mission(
                 eventId = eventId,
                 title = "Trier les dons alimentaires",
@@ -272,9 +274,64 @@ class MissionManagerRulesTest {
             )
         )
     paths += "${EventSchema.COLLECTION}/$eventId/missions/${created.id}"
-    repository.updateAssignees(eventId, created.id, listOf(member.uid))
+    missions.updateAssignees(eventId, created.id, listOf(member.uid))
 
-    assertEquals(listOf(member.uid), repository.getMission(eventId, created.id)?.assigneeIds)
+    assertEquals(listOf(member.uid), missions.getMission(eventId, created.id)?.assigneeIds)
+  }
+
+  @Test
+  fun updateMission_byTheOrganizer_isAllowed() = emulatorTest {
+    val created = missionThroughRepository()
+
+    signIn(organizer)
+    missions.updateMission(created.copy(title = "Renamed by the organizer"))
+
+    assertEquals("Renamed by the organizer", missions.getMission(eventId, created.id)?.title)
+  }
+
+  @Test
+  fun updateMission_byTheManagerOfTheMissionTeam_isAllowed() = emulatorTest {
+    val created = missionThroughRepository()
+
+    signIn(manager)
+    missions.updateMission(created.copy(title = "Renamed by the manager", volunteersNeeded = 3))
+
+    val stored = missions.getMission(eventId, created.id)
+    assertEquals("Renamed by the manager", stored?.title)
+    assertEquals(3, stored?.volunteersNeeded)
+  }
+
+  @Test
+  fun updateMission_byTheManagerOfAnotherTeam_isDenied() = emulatorTest {
+    val created = missionThroughRepository()
+
+    signIn(otherManager)
+
+    assertDeniedByTheRepository { missions.updateMission(created.copy(title = "Not mine")) }
+  }
+
+  @Test
+  fun updateMission_byAVolunteer_isDenied() = emulatorTest {
+    val created = missionThroughRepository()
+
+    signIn(member)
+
+    assertDeniedByTheRepository { missions.updateMission(created.copy(title = "Not mine")) }
+  }
+
+  @Test
+  fun updateMission_withVolunteersAlreadyCheckedIn_isAllowedAndKeepsTheirCheckIns() = emulatorTest {
+    val created = missionThroughRepository()
+    val checkIn = "${EventSchema.COLLECTION}/$eventId/missions/${created.id}/checkIns/${member.uid}"
+    paths += checkIn
+    signIn(manager)
+    FirestoreCheckInRepository(db, auth)
+        .checkIn(eventId, created.id, member.uid, CheckInMethod.MANAGER)
+
+    missions.updateMission(created.copy(title = "Renamed after the check-in"))
+
+    assertEquals("Renamed after the check-in", missions.getMission(eventId, created.id)?.title)
+    assertTrue(db.document(checkIn).get(Source.SERVER).await().exists())
   }
 
   /**
@@ -344,6 +401,34 @@ class MissionManagerRulesTest {
           "assigneeIds" to assigneeIds.toList(),
           "completed" to false,
       )
+
+  /** A complete mission of [TEAM_ID], created by the organizer, assigned to [member]. */
+  private suspend fun missionThroughRepository(): Mission {
+    signIn(organizer)
+    return missions
+        .createMission(
+            Mission(
+                eventId = eventId,
+                title = "Trier les dons alimentaires",
+                description = "Trier les produits collectés.",
+                teamId = TEAM_ID,
+                volunteersNeeded = 2,
+                startAt = Instant.parse("2030-06-20T12:00:00Z"),
+                endAt = Instant.parse("2030-06-20T13:30:00Z"),
+                assigneeIds = listOf(member.uid),
+                createdAt = Instant.parse("2030-05-02T08:15:00Z"),
+            )
+        )
+        .also { paths += "${EventSchema.COLLECTION}/$eventId/missions/${it.id}" }
+  }
+
+  private suspend fun assertDeniedByTheRepository(block: suspend () -> Unit) {
+    val failure = runCatching { block() }.exceptionOrNull()
+    assertTrue(
+        "expected a permission denial, but was: $failure",
+        failure is MissionRepositoryException.PermissionDenied,
+    )
+  }
 
   private fun newMission(): DocumentReference =
       db.collection(EventSchema.COLLECTION)

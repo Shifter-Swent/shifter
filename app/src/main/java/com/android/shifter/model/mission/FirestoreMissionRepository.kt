@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
@@ -143,13 +144,40 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
     }
   }
 
+  /**
+   * Updates the editable fields only, so the document keeps its id, team, assignees, creation time
+   * and completion, and its check-ins are left as they are.
+   *
+   * The overlap check reads the team's missions before the write, so like in [createMission] it is
+   * not atomic. The limit on [Mission.volunteersNeeded] depends on the stored assignees, so it is
+   * checked in a transaction, as in [updateAssignees]. Like every transaction, it needs a
+   * connection.
+   */
+  override suspend fun updateMission(mission: Mission) {
+    requireValidUpdate(mission)
+    val document = missionsOf(mission.eventId).document(mission.id)
+    translatingErrors {
+      val stored = document.get().await().toStoredMission(mission)
+      findConflict(stored.withEditableFieldsOf(mission))?.let { throw MissionOverlapException(it) }
+      firestore
+          .runTransaction { transaction ->
+            val current = transaction.get(document).toStoredMission(mission)
+            requireRoomForAssignees(current, mission)
+            transaction.update(document, mission.toEditableFieldsMap())
+            null
+          }
+          .await()
+    }
+  }
+
   override suspend fun markCompleted(eventId: String, missionId: String): Unit = translatingErrors {
     missionsOf(eventId).document(missionId).update(MissionSchema.COMPLETED, true).await()
   }
 
   /**
-   * The first existing mission [mission] conflicts with, or null. Only a GeoTimed mission of a team
-   * can conflict, so only then are that team's missions read.
+   * The first other existing mission [mission] conflicts with, or null. Only a GeoTimed mission of
+   * a team can conflict, so only then are that team's missions read. The stored version of
+   * [mission] itself is skipped, so an update never conflicts with its own former slot.
    */
   private suspend fun findConflict(mission: Mission): Mission? {
     if (!mission.isGeoTimed || mission.teamId == null) return null
@@ -159,7 +187,18 @@ class FirestoreMissionRepository(private val firestore: FirebaseFirestore) : Mis
         .await()
         .documents
         .map { it.toMission() }
-        .firstOrNull { mission.conflictsWith(it) }
+        .firstOrNull { it.id != mission.id && mission.conflictsWith(it) }
+  }
+
+  /** The mission stored in this snapshot, failing with NOT_FOUND when [mission] does not exist. */
+  private fun DocumentSnapshot.toStoredMission(mission: Mission): Mission {
+    if (!exists()) {
+      throw FirebaseFirestoreException(
+          "Mission '${mission.id}' of event '${mission.eventId}' does not exist",
+          Code.NOT_FOUND,
+      )
+    }
+    return toMission()
   }
 
   companion object {
