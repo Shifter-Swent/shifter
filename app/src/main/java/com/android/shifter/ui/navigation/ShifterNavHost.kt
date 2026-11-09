@@ -5,15 +5,12 @@ package com.swent.shifter.ui.navigation
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,7 +21,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
@@ -47,6 +43,7 @@ import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
+import com.swent.shifter.ui.components.ShifterNavigationBar
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
@@ -508,7 +505,11 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
-      TabPage(tab, nav) { if (built) content(entry) else PlaceholderPage { content(entry) } }
+      TabPage(tab, nav) { padding ->
+        Box(modifier = Modifier.padding(padding)) {
+          if (built) content(entry) else PlaceholderPage { content(entry) }
+        }
+      }
     }
     screens()
   }
@@ -532,7 +533,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
-      TabPage(tab, nav) {
+      TabPage(tab, nav) { padding ->
         MapScreen(
             viewModel =
                 viewModel(
@@ -547,7 +548,8 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             watchedTeams = watchedTeams,
                             userRepository = repositories.userRepository,
                         )
-                )
+                ),
+            contentPadding = padding,
         )
       }
     }
@@ -586,27 +588,20 @@ private fun PlaceholderPage(content: @Composable () -> Unit) {
 
 /**
  * A tab of an event showing [content], under a top bar with its title and a way out of the event,
- * and above the bottom bar listing the other tabs of the event.
+ * and above the floating bar listing the other tabs of the event. [content] fills the page, and
+ * gets the padding that keeps it clear of the bars.
  */
 @Composable
-private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit) {
+private fun TabPage(
+    current: Tab,
+    nav: NavigationActions,
+    content: @Composable (PaddingValues) -> Unit,
+) {
   BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
       topBar = { ShifterTopBar(current.home.title, onBack = { nav.leaveEvent(current.set) }) },
-      bottomBar = {
-        NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
-          current.set.all.forEach { tab ->
-            NavigationBarItem(
-                selected = tab == current,
-                onClick = { nav.switchTab(tab) },
-                icon = { Icon(tab.icon, contentDescription = null) },
-                label = { Text(tab.label) },
-                modifier = Modifier.testTag(tab.testTag),
-            )
-          }
-        }
-      },
+      bottomBar = { ShifterNavigationBar(current.set.all, current, nav::switchTab) },
   ) { padding ->
-    Box(modifier = Modifier.padding(padding)) { content() }
+    content(padding)
   }
 }

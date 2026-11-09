@@ -3,6 +3,7 @@ package com.swent.shifter.ui.map
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -86,6 +87,7 @@ fun ShifterMap(
     markerContent: (@Composable (MapMarker) -> Unit)? = null,
     onMapClick: ((GeoPosition) -> Unit)? = null,
     centerOnMarkerClick: Boolean = true,
+    contentPadding: PaddingValues = PaddingValues(),
 ) {
   val context = LocalContext.current
   val properties = remember {
@@ -97,6 +99,7 @@ fun ShifterMap(
       cameraPositionState = cameraPositionState,
       properties = properties,
       uiSettings = UI_SETTINGS,
+      contentPadding = contentPadding,
       onMapClick = { onMapClick?.invoke(it.toGeoPosition()) },
   ) {
     markers.forEach { marker ->
