@@ -5,6 +5,7 @@ import com.swent.shifter.model.team.Team
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Access to user profiles. ViewModels depend on this interface, never on an implementation.
@@ -62,6 +63,31 @@ interface UserRepository {
    * once the server has it, so a caller should stop waiting after a timeout, as for [setMode].
    */
   suspend fun setLocationSharing(uid: String, enabled: Boolean, sharedIn: Collection<Team>)
+
+  /**
+   * Emits [uid]'s current [locationSharingEnabled][User.locationSharingEnabled] consent, then again
+   * each time it changes, so a live-location session stops collecting GPS as soon as the volunteer
+   * turns sharing off.
+   *
+   * It is the reactive counterpart of the one-shot [getUser], for the one field a publishing
+   * session must follow while it runs. Only the signed-in user may observe their own profile, as
+   * for [getUser].
+   *
+   * The contract a publisher relies on:
+   * - **No placeholder while it loads.** The flow emits nothing until the first value is known, so
+   *   it never reports a default `false` that would delete a valid position, nor a `true` that
+   *   would authorize GPS before the real setting is read. A profile that does not exist yet reads
+   *   as `false`, consent being opt-in.
+   * - **Local writes first.** An implementation backed by a snapshot listener emits a change the
+   *   moment it is written on this device, before the server confirms it, so turning sharing off
+   *   stops GPS at once even while the write is still queued offline. It does **not** wait for
+   *   [setLocationSharing] to return.
+   * - **A failure is reported, never swallowed into a stale `true`.** The flow fails with a
+   *   [UserRepositoryException] when the observation cannot continue, rather than going quiet on
+   *   the last value read: the caller decides what a lost observation means, and must not let it
+   *   keep authorizing GPS. See `sharingConsent` for the fail-safe the app applies.
+   */
+  fun observeLocationSharing(uid: String): Flow<Boolean>
 
   /**
    * Returns the public profile of [uid], or `null` if it does not exist yet. Unlike [getUser], it

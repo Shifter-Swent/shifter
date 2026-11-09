@@ -201,5 +201,7 @@ private object PreviewUserRepository : UserRepository {
       sharedIn: Collection<Team>,
   ) = throw UnsupportedOperationException("Preview")
 
+  override fun observeLocationSharing(uid: String): Flow<Boolean> = flowOf(false)
+
   override suspend fun getPublicProfile(uid: String): PublicProfile? = null
 }
