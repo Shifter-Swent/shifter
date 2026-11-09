@@ -19,6 +19,10 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
@@ -341,6 +345,57 @@ class UserRepositoryFirestoreEmulatorTest {
     assertFalse(step("read position") { serverPositionExists(team) })
     val stored = step("read profile") { profileRef().get(Source.SERVER).await() }
     assertEquals(false, stored.getBoolean(LOCATION_SHARING_ENABLED))
+  }
+
+  @Test
+  fun observeLocationSharing_emitsTheCurrentValueThenRemoteChanges() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    val seen = MutableStateFlow(emptyList<Boolean>())
+    coroutineScope {
+      val collector = launch {
+        repository.observeLocationSharing(uid).collect { v -> seen.update { it + v } }
+      }
+
+      // The first snapshot is the stored value, off by default, with no placeholder before it.
+      step("await current") { seen.first { it.lastOrNull() == false } }
+      step("turn on") { repository.setLocationSharing(uid, true, emptyList()) }
+      // A remote change reaches the listener.
+      step("await on") { seen.first { it.lastOrNull() == true } }
+
+      collector.cancel()
+    }
+  }
+
+  /**
+   * Firestore fires the snapshot listener on a local write before the server confirms it, so a
+   * volunteer turning sharing off offline stops GPS at once, without waiting for
+   * [UserRepository.setLocationSharing] to return. The check-in and the publisher both rely on
+   * this.
+   */
+  @Test
+  fun observeLocationSharing_seesALocalOffBeforeTheServerConfirmsIt() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    step("turn on") { repository.setLocationSharing(uid, true, emptyList()) }
+    // As the app does before showing the switch, so the device has the profile to update offline.
+    step("prime cache") { repository.getUser(uid) }
+    val seen = MutableStateFlow(emptyList<Boolean>())
+    coroutineScope {
+      val collector = launch {
+        repository.observeLocationSharing(uid).collect { v -> seen.update { it + v } }
+      }
+      step("await on") { seen.first { it.lastOrNull() == true } }
+
+      db.disableNetwork().await()
+      try {
+        val turningOff = async { repository.setLocationSharing(uid, false, emptyList()) }
+        // The listener sees the off while the write is still queued, unconfirmed by the server.
+        step("await local off") { seen.first { it.lastOrNull() == false } }
+        assertNull(withTimeoutOrNull(OFFLINE_WAIT_MILLIS) { turningOff.await() })
+      } finally {
+        db.enableNetwork().await()
+      }
+      collector.cancel()
+    }
   }
 
   @Test
