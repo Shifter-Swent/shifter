@@ -1,7 +1,9 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
+import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.toKotlinDuration
@@ -267,6 +269,34 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
+  fun run_whenAnyRepositoryOfTheResolverFails_alsoCountsAsUnread() = runTest {
+    eligible = listOf(BAR)
+    val faults = mutableListOf<Throwable>()
+    start(faults)
+
+    // The resolver reads three repositories, each raising failures of its own kind, and the tests
+    // above only ever raise the membership one. Any of them means the same thing - eligibility
+    // could not be read - and none of them is a fault: one left uncaught would come out of run(),
+    // ending the refreshing and every session with it. Two refreshes stay inside STALENESS, so the
+    // session is kept rather than cancelled.
+    failure = EventRepositoryException.Unavailable()
+    elapse(INTERVAL)
+    assertEquals(setOf(BAR), sessions.active)
+
+    failure = TeamRepositoryException.Unavailable()
+    elapse(INTERVAL)
+    assertEquals(setOf(BAR), sessions.active)
+
+    failure = null
+    elapse(INTERVAL)
+
+    // Still the one session, so the refreshing survived both failures without ever restarting it.
+    assertEquals(listOf(BAR), sessions.started)
+    assertEquals(setOf(BAR), sessions.active)
+    assertTrue(faults.isEmpty())
+  }
+
+  @Test
   fun run_whenOneSessionFails_leavesTheOthersRunning() = runTest {
     sessions.failing += BAR
     eligible = listOf(BAR, STAGE)
@@ -340,6 +370,24 @@ class LiveLocationCoordinatorTest {
 
     assertEquals(listOf(true, false), sessions.consentSeen[BAR])
     assertEquals(listOf(true, false), sessions.consentSeen[STAGE])
+  }
+
+  @Test
+  fun run_withTheProductionDefaults_refreshesOnTheIntervalItDocuments() = runTest {
+    // Every other test overrides the intervals and the clock, so this one runs what production
+    // runs: the documented interval alone drives the refreshing, with no refreshes flow to help.
+    val coordinator = LiveLocationCoordinator(targets, sessions)
+    eligible = listOf(BAR)
+    backgroundScope.launch { coordinator.run(consent) }
+    runCurrent()
+    assertEquals(setOf(BAR), sessions.active)
+    assertEquals(1, resolveCalls)
+
+    // This coordinator reads the wall clock, not `clock`; only the scheduler matters here.
+    elapse(LiveLocationCoordinator.REFRESH_INTERVAL)
+
+    assertEquals(2, resolveCalls)
+    assertEquals(setOf(BAR), sessions.active)
   }
 
   @Test
