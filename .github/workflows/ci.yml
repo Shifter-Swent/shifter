@@ -27,6 +27,31 @@ jobs:
           submodules: recursive
           fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis (if we use Sonar Later)
 
+      # A PR changing only documentation skips the instrumented tests, its slowest part. Only that
+      # step is skipped, not the job, so the required "CI" check still completes. The list is strict:
+      # any other file (workflows, Gradle, rules, code) runs everything. Pushes on main skip this
+      # step, so they always run the whole CI and the Sonar coverage stays complete.
+      # On a PR, HEAD is the merge of the PR into main, so HEAD^1 is main and the diff is the PR's
+      # changes. --no-renames lists both names of a renamed file, so code renamed to .md still counts
+      - name: Detect documentation-only changes
+        id: changes
+        if: github.event_name == 'pull_request'
+        run: |
+          docs_only=false
+          files=$(git diff --name-only --no-renames HEAD^1 HEAD)
+          if [ -n "$files" ]; then
+            docs_only=true
+            while IFS= read -r file; do
+              case "$file" in
+                *.md | docs/* | .github/ISSUE_TEMPLATE/*) ;;
+                *) docs_only=false ;;
+              esac
+            done <<< "$files"
+          fi
+          echo "Changed files:"
+          echo "$files"
+          echo "Documentation only: $docs_only"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
 
       # Kernel-based Virtual Machine (KVM) is an open source virtualization technology built into Linux. Enabling it allows the Android emulator to run faster.
       - name: Enable KVM group perms
@@ -51,6 +76,7 @@ jobs:
       # Cache the Emulator, if the cache does not hit, create the emulator.
       # API 34 matches targetSdk. compileSdk 37 is only the compile platform.
       - name: AVD cache
+        if: steps.changes.outputs.docs_only != 'true'
         uses: actions/cache@v6
         id: avd-cache
         with:
@@ -60,7 +86,7 @@ jobs:
           key: avd-34
 
       - name: create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+        if: steps.changes.outputs.docs_only != 'true' && steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -104,6 +130,7 @@ jobs:
       # The instrumented repository tests talk to the Firestore emulator instead of the
       # production backend, so the Firebase CLI has to be available on the runner.
       - name: Install Firebase CLI
+        if: steps.changes.outputs.docs_only != 'true'
         run: npm install -g firebase-tools@15
 
       # Run connected tests on the emulator.
@@ -112,6 +139,7 @@ jobs:
       # given command, and shuts the emulator down afterwards - also when the tests fail. The
       # Android emulator reaches the host loopback interface through 10.0.2.2 (see FirestoreEmulator).
       - name: run tests
+        if: steps.changes.outputs.docs_only != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
