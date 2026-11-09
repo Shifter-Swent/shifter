@@ -62,10 +62,12 @@ jobs:
         run: |
           ./gradlew ktfmtCheck
 
+      # Builds and lints the debug variant only: the release APK is not tested, and the installable
+      # APK comes from apk.yml
       - name: Assemble
         run: |
           # To run the CI with debug information, add --info
-          ./gradlew assemble lint --parallel --build-cache
+          ./gradlew assembleDebug lintDebug --parallel --build-cache
 
       - name: Run tests
         run: |
