@@ -46,9 +46,10 @@ fun interface LiveLocationSessions {
  * snapshot and no repository offers a reactive query for it. So a target that stops being eligible
  * - its event ended, the volunteer left the team or became its manager - keeps publishing until the
  *   next refresh notices, and `firestore.rules` accept those writes for an hour after the event
- *   ends rather than refusing them. Sharing stops within [refreshInterval] of a refresh that says
- *   so, not at the instant eligibility is lost; ending a session exactly with its event is a
- *   separate concern.
+ *   ends rather than refusing them. A session is cancelled when a successful refresh no longer
+ *   lists its target: normally up to about one [refreshInterval] after eligibility is lost, later
+ *   when a refresh is slow, fails or times out (see [run]). Ending a session exactly with its event
+ *   is a separate concern (#406).
  *
  * @param now the clock measuring staleness, replaceable in tests.
  */
