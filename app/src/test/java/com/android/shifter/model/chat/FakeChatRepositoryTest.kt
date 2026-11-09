@@ -107,13 +107,25 @@ class FakeChatRepositoryTest {
         repository.send(CHANNEL, "Hello team")
         repository.send(ChatChannelId.Team(EVENT_ID, OTHER_TEAM_ID), "Other team")
         repository.send(ChatChannelId.Team(OTHER_EVENT_ID, TEAM_ID), "Other event")
+        repository.send(ChatChannelId.General(EVENT_ID), "Everyone")
 
-        // Only the message to the channel is emitted: the other two leave its list unchanged.
+        // Only the message to the channel is emitted: the other ones leave its list unchanged.
         assertEquals(
             listOf(emptyList(), listOf("Hello team")),
             emissions.map { messages -> messages.map { it.text } },
         )
       }
+
+  @Test
+  fun messages_ofTheGeneralChannel_listsOnlyTheMessagesOfItsEvent() = runTest {
+    repository.send(ChatChannelId.General(EVENT_ID), "Hello everyone")
+    repository.send(CHANNEL, "Hello team")
+    repository.send(ChatChannelId.General(OTHER_EVENT_ID), "Other event")
+
+    val texts = repository.messages(ChatChannelId.General(EVENT_ID)).first().map { it.text }
+
+    assertEquals(listOf("Hello everyone"), texts)
+  }
 
   @Test
   fun send_withAConfirmationPending_showsTheMessageAsPendingUntilConfirmed() =

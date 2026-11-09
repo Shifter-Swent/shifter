@@ -20,7 +20,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * [ChatRepository] backed by Cloud Firestore, storing each message under its channel: a team's
- * under the team, `/events/{eventId}/teams/{teamId}/messages/{messageId}`.
+ * under the team, `/events/{eventId}/teams/{teamId}/messages/{messageId}`, and the event's general
+ * channel under the event, `/events/{eventId}/channels/general/messages/{messageId}`.
  *
  * The rules of [ChatRepository] are enforced by `firestore.rules`, not here: this class only
  * translates what Firestore refuses into [ChatRepositoryException]. [firestore] and [auth] are
@@ -37,6 +38,8 @@ class FirestoreChatRepository(
     val parent =
         when (channel) {
           is ChatChannelId.Team -> event.collection(TeamSchema.COLLECTION).document(channel.teamId)
+          is ChatChannelId.General ->
+              event.collection(ChatMessageSchema.CHANNELS).document(ChatMessageSchema.GENERAL)
         }
     return parent.collection(ChatMessageSchema.COLLECTION)
   }
