@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,12 +19,14 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -43,6 +46,8 @@ object SettingsScreenTestTags {
   const val SCREEN = "SettingsScreen"
   const val SIGN_OUT_BUTTON = "SettingsSignOutButton"
   const val CHANGE_MODE_BUTTON = "SettingsChangeModeButton"
+  const val LOCATION_SHARING_SWITCH = "SettingsLocationSharingSwitch"
+  const val LOCATION_SHARING_NOTICE = "SettingsLocationSharingNotice"
 }
 
 /**
@@ -103,29 +108,30 @@ fun SettingsRoute(
   }
 
   SettingsScreen(
-      mode = uiState.mode,
-      changingMode = uiState.changingMode,
+      state = uiState,
       onBack = onBack,
       onChangeMode = viewModel::changeMode,
       onSignOut = { viewModel.signOut(credentialManager) },
+      onLocationSharingChange = viewModel::setLocationSharing,
       snackbarHostState = snackbarHostState,
   )
 }
 
 /**
- * Profile & Settings screen (Figma "Shifter · Settings"). For now it holds the header, the change
- * of [mode] and the Sign out action; the preference sections come later.
+ * Profile & Settings screen (Figma "Shifter · Settings"): the location sharing switch, the change
+ * of mode and the Sign out action.
  *
- * Stateless: the caller changes the mode, signs the user out and navigates.
+ * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switch.
+ * The switch is disabled while the setting is unknown or being saved.
  */
 @Composable
 fun SettingsScreen(
-    mode: UserMode,
+    state: SettingsUiState,
     onBack: () -> Unit,
     onChangeMode: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
-    changingMode: Boolean = false,
+    onLocationSharingChange: (Boolean) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
   Scaffold(
@@ -136,9 +142,10 @@ fun SettingsScreen(
   ) { padding ->
     Column(
         modifier = Modifier.padding(padding).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-      ChangeModeButton(mode = mode, enabled = !changingMode, onClick = onChangeMode)
+      LocationSharingSetting(state, onLocationSharingChange)
+      ChangeModeButton(mode = state.mode, enabled = !state.changingMode, onClick = onChangeMode)
       SignOutButton(onClick = onSignOut)
     }
   }
@@ -169,6 +176,48 @@ private fun ChangeModeButton(mode: UserMode, enabled: Boolean, onClick: () -> Un
 }
 
 @Composable
+private fun LocationSharingSetting(state: SettingsUiState, onChange: (Boolean) -> Unit) {
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+          text = stringResource(R.string.settings_location_sharing_title),
+          style = MaterialTheme.typography.titleSmall,
+          modifier = Modifier.weight(1f),
+      )
+      Switch(
+          checked = state.locationSharing == true,
+          onCheckedChange = onChange,
+          enabled = state.locationSharing != null && !state.savingLocationSharing,
+          modifier = Modifier.testTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH),
+      )
+    }
+    Text(
+        text = stringResource(R.string.settings_location_sharing_explanation),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    state.locationSharingNotice?.let { notice ->
+      Text(
+          text = stringResource(notice.message),
+          style = MaterialTheme.typography.bodySmall,
+          color =
+              if (notice == LocationSharingNotice.SAVED_OFFLINE) MaterialTheme.colorScheme.onSurface
+              else MaterialTheme.colorScheme.error,
+          modifier = Modifier.testTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE),
+      )
+    }
+  }
+}
+
+private val LocationSharingNotice.message: Int
+  get() =
+      when (this) {
+        LocationSharingNotice.LOAD_FAILED -> R.string.settings_location_sharing_load_failed
+        LocationSharingNotice.SAVE_FAILED -> R.string.settings_location_sharing_save_failed
+        LocationSharingNotice.SAVED_OFFLINE -> R.string.settings_location_sharing_saved_offline
+      }
+
+@Composable
 private fun SignOutButton(onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
   OutlinedButton(
@@ -195,6 +244,11 @@ private fun SignOutButton(onClick: () -> Unit) {
 @Composable
 private fun SettingsScreenPreview() {
   ShifterTheme {
-    SettingsScreen(mode = UserMode.VOLUNTEER, onBack = {}, onChangeMode = {}, onSignOut = {})
+    SettingsScreen(
+        state = SettingsUiState(locationSharing = true),
+        onBack = {},
+        onChangeMode = {},
+        onSignOut = {},
+    )
   }
 }

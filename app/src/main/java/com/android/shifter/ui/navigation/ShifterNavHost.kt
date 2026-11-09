@@ -170,14 +170,7 @@ fun ShifterNavHost(
             onSignedOut = { nav.enterApp(SignedOut) },
             onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
             viewModel =
-                viewModel(
-                    factory =
-                        SettingsViewModel.factory(
-                            auth,
-                            repositories.userRepository,
-                            UserMode.VOLUNTEER,
-                        )
-                ),
+                viewModel(factory = SettingsViewModel.factory(repositories, UserMode.VOLUNTEER)),
             credentialManager = credentialManager,
         )
       }
@@ -320,14 +313,7 @@ fun ShifterNavHost(
             onSignedOut = { nav.enterApp(SignedOut) },
             onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
             viewModel =
-                viewModel(
-                    factory =
-                        SettingsViewModel.factory(
-                            auth,
-                            repositories.userRepository,
-                            UserMode.ORGANIZER,
-                        )
-                ),
+                viewModel(factory = SettingsViewModel.factory(repositories, UserMode.ORGANIZER)),
             credentialManager = credentialManager,
         )
       }

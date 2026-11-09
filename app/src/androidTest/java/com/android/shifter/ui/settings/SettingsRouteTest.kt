@@ -8,13 +8,14 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.R
 import com.swent.shifter.firebase.AuthEmulator
-import com.swent.shifter.model.authentication.AuthRepositoryFirebase
-import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
+import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -34,15 +35,18 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Tests [SettingsRoute] with the production ViewModel and repository, wired to the Auth emulator
- * through [AuthEmulator], so signing out really clears a Firebase session.
+ * Tests [SettingsRoute] with the production ViewModel, built by its factory as `ShifterNavHost`
+ * builds it, from repositories wired to the emulators, so signing out really clears a Firebase
+ * session.
  */
 @RunWith(AndroidJUnit4::class)
 class SettingsRouteTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
-  private val repository = AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+  private val repositories =
+      RepositoryProviderFactory.create(FirestoreEmulator.firestore, AuthEmulator.auth)
+  private val repository = repositories.authRepository
   private val credentialManager = RecordingCredentialManager()
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
@@ -63,14 +67,14 @@ class SettingsRouteTest {
     runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
     assertNotNull(AuthEmulator.auth.currentUser)
     var signedOut = 0
-    val viewModel = SettingsViewModel(repository, ModeRecorder(), UserMode.VOLUNTEER)
     composeTestRule.setContent {
       ShifterTheme {
         SettingsRoute(
             onBack = {},
             onSignedOut = { signedOut++ },
             onModeChanged = {},
-            viewModel = viewModel,
+            viewModel =
+                viewModel(factory = SettingsViewModel.factory(repositories, UserMode.VOLUNTEER)),
             credentialManager = credentialManager,
         )
       }
@@ -117,7 +121,14 @@ class SettingsRouteTest {
 
   private fun setRoute(modes: ModeRecorder, onModeChanged: (UserMode) -> Unit) {
     runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
-    val viewModel = SettingsViewModel(repository, modes, UserMode.VOLUNTEER)
+    val viewModel =
+        SettingsViewModel(
+            repository,
+            modes,
+            repositories.membershipRequestRepository,
+            repositories.teamRepository,
+            UserMode.VOLUNTEER,
+        )
     composeTestRule.setContent {
       ShifterTheme {
         SettingsRoute(

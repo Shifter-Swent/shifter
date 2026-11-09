@@ -3,6 +3,7 @@ package com.swent.shifter.model.user
 
 import com.swent.shifter.model.team.Team
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * In-memory [UserRepository] for ViewModel unit tests. Set [failure] to make every call throw it.
@@ -41,6 +42,12 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     users[uid] = user.copy(mode = mode)
   }
 
+  /** The teams whose position the last [setLocationSharing] turning sharing off deleted. */
+  var positionsRemovedFrom: List<Team> = emptyList()
+
+  /** When set, [setLocationSharing] waits for it after saving, as Firestore does offline. */
+  var unconfirmedWrite: CompletableDeferred<Unit>? = null
+
   /** Like the rules, refuses a uid with no profile. */
   override suspend fun setLocationSharing(
       uid: String,
@@ -50,6 +57,8 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     failure?.let { throw it }
     val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
     users[uid] = user.copy(locationSharingEnabled = enabled)
+    if (!enabled) positionsRemovedFrom = sharedIn.toList()
+    unconfirmedWrite?.await()
   }
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? {
