@@ -18,6 +18,9 @@ import java.time.Instant
  * @property pending whether the message was sent from this device but not confirmed by the backend
  *   yet, typically offline. It becomes false once the backend has it, even after
  *   [ChatRepository.send] gave up waiting.
+ * @property announcement whether it was sent as an announcement, which only the person heading the
+ *   channel can do: the team's manager in a team channel (see [ChatChannelId]). Messages sent
+ *   before announcements existed are normal messages.
  */
 data class ChatMessage(
     val id: String,
@@ -25,6 +28,7 @@ data class ChatMessage(
     val text: String,
     val sentAt: Instant,
     val pending: Boolean = false,
+    val announcement: Boolean = false,
 )
 
 /** The limits of a channel, in one place so they are easy to change. */

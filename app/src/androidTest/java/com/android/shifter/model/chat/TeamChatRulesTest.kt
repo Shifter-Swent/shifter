@@ -219,6 +219,69 @@ class TeamChatRulesTest {
     }
   }
 
+  @Test
+  fun announce_byTheManager_isAllowed() = emulatorTest {
+    signIn(manager)
+    val ref = newMessage()
+
+    ref.set(announcement(manager, "Briefing at 18:00")).await()
+
+    assertEquals(true, ref.get(Source.SERVER).await().getBoolean("announcement"))
+  }
+
+  @Test
+  fun announce_byAMember_isDenied() = emulatorTest {
+    signIn(member)
+    newMessage().set(message(member, "Hello team")).await()
+
+    assertDenied { newMessage().set(announcement(member, "Briefing at 18:00")).await() }
+  }
+
+  @Test
+  fun announce_byTheOrganizer_isDenied() = emulatorTest {
+    signIn(organizer)
+    newMessage().set(message(organizer, "Doors open soon")).await()
+
+    assertDenied { newMessage().set(announcement(organizer, "Doors open soon")).await() }
+  }
+
+  @Test
+  fun announce_inATeamWithoutManager_isDenied() = emulatorTest {
+    for (user in listOf(otherTeamMember, organizer)) {
+      signIn(user)
+      newMessage(teamId = OTHER_TEAM_ID).set(message(user, "Hello")).await()
+
+      assertDenied { newMessage(teamId = OTHER_TEAM_ID).set(announcement(user, "Hello")).await() }
+    }
+  }
+
+  @Test
+  fun send_withAnExplicitNormalMessage_isAllowed() = emulatorTest {
+    signIn(member)
+
+    newMessage().set(message(member, "Hello team") + ("announcement" to false)).await()
+  }
+
+  @Test
+  fun send_withANonBooleanAnnouncement_isDenied() = emulatorTest {
+    signIn(manager)
+    newMessage().set(announcement(manager, "Briefing at 18:00")).await()
+
+    assertDenied {
+      newMessage().set(message(manager, "Briefing at 18:00") + ("announcement" to "yes")).await()
+    }
+  }
+
+  @Test
+  fun update_intoOrOutOfAnAnnouncement_isDenied() = emulatorTest {
+    signIn(manager)
+    val normal = newMessage().also { it.set(message(manager, "Hello team")).await() }
+    val announced = newMessage().also { it.set(announcement(manager, "Briefing")).await() }
+
+    assertDenied { normal.update("announcement", true).await() }
+    assertDenied { announced.update("announcement", false).await() }
+  }
+
   /** Sends a message as [member] to [TEAM_ID], which also shows their access works. */
   private suspend fun sentByMember(): DocumentReference {
     signIn(member)
@@ -267,8 +330,15 @@ class TeamChatRulesTest {
   ): DocumentReference =
       teamRef(eventId, teamId).collection(MESSAGES).document().also { paths += it.path }
 
+  /**
+   * A message with no announcement field, as the clients that predate announcements send it, so
+   * every test sending one also shows they are still accepted.
+   */
   private fun message(sender: Account, text: String): Map<String, Any> =
       mapOf("senderId" to sender.uid, "text" to text, "sentAt" to FieldValue.serverTimestamp())
+
+  private fun announcement(sender: Account, text: String): Map<String, Any> =
+      message(sender, text) + ("announcement" to true)
 
   private suspend fun account(): Account {
     val email = "team-chat-${UUID.randomUUID()}@example.test"

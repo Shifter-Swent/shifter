@@ -153,6 +153,7 @@ final: it is never edited or deleted.
 | `senderId` | string | uid of the sender, always the signed-in user. Only the uid is stored: names are read from the public profiles, so a renamed user never shows up under an old name |
 | `text` | string | Trimmed, 1 to 1000 characters |
 | `sentAt` | timestamp | Server timestamp, equal to `request.time` |
+| `announcement` | boolean | `true` for an announcement, which only the team's manager can send: not its members, nor the organizer, and a team with no manager has none. Absent on the messages sent before announcements existed, which are read as normal messages. Never changed, like the rest of the message |
 
 The channel is read with `orderBy(sentAt)` and `limitToLast(100)`, which only needs Firestore's
 automatic single-field index. A message sent offline is shown at once, before the server has set

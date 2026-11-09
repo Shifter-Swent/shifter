@@ -35,6 +35,34 @@ class FakeChatRepositoryTest {
   }
 
   @Test
+  fun send_byDefault_isNotAnAnnouncement() = runTest {
+    repository.send(CHANNEL, "Hello team")
+
+    assertFalse(repository.messages(CHANNEL).first().single().announcement)
+  }
+
+  @Test
+  fun send_asAnAnnouncement_recordsIt() = runTest {
+    repository.canAnnounce = true
+
+    repository.send(CHANNEL, "Briefing at 18:00", announcement = true)
+
+    assertTrue(repository.messages(CHANNEL).first().single().announcement)
+  }
+
+  @Test
+  fun send_asAnAnnouncementByDefault_throwsAndSendsNothing() = runTest {
+    assertThrowsSuspending<ChatRepositoryException.NotAllowed> {
+      repository.send(CHANNEL, "Briefing at 18:00", announcement = true)
+    }
+
+    assertEquals(emptyList<ChatMessage>(), repository.messages(CHANNEL).first())
+    // A normal message still goes through.
+    repository.send(CHANNEL, "Hello team")
+    assertEquals(1, repository.messages(CHANNEL).first().size)
+  }
+
+  @Test
   fun send_givesEachMessageItsOwnId() = runTest {
     repository.send(CHANNEL, "First")
     repository.send(CHANNEL, "Second")

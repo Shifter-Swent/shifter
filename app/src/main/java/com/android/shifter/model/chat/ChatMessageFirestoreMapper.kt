@@ -6,6 +6,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FieldValue
 import com.swent.shifter.model.firestore.invalidField
+import com.swent.shifter.model.firestore.optionalBoolean
 import com.swent.shifter.model.firestore.requireString
 
 /** Names this entity in the failure a malformed document raises. */
@@ -32,24 +33,32 @@ internal object ChatMessageSchema {
   const val SENDER_ID = "senderId"
   const val TEXT = "text"
   const val SENT_AT = "sentAt"
+  const val ANNOUNCEMENT = "announcement"
 }
 
 /**
  * The document body of a new message of [senderId]. [ChatMessage.sentAt] is a server timestamp:
- * `firestore.rules` require it to be the request time.
+ * `firestore.rules` require it to be the request time. [ChatMessage.announcement] is always
+ * written, so only the messages sent before it existed lack it.
  */
-internal fun newMessageFields(senderId: String, text: String): Map<String, Any> =
+internal fun newMessageFields(
+    senderId: String,
+    text: String,
+    announcement: Boolean,
+): Map<String, Any> =
     mapOf(
         ChatMessageSchema.SENDER_ID to senderId,
         ChatMessageSchema.TEXT to text,
         ChatMessageSchema.SENT_AT to FieldValue.serverTimestamp(),
+        ChatMessageSchema.ANNOUNCEMENT to announcement,
     )
 
 /**
  * Rebuilds the [ChatMessage] stored in this document, taking [ChatMessage.id] from the document id.
  *
  * A message whose write is still pending has no server time yet: it is read with an estimate of it,
- * as [ChatRepository.messages] promises, and marked [ChatMessage.pending].
+ * as [ChatRepository.messages] promises, and marked [ChatMessage.pending]. A message with no
+ * [ChatMessageSchema.ANNOUNCEMENT] field, sent before announcements existed, is a normal message.
  *
  * Throws [IllegalStateException] when a field is missing or has an unexpected type.
  */
@@ -62,4 +71,5 @@ internal fun DocumentSnapshot.toChatMessage(): ChatMessage =
             (get(ChatMessageSchema.SENT_AT, ServerTimestampBehavior.ESTIMATE) as? Timestamp)
                 ?.toInstant() ?: invalidField(ENTITY, ChatMessageSchema.SENT_AT),
         pending = metadata.hasPendingWrites(),
+        announcement = optionalBoolean(ENTITY, ChatMessageSchema.ANNOUNCEMENT) ?: false,
     )

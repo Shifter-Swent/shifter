@@ -12,7 +12,8 @@ sealed interface ChatChannelId {
 
   /**
    * The channel of the team [teamId] of [eventId]: its members, its manager and the event's
-   * organizer read and send, as the team is now.
+   * organizer read and send, as the team is now. Only its manager sends announcements, not its
+   * members nor the organizer, so a team with no manager has none.
    */
   data class Team(override val eventId: String, val teamId: String) : ChatChannelId
 

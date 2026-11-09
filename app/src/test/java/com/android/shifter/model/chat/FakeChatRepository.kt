@@ -54,6 +54,18 @@ class FakeChatRepository(
    */
   var confirmation: CompletableDeferred<Unit>? = null
 
+  /**
+   * Whether [currentUserId] may send announcements, which the backend only allows the person
+   * heading the channel. False by default, like the backend for anyone else, so a test of a manager
+   * has to say so. When false, an announcement throws [ChatRepositoryException.NotAllowed] and is
+   * never stored, while a normal message still goes through.
+   *
+   * Firestore instead shows the refused announcement in [messages] at once, then takes it out when
+   * the backend refuses it: to test that, leave this true and complete [confirmation] with
+   * [ChatRepositoryException.NotAllowed].
+   */
+  var canAnnounce: Boolean = false
+
   /** Stores [message] in [channel] as is, to set up a test. */
   fun add(channel: ChatChannelId, message: ChatMessage) {
     state.update { it.copy(stored = it.stored + Stored(channel, message)) }
@@ -82,12 +94,20 @@ class FakeChatRepository(
           // listener that only sees its own query.
           .distinctUntilChanged()
 
-  override suspend fun send(channel: ChatChannelId, text: String) {
+  override suspend fun send(channel: ChatChannelId, text: String, announcement: Boolean) {
     val trimmed = chatMessageText(text)
     failure?.let { throw it }
+    if (announcement && !canAnnounce) throw ChatRepositoryException.NotAllowed()
     val confirmation = confirmation
     val message =
-        ChatMessage("message-${nextId++}", currentUserId, trimmed, clock(), confirmation != null)
+        ChatMessage(
+            id = "message-${nextId++}",
+            senderId = currentUserId,
+            text = trimmed,
+            sentAt = clock(),
+            pending = confirmation != null,
+            announcement = announcement,
+        )
     val stored = Stored(channel, message)
     state.update { it.copy(stored = it.stored + stored) }
     if (confirmation == null) return
