@@ -70,11 +70,12 @@ class ChatChannelsViewModel(
               // An empty list would say the user is in no team: the error lets them retry.
               userId == null -> error("No signed-in user to list the teams of")
               // Independent queries, run together so a volunteer waits for one round trip.
-              else -> coroutineScope {
-                val member = async { teamRepository.getTeamsOfMember(eventId, userId) }
-                val managed = async { teamRepository.getTeamsManagedBy(eventId, userId) }
-                member.await() + managed.await()
-              }
+              else ->
+                  coroutineScope {
+                    val member = async { teamRepository.getTeamsOfMember(eventId, userId) }
+                    val managed = async { teamRepository.getTeamsManagedBy(eventId, userId) }
+                    member.await() + managed.await()
+                  }
             }
         val channels =
             teams
