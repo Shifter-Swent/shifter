@@ -9,11 +9,14 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -359,6 +362,83 @@ class CreateEventScreenTest {
     // Shown as a warning rather than as a muted line, so it is not missed.
     node(CreateEventScreenTestTags.SAVE_UNCONFIRMED_ICON).assertIsDisplayed()
     node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
+  }
+
+  @Test
+  fun pickerButton_opensTheDatePicker() {
+    setScreen(RecordingRepository())
+    val cancel =
+        InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getString(R.string.create_event_dialog_cancel)
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertIsDisplayed()
+
+    // Close the Start dialog before touching the End card: the dialog is modal, so the End picker
+    // cannot be scrolled to or clicked while it is open.
+    composeTestRule.onNodeWithText(cancel).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertDoesNotExist()
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.END))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertIsDisplayed()
+  }
+
+  @Test
+  fun pickingANewDate_writesTheSelectedValueInTheExpectedFormat() {
+    setScreen(RecordingRepository())
+    // Start from a known value so the DatePicker opens on July 2027 with the 21st preselected.
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("21/07/2027 14:00")
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    // Actually select a different day (the 22nd) by clicking its day cell, not by coordinates, so
+    // the test fails if the picker does not write the newly selected date back to the field.
+    composeTestRule.onNode(hasText("Thursday, July 22, 2027") and hasClickAction()).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick() // confirm the date
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick() // confirm the time
+
+    // The picked 22nd replaced the 21st, in the exact dd/MM/yyyy HH:mm format, time carried.
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("22/07/2027 14:00")
+  }
+
+  @Test
+  fun cancellingTheDatePicker_leavesTheValueUnchanged() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("21/07/2027 14:00")
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    val cancel =
+        InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getString(R.string.create_event_dialog_cancel)
+    composeTestRule.onNodeWithText(cancel).performClick()
+
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertDoesNotExist()
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("21/07/2027 14:00")
+  }
+
+  @Test
+  fun whileSaving_disablesThePicker() {
+    val repository = RecordingRepository().apply { gate = CompletableDeferred() }
+    setScreen(repository)
+
+    fillValidForm()
+    node(CreateEventScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START)).assertIsNotEnabled()
+    repository.gate?.complete(Unit)
   }
 
   @Test
