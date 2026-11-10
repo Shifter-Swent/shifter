@@ -461,8 +461,14 @@ class AddMissionViewModel(
     edit { it.copy(assignees = it.assignees.toggle(id, it.volunteersNeeded)) }
   }
 
-  /** Loads the candidates of the selected team again, after a failure. */
-  fun retryLoadAssignees() = loadCandidates()
+  /**
+   * Loads the candidates of the selected team again, after a failure. Ignored when editing, as the
+   * assignees of an existing mission are not changed here.
+   */
+  fun retryLoadAssignees() {
+    if (_uiState.value.isEditing) return
+    loadCandidates()
+  }
 
   fun onIncreaseVolunteers() = edit { it.copy(volunteersNeeded = it.volunteersNeeded + 1) }
 

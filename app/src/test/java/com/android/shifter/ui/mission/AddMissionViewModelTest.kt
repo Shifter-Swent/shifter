@@ -1241,6 +1241,17 @@ class AddMissionViewModelTest {
   }
 
   @Test
+  fun edit_retryLoadAssignees_loadsNothing() = runTest {
+    openEdit(storedMission("ana").id)
+
+    viewModel.retryLoadAssignees()
+    advanceUntilIdle()
+
+    // The candidates of logistics would be listed if they had been loaded.
+    assertEquals(AssigneeSelection(), state.assignees)
+  }
+
+  @Test
   fun edit_decreaseVolunteers_stopsAtTheAssigneeCount() = runTest {
     openEdit(storedMission("ana", "ben").id)
 
