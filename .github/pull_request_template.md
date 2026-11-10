@@ -44,6 +44,7 @@
 - [ ] Instrumented tests against the Firebase emulators: <!-- test classes -->
 - [ ] `./gradlew connectedDebugAndroidTest` passes (when `androidTest/` or Firestore code changes)
 - [ ] Figma updated, with a link to the updated frames (when a screen or its test tags are added or changed): <!-- ?node-id=… link -->
+- [ ] Architecture page updated after the merge, with the wiki commit linked in a comment (when a planned item is delivered)
 
 ## Related issues
 

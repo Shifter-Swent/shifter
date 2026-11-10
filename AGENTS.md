@@ -34,7 +34,7 @@ Writing them down also helps the human team agree on how we build.
 
 - Make one **bounded, reviewable** change per PR. If it sprawls across unrelated files, split it.
 - Before planning an issue, read the [Architecture](https://github.com/Shifter-Swent/shifter/wiki/Architecture) page of the wiki: its tables list the repositories each feature's ViewModel uses, including what the current sprint plans. Follow it; if your plan adds or drops a dependency it shows, say so in the issue or the PR instead of diverging silently.
-- In the PR that merges a planned item, update the diagram and its tables, as the Architecture page explains.
+- Once the PR that delivers a planned item is merged, update the tables of the Architecture page, and redraw the diagram or ask a teammate to. Then link the wiki commit in a comment on the PR.
 - Read the failing tests carefully and iterate until `./gradlew check` passes.
 - Stage only the files you changed; never `git add .` or `git add -A` (it can pull in local config like `local.properties`).
 - Commit, branch and open PRs as described in "Commits, branches and PRs" below.
