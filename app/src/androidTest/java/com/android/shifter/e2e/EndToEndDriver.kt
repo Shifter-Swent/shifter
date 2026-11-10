@@ -32,6 +32,7 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -117,15 +118,23 @@ class EndToEndDriver(
   }
 
   /**
-   * Signs in through the sign-in screen, the picker answering with [account], and waits for the
-   * volunteer events every sign-in opens on. Returns the user's id and registers their profile for
+   * Signs in through the sign-in screen of [from], the picker answering with [account], and waits
+   * for the events of the mode it [enters]. Returns the user's id and registers their profile for
    * cleanup.
    */
-  fun signInAs(account: GoogleAccount): String {
+  fun signInAs(
+      account: GoogleAccount,
+      from: UserMode = UserMode.VOLUNTEER,
+      enters: UserMode = from,
+  ): String {
     pickedAccount = account
     waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
+    if (from == UserMode.ORGANIZER) click(SignInScreenTestTags.SWITCH_SIGN_IN)
     click(SignInScreenTestTags.LOGIN_BUTTON)
-    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    waitForNode(
+        if (enters == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
+        else MyEventsTestTags.STAFF_SCREEN
+    )
     val uid = checkNotNull(repositories.authRepository.currentUser()).uid
     if ("users/$uid" !in createdPaths) {
       createdPaths += "users/$uid"

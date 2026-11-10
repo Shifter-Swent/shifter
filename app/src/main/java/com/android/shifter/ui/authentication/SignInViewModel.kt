@@ -20,6 +20,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,14 +33,24 @@ data class AuthUIState(
     val isLoading: Boolean = false,
     val user: AuthUser? = null,
     val errorMsg: String? = null,
-    /** One-shot event: set on a successful sign-in, reset once the screen has navigated. */
-    val signedIn: Boolean = false,
-)
+    /** One-shot event: the mode to enter after a sign-in, reset once the screen has navigated. */
+    val signedInAs: UserMode? = null,
+) {
+  /** Whether the sign-in event is waiting to be handled. */
+  val signedIn: Boolean
+    get() = signedInAs != null
+}
 
-/** Signs the user in with Google, then makes sure their Firestore profile exists. */
+/**
+ * Signs the user in with Google, then makes sure their Firestore profile exists.
+ *
+ * @param mode the mode of the sign-in screen used. It is saved on a profile that has none yet, but
+ *   the user enters the mode already saved on their profile, whichever screen they used.
+ */
 class SignInViewModel(
     private val repository: AuthRepository,
     private val userRepository: UserRepository,
+    val mode: UserMode = UserMode.VOLUNTEER,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
@@ -51,7 +62,7 @@ class SignInViewModel(
 
   /** Marks the sign-in event as handled, so the screen does not navigate again. */
   fun onSignedInHandled() {
-    _uiState.update { it.copy(signedIn = false) }
+    _uiState.update { it.copy(signedInAs = null) }
   }
 
   /** Starts Google sign-in and updates the state with the result. */
@@ -95,8 +106,12 @@ class SignInViewModel(
    * a failure signs the user out again: otherwise the next launch would skip this screen.
    */
   private suspend fun createProfile(user: AuthUser) {
+    val saved: UserMode?
     try {
-      userRepository.getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty())
+      saved =
+          userRepository
+              .getOrCreateUser(user.uid, user.displayName.orEmpty(), user.email.orEmpty(), mode)
+              .mode
     } catch (e: CancellationException) {
       signOutWithoutProfile()
       _uiState.update { it.copy(isLoading = false) }
@@ -110,7 +125,7 @@ class SignInViewModel(
       }
       return
     }
-    _uiState.value = AuthUIState(isLoading = false, user = user, signedIn = true)
+    _uiState.value = AuthUIState(isLoading = false, user = user, signedInAs = saved ?: mode)
   }
 
   /** Closes the session left without a profile. Returns `false`, after logging, if it could not. */
@@ -137,8 +152,9 @@ class SignInViewModel(
     fun factory(
         repository: AuthRepository,
         userRepository: UserRepository,
+        mode: UserMode,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { SignInViewModel(repository, userRepository) }
+      initializer { SignInViewModel(repository, userRepository, mode) }
     }
   }
 }

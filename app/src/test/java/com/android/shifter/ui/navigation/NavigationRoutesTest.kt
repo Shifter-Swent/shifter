@@ -15,6 +15,8 @@ class NavigationRoutesTest {
   private val screensOutsideEventMode =
       listOf(
           SignedOut.SignIn,
+          SignedOut.OrganizerSignIn,
+          Starting.Loading,
           Volunteer.Events,
           Volunteer.ProfileSettings,
           Volunteer.QrApply,
@@ -26,15 +28,15 @@ class NavigationRoutesTest {
 
   @Test
   fun startApp_picksTheRightApp() {
-    assertEquals(SignedOut, startApp(isSignedIn = false, wasOrganizer = false))
-    assertEquals(SignedOut, startApp(isSignedIn = false, wasOrganizer = true))
-    assertEquals(Volunteer, startApp(isSignedIn = true, wasOrganizer = false))
-    assertEquals(Organizer, startApp(isSignedIn = true, wasOrganizer = true))
+    assertEquals(SignedOut, startApp(isSignedIn = false))
+    // The mode saved on the profile is read before entering Volunteer or Organizer.
+    assertEquals(Starting, startApp(isSignedIn = true))
   }
 
   @Test
   fun apps_startOnTheirFirstScreen() {
     assertEquals(SignedOut.SignIn, SignedOut.start)
+    assertEquals(Starting.Loading, Starting.start)
     assertEquals(Volunteer.Events, Volunteer.start)
     assertEquals(Organizer.Events, Organizer.start)
   }

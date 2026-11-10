@@ -23,6 +23,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -57,13 +59,20 @@ object SignInScreenTestTags {
   const val LOGIN_BUTTON = "LOGIN_BUTTON"
   const val LOGIN_TITLE = "LOGIN_TITLE"
   const val LOADING_INDICATOR = "LOADING_INDICATOR"
+  const val MODE = "SIGN_IN_MODE"
+  const val SWITCH_SIGN_IN = "SWITCH_SIGN_IN"
 }
 
+/**
+ * The sign-in of the mode of [authViewModel]. [onSignedIn] enters the mode saved on the profile,
+ * and [onSwitchSignIn] goes to the sign-in of the other mode.
+ */
 @Composable
 fun SignInScreen(
     authViewModel: SignInViewModel,
     credentialManager: CredentialManager = CredentialManager.create(LocalContext.current),
-    onSignedIn: () -> Unit = {},
+    onSignedIn: (UserMode) -> Unit = {},
+    onSwitchSignIn: () -> Unit = {},
 ) {
   val context = LocalContext.current
   val colors = MaterialTheme.colorScheme
@@ -78,10 +87,10 @@ fun SignInScreen(
   }
 
   // Navigate to MyEvents screen on successful login
-  LaunchedEffect(uiState.signedIn) {
-    if (uiState.signedIn) {
+  LaunchedEffect(uiState.signedInAs) {
+    uiState.signedInAs?.let { mode ->
       Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
-      onSignedIn()
+      onSignedIn(mode)
       authViewModel.onSignedInHandled()
     }
   }
@@ -101,6 +110,17 @@ fun SignInScreen(
         fontSize = 44.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.testTag(SignInScreenTestTags.APP_NAME),
+    )
+    val organizer = authViewModel.mode == UserMode.ORGANIZER
+    Text(
+        text =
+            stringResource(
+                if (organizer) R.string.sign_in_as_organizer else R.string.sign_in_as_volunteer
+            ),
+        color = colors.primary,
+        fontSize = 18.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.testTag(SignInScreenTestTags.MODE),
     )
 
     Spacer(modifier = Modifier.height(32.dp))
@@ -124,6 +144,18 @@ fun SignInScreen(
         textAlign = TextAlign.Center,
         modifier = Modifier.testTag(SignInScreenTestTags.LOGIN_TITLE),
     )
+
+    TextButton(
+        onClick = onSwitchSignIn,
+        enabled = !uiState.isLoading,
+        modifier = Modifier.padding(top = 24.dp).testTag(SignInScreenTestTags.SWITCH_SIGN_IN),
+    ) {
+      Text(
+          stringResource(
+              if (organizer) R.string.sign_in_to_volunteer else R.string.sign_in_to_organizer
+          )
+      )
+    }
   }
 }
 
@@ -163,7 +195,12 @@ fun SignInScreenPreview() {
     SignInScreen(
         authViewModel =
             viewModel(
-                factory = SignInViewModel.factory(PreviewAuthRepository, PreviewUserRepository)
+                factory =
+                    SignInViewModel.factory(
+                        PreviewAuthRepository,
+                        PreviewUserRepository,
+                        UserMode.VOLUNTEER,
+                    )
             )
     )
   }

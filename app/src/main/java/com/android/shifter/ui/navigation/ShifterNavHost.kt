@@ -44,6 +44,8 @@ import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
+import com.swent.shifter.ui.authentication.StartScreen
+import com.swent.shifter.ui.authentication.StartViewModel
 import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
 import com.swent.shifter.ui.chat.TeamChatScreen
@@ -90,7 +92,8 @@ import kotlinx.coroutines.flow.filter
 /**
  * The app's navigation graph.
  *
- * @param isSignedIn Whether a session was restored at launch; only read for the start destination.
+ * @param isSignedIn Whether a session was restored at launch; only read for the start destination,
+ *   which then reads the mode saved on the profile.
  * @param repositories The repositories the screens' ViewModels are built from. It has no default,
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
@@ -116,7 +119,17 @@ fun ShifterNavHost(
   // Read on every load, so the lists follow the account signed in at that time.
   val currentUserId = { auth.currentUser()?.uid }
   val nav = rememberNavigationActions(navController)
-  val start = remember { startApp(isSignedIn, wasOrganizer = false) }
+  val start = remember { startApp(isSignedIn) }
+  // The sign-in of each mode; the user enters the mode saved on their profile.
+  val signIn: @Composable (UserMode, () -> Unit) -> Unit = { mode, onSwitchSignIn ->
+    SignInScreen(
+        authViewModel =
+            viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository, mode)),
+        credentialManager = credentialManager,
+        onSignedIn = { saved -> nav.enterApp(appOfMode(saved)) },
+        onSwitchSignIn = onSwitchSignIn,
+    )
+  }
 
   // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
   // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
@@ -130,11 +143,18 @@ fun ShifterNavHost(
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
       composable<SignedOut.SignIn> {
-        SignInScreen(
-            authViewModel =
-                viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
-            credentialManager = credentialManager,
-            onSignedIn = { nav.enterApp(Volunteer) },
+        signIn(UserMode.VOLUNTEER) { nav.navigateTo(SignedOut.OrganizerSignIn) }
+      }
+      // Opened on top of the Volunteer sign-in, which it goes back to.
+      composable<SignedOut.OrganizerSignIn> { signIn(UserMode.ORGANIZER, nav::goBack) }
+    }
+
+    navigation<Starting>(startDestination = Starting.Loading) {
+      composable<Starting.Loading> {
+        StartScreen(
+            viewModel =
+                viewModel(factory = StartViewModel.factory(auth, repositories.userRepository)),
+            onModeRead = { mode -> nav.enterApp(appOfMode(mode)) },
         )
       }
     }

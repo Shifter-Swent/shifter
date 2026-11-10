@@ -17,11 +17,14 @@ import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -260,13 +263,13 @@ class SignInViewModelTest {
   }
 
   @Test
-  fun factory_createsViewModelOnTheGivenRepository() {
+  fun factory_createsViewModelOnTheGivenRepositoryAndMode() {
     val credential = mockk<Credential>()
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
     repository.signInResult = Result.success(user)
     stubCredentialManager(credential)
     val built =
-        SignInViewModel.factory(repository, userRepository)
+        SignInViewModel.factory(repository, userRepository, UserMode.ORGANIZER)
             .create(SignInViewModel::class.java, CreationExtras.Empty)
 
     built.signIn(context, credentialManager)
@@ -274,6 +277,7 @@ class SignInViewModelTest {
 
     assertEquals(credential, repository.receivedCredential)
     assertEquals(user, built.uiState.value.user)
+    assertEquals(UserMode.ORGANIZER, built.mode)
   }
 
   @Test
@@ -288,6 +292,27 @@ class SignInViewModelTest {
     val profile = userRepository.users.getValue("uid-1")
     assertEquals("Ada", profile.displayName)
     assertEquals("ada@example.com", profile.email)
+  }
+
+  @Test
+  fun signIn_newAccount_savesTheModeOfTheScreenAndEntersIt() {
+    val organizerSignIn = SignInViewModel(repository, userRepository, UserMode.ORGANIZER)
+
+    signInAda(organizerSignIn)
+
+    assertEquals(UserMode.ORGANIZER, userRepository.users.getValue("uid-1").mode)
+    assertEquals(UserMode.ORGANIZER, organizerSignIn.uiState.value.signedInAs)
+  }
+
+  @Test
+  fun signIn_accountWithAMode_entersItWithoutChangingIt() {
+    userRepository.users["uid-1"] = ada(mode = UserMode.VOLUNTEER)
+    val organizerSignIn = SignInViewModel(repository, userRepository, UserMode.ORGANIZER)
+
+    signInAda(organizerSignIn)
+
+    assertEquals(UserMode.VOLUNTEER, userRepository.users.getValue("uid-1").mode)
+    assertEquals(UserMode.VOLUNTEER, organizerSignIn.uiState.value.signedInAs)
   }
 
   @Test
@@ -381,6 +406,25 @@ class SignInViewModelTest {
     )
     assertFalse(viewModel.uiState.value.signedIn)
   }
+
+  /** Signs Ada in through [signIn], until the profile is loaded. */
+  private fun signInAda(signIn: SignInViewModel) {
+    repository.signInResult =
+        Result.success(AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada"))
+    stubCredentialManager(mockk<Credential>())
+
+    signIn.signIn(context, credentialManager)
+    shadowOf(android.os.Looper.getMainLooper()).idle()
+  }
+
+  private fun ada(mode: UserMode?) =
+      User(
+          uid = "uid-1",
+          displayName = "Ada",
+          email = "ada@example.com",
+          createdAt = Instant.EPOCH,
+          mode = mode,
+      )
 
   // Helper method to stub the CredentialManager to return a specific credential
   private fun stubCredentialManager(credential: Credential) {

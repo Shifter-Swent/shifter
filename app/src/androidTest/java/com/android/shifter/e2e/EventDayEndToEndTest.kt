@@ -19,6 +19,7 @@ import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -88,8 +89,7 @@ class EventDayEndToEndTest {
     // precision.
     val start =
         LocalDateTime.now(ZoneId.systemDefault()).plusMinutes(10).truncatedTo(ChronoUnit.MINUTES)
-    val organizerId = app.signInAs(organizer)
-    app.click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
+    val organizerId = app.signInAs(organizer, from = UserMode.ORGANIZER)
     app.click(MyEventsTestTags.CREATE_EVENT_BUTTON)
     app.fillAndSubmitEventForm("Paléo Festival", start = start, end = start.plusDays(1))
 
@@ -122,8 +122,7 @@ class EventDayEndToEndTest {
     }
 
     // ── 3. The organizer accepts both, and appoints the manager of the team ──
-    app.signInAs(organizer)
-    app.click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
+    app.signInAs(organizer, enters = UserMode.ORGANIZER)
     app.click(MyEventsTestTags.eventAction(event.id))
     app.click(OrganizerTabs.People.testTag)
     app.click(PeopleScreenTestTags.REQUESTS_TAB)
