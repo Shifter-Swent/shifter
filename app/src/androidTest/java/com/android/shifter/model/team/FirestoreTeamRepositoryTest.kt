@@ -183,6 +183,7 @@ class FirestoreTeamRepositoryTest {
         team.copy(managerId = VOLUNTEER_ID, memberIds = listOf(OTHER_VOLUNTEER_ID)),
         reload(team),
     )
+    assertEquals(listOf(team.id), managedTeams(team.eventId, VOLUNTEER_ID))
   }
 
   @Test
@@ -199,6 +200,9 @@ class FirestoreTeamRepositoryTest {
         team.copy(managerId = VOLUNTEER_ID, memberIds = listOf(OTHER_VOLUNTEER_ID, MANAGER_ID)),
         reload(team),
     )
+    // The team moves to the new manager in the index, in the same commit.
+    assertEquals(emptyList<String>(), managedTeams(team.eventId, MANAGER_ID))
+    assertEquals(listOf(team.id), managedTeams(team.eventId, VOLUNTEER_ID))
   }
 
   @Test
@@ -220,6 +224,17 @@ class FirestoreTeamRepositoryTest {
         team.copy(managerId = null, memberIds = listOf(VOLUNTEER_ID, MANAGER_ID)),
         reload(team),
     )
+    assertEquals(emptyList<String>(), managedTeams(team.eventId, MANAGER_ID))
+  }
+
+  @Test
+  fun createTeam_withAManager_indexesTheTeamUnderThem() = emulatorTest {
+    val eventId = newEvent()
+    val first = create(richTeam(eventId))
+    val second = create(richTeam(eventId).copy(memberIds = emptyList()))
+
+    // A manager of two teams has both listed, the second added to the first.
+    assertEquals(listOf(first.id, second.id), managedTeams(eventId, MANAGER_ID))
   }
 
   @Test
@@ -273,10 +288,31 @@ class FirestoreTeamRepositoryTest {
     assertNull("no write may create the team", repository.getTeam(eventId, teamId))
   }
 
-  /** Creates [team] through the repository and remembers it for cleanup. */
+  /**
+   * Creates [team] through the repository and remembers it, and its manager's index, for cleanup.
+   */
   private suspend fun create(team: Team): Team =
       step("create") { repository.createTeam(team) }
-          .also { createdDocuments += teamDocument(it.eventId, it.id) }
+          .also {
+            createdDocuments += teamDocument(it.eventId, it.id)
+            it.managerId?.let { managerId -> index(it.eventId, managerId) }
+          }
+
+  /**
+   * The index entry of [userId] in [eventId], remembered for cleanup: deleted before its event,
+   * once at most.
+   */
+  private fun index(eventId: String, userId: String): DocumentReference =
+      firestore
+          .collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(ManagerIndexSchema.COLLECTION)
+          .document(userId)
+          .also { if (it !in createdDocuments) createdDocuments += it }
+
+  /** The teams [userId] manages in [eventId], as the index says on the server. */
+  private suspend fun managedTeams(eventId: String, userId: String): Any? =
+      index(eventId, userId).get(Source.SERVER).await().get(ManagerIndexSchema.TEAM_IDS)
 
   /** Reads [team] back from the server, so the assertion sees what was really stored. */
   private suspend fun reload(team: Team): Team =

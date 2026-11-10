@@ -248,6 +248,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     signIn(organizer)
     repository.accept(eventId, volunteer.uid)
     teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+    assertEquals(listOf(TEAM_ID), managedTeams(eventId, volunteer))
     signIn(volunteer)
 
     repository.withdraw(eventId, volunteer.uid)
@@ -282,6 +283,7 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     signIn(organizer)
     repository.accept(eventId, volunteer.uid)
     teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+    assertEquals(listOf(TEAM_ID), managedTeams(eventId, volunteer))
 
     repository.reject(eventId, volunteer.uid)
 
@@ -545,13 +547,22 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   }
 
   /**
-   * The volunteer is out of the requested team, as a member and as its manager, and of the event.
+   * The volunteer is out of the requested team, as a member and as its manager, in the index of the
+   * event's managers too, and out of the event.
    */
   private suspend fun assertTeamLeftWithoutManager(eventId: String) {
     val team = team(eventId, TEAM_ID).get(Source.SERVER).await()
     assertNull(team.get("managerId"))
     assertEquals(emptyList<String>(), team.get("memberIds"))
+    assertEquals(emptyList<String>(), managedTeams(eventId, volunteer))
     assertEquals(emptyList<String>(), participantIds(eventId))
+  }
+
+  /** The teams [user] manages in [eventId], as the index of its managers says. */
+  private suspend fun managedTeams(eventId: String, user: Account): Any? {
+    val entry = db.collection("events").document(eventId).collection("managers").document(user.uid)
+    paths += entry.path
+    return entry.get(Source.SERVER).await().get("teamIds")
   }
 
   private suspend fun apply(
