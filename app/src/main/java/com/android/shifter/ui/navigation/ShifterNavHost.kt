@@ -184,7 +184,6 @@ fun ShifterNavHost(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onOpenEvent = { card -> nav.enterEvent(VolunteerEvent(card.id, card.title)) },
-            onOrganizerViewClick = { nav.enterApp(Organizer) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
         )
@@ -340,7 +339,6 @@ fun ShifterNavHost(
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onManageEvent = { card -> nav.enterEvent(OrganizerEvent(card.id, card.title)) },
             onCreateEventClick = { nav.navigateTo(Organizer.CreateEvent) },
-            onVolunteerViewClick = { nav.enterApp(Volunteer) },
             onAvatarClick = { nav.navigateTo(Organizer.ProfileSettings) },
         )
       }
