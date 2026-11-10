@@ -14,6 +14,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -75,7 +76,13 @@ fun SettingsRoute(
     if (uiState.modeChangeFailed) {
       // Reported once dismissed: resetting the flag earlier would restart this effect, cancelling
       // the Snackbar.
-      val result = snackbarHostState.showSnackbar(modeChangeError, actionLabel = retry)
+      // Long: offline, the user needs time to get the network back before tapping Retry.
+      val result =
+          snackbarHostState.showSnackbar(
+              modeChangeError,
+              actionLabel = retry,
+              duration = SnackbarDuration.Long,
+          )
       viewModel.onModeChangeErrorShown()
       if (result == SnackbarResult.ActionPerformed) viewModel.changeMode()
     }
