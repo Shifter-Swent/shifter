@@ -410,6 +410,49 @@ class MapViewModelTest {
   }
 
   @Test
+  fun volunteers_olderThanAnHour_areLeftOut() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 60)
+    share("carol", "stage", STAND.position, minutesAgo = 61)
+
+    val volunteers = open(volunteerMap()).volunteers.value
+
+    // An hour old is still shown, greyed out; a minute more and the position is left out.
+    assertEquals(
+        listOf(VolunteerPin("alice", "Alice", TENT.position, minutesAgo = 60, isStale = true)),
+        volunteers,
+    )
+  }
+
+  @Test
+  fun volunteers_reachingAnHourWithoutANewPosition_disappear() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 59)
+    val viewModel = open(volunteerMap())
+    assertEquals(59, viewModel.volunteers.value.single().minutesAgo)
+
+    // Without reopening the map: the next refresh of the ages leaves it out.
+    clock = clock.plus(Duration.ofMinutes(2))
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertTrue(viewModel.volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_sharingAgainAfterBeingHidden_showUpAgain() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    share("alice", "bar", STAND.position)
+    runCurrent()
+
+    assertEquals(
+        listOf(VolunteerPin("alice", "Alice", STAND.position, minutesAgo = 0, isStale = false)),
+        viewModel.volunteers.value,
+    )
+  }
+
+  @Test
   fun volunteers_whenReadingIsRefused_areEmptyAndTheMapStillLoads() = runTest {
     missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
     share("alice", "bar", TENT.position)
@@ -636,8 +679,10 @@ class MapViewModelTest {
     val counting = CountsObservations(liveLocations)
     val viewModel = open(volunteerMap(counting))
 
-    // Still readable until an hour after the end, as the rules allow.
+    // Still readable until an hour after the end, as the rules allow. Shared again then, so the
+    // position is recent and only the end of reading can take it off the map.
     clock = EVENT.endAt + MapViewModel.READABLE_AFTER_END
+    share("alice", "bar", TENT.position)
     advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
     runCurrent()
     assertEquals("alice", viewModel.volunteers.value.single().userId)

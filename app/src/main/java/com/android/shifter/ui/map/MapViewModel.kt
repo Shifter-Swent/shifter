@@ -157,7 +157,9 @@ class MapViewModel(
 
   /**
    * The volunteers of the watched teams who share their position, followed live while the map is on
-   * screen, their age refreshed every minute even when no new position arrives.
+   * screen, their age refreshed every minute even when no new position arrives. A position older
+   * than [HIDDEN_AFTER] is left out, so a volunteer who stopped sharing or left goes from the map
+   * on their own, and shows up again with their next position.
    *
    * Only the current members of a team are shown: the rules let a position stay readable for a
    * while after its volunteer left the team. The teams are read again every minute, so a volunteer
@@ -168,8 +170,8 @@ class MapViewModel(
    * only opens with the event, so a map opened early shows the volunteers once it starts.
    * [READABLE_AFTER_END] after the event's end, nothing is followed any more, without waiting for a
    * refusal that may never come. Any other failure keeps the last positions, which keep ageing
-   * until they are greyed out, and is retried every [RETRY_DELAY_MILLIS]. Once the map is left, the
-   * list is cleared, so coming back never shows old positions.
+   * until they are greyed out, then left out, and is retried every [RETRY_DELAY_MILLIS]. Once the
+   * map is left, the list is cleared, so coming back never shows old positions.
    */
   val volunteers: StateFlow<List<VolunteerPin>> =
       volunteerPins()
@@ -277,7 +279,8 @@ class MapViewModel(
         .distinctUntilChanged()
         .flatMapLatest { teams -> latestLocations(repository, teams) }
         // Offline or any other failure: no position comes meanwhile, so the last ones stay on
-        // the map and keep ageing until they are greyed out, while the read is tried again.
+        // the map and keep ageing until they are greyed out, then left out, while the read is
+        // tried again.
         .retryWhen { cause, _ ->
           val retry = cause is Exception
           if (retry) delay(RETRY_DELAY_MILLIS)
@@ -289,12 +292,14 @@ class MapViewModel(
       emitAll(
           combine(locations, everyMinute()) { latest, _ -> latest }
               .map { latest ->
-                val unknown = latest.map { it.userId }.filter { it !in names }
+                val now = now()
+                // Left out before the names, so a hidden volunteer's name is never read.
+                val shown = latest.filter { it.ageAt(now) <= HIDDEN_AFTER }
+                val unknown = shown.map { it.userId }.filter { it !in names }
                 if (unknown.isNotEmpty() && userRepository != null) {
                   names += userRepository.displayNames(unknown)
                 }
-                val now = now()
-                latest.map { it.toPin(names[it.userId], now) }.sortedBy { it.userId }
+                shown.map { it.toPin(names[it.userId], now) }.sortedBy { it.userId }
               }
       )
     }
@@ -335,9 +340,13 @@ class MapViewModel(
     }
   }
 
+  /** How old this position is at [now]. */
+  private fun LiveLocation.ageAt(now: Instant): Duration =
+      // A device clock ahead of ours could make the age negative: it is shown as just measured.
+      Duration.between(measuredAt, now).coerceAtLeast(Duration.ZERO)
+
   private fun LiveLocation.toPin(name: String?, now: Instant): VolunteerPin {
-    // A device clock ahead of ours could make the age negative: it is shown as just measured.
-    val age = Duration.between(measuredAt, now).coerceAtLeast(Duration.ZERO)
+    val age = ageAt(now)
     return VolunteerPin(userId, name, position, age.toMinutes(), isStale = age > STALE_AFTER)
   }
 
@@ -361,6 +370,12 @@ class MapViewModel(
 
     /** How old a volunteer's position may be before the map greys it out. */
     val STALE_AFTER: Duration = Duration.ofMinutes(10)
+
+    /**
+     * How old a volunteer's position may be before the map leaves it out: they stopped sharing or
+     * left, so it no longer says where they are, and a busy map would fill with such positions.
+     */
+    val HIDDEN_AFTER: Duration = Duration.ofHours(1)
 
     /** How often the age of the positions is refreshed when no new position arrives. */
     const val AGE_REFRESH_MILLIS = 60_000L
