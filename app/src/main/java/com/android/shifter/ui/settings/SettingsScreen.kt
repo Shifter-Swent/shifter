@@ -124,17 +124,15 @@ fun SettingsScreen(
   Scaffold(
       modifier = modifier.fillMaxSize().testTag(SettingsScreenTestTags.SCREEN),
       containerColor = MaterialTheme.colorScheme.background,
+      topBar = { ShifterTopBar(title = stringResource(R.string.settings_title), onBack = onBack) },
       snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
-    Column(modifier = Modifier.padding(padding)) {
-      ShifterTopBar(title = stringResource(R.string.settings_title), onBack = onBack)
-      Column(
-          modifier = Modifier.padding(16.dp),
-          verticalArrangement = Arrangement.spacedBy(12.dp),
-      ) {
-        ChangeModeButton(mode = mode, enabled = !changingMode, onClick = onChangeMode)
-        SignOutButton(onClick = onSignOut)
-      }
+    Column(
+        modifier = Modifier.padding(padding).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      ChangeModeButton(mode = mode, enabled = !changingMode, onClick = onChangeMode)
+      SignOutButton(onClick = onSignOut)
     }
   }
 }
