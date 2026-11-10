@@ -285,7 +285,7 @@ class LocationSharingViewModelTest {
 
   @Test
   fun loadLabels_forADeletedTeam_keepsNoLabel() {
-    val gone = LiveLocationTarget(EVENT, "deleted")
+    val gone = LiveLocationTarget(EVENT, "deleted", NOW, END)
     viewModel.onSharingStates(mapOf(gone to LiveLocationSharingState.REFUSED))
 
     viewModel.loadLabels()
@@ -299,9 +299,11 @@ class LocationSharingViewModelTest {
     const val EVENT_FINISH = "finish"
     const val ALEX = "alex"
     const val SAM = "sam"
-    val HYDRATION = LiveLocationTarget(EVENT, EVENT_HYDRATION)
-    val FINISH = LiveLocationTarget(EVENT, EVENT_FINISH)
     val NOW: Instant = Instant.parse("2026-06-14T09:00:00Z")
+    /** The event's period, which the targets carry and the labels never read. */
+    val END: Instant = NOW.plusSeconds(3600)
+    val HYDRATION = LiveLocationTarget(EVENT, EVENT_HYDRATION, NOW, END)
+    val FINISH = LiveLocationTarget(EVENT, EVENT_FINISH, NOW, END)
 
     fun event(id: String, title: String) =
         Event(
@@ -311,7 +313,7 @@ class LocationSharingViewModelTest {
             description = "",
             type = EventType.MUSIC,
             startAt = NOW,
-            endAt = NOW.plusSeconds(3600),
+            endAt = END,
             location = EventLocation("Lyon"),
             createdAt = NOW,
         )
