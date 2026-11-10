@@ -1,12 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
@@ -110,13 +106,13 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun singleChannel_opensItOnce() {
-    val recompositions = mutableIntStateOf(0)
-    showScreen(listOf(team("bar", "Bar")), recompositions)
-
+  fun singleChannel_backToTheList_opensItOnce() {
+    showScreen(listOf(team("bar", "Bar")))
     composeTestRule.waitForIdle()
-    // Redrawing the list must not open the channel a second time.
-    recompositions.intValue++
+
+    // Back from the channel: the list leaves the composition and comes back.
+    composeTestRule.runOnIdle { shown = false }
+    composeTestRule.runOnIdle { shown = true }
     composeTestRule.waitForIdle()
 
     assertEquals(listOf("bar"), opened)
@@ -161,21 +157,15 @@ class ChatChannelsContentTest {
 
   /**
    * The screen with its ViewModel, as a volunteer of [teams], while [shown], with the lifecycle of
-   * [screen]. Reading [recompositions] redraws it each time the value changes.
+   * [screen].
    */
-  private fun showScreen(
-      teams: List<Team>,
-      recompositions: MutableIntState = mutableIntStateOf(0),
-  ) {
+  private fun showScreen(teams: List<Team>) {
     val viewModel =
         ChatChannelsViewModel(EVENT, asOrganizer = false, FakeTeamRepository(teams)) { ME }
     composeTestRule.setContent {
       ShifterTheme {
         CompositionLocalProvider(LocalLifecycleOwner provides screen) {
-          Column {
-            Text("Redrawn ${recompositions.intValue} times")
-            if (shown) ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
-          }
+          if (shown) ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
         }
       }
     }
