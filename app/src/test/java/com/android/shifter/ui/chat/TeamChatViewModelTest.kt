@@ -6,6 +6,9 @@ import com.swent.shifter.model.chat.ChatMessage
 import com.swent.shifter.model.chat.ChatRepositoryException
 import com.swent.shifter.model.chat.ChatRules
 import com.swent.shifter.model.chat.FakeChatRepository
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -32,10 +35,25 @@ class TeamChatViewModelTest {
 
   private val profiles = CountingUserRepository(users)
 
-  private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, profiles) { ME }
+  private val teams = FakeTeamRepository(listOf(team(managerId = OTHER)))
 
-  private fun receive(id: String, from: String, text: String) =
-      chat.add(ChatChannelId.Team(EVENT, TEAM), ChatMessage(id, from, text, SENT_AT))
+  private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, profiles, teams) { ME }
+
+  /** A view model of the team that [ME] manages, and may announce in. */
+  private fun managerViewModel(): TeamChatViewModel {
+    teams.teams[0] = team(managerId = ME)
+    chat.announcingChannels = setOf(CHANNEL)
+    return viewModel()
+  }
+
+  private fun TeamChatViewModel.announce(text: String) {
+    onAnnouncementChange(true)
+    onDraftChange(text)
+    send()
+  }
+
+  private fun receive(id: String, from: String, text: String, announcement: Boolean = false) =
+      chat.add(CHANNEL, ChatMessage(id, from, text, SENT_AT, announcement = announcement))
 
   @Test
   fun load_showsTheMessagesWithTheirSenders() = runTest {
@@ -332,6 +350,146 @@ class TeamChatViewModelTest {
     assertFalse(viewModel.uiState.value.sendFailed)
   }
 
+  @Test
+  fun messages_withAnAnnouncement_areMarkedAsAnnouncements() = runTest {
+    receive("1", OTHER, "Gates open at 9:00", announcement = true)
+    receive("2", OTHER, "Hello")
+
+    val messages = viewModel().uiState.value.messages
+
+    assertEquals(listOf(true, false), messages.map { it.isAnnouncement })
+  }
+
+  @Test
+  fun canAnnounce_asTheTeamManager_isTrue() = runTest {
+    assertTrue(managerViewModel().uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun canAnnounce_asAMember_isFalse() = runTest {
+    assertFalse(viewModel().uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun canAnnounce_whenTheTeamCannotBeRead_isFalse() = runTest {
+    teams.teams[0] = team(managerId = ME)
+    teams.failure = TeamRepositoryException.Unavailable()
+
+    assertFalse(viewModel().uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun onAnnouncementChange_withoutTheRight_isIgnored() = runTest {
+    val viewModel = viewModel()
+
+    viewModel.onAnnouncementChange(true)
+
+    assertFalse(viewModel.uiState.value.asAnnouncement)
+  }
+
+  @Test
+  fun send_asAnnouncement_sendsAnAnnouncementAndResetsTheOption() = runTest {
+    val viewModel = managerViewModel()
+
+    viewModel.announce("Gates open at 9:00")
+
+    val state = viewModel.uiState.value
+    assertFalse(state.asAnnouncement)
+    assertTrue(state.messages.single().isAnnouncement)
+    assertFalse(state.messages.single().isPending)
+  }
+
+  @Test
+  fun send_withoutTheOption_sendsANormalMessage() = runTest {
+    val viewModel = managerViewModel()
+    viewModel.onDraftChange("On my way")
+
+    viewModel.send()
+
+    assertFalse(viewModel.uiState.value.messages.single().isAnnouncement)
+  }
+
+  @Test
+  fun send_offlineAnnouncement_showsItPendingAsAnAnnouncement() = runTest {
+    chat.confirmation = CompletableDeferred()
+    val viewModel = managerViewModel()
+
+    viewModel.announce("Gates open at 9:00")
+
+    val message = viewModel.uiState.value.messages.single()
+    assertTrue(message.isPending)
+    assertTrue(message.isAnnouncement)
+  }
+
+  @Test
+  fun send_announcementRefused_keepsTheTextAndShowsTheRefusal() = runTest {
+    val viewModel = managerViewModel()
+    chat.announcingChannels = emptySet()
+
+    viewModel.announce("Gates open at 9:00")
+
+    val state = viewModel.uiState.value
+    assertEquals("Gates open at 9:00", state.draft)
+    assertTrue(state.asAnnouncement)
+    assertTrue(state.announcementRefused)
+    assertFalse(state.sendFailed)
+    assertTrue(state.messages.isEmpty())
+  }
+
+  @Test
+  fun send_announcementRefusedOnceConfirmed_givesTheTextBack() = runTest {
+    val confirmation = CompletableDeferred<Unit>()
+    chat.confirmation = confirmation
+    val viewModel = managerViewModel()
+    viewModel.announce("Gates open at 9:00")
+
+    confirmation.completeExceptionally(ChatRepositoryException.NotAllowed())
+
+    val state = viewModel.uiState.value
+    assertEquals("Gates open at 9:00", state.draft)
+    assertTrue(state.asAnnouncement)
+    assertTrue(state.announcementRefused)
+    assertTrue(state.messages.isEmpty())
+  }
+
+  @Test
+  fun send_announcementRefusedAfterTypingAnother_keepsTheNewDraft() = runTest {
+    val confirmation = CompletableDeferred<Unit>()
+    chat.confirmation = confirmation
+    val viewModel = managerViewModel()
+    viewModel.announce("Gates open at 9:00")
+    viewModel.onDraftChange("On my way")
+
+    confirmation.completeExceptionally(ChatRepositoryException.NotAllowed())
+
+    val state = viewModel.uiState.value
+    assertEquals("On my way", state.draft)
+    assertFalse(state.asAnnouncement)
+    assertTrue(state.announcementRefused)
+  }
+
+  @Test
+  fun onDraftChange_clearsTheAnnouncementRefusal() = runTest {
+    val viewModel = managerViewModel()
+    chat.announcingChannels = emptySet()
+    viewModel.announce("Gates open at 9:00")
+
+    viewModel.onDraftChange("Gates open at 9:30")
+
+    assertFalse(viewModel.uiState.value.announcementRefused)
+  }
+
+  private fun team(managerId: String?) =
+      Team(
+          id = TEAM,
+          eventId = EVENT,
+          name = "Gate B",
+          description = "",
+          icon = "",
+          managerId = managerId,
+          createdAt = SENT_AT,
+      )
+
   private fun user(uid: String, name: String) =
       User(uid = uid, displayName = name, email = "$uid@example.com", createdAt = SENT_AT)
 
@@ -354,6 +512,7 @@ class TeamChatViewModelTest {
     const val ME = "me"
     const val OTHER = "alice"
     const val NAMELESS = "nameless"
+    val CHANNEL = ChatChannelId.Team(EVENT, TEAM)
     val SENT_AT: Instant = Instant.parse("2027-06-20T09:30:00Z")
   }
 }

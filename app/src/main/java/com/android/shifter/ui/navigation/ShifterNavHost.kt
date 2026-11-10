@@ -662,6 +662,7 @@ private inline fun <
                             route.teamId,
                             repositories.chatRepository,
                             repositories.userRepository,
+                            repositories.teamRepository,
                             currentUserId,
                         )
                 ),

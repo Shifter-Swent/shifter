@@ -11,6 +11,7 @@ import com.swent.shifter.model.chat.ChatMessage
 import com.swent.shifter.model.chat.ChatRepository
 import com.swent.shifter.model.chat.ChatRepositoryException
 import com.swent.shifter.model.chat.ChatRules
+import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
 import java.time.Instant
@@ -37,6 +38,7 @@ enum class ChatError {
  * @property senderName the sender's public name, or null when it could not be loaded.
  * @property sentAt when it was sent, or null for a message not yet in the channel.
  * @property isPending whether it is sent by the user and not confirmed by the server yet.
+ * @property isAnnouncement whether it was sent as an announcement, to stand out from the others.
  */
 data class ChatMessageItem(
     val id: String,
@@ -45,6 +47,7 @@ data class ChatMessageItem(
     val sentAt: Instant?,
     val isMine: Boolean,
     val isPending: Boolean = false,
+    val isAnnouncement: Boolean = false,
 )
 
 /**
@@ -52,6 +55,11 @@ data class ChatMessageItem(
  *
  * @property draft the text being typed, not yet sent.
  * @property sendFailed whether the last message could not be sent; its text is back in [draft].
+ * @property canAnnounce whether the user may send announcements in the channel, i.e. manages the
+ *   team. The backend still decides: this only shows the option.
+ * @property asAnnouncement whether [draft] is to be sent as an announcement.
+ * @property announcementRefused whether the last announcement was refused; its text is back in
+ *   [draft], still as an announcement.
  */
 data class TeamChatUiState(
     val messages: List<ChatMessageItem> = emptyList(),
@@ -59,6 +67,9 @@ data class TeamChatUiState(
     val error: ChatError? = null,
     val draft: String = "",
     val sendFailed: Boolean = false,
+    val canAnnounce: Boolean = false,
+    val asAnnouncement: Boolean = false,
+    val announcementRefused: Boolean = false,
 ) {
   /**
    * Whether [draft] can be sent: not blank, not too long, once the channel is listed and while the
@@ -82,7 +93,8 @@ data class TeamChatUiState(
  * When [ChatRepository.send] gives up with [ChatRepositoryException.Unavailable], the message is
  * not confirmed but still queued, and the backend sends it once the connection is back: it stays
  * pending and its text is not given back, since sending it again would post it twice. Any other
- * failure means it was not sent: its text goes back into the draft.
+ * failure means it was not sent: its text goes back into the draft, as an announcement if it was
+ * one, so a refused announcement is never posted as a normal message without the user seeing it.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
@@ -91,6 +103,7 @@ class TeamChatViewModel(
     private val teamId: String,
     private val chatRepository: ChatRepository,
     private val userRepository: UserRepository,
+    private val teamRepository: TeamRepository,
     private val currentUserId: () -> String?,
 ) : ViewModel() {
 
@@ -98,7 +111,12 @@ class TeamChatViewModel(
    * A message being sent, with the ids of the messages already listed when it was sent: the message
    * of the channel it stands for is a new one.
    */
-  private class Sending(val localId: Int, val text: String, val knownIds: Set<String>)
+  private class Sending(
+      val localId: Int,
+      val text: String,
+      val announcement: Boolean,
+      val knownIds: Set<String>,
+  )
 
   private val _uiState = MutableStateFlow(TeamChatUiState())
   val uiState: StateFlow<TeamChatUiState> = _uiState.asStateFlow()
@@ -117,6 +135,7 @@ class TeamChatViewModel(
 
   init {
     load()
+    loadAnnounceRight()
   }
 
   /** Starts listening to the channel, again after an error. */
@@ -154,7 +173,13 @@ class TeamChatViewModel(
   }
 
   fun onDraftChange(text: String) {
-    _uiState.update { it.copy(draft = text, sendFailed = false) }
+    _uiState.update { it.copy(draft = text, sendFailed = false, announcementRefused = false) }
+  }
+
+  /** Chooses whether to send the draft as an announcement; ignored without the right to. */
+  fun onAnnouncementChange(asAnnouncement: Boolean) {
+    if (!_uiState.value.canAnnounce) return
+    _uiState.update { it.copy(asAnnouncement = asAnnouncement, announcementRefused = false) }
   }
 
   /** Sends the draft, if it [can be sent][TeamChatUiState.canSend]. */
@@ -162,24 +187,56 @@ class TeamChatViewModel(
     val state = _uiState.value
     if (!state.canSend) return
     val text = state.draft.trim()
-    val message = Sending(nextLocalId++, text, received.map { it.id }.toSet())
+    val announcement = state.canAnnounce && state.asAnnouncement
+    val message = Sending(nextLocalId++, text, announcement, received.map { it.id }.toSet())
     sending = sending + message
-    _uiState.update { it.copy(draft = "", sendFailed = false) }
+    // The option is chosen again for each message, so the next one is not announced by mistake.
+    _uiState.update {
+      it.copy(draft = "", sendFailed = false, asAnnouncement = false, announcementRefused = false)
+    }
     show()
     viewModelScope.launch {
       try {
-        chatRepository.send(ChatChannelId.Team(eventId, teamId), text)
+        chatRepository.send(ChatChannelId.Team(eventId, teamId), text, announcement)
       } catch (e: CancellationException) {
         throw e
       } catch (e: ChatRepositoryException.Unavailable) {
         // Not confirmed, but still queued: it stays pending and is not offered to be sent again.
         return@launch
       } catch (e: Exception) {
-        // Gives the text back, unless the user already typed another one.
-        _uiState.update { it.copy(draft = it.draft.ifBlank { text }, sendFailed = true) }
+        val refused = announcement && e is ChatRepositoryException.NotAllowed
+        // Gives the message back as it was, unless the user already typed another one.
+        _uiState.update {
+          val giveBack = it.draft.isBlank()
+          it.copy(
+              draft = if (giveBack) text else it.draft,
+              asAnnouncement = if (giveBack) announcement else it.asAnnouncement,
+              sendFailed = !refused,
+              announcementRefused = refused,
+          )
+        }
       }
       sending = sending - message
       show()
+    }
+  }
+
+  /**
+   * Reads whether the user manages the team, the only one who may announce in its channel. A team
+   * that cannot be read leaves the option hidden.
+   */
+  private fun loadAnnounceRight() {
+    viewModelScope.launch {
+      val manager =
+          try {
+            teamRepository.getTeam(eventId, teamId)?.managerId
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            null
+          }
+      val me = currentUserId()
+      _uiState.update { it.copy(canAnnounce = me != null && manager == me) }
     }
   }
 
@@ -203,7 +260,10 @@ class TeamChatViewModel(
     val items = received.map { message ->
       val mine = message.senderId == me
       val match = waiting.firstOrNull {
-        mine && it.text == message.text && message.id !in it.knownIds
+        mine &&
+            it.text == message.text &&
+            it.announcement == message.announcement &&
+            message.id !in it.knownIds
       }
       if (match != null) waiting -= match
       ChatMessageItem(
@@ -213,6 +273,7 @@ class TeamChatViewModel(
           sentAt = message.sentAt,
           isMine = mine,
           isPending = match != null,
+          isAnnouncement = message.announcement,
       )
     }
     // The messages being sent that the channel does not list yet.
@@ -224,6 +285,7 @@ class TeamChatViewModel(
           sentAt = null,
           isMine = true,
           isPending = true,
+          isAnnouncement = it.announcement,
       )
     }
     _uiState.update { it.copy(messages = items + notListed, isLoading = isLoading) }
@@ -239,10 +301,18 @@ class TeamChatViewModel(
         teamId: String,
         chatRepository: ChatRepository,
         userRepository: UserRepository,
+        teamRepository: TeamRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
-        TeamChatViewModel(eventId, teamId, chatRepository, userRepository, currentUserId)
+        TeamChatViewModel(
+            eventId,
+            teamId,
+            chatRepository,
+            userRepository,
+            teamRepository,
+            currentUserId,
+        )
       }
     }
   }
