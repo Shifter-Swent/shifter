@@ -156,6 +156,21 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
+  fun run_whenATargetsEventPeriodChanges_restartsItsSessionOnTheNewPeriod() = runTest {
+    // The period is part of the target's identity (#406), so an organizer shortening or extending
+    // the event is a new target: the session bounded to the old end is cancelled and one bounded to
+    // the new end starts, instead of the old bound standing. A refresh is how the change is seen.
+    eligible = listOf(BAR)
+    start()
+
+    eligible = listOf(BAR_SHORTENED)
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR_SHORTENED), sessions.active)
+    assertEquals(listOf(BAR, BAR_SHORTENED), sessions.started)
+  }
+
+  @Test
   fun run_whenNothingIsEligibleAnyMore_cancelsEverySession() = runTest {
     eligible = listOf(BAR, STAGE)
     start()
@@ -561,7 +576,8 @@ class LiveLocationCoordinatorTest {
         val publisher = LiveLocationPublisher(provider, repository, now = { clock })
         val reported = mutableListOf<LiveLocationSharingState>()
         backgroundScope.launch {
-          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true), reported::add)
+          LiveLocationSessions.of(publisher, now = { clock })
+              .publish(BAR, MutableStateFlow(true), reported::add)
         }
 
         provider.emit(GENEVA)
@@ -699,8 +715,16 @@ class LiveLocationCoordinatorTest {
     const val VOLUNTEER = "volunteer"
     val GENEVA = GeoPosition(46.2044, 6.1432)
 
-    val BAR = LiveLocationTarget("event", "team-bar")
-    val STAGE = LiveLocationTarget("event", "team-stage")
-    val OTHER_EVENT_BAR = LiveLocationTarget("other-event", "team-bar")
+    // The period is only carried; this coordinator does not read it (the session does), so a wide
+    // window around the test clock keeps every target running for the eligibility logic under test.
+    val START_AT: Instant = START - Duration.ofHours(1)
+    val END_AT: Instant = START + Duration.ofHours(4)
+    val BAR = LiveLocationTarget("event", "team-bar", START_AT, END_AT)
+    val STAGE = LiveLocationTarget("event", "team-stage", START_AT, END_AT)
+    val OTHER_EVENT_BAR = LiveLocationTarget("other-event", "team-bar", START_AT, END_AT)
+
+    /** [BAR]'s pair with the event's end brought forward, as an organizer shortening it would. */
+    val BAR_SHORTENED =
+        LiveLocationTarget("event", "team-bar", START_AT, START + Duration.ofHours(1))
   }
 }
