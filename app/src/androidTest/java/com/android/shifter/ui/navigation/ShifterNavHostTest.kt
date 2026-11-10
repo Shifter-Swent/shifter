@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -986,6 +988,47 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerEvent_editMission_savesTheChangeAndShowsItInTheOverview() {
+    val event = createEvent(signIn())
+    val mission =
+        createMission(
+            event,
+            "Set up the stands",
+            teamId = null,
+            description = "Set up before the doors open.",
+        )
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
+
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(mission.id))
+        .performClick()
+    // The form only appears once the mission is read, filled with it.
+    waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .assertTextContains("Set up the stands")
+        .performTextReplacement("Set up the bar")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    // Back on the Overview, whose row of the mission shows the new title.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodes(
+              hasTestTag(OrganizerOverviewScreenTestTags.mission(mission.id)) and
+                  hasText("Set up the bar", substring = true)
+          )
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    val saved = runBlocking { repositories.missionRepository.getMission(event.id, mission.id) }
+    assertEquals(mission.copy(title = "Set up the bar"), saved)
+  }
+
+  @Test
   fun organizerEvent_overviewShowsAMissionAddedWhileTheFormWasOpen() {
     val event = createEvent(signIn())
     openOrganizerEvent(event)
@@ -1082,14 +1125,22 @@ class ShifterNavHostTest {
     return team
   }
 
-  /** Creates a mission of [event] titled [title], in the team [teamId] or in no team when null. */
-  private fun createMission(event: Event, title: String, teamId: String?) {
+  /**
+   * Creates a mission of [event] titled [title], in the team [teamId] or in no team when null, and
+   * returns it.
+   */
+  private fun createMission(
+      event: Event,
+      title: String,
+      teamId: String?,
+      description: String = "",
+  ): Mission {
     val mission = runBlocking {
       repositories.missionRepository.createMission(
           Mission(
               eventId = event.id,
               title = title,
-              description = "",
+              description = description,
               teamId = teamId,
               volunteersNeeded = 1,
               startAt = event.startAt,
@@ -1100,6 +1151,7 @@ class ShifterNavHostTest {
     }
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    return mission
   }
 
   /** Signs in and opens the creation form; returns the signed-in organizer. */

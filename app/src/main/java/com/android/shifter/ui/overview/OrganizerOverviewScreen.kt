@@ -3,6 +3,7 @@ package com.swent.shifter.ui.overview
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,12 +85,14 @@ object OrganizerOverviewScreenTestTags {
  *
  * @param onAddMission called to open the mission creation form.
  * @param onManageTeams called to open the teams of the event.
+ * @param onEditMission called with the id of a mission to open its edit form.
  */
 @Composable
 fun OrganizerOverviewScreen(
     viewModel: OrganizerOverviewViewModel,
     onAddMission: () -> Unit,
     onManageTeams: () -> Unit = {},
+    onEditMission: (String) -> Unit = {},
 ) {
   val uiState by viewModel.uiState.collectAsState()
   OrganizerOverviewContent(
@@ -98,6 +101,7 @@ fun OrganizerOverviewScreen(
           OrganizerOverviewActions(
               onAddMission = onAddMission,
               onManageTeams = onManageTeams,
+              onEditMission = onEditMission,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
               onAssign = viewModel::openAssign,
@@ -113,6 +117,7 @@ fun OrganizerOverviewScreen(
 data class OrganizerOverviewActions(
     val onAddMission: () -> Unit = {},
     val onManageTeams: () -> Unit = {},
+    val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
     // TODO: open the notification composer once notifications exist.
@@ -140,7 +145,7 @@ fun OrganizerOverviewContent(state: OrganizerOverviewUiState, actions: Organizer
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
-    Missions(state, actions.onAssign)
+    Missions(state, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
   }
   state.assigning?.let { AssignDialog(it, actions) }
@@ -319,7 +324,11 @@ private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, test
 
 /** The missions of the selected team, under a header naming it and counting them. */
 @Composable
-private fun Missions(state: OrganizerOverviewUiState, onAssign: (String) -> Unit) {
+private fun Missions(
+    state: OrganizerOverviewUiState,
+    onAssign: (String) -> Unit,
+    onEdit: (String) -> Unit,
+) {
   val missions = state.visibleMissions
   val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -337,7 +346,14 @@ private fun Missions(state: OrganizerOverviewUiState, onAssign: (String) -> Unit
     )
     when {
       missions.isNotEmpty() ->
-          missions.forEach { MissionRow(it, state.teamName(it.teamId)) { onAssign(it.id) } }
+          missions.forEach { mission ->
+            MissionRow(
+                mission = mission,
+                teamName = state.teamName(mission.teamId),
+                onAssign = { onAssign(mission.id) },
+                onEdit = { onEdit(mission.id) },
+            )
+          }
       state.isLoading ->
           CircularProgressIndicator(
               modifier =
@@ -360,12 +376,24 @@ private fun Missions(state: OrganizerOverviewUiState, onAssign: (String) -> Unit
 }
 
 @Composable
-private fun MissionRow(mission: OverviewMission, teamName: String?, onAssign: () -> Unit) {
+private fun MissionRow(
+    mission: OverviewMission,
+    teamName: String?,
+    onAssign: () -> Unit,
+    onEdit: () -> Unit,
+) {
   Row(
       modifier =
           Modifier.fillMaxWidth()
               .clip(MaterialTheme.shapes.medium)
               .background(MaterialTheme.colorScheme.surfaceVariant)
+              // A completed mission can no longer be changed, so it does not open the form.
+              .clickable(
+                  enabled = !mission.isCompleted,
+                  onClickLabel = stringResource(R.string.overview_edit_mission),
+                  role = Role.Button,
+                  onClick = onEdit,
+              )
               .padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp)
               .testTag(OrganizerOverviewScreenTestTags.mission(mission.id)),
       verticalAlignment = Alignment.CenterVertically,

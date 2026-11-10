@@ -131,9 +131,9 @@ enum class MissionFormError(val field: MissionFormField) {
  *   tries to submit, so an untouched form is not shown in red; from then on it is kept up to date
  *   on every edit.
  * @property conflict the mission of the same team the last submit overlapped, null otherwise.
- * @property createdMission the persisted mission once it was saved, created or edited, null before.
- * @property createdMissionHandled whether the screen already reacted to [createdMission], e.g. by
- *   going back, so it does not react again after a recomposition or configuration change.
+ * @property savedMission the persisted mission once it was saved, created or edited, null before.
+ * @property savedMissionHandled whether the screen already reacted to [savedMission], e.g. by going
+ *   back, so it does not react again after a recomposition or configuration change.
  * @property isEditing whether the form edits an existing mission rather than adding one. Its team
  *   and its assignees are then kept as they are.
  * @property assigneeCount how many people are assigned to the mission being edited.
@@ -172,8 +172,8 @@ data class AddMissionUiState(
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
     val conflict: MissionConflict? = null,
-    val createdMission: Mission? = null,
-    val createdMissionHandled: Boolean = false,
+    val savedMission: Mission? = null,
+    val savedMissionHandled: Boolean = false,
     val isEditing: Boolean = false,
     val assigneeCount: Int = 0,
     val missionLoaded: Boolean = false,
@@ -197,7 +197,7 @@ data class AddMissionUiState(
         event != null &&
             !notAllowed &&
             !isSaving &&
-            createdMission == null &&
+            savedMission == null &&
             !missionNotFound &&
             !missionCompleted &&
             !slotNotEditable
@@ -538,7 +538,7 @@ class AddMissionViewModel(
    * Validates the form and, when it is valid, creates the mission, or saves the changes of the one
    * being edited. Ignored until it can submit.
    */
-  fun addMission() {
+  fun save() {
     val form = _uiState.value
     if (!form.canSubmit) return
     submitAttempted = true
@@ -577,7 +577,7 @@ class AddMissionViewModel(
     viewModelScope.launch {
       try {
         val created = missionRepository.createMission(mission)
-        _uiState.update { it.copy(isSaving = false, createdMission = created) }
+        _uiState.update { it.copy(isSaving = false, savedMission = created) }
       } catch (e: CancellationException) {
         throw e
       } catch (e: MissionOverlapException) {
@@ -623,7 +623,7 @@ class AddMissionViewModel(
     viewModelScope.launch {
       try {
         missionRepository.updateMission(changed)
-        _uiState.update { it.copy(isSaving = false, createdMission = changed) }
+        _uiState.update { it.copy(isSaving = false, savedMission = changed) }
       } catch (e: CancellationException) {
         throw e
       } catch (e: MissionOverlapException) {
@@ -653,9 +653,9 @@ class AddMissionViewModel(
           end = LocalDateTime.ofInstant(conflictingMission.endAt, clock.zone),
       )
 
-  /** Records that the screen reacted to [AddMissionUiState.createdMission]. */
-  fun onMissionAddedHandled() {
-    _uiState.update { it.copy(createdMissionHandled = true) }
+  /** Records that the screen reacted to [AddMissionUiState.savedMission]. */
+  fun onSaveHandled() {
+    _uiState.update { it.copy(savedMissionHandled = true) }
   }
 
   /**

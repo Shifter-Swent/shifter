@@ -49,8 +49,12 @@ class OrganizerOverviewScreenTest {
   fun completedMission_isLabelled() {
     show(loaded)
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m1")).assertIsDisplayed()
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m2")).assertDoesNotExist()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m1"), useUnmergedTree = true)
+        .assertIsDisplayed()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.completed("m2"), useUnmergedTree = true)
+        .assertDoesNotExist()
   }
 
   @Test
@@ -219,7 +223,7 @@ class OrganizerOverviewScreenTest {
     )
 
     compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.assignedCount("m1"))
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.assignedCount("m1"), useUnmergedTree = true)
         .assertTextEquals("Assigned: 1/3")
   }
 

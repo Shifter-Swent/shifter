@@ -505,9 +505,9 @@ class AddMissionScreenTest {
             currentUserId = { event.organizerId },
             clock = Clock.fixed(now, zone),
         )
-    var added by mutableStateOf<Mission?>(null)
+    var saved by mutableStateOf<Mission?>(null)
     composeTestRule.setContent {
-      ShifterTheme { AddMissionScreen(viewModel, onMissionAdded = { added = it }, onBack = {}) }
+      ShifterTheme { AddMissionScreen(viewModel, onMissionSaved = { saved = it }, onBack = {}) }
     }
 
     node(AddMissionScreenTestTags.TITLE_FIELD).performTextInput("Sort the donations")
@@ -524,13 +524,13 @@ class AddMissionScreenTest {
     // 10:00–10:00 does not end after it starts, so nothing is saved yet.
     node(AddMissionScreenTestTags.error(MissionFormField.SCHEDULE)).performScrollTo()
     composeTestRule.onNodeWithText("The mission must not end when it starts").assertIsDisplayed()
-    assertNull(added)
+    assertNull(saved)
 
     viewModel.onEndTimeChange(LocalTime.of(11, 30))
     node(AddMissionScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
-    composeTestRule.waitUntil(timeoutMillis = 5_000) { added != null }
+    composeTestRule.waitUntil(timeoutMillis = 5_000) { saved != null }
 
-    val mission = added!!
+    val mission = saved!!
     assertEquals("Sort the donations", mission.title)
     assertEquals("logistics", mission.teamId)
     assertEquals(listOf("ana"), mission.assigneeIds)
@@ -567,7 +567,7 @@ class AddMissionScreenTest {
     var reports = 0
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
-      ShifterTheme { AddMissionScreen(viewModel, onMissionAdded = { reports++ }, onBack = {}) }
+      ShifterTheme { AddMissionScreen(viewModel, onMissionSaved = { reports++ }, onBack = {}) }
     }
 
     viewModel.onTitleChange("Sort the donations")

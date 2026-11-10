@@ -393,6 +393,13 @@ fun ShifterNavHost(
                   viewModel = viewModel,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
                   onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
+                  onEditMission = {
+                    // A second row tapped before the form opens would reuse its entry, with the
+                    // first mission's ViewModel: only the Overview still on top may open one.
+                    if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                      nav.navigateTo(OrganizerEventScreen.EditMission(it))
+                    }
+                  },
               )
             },
         ) {
@@ -405,27 +412,19 @@ fun ShifterNavHost(
                       .toRoute<OrganizerEvent>()
                       .eventId
                 }
-            AddMissionScreen(
-                viewModel =
-                    viewModel(
-                        factory =
-                            AddMissionViewModel.factory(
-                                eventId,
-                                repositories.missionRepository,
-                                repositories.eventRepository,
-                                repositories.teamRepository,
-                                RepositoryAssigneeCandidates(
-                                    repositories.teamRepository,
-                                    repositories.membershipRequestRepository,
-                                    repositories.userRepository,
-                                ),
-                                currentUserId,
-                            )
-                    ),
-                // Back to the event's overview, the mission saved.
-                onMissionAdded = { nav.goBack() },
-                onBack = nav::goBack,
-            )
+            AddMissionRoute(eventId, repositories, currentUserId, onBack = nav::goBack)
+          }
+          composable<OrganizerEventScreen.EditMission> { entry ->
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            val missionId =
+                remember(entry) { entry.toRoute<OrganizerEventScreen.EditMission>().missionId }
+            AddMissionRoute(eventId, repositories, currentUserId, nav::goBack, missionId)
           }
           composable<OrganizerEventScreen.ManageTeams> { entry ->
             // The event's id is in the route of the event graph this screen belongs to.
@@ -674,6 +673,46 @@ private fun RefreshOnReturn(refresh: () -> Unit) {
   // Saveable, as the list leaves the composition while another screen is on top of it.
   var shownOnce by rememberSaveable { mutableStateOf(false) }
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (shownOnce) refresh() else shownOnce = true }
+}
+
+/**
+ * The mission form of the event [eventId], for its organizer or the manager of one of its teams:
+ * the form itself offers each only what they may create. It adds a mission, or edits [missionId]
+ * when given.
+ *
+ * @param onBack goes back to the event's Overview, once the mission is saved or when the user
+ *   leaves the form.
+ */
+@Composable
+private fun AddMissionRoute(
+    eventId: String,
+    repositories: RepositoryProvider,
+    currentUserId: () -> String?,
+    onBack: () -> Unit,
+    missionId: String? = null,
+) {
+  AddMissionScreen(
+      viewModel =
+          viewModel(
+              factory =
+                  AddMissionViewModel.factory(
+                      eventId,
+                      repositories.missionRepository,
+                      repositories.eventRepository,
+                      repositories.teamRepository,
+                      RepositoryAssigneeCandidates(
+                          repositories.teamRepository,
+                          repositories.membershipRequestRepository,
+                          repositories.userRepository,
+                      ),
+                      currentUserId,
+                      missionId = missionId,
+                  )
+          ),
+      // Back to the event's overview, the mission saved.
+      onMissionSaved = { onBack() },
+      onBack = onBack,
+  )
 }
 
 /** Stand-in for a screen that is not built yet: the padded page of its [content], if any. */
