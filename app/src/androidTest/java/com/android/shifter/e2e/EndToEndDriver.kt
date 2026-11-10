@@ -27,11 +27,14 @@ import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
+import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.navigation.ShifterNavHost
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.team.CreateTeamFormTestTags
@@ -82,15 +85,24 @@ class EndToEndDriver(
       }
 
   /** Shows the app signed out, as on its first launch. */
-  fun launchApp() {
+  fun launchApp(locationProvider: LocationProvider? = null) {
     AuthEmulator.auth.signOut()
     composeTestRule.setContent {
       ShifterTheme {
-        ShifterNavHost(
-            isSignedIn = false,
-            repositories = repositories,
-            credentialManager = accountPicker,
-        )
+        // Without a provider, the app reads the device's position, as in production.
+        if (locationProvider == null)
+            ShifterNavHost(
+                isSignedIn = false,
+                repositories = repositories,
+                credentialManager = accountPicker,
+            )
+        else
+            ShifterNavHost(
+                isSignedIn = false,
+                repositories = repositories,
+                credentialManager = accountPicker,
+                locationProvider = locationProvider,
+            )
       }
     }
   }
@@ -187,9 +199,16 @@ class EndToEndDriver(
   /**
    * Fills the mission form for [teamId], from the event's start to an hour later, and saves it. The
    * start picker opens on the event's start, which starts at [startHour]; the end one is moved an
-   * hour later on its dial.
+   * hour later on its dial. [location] is typed in when given, and [assigneeId] picked among the
+   * team's members.
    */
-  fun addMissionForTeam(teamId: String, title: String, startHour: Int) {
+  fun addMissionForTeam(
+      teamId: String,
+      title: String,
+      startHour: Int,
+      location: MissionLocation? = null,
+      assigneeId: String? = null,
+  ) {
     composeTestRule.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).performTextInput(title)
     composeTestRule
         .onNodeWithTag(AddMissionScreenTestTags.DESCRIPTION_FIELD)
@@ -207,6 +226,20 @@ class EndToEndDriver(
     // The 24-hour picker names each hour of its dial "<hour> hours", in English.
     composeTestRule.onNodeWithContentDescription("${(startHour + 1) % 24} hours").performClick()
     click(AddMissionScreenTestTags.PICKER_CONFIRM)
+    location?.let {
+      fun field(tag: String) = composeTestRule.onNodeWithTag(tag).performScrollTo()
+      field(AddMissionScreenTestTags.ADDRESS_FIELD).performTextInput(it.address)
+      field(AddMissionScreenTestTags.LATITUDE_FIELD).performTextInput("${it.position.latitude}")
+      field(AddMissionScreenTestTags.LONGITUDE_FIELD).performTextInput("${it.position.longitude}")
+    }
+    assigneeId?.let {
+      // The candidates are the team's members, loaded once the team is chosen.
+      waitForNode(AssigneePickerTestTags.option(it))
+      composeTestRule
+          .onNodeWithTag(AssigneePickerTestTags.option(it))
+          .performScrollTo()
+          .performClick()
+    }
     composeTestRule
         .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
         .performScrollTo()
@@ -235,22 +268,33 @@ class EndToEndDriver(
     composeTestRule.onNodeWithTag(tag).performClick()
   }
 
-  fun waitForNode(tag: String) {
+  /**
+   * Waits until the node tagged [tag] shows. [useUnmergedTree] finds one that a clickable parent
+   * merges into itself, such as a badge on a card.
+   */
+  fun waitForNode(tag: String, useUnmergedTree: Boolean = false) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+      composeTestRule.onAllNodesWithTag(tag, useUnmergedTree).fetchSemanticsNodes().isNotEmpty()
     }
   }
 
   fun textOf(node: SemanticsNodeInteraction): String =
       node.fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("") { it.text }
 
-  /** The text of the node tagged [tag], or null while it is not on screen. */
-  fun textOrNull(tag: String): String? =
-      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().firstOrNull()?.let { node ->
-        node.config
-            .getOrElseNullable(SemanticsProperties.Text) { null }
-            ?.joinToString("") { it.text }
-      }
+  /**
+   * The text of the node tagged [tag], or null while it is not on screen. [useUnmergedTree] as in
+   * [waitForNode].
+   */
+  fun textOrNull(tag: String, useUnmergedTree: Boolean = false): String? =
+      composeTestRule
+          .onAllNodesWithTag(tag, useUnmergedTree)
+          .fetchSemanticsNodes()
+          .firstOrNull()
+          ?.let { node ->
+            node.config
+                .getOrElseNullable(SemanticsProperties.Text) { null }
+                ?.joinToString("") { it.text }
+          }
 
   /**
    * A Google account, the same person on every sign-in: the Auth emulator maps its fixed subject to
