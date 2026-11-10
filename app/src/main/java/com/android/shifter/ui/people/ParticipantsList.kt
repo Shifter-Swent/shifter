@@ -1,33 +1,62 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.people
 
+import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.PersonRemove
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.WorkspacePremium
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +86,12 @@ object ParticipantsListTestTags {
 
   fun managerBadge(userId: String) = "ParticipantManagerBadge_$userId"
 
+  /** The action of an open card that moves the participant to another team, or into one. */
+  fun moveButton(userId: String) = "ParticipantMoveButton_$userId"
+
+  /** The action of an open card that makes the participant their team's manager, or stops it. */
+  fun managerButton(userId: String) = "ParticipantManagerButton_$userId"
+
   private const val NO_TEAM = "none"
 }
 
@@ -64,18 +99,31 @@ object ParticipantsListTestTags {
  * The participants of the event, one card each, under a bar naming their team. Teams nobody has
  * joined yet are listed too, and the participants of no team come last.
  *
- * @param onParticipantClick called with a participant and their team when their card is tapped.
- *   Cards of no team cannot be tapped, since there is no team to act on, nor any card while a
- *   team's manager is being changed.
+ * A tap on a card unfolds the actions its participant allows (#397), and folds it again; one card
+ * is open at a time. No action is offered while a change runs.
+ *
+ * @param onManagerAction called with a member and their team to make them its manager, or with its
+ *   manager to stop it.
+ * @param onMoveAction called with a member to move them to another team, or with a participant of
+ *   no team to put them into one. Null until #397 wires it, which leaves the move out of the cards;
+ *   a card with no action left does not unfold.
  */
 @Composable
 fun ParticipantsList(
     state: ParticipantsUiState,
     onRetry: () -> Unit,
-    onParticipantClick: (ParticipantItem, Team) -> Unit,
+    onManagerAction: (ParticipantItem, Team) -> Unit,
     modifier: Modifier = Modifier,
+    onMoveAction: ((ParticipantItem) -> Unit)? = null,
 ) {
   val colors = MaterialTheme.colorScheme
+  var expanded by rememberSaveable { mutableStateOf<String?>(null) }
+  // A participant gone from the list, e.g. after a reload, leaves no card open behind them.
+  LaunchedEffect(state.groups) {
+    if (state.groups.none { group -> group.participants.any { it.userId == expanded } }) {
+      expanded = null
+    }
+  }
   LazyColumn(
       modifier = modifier.fillMaxSize().background(colors.background),
       contentPadding = PaddingValues(16.dp),
@@ -121,10 +169,27 @@ fun ParticipantsList(
         }
       }
       items(group.participants, key = { "participant-${it.userId}" }) { participant ->
+        val userId = participant.userId
         ParticipantCard(
             participant = participant,
-            onClick =
-                team?.takeIf { !state.isUpdating }?.let { { onParticipantClick(participant, it) } },
+            expanded = expanded == userId,
+            enabled = !state.isUpdating,
+            onToggle = { expanded = if (expanded == userId) null else userId },
+            // An action folds the card: its dialog takes over, and the list moves on after it.
+            onManagerAction =
+                team?.let {
+                  {
+                    expanded = null
+                    onManagerAction(participant, it)
+                  }
+                },
+            onMoveAction =
+                onMoveAction?.let {
+                  {
+                    expanded = null
+                    it(participant)
+                  }
+                },
         )
       }
     }
@@ -187,48 +252,217 @@ private fun TeamBar(group: ParticipantGroup) {
 }
 
 /**
- * One participant, drawn like the cards of the Requests tab: their name, and a badge when they
- * manage their team.
+ * One participant, drawn like the cards of the Requests tab: their initials, their name, and a
+ * badge when they manage their team. The chevron says the card unfolds, and turns as it does; open,
+ * the card is outlined in the accent and shows the actions its participant allows.
  *
- * @param onClick null when the card cannot be tapped.
+ * @param onManagerAction null for a participant of no team, who has no team to manage.
+ * @param onMoveAction null when the move is not offered; without either action, the card is only
+ *   their name, and does not unfold.
  */
 @Composable
-private fun ParticipantCard(participant: ParticipantItem, onClick: (() -> Unit)?) {
+private fun ParticipantCard(
+    participant: ParticipantItem,
+    expanded: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    onManagerAction: (() -> Unit)?,
+    onMoveAction: (() -> Unit)?,
+) {
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(16.dp)
-  Row(
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-      verticalAlignment = Alignment.CenterVertically,
+  val name = participant.name ?: stringResource(R.string.participants_unknown_volunteer)
+  val border by
+      animateColorAsState(
+          if (expanded) colors.primary.copy(alpha = 0.7f) else colors.outlineVariant,
+          label = "border",
+      )
+  val chevronTurn by animateFloatAsState(if (expanded) 180f else 0f, label = "chevron")
+  val unfolds = onManagerAction != null || onMoveAction != null
+  val state =
+      stringResource(
+          if (expanded) R.string.participants_card_expanded
+          else R.string.participants_card_collapsed
+      )
+  Column(
       modifier =
           Modifier.fillMaxWidth()
               .clip(shape)
               .background(colors.surfaceVariant)
-              .border(1.dp, colors.outlineVariant, shape)
-              .then(
-                  if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick)
-                  else Modifier
-              )
-              .padding(16.dp)
-              // One node even when it cannot be tapped, like the cards that can.
-              .semantics(mergeDescendants = true) {}
-              .testTag(ParticipantsListTestTags.participantCard(participant.userId)),
+              .border(1.dp, border, shape)
+  ) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier.fillMaxWidth()
+                .then(
+                    if (unfolds) {
+                      Modifier.clickable(
+                          role = Role.Button,
+                          onClickLabel =
+                              stringResource(
+                                  if (expanded) R.string.participants_hide_actions
+                                  else R.string.participants_show_actions
+                              ),
+                          onClick = onToggle,
+                      )
+                    } else Modifier
+                )
+                .padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp)
+                // TalkBack says whether the card is open, which the chevron only shows.
+                .semantics(mergeDescendants = true) { if (unfolds) stateDescription = state }
+                .testTag(ParticipantsListTestTags.participantCard(participant.userId)),
+    ) {
+      Initials(name, highlighted = expanded)
+      Text(
+          text = name,
+          color = colors.onSurface,
+          fontSize = 16.sp,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+          modifier = Modifier.weight(1f),
+      )
+      if (participant.isManager) {
+        Pill(
+            text = stringResource(R.string.participants_manager),
+            colors = PillColors(colors.primary, colors.primaryContainer),
+            modifier = Modifier.testTag(ParticipantsListTestTags.managerBadge(participant.userId)),
+        )
+      }
+      if (unfolds) {
+        Chevron(expanded, chevronTurn)
+      }
+    }
+    AnimatedVisibility(
+        visible = expanded && unfolds,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut(),
+    ) {
+      Row(
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+      ) {
+        val moveTag = ParticipantsListTestTags.moveButton(participant.userId)
+        val managerTag = ParticipantsListTestTags.managerButton(participant.userId)
+        if (onManagerAction == null) {
+          onMoveAction?.let {
+            CardAction(
+                R.string.participants_add_to_team,
+                Icons.Rounded.SwapHoriz,
+                true,
+                enabled,
+                moveTag,
+                it,
+            )
+          }
+        } else if (participant.isManager) {
+          CardAction(
+              R.string.participants_stop_managing,
+              Icons.Rounded.PersonRemove,
+              false,
+              enabled,
+              managerTag,
+              onManagerAction,
+          )
+        } else {
+          onMoveAction?.let {
+            CardAction(
+                R.string.participants_change_team,
+                Icons.Rounded.SwapHoriz,
+                false,
+                enabled,
+                moveTag,
+                it,
+            )
+          }
+          CardAction(
+              R.string.participants_make_manager,
+              Icons.Rounded.WorkspacePremium,
+              true,
+              enabled,
+              managerTag,
+              onManagerAction,
+          )
+        }
+      }
+    }
+  }
+}
+
+/** The chevron that says a card unfolds, turned by [turn] degrees as it does. */
+@Composable
+private fun Chevron(expanded: Boolean, turn: Float) {
+  val colors = MaterialTheme.colorScheme
+  Box(
+      contentAlignment = Alignment.Center,
+      modifier =
+          Modifier.size(32.dp)
+              .clip(CircleShape)
+              .background(if (expanded) colors.primaryContainer else colors.background),
+  ) {
+    Icon(
+        imageVector = Icons.Rounded.ExpandMore,
+        contentDescription = null,
+        tint = if (expanded) colors.primary else colors.onSurfaceVariant,
+        modifier = Modifier.rotate(turn),
+    )
+  }
+}
+
+/** The participant's initials in a disc, which takes the accent while their card is open. */
+@Composable
+private fun Initials(name: String, highlighted: Boolean) {
+  val colors = MaterialTheme.colorScheme
+  val initials = name.split(' ').mapNotNull { it.firstOrNull()?.uppercaseChar() }.take(2)
+  Box(
+      contentAlignment = Alignment.Center,
+      modifier =
+          Modifier.size(36.dp)
+              .clip(CircleShape)
+              .background(if (highlighted) colors.primary else colors.primaryContainer),
   ) {
     Text(
-        text = participant.name ?: stringResource(R.string.participants_unknown_volunteer),
-        color = colors.onSurface,
-        fontSize = 16.sp,
+        text = initials.joinToString(""),
+        color = if (highlighted) colors.onPrimary else colors.primary,
+        fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(1f),
     )
-    if (participant.isManager) {
-      Pill(
-          text = stringResource(R.string.participants_manager),
-          colors = PillColors(colors.primary, colors.primaryContainer),
-          modifier = Modifier.testTag(ParticipantsListTestTags.managerBadge(participant.userId)),
-      )
-    }
+  }
+}
+
+/** One action of an open card: the accent for the main one, a quieter step for the other. */
+@Composable
+private fun RowScope.CardAction(
+    @StringRes label: Int,
+    icon: ImageVector,
+    primary: Boolean,
+    enabled: Boolean,
+    testTag: String,
+    onClick: () -> Unit,
+) {
+  val colors = MaterialTheme.colorScheme
+  Button(
+      onClick = onClick,
+      enabled = enabled,
+      shape = MaterialTheme.shapes.medium,
+      contentPadding = PaddingValues(horizontal = 12.dp),
+      colors =
+          ButtonDefaults.buttonColors(
+              containerColor = if (primary) colors.primary else colors.background,
+              contentColor = if (primary) colors.onPrimary else colors.onSurface,
+          ),
+      modifier = Modifier.weight(1f).height(44.dp).testTag(testTag),
+  ) {
+    Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+    Text(
+        text = stringResource(label),
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        modifier = Modifier.padding(start = 8.dp),
+    )
   }
 }
 
@@ -274,7 +508,8 @@ private fun ParticipantsListPreview() {
                     )
             ),
         onRetry = {},
-        onParticipantClick = { _, _ -> },
+        onManagerAction = { _, _ -> },
+        onMoveAction = {},
     )
   }
 }

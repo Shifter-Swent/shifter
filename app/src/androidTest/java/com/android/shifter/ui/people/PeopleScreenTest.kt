@@ -149,12 +149,29 @@ class PeopleScreenTest {
     }
   }
 
+  /** Unfolds the card of [userId] and taps its manager action, as the organizer does. */
+  private fun unfoldAndAct(userId: String) {
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard(userId)).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.managerButton(userId)).performClick()
+  }
+
+  /** The move comes with #397: until then, People offers no way to move anyone. */
   @Test
-  fun tapMember_thenConfirm_appointsThemAndSaysWhoGoesBack() {
+  fun participantsCard_offersNoMoveYet() {
+    setParticipants()
+
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+
+    compose.onNodeWithTag(ParticipantsListTestTags.managerButton("bob")).assertIsDisplayed()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).assertDoesNotExist()
+  }
+
+  @Test
+  fun makeManager_thenConfirm_appointsThemAndSaysWhoGoesBack() {
     var appointed: Pair<String, String>? = null
     setParticipants(onAppointManager = { teamId, userId -> appointed = teamId to userId })
 
-    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    unfoldAndAct("bob")
     compose.onNodeWithText("Make Bob Rossi manager?").assertIsDisplayed()
     compose
         .onNodeWithText("Bob Rossi will manage Bar, and Ann Lee goes back to the team.")
@@ -166,11 +183,11 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun tapManager_thenConfirm_removesThem() {
+  fun stopManaging_thenConfirm_removesThem() {
     var removed: String? = null
     setParticipants(onRemoveManager = { removed = it })
 
-    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("ann")).performClick()
+    unfoldAndAct("ann")
     compose.onNodeWithText("Remove Ann Lee as manager?").assertIsDisplayed()
     compose.onNodeWithText("Ann Lee goes back to the members of Bar.").assertIsDisplayed()
     compose.onNodeWithTag(ManagerDialogTestTags.CONFIRM_BUTTON).performClick()
@@ -179,11 +196,11 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun tapParticipant_thenCancel_changesNothing() {
+  fun makeManager_thenCancel_changesNothing() {
     var changes = 0
     setParticipants(onAppointManager = { _, _ -> changes++ }, onRemoveManager = { changes++ })
 
-    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    unfoldAndAct("bob")
     compose.onNodeWithTag(ManagerDialogTestTags.CANCEL_BUTTON).performClick()
 
     compose.onNodeWithTag(ManagerDialogTestTags.DIALOG).assertDoesNotExist()
@@ -212,7 +229,7 @@ class PeopleScreenTest {
         )
       }
     }
-    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    unfoldAndAct("bob")
     compose.onNodeWithTag(ManagerDialogTestTags.DIALOG).assertIsDisplayed()
 
     // A reload no longer lists Bob, e.g. because he withdrew meanwhile.

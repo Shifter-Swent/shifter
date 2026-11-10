@@ -25,4 +25,13 @@
     <string name="participants_manager_confirm">Confirm</string>
     <string name="participants_manager_cancel">Cancel</string>
     <string name="participants_manager_update_failed">The manager could not be changed, try again</string>
+    <!-- The actions of an open participant card (#397). -->
+    <string name="participants_show_actions">Show the actions</string>
+    <string name="participants_hide_actions">Hide the actions</string>
+    <string name="participants_change_team">Change team</string>
+    <string name="participants_add_to_team">Add to a team</string>
+    <string name="participants_make_manager">Make manager</string>
+    <string name="participants_stop_managing">Stop managing</string>
+    <string name="participants_card_expanded">Expanded</string>
+    <string name="participants_card_collapsed">Collapsed</string>
 </resources>
