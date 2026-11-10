@@ -131,8 +131,11 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
    * The first snapshot is the current value, so the flow emits nothing before the setting is known:
    * no placeholder `false` that would delete a valid position, nor a `true` that would authorize
    * GPS too early. A document that does not exist reads as `false`, consent being opt-in.
-   * [distinctUntilChanged] drops the metadata-only snapshots Firestore sends when a write is
-   * acknowledged, so a change is forwarded once rather than twice.
+   * [distinctUntilChanged] suppresses duplicate consent values: the listener fires on any change to
+   * `users/{uid}`, so editing another field such as `mode` (#436) re-delivers the unchanged
+   * boolean, which is dropped rather than forwarded as a spurious change. The listener does not
+   * request `MetadataChanges.INCLUDE`, so it receives no metadata-only acknowledgement snapshots to
+   * filter.
    *
    * A listener error ends the flow with a [UserRepositoryException]; a malformed profile ends it
    * with [UserRepositoryException.Unknown]. The flow never goes quiet on the last value read, so a

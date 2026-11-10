@@ -28,11 +28,20 @@ val CONSENT_RETRY_DELAY: Duration = Duration.ofSeconds(10)
  * [UserRepository.observeLocationSharing] reports it, but **never leaves a stale `true` authorizing
  * GPS after a failure**.
  *
- * On a [UserRepositoryException] it emits `false` and tries the observation again after
- * [CONSENT_RETRY_DELAY], so a lost observation stops the sharing rather than freezing it on the
- * last value read. It keeps the no-placeholder contract of [UserRepository.observeLocationSharing]:
- * the first value is the real setting, never a leading `false`, so a valid position is not removed
- * and shared again while the profile loads.
+ * Two kinds of "not known yet" are handled differently, on purpose:
+ * - **While the profile first loads, nothing is emitted** - no placeholder `false`. The first value
+ *   is the real setting, from [UserRepository.observeLocationSharing], whose no-placeholder
+ *   contract this keeps: a leading `false` would remove a valid position and share it again a
+ *   moment later. [runLiveLocationPublishing] guards the same case with `filterNotNull` on a `null`
+ *   start.
+ * - **When the observation fails, it deliberately emits `false`** on the [UserRepositoryException]
+ *   and tries again after [CONSENT_RETRY_DELAY], so a lost observation stops the sharing rather
+ *   than freezing it on the last value read. This is fail-closed and has a visible consequence: the
+ *   publisher reads `false` as consent off and **attempts to remove the last shared position**, so
+ *   the volunteer may drop off their manager's map until the observation recovers and reads `true`
+ *   again (about [CONSENT_RETRY_DELAY] later), when sharing resumes. It is a removal *attempt*, not
+ *   a guaranteed deletion: offline the delete is queued and may not reach the backend at once. The
+ *   trade-off is intended - privacy over uninterrupted visibility when consent cannot be verified.
  *
  * It is cold: share it (see [runLiveLocationPublishing]) so every session reads one observation.
  */

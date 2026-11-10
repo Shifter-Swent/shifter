@@ -3,13 +3,16 @@ package com.swent.shifter.model.location
 
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.toList
@@ -79,6 +82,53 @@ class LiveLocationPublishingTest {
 
     assertEquals(listOf(false, true), seen)
   }
+
+  @Test
+  fun sharingConsent_whenTheObservationFailsWhileSharing_stopsGpsAndRemovesThePosition() =
+      runTest(UnconfinedTestDispatcher()) {
+        // The reviewer's scenario: the volunteer is actively sharing, then the observation is lost.
+        // It emits the real true, then fails once the test lets it. Only observeLocationSharing is
+        // driven; every other call delegates to the plain fake, so no existing fake changes.
+        val failObservation = CompletableDeferred<Unit>()
+        val baseUsers = FakeUserRepository(listOf(User(USER, "Ada", "a@b.c")))
+        val users =
+            object : UserRepository by baseUsers {
+              override fun observeLocationSharing(uid: String): Flow<Boolean> = flow {
+                emit(true)
+                failObservation.await()
+                throw UserRepositoryException.Unavailable()
+              }
+            }
+        val provider = FakeLocationProvider()
+        val liveLocations = FakeLiveLocationRepository(currentUserId = USER)
+        val publisher = LiveLocationPublisher(provider, liveLocations)
+
+        val job = backgroundScope.launch {
+          publisher.publish(EVENT, TEAM, users.sharingConsent(USER))
+        }
+
+        // Sharing is on: the GPS is collected and a measured position is published.
+        provider.emit(GENEVA)
+        assertEquals(1, provider.activeCollectors)
+        assertEquals(
+            listOf(GENEVA),
+            liveLocations.observeTeamLocations(EVENT, TEAM).first().map { it.position },
+        )
+
+        // The observation then fails, so sharingConsent reports the fail-closed false.
+        failObservation.complete(Unit)
+        runCurrent()
+
+        // The publisher stops the GPS and attempts the removal, which this fake backend confirms.
+        // Offline the delete would stay queued instead; see sharingConsent's KDoc.
+        assertEquals(0, provider.activeCollectors)
+        assertEquals(
+            emptyList<LiveLocation>(),
+            liveLocations.observeTeamLocations(EVENT, TEAM).first(),
+        )
+
+        job.cancel()
+      }
 
   // ── runLiveLocationPublishing ──
 
@@ -180,7 +230,10 @@ class LiveLocationPublishingTest {
 
   private companion object {
     const val USER = "user-1"
-    val BAR = LiveLocationTarget("event", "team-bar")
+    const val EVENT = "event"
+    const val TEAM = "team-bar"
+    val BAR = LiveLocationTarget(EVENT, TEAM)
     val STAGE = LiveLocationTarget("event", "team-stage")
+    val GENEVA = GeoPosition(46.2044, 6.1432)
   }
 }

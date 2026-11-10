@@ -48,8 +48,9 @@ fun LiveLocationPublishing(
   LaunchedEffect(lifecycle, repositories, locationProvider) {
     publishWhileForeground(
         lifecycle = lifecycle,
-        // The session restored at launch, then every sign-in and sign-out.
-        userIds = auth.authState.map { it?.uid }.distinctUntilChanged(),
+        // The session restored at launch, then every sign-in and sign-out. publishWhileForeground
+        // applies distinctUntilChanged itself, so this flow does not repeat it.
+        userIds = auth.authState.map { it?.uid },
         publish = { userId ->
           runLiveLocationPublishing(
               coordinator = buildCoordinator(userId, repositories, locationProvider),
