@@ -205,8 +205,9 @@ data class AddMissionActions(
 /** Stateless form of [AddMissionScreen]: renders [state] and reports every interaction. */
 @Composable
 fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
-  // A completed mission can no longer be changed, so its fields are disabled too.
-  val editable = !state.isSaving && !state.missionCompleted
+  // A mission that cannot be saved, completed or with a slot the form cannot show, has its fields
+  // disabled too, so nothing invites changes that would be lost.
+  val editable = !state.isSaving && !state.missionCompleted && !state.slotNotEditable
   Scaffold(
       topBar = {
         ShifterTopBar(

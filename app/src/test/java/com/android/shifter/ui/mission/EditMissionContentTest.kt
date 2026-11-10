@@ -138,10 +138,12 @@ class EditMissionContentTest {
   }
 
   @Test
-  fun slotNotEditable_explainsWhyAndDisablesSubmit() {
+  fun slotNotEditable_explainsWhyAndDisablesTheForm() {
     show(editing.copy(slotNotEditable = true))
 
     compose.onNodeWithTag(AddMissionScreenTestTags.SLOT_NOT_EDITABLE).assertIsDisplayed()
+    compose.onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD).assertIsNotEnabled()
+    compose.onNodeWithTag(AddMissionScreenTestTags.INCREASE_VOLUNTEERS).assertIsNotEnabled()
     compose
         .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
         .performScrollTo()
