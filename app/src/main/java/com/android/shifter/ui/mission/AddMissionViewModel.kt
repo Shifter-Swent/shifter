@@ -312,33 +312,46 @@ class AddMissionViewModel(
         if (missionId != null) {
           val mission = missionRepository.getMission(eventId, missionId)
           showMission(mission, period, teams, isOrganizer, event.location.position)
-          return@launch
+        } else {
+          showNewMissionForm(period, teams, isOrganizer, event.location.position)
         }
-        _uiState.update {
-          // A manager picks among their own teams, so one of them is selected from the start.
-          val teamId =
-              it.teamId?.takeIf { id -> teams.any { team -> team.id == id } }
-                  ?: if (isOrganizer) null else teams.firstOrNull()?.id
-          it.copy(
-              event = period,
-              isLoadingEvent = false,
-              loadFailed = false,
-              notAllowed = !isOrganizer && teams.isEmpty(),
-              teams = teams,
-              canChooseGeneral = isOrganizer,
-              teamId = teamId,
-              eventPosition = event.location.position,
-              // Most events last a single day, which is then the only one to pick.
-              day = it.day ?: period.start.toLocalDate(),
-          )
-        }
-        if (!_uiState.value.notAllowed) loadCandidates()
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
         _uiState.update { it.copy(isLoadingEvent = false, loadFailed = true) }
       }
     }
+  }
+
+  /**
+   * Opens the form of a new mission of the event taking place over [period], then loads who may be
+   * assigned to it, unless the user may not add missions.
+   */
+  private fun showNewMissionForm(
+      period: EventPeriod,
+      teams: List<TeamOption>,
+      isOrganizer: Boolean,
+      eventPosition: GeoPosition?,
+  ) {
+    _uiState.update {
+      // A manager picks among their own teams, so one of them is selected from the start.
+      val teamId =
+          it.teamId?.takeIf { id -> teams.any { team -> team.id == id } }
+              ?: if (isOrganizer) null else teams.firstOrNull()?.id
+      it.copy(
+          event = period,
+          isLoadingEvent = false,
+          loadFailed = false,
+          notAllowed = !isOrganizer && teams.isEmpty(),
+          teams = teams,
+          canChooseGeneral = isOrganizer,
+          teamId = teamId,
+          eventPosition = eventPosition,
+          // Most events last a single day, which is then the only one to pick.
+          day = it.day ?: period.start.toLocalDate(),
+      )
+    }
+    if (!_uiState.value.notAllowed) loadCandidates()
   }
 
   /**
