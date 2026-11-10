@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -31,6 +33,7 @@ class TeamChatContentTest {
   private val drafts = mutableListOf<String>()
   private var sends = 0
   private var retries = 0
+  private val announcementChanges = mutableListOf<Boolean>()
 
   private val state = mutableStateOf(TeamChatUiState())
 
@@ -44,6 +47,7 @@ class TeamChatContentTest {
             onDraftChange = { drafts += it },
             onSend = { sends++ },
             onRetry = { retries++ },
+            onAnnouncementChange = { announcementChanges += it },
             zone = ZoneOffset.UTC,
             today = TODAY,
         )
@@ -217,6 +221,66 @@ class TeamChatContentTest {
   }
 
   @Test
+  fun announcement_showsTheTagAboveTheBubble() {
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, FROM_ALICE)))
+
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.announcementTag(ANNOUNCEMENT.id), useUnmergedTree = true)
+        .assertIsDisplayed()
+    tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).assert(hasText("Announcement"))
+  }
+
+  @Test
+  fun normalMessage_hasNoAnnouncementTag() {
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(FROM_ALICE)))
+
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.announcementTag(FROM_ALICE.id), useUnmergedTree = true)
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun announcementOption_whenNotAllowed_isHidden() {
+    setContent(TeamChatUiState(isLoading = false))
+
+    tag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE).assertDoesNotExist()
+  }
+
+  @Test
+  fun announcementOption_click_callsOnAnnouncementChange() {
+    setContent(TeamChatUiState(isLoading = false, canAnnounce = true))
+
+    tag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE).assertIsOff().performClick()
+
+    assertEquals(listOf(true), announcementChanges)
+  }
+
+  @Test
+  fun announcementOption_whenOn_isCheckedAndChangesThePlaceholder() {
+    setContent(TeamChatUiState(isLoading = false, canAnnounce = true, asAnnouncement = true))
+
+    tag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE).assertIsOn()
+    tag(TeamChatTestTags.INPUT).assert(hasText("Write an announcement"))
+  }
+
+  @Test
+  fun announcementRefused_showsTheErrorAndKeepsTheDraft() {
+    setContent(
+        TeamChatUiState(
+            isLoading = false,
+            draft = "Gates open at 9:00",
+            canAnnounce = true,
+            asAnnouncement = true,
+            announcementRefused = true,
+        )
+    )
+
+    tag(TeamChatTestTags.ANNOUNCEMENT_REFUSED).assertIsDisplayed()
+    tag(TeamChatTestTags.SEND_FAILED).assertDoesNotExist()
+    tag(TeamChatTestTags.INPUT).assert(hasText("Gates open at 9:00"))
+  }
+
+  @Test
   fun sentAtLabel_showsTheDayOnlyForAnotherDay() {
     val at = AT.atZone(ZoneOffset.UTC)
 
@@ -235,6 +299,15 @@ class TeamChatContentTest {
     val FROM_ALICE = ChatMessageItem("1", "Hello", "Alice", AT, isMine = false)
     val UNNAMED = ChatMessageItem("2", "Hey", null, AT, isMine = false)
     val MINE = ChatMessageItem("3", "Hi", "Liam", AT, isMine = true)
+    val ANNOUNCEMENT =
+        ChatMessageItem(
+            "4",
+            "Gates open at 9:00",
+            "Alice",
+            AT,
+            isMine = false,
+            isAnnouncement = true,
+        )
     val SHOWN = listOf(FROM_ALICE)
   }
 }

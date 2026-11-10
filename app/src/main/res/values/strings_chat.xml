@@ -16,4 +16,8 @@
     <string name="chat_channels_empty_organizer">This event has no team yet. Each team you create gets its own channel.</string>
     <string name="chat_channels_error_offline">You are offline. The channels will show once you are back online.</string>
     <string name="chat_channels_error_unexpected">The channels could not be loaded.</string>
+    <string name="chat_announcement_tag">Announcement</string>
+    <string name="chat_send_as_announcement">Send as an announcement</string>
+    <string name="chat_announcement_placeholder">Write an announcement</string>
+    <string name="chat_announcement_refused">You can no longer send announcements here. Your message was kept.</string>
 </resources>

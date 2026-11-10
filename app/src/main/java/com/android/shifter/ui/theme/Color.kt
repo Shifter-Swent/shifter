@@ -1,6 +1,8 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
 val md_theme_dark_primary = Color(0xFF2F80FF)
 val md_theme_dark_onPrimary = Color(0xFFF7F9FF)
@@ -50,3 +52,9 @@ val shifter_divider = Color(0xFF2A3547)
 val shifter_avatarBackground = Color(0xFF2F3E55)
 val shifter_signoutOutline = Color(0xFF493044)
 val shifter_locationIconBackground = Color(0xFF203452)
+
+// Announcements: the warning amber for the tag, and a bubble of it mixed into the surface, dark
+// enough for the usual text to stay readable on it.
+val shifter_announcement = shifter_warning
+val shifter_announcementContainer = lerp(md_theme_dark_surface, shifter_warning, 0.2f)
+val shifter_onAnnouncementContainer = md_theme_dark_onSurface
