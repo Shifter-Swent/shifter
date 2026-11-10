@@ -2,16 +2,25 @@
 package com.swent.shifter.ui.settings
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.swent.shifter.R
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.user.PublicProfile
+import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -35,6 +44,7 @@ class SettingsRouteTest {
 
   private val repository = AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
   private val credentialManager = RecordingCredentialManager()
+  private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
   @Before
   fun setUp() {
@@ -53,12 +63,13 @@ class SettingsRouteTest {
     runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
     assertNotNull(AuthEmulator.auth.currentUser)
     var signedOut = 0
-    val viewModel = SettingsViewModel(repository)
+    val viewModel = SettingsViewModel(repository, ModeRecorder(), UserMode.VOLUNTEER)
     composeTestRule.setContent {
       ShifterTheme {
         SettingsRoute(
             onBack = {},
             onSignedOut = { signedOut++ },
+            onModeChanged = {},
             viewModel = viewModel,
             credentialManager = credentialManager,
         )
@@ -70,6 +81,84 @@ class SettingsRouteTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedOut == 1 }
     assertNull(AuthEmulator.auth.currentUser)
     assertEquals(1, credentialManager.clearCalls)
+  }
+
+  @Test
+  fun changeMode_savesTheOtherModeThenReportsIt() {
+    val modes = ModeRecorder()
+    val changedTo = mutableListOf<UserMode>()
+    setRoute(modes, onModeChanged = { changedTo += it })
+
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { changedTo.isNotEmpty() }
+    assertEquals(listOf(UserMode.ORGANIZER), modes.saved)
+    assertEquals(listOf(UserMode.ORGANIZER), changedTo)
+  }
+
+  @Test
+  fun changeMode_whenItFails_showsTheSnackbarAndRetryRunsItAgain() {
+    val modes = ModeRecorder(failuresLeft = 1)
+    val changedTo = mutableListOf<UserMode>()
+    setRoute(modes, onModeChanged = { changedTo += it })
+    val error = context.getString(R.string.settings_change_mode_error)
+
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(error).fetchSemanticsNodes().isNotEmpty()
+    }
+    assertEquals(emptyList<UserMode>(), changedTo)
+
+    composeTestRule.onNodeWithText(context.getString(R.string.settings_retry)).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { changedTo.isNotEmpty() }
+    assertEquals(listOf(UserMode.ORGANIZER), changedTo)
+  }
+
+  private fun setRoute(modes: ModeRecorder, onModeChanged: (UserMode) -> Unit) {
+    runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
+    val viewModel = SettingsViewModel(repository, modes, UserMode.VOLUNTEER)
+    composeTestRule.setContent {
+      ShifterTheme {
+        SettingsRoute(
+            onBack = {},
+            onSignedOut = {},
+            onModeChanged = onModeChanged,
+            viewModel = viewModel,
+            credentialManager = credentialManager,
+        )
+      }
+    }
+  }
+
+  /** Records the modes saved, failing the first [failuresLeft] times as when offline. */
+  private class ModeRecorder(private var failuresLeft: Int = 0) : UserRepository {
+    val saved = mutableListOf<UserMode>()
+
+    override suspend fun setMode(uid: String, mode: UserMode) {
+      if (failuresLeft > 0) {
+        failuresLeft--
+        throw UserRepositoryException.Unavailable()
+      }
+      saved += mode
+    }
+
+    override suspend fun getUser(uid: String): User? = null
+
+    override suspend fun getOrCreateUser(
+        uid: String,
+        displayName: String,
+        email: String,
+        mode: UserMode?,
+    ): User = throw UnsupportedOperationException()
+
+    override suspend fun getPublicProfile(uid: String): PublicProfile? = null
+
+    override suspend fun setLocationSharing(
+        uid: String,
+        enabled: Boolean,
+        sharedIn: Collection<Team>,
+    ) = throw UnsupportedOperationException()
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */
