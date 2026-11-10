@@ -3,6 +3,7 @@ package com.swent.shifter
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -19,7 +20,10 @@ import org.junit.Test
 import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 
-/** Verifies that launching the activity with a restored session skips sign-in. */
+/**
+ * Verifies that launching the activity with a restored session skips sign-in, then enters the saved
+ * mode once it is read.
+ */
 @RunWith(AndroidJUnit4::class)
 class MainActivitySignedInTest {
 
@@ -48,6 +52,13 @@ class MainActivitySignedInTest {
 
   @Test
   fun launch_withRestoredSession_opensTheVolunteerEvents() {
+    // The start screen reads the mode first, for up to StartViewModel.READ_TIMEOUT_MILLIS.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(MyEventsTestTags.STAFF_SCREEN)
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
   }
@@ -59,5 +70,10 @@ class MainActivitySignedInTest {
         .setId(email)
         .setIdToken(AuthEmulator.fakeGoogleIdToken("google-" + UUID.randomUUID(), email, "Ada"))
         .build()
+  }
+
+  private companion object {
+    /** Longer than the read of the mode, which falls back to Volunteer once it times out. */
+    const val TIMEOUT_MILLIS = 10_000L
   }
 }
