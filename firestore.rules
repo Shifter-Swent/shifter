@@ -105,7 +105,11 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      allow read: if signedIn();
+      // An event is read one at a time by whoever knows its id: its volunteers, whatever their
+      // status, load it this way. Only its organizer lists it, so nobody can collect every event
+      // and its join code: a volunteer finds an event through joinCodes/{code}.
+      allow get: if signedIn();
+      allow list: if signedIn() && resource.data.organizerId == request.auth.uid;
       allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
       allow update: if signedIn() && resource.data.organizerId == request.auth.uid
         && request.resource.data.organizerId == resource.data.organizerId;
@@ -617,6 +621,23 @@ service cloud.firestore {
         && request.resource.data.participantIds is list
         && ((isOrganizer(eventId) && validChange()) || isWithdrawal());
       allow delete: if false;
+    }
+
+    // joinCodes/{code}: the event a join code opens. Read one at a time only, by a volunteer who
+    // typed the code: listing would reveal every code. A code is reserved by the organizer with
+    // their event, in the same commit, and never reassigned, so two events never share it.
+    match /joinCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['eventId'])
+        && request.resource.data.eventId is string
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.eventId))
+             .data.organizerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/events/$(request.resource.data.eventId))
+             .data.get('joinCode', null) == code;
+      allow update: if false;
+      allow delete: if isOrganizer(resource.data.eventId);
     }
   }
 }

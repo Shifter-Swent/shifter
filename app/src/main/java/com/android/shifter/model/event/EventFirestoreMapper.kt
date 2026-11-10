@@ -52,6 +52,20 @@ internal object EventSchema {
 }
 
 /**
+ * Names of the join codes collection and of its single field.
+ *
+ * `/joinCodes/{code}` points a join code to its event, so a volunteer finds an event by reading one
+ * document instead of querying the events, which only their organizer may list.
+ */
+internal object JoinCodeSchema {
+
+  /** The `/joinCodes/{code}` collection. */
+  const val COLLECTION = "joinCodes"
+
+  const val EVENT_ID = "eventId"
+}
+
+/**
  * The document body written to `/events/{eventId}`.
  *
  * [Event.id] is not part of it: the id is carried by the document itself.

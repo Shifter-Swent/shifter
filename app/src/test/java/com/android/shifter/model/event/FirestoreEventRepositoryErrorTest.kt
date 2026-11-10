@@ -27,9 +27,8 @@ class FirestoreEventRepositoryErrorTest {
 
     val error = FirebaseFirestoreException("offline", Code.UNAVAILABLE)
     val firestore = mockk<FirebaseFirestore>()
-    every {
-      firestore.collection(EventSchema.COLLECTION).whereEqualTo(any<String>(), any()).limit(1).get()
-    } returns Tasks.forException(error)
+    every { firestore.collection(JoinCodeSchema.COLLECTION).document("ABC123").get() } returns
+        Tasks.forException(error)
     val repository = FirestoreEventRepository(firestore)
 
     val thrown = runCatching { repository.getEventByJoinCode("ABC123") }.exceptionOrNull()

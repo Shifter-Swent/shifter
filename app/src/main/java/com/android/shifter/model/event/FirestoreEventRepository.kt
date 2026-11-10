@@ -9,7 +9,8 @@ import kotlin.random.Random
 import kotlinx.coroutines.tasks.await
 
 /**
- * [EventRepository] backed by Cloud Firestore, storing events under `/events/{eventId}`.
+ * [EventRepository] backed by Cloud Firestore, storing events under `/events/{eventId}` and their
+ * join codes under `/joinCodes/{code}`.
  *
  * All Firebase types stay inside this class and the [toEvent] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
@@ -26,18 +27,29 @@ class FirestoreEventRepository(
   private val events
     get() = firestore.collection(EventSchema.COLLECTION)
 
+  private val joinCodes
+    get() = firestore.collection(JoinCodeSchema.COLLECTION)
+
   /**
    * Writes [event] under a freshly generated join code, and under [Event.id] when it is set or a
    * freshly generated document id otherwise.
+   *
+   * The code is reserved in `/joinCodes/{code}` in the same transaction as the event, so two events
+   * never share a code: a code already taken is detected inside the transaction and another one is
+   * drawn. With a 31-character alphabet and 6 characters, a few attempts are enough.
    *
    * [Event.createdAt] is persisted as the caller supplied it: the repository does not invent time,
    * which keeps writes deterministic and testable.
    */
   override suspend fun createEvent(event: Event): Event = translatingErrors {
     val document = if (event.id.isEmpty()) events.document() else events.document(event.id)
-    val persisted = event.copy(id = document.id, joinCode = generateUnusedJoinCode())
-    document.set(persisted.toFirestoreMap()).await()
-    persisted
+    repeat(JOIN_CODE_ATTEMPTS) {
+      val persisted = event.copy(id = document.id, joinCode = randomJoinCode())
+      if (reserve(persisted)) return@translatingErrors persisted
+    }
+    throw IllegalStateException(
+        "Could not find an unused join code after $JOIN_CODE_ATTEMPTS attempts"
+    )
   }
 
   override suspend fun getEvent(eventId: String): Event? = translatingErrors {
@@ -45,14 +57,12 @@ class FirestoreEventRepository(
   }
 
   override suspend fun getEventByJoinCode(joinCode: String): Event? = translatingErrors {
-    events
-        .whereEqualTo(EventSchema.JOIN_CODE, joinCode)
-        .limit(1)
-        .get()
-        .await()
-        .documents
-        .firstOrNull()
-        ?.toEvent()
+    // Not a valid document id, so no event can use it.
+    if (joinCode.isEmpty() || '/' in joinCode) return@translatingErrors null
+    val eventId =
+        joinCodes.document(joinCode).get().await().getString(JoinCodeSchema.EVENT_ID)
+            ?: return@translatingErrors null
+    getEvent(eventId)
   }
 
   override suspend fun getEventsByOrganizer(organizerId: String): List<Event> = translatingErrors {
@@ -62,22 +72,23 @@ class FirestoreEventRepository(
   }
 
   /**
-   * Draws join codes until one is free, so two events never share a code.
+   * Writes [event] and reserves its join code in one transaction, unless the code is already taken.
    *
-   * With a 31-character alphabet and 6 characters, a collision is very unlikely; retrying a few
-   * times is enough and avoids a reservation mechanism. The check and the write are not atomic, so
-   * two events created at the very same instant could in theory take the same code: acceptable
-   * here, and a Firestore transaction or a dedicated `/joinCodes` collection is the fix if it ever
-   * matters.
+   * @return whether the event was written; false means another event already uses its join code.
    */
-  private suspend fun generateUnusedJoinCode(): String {
-    repeat(JOIN_CODE_ATTEMPTS) {
-      val candidate = randomJoinCode()
-      if (getEventByJoinCode(candidate) == null) return candidate
-    }
-    throw IllegalStateException(
-        "Could not find an unused join code after $JOIN_CODE_ATTEMPTS attempts"
-    )
+  private suspend fun reserve(event: Event): Boolean {
+    val code = joinCodes.document(event.joinCode)
+    return firestore
+        .runTransaction { transaction ->
+          if (transaction.get(code).exists()) {
+            false
+          } else {
+            transaction.set(events.document(event.id), event.toFirestoreMap())
+            transaction.set(code, mapOf(JoinCodeSchema.EVENT_ID to event.id))
+            true
+          }
+        }
+        .await()
   }
 
   private fun randomJoinCode(): String =
