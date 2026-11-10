@@ -1,8 +1,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -30,17 +36,84 @@ class SettingsScreenTest {
 
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-  private fun setScreen(mode: UserMode = UserMode.VOLUNTEER, changingMode: Boolean = false) {
+  private val sharingChanges = mutableListOf<Boolean>()
+
+  /** What the screen shows: a test changes it after [setScreen] to have the screen recompose. */
+  private var state by mutableStateOf(SettingsUiState())
+
+  private fun setScreen(initial: SettingsUiState = SettingsUiState()) {
+    state = initial
     composeTestRule.setContent {
       ShifterTheme {
         SettingsScreen(
-            mode = mode,
+            state = state,
             onBack = { backClicks++ },
             onChangeMode = { changeModeClicks++ },
             onSignOut = { signOutClicks++ },
-            changingMode = changingMode,
+            onLocationSharingChange = { sharingChanges += it },
         )
       }
+    }
+  }
+
+  private fun sharingSwitch() =
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH)
+
+  private fun signOutButton() =
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+
+  @Test
+  fun locationSharing_showsTheSettingAndExplainsWhoSeesIt() {
+    setScreen(SettingsUiState(locationSharing = true))
+
+    sharingSwitch().assertIsOn().assertIsEnabled()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.settings_privacy_section).uppercase())
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.settings_location_sharing_explanation))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE)
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun locationSharingClick_asksForTheOtherValue() {
+    setScreen(SettingsUiState(locationSharing = false))
+
+    sharingSwitch().performClick()
+
+    assertEquals(listOf(true), sharingChanges)
+  }
+
+  @Test
+  fun locationSharing_whileUnknownOrSaving_cannotBeChanged() {
+    setScreen()
+    sharingSwitch().assertIsOff().assertIsNotEnabled()
+
+    state = SettingsUiState(locationSharing = true, savingLocationSharing = true)
+
+    sharingSwitch().assertIsOn().assertIsNotEnabled().performClick()
+    assertEquals(emptyList<Boolean>(), sharingChanges)
+  }
+
+  @Test
+  fun locationSharing_showsEachNotice() {
+    setScreen()
+    val messages =
+        mapOf(
+            LocationSharingNotice.LOAD_FAILED to R.string.settings_location_sharing_load_failed,
+            LocationSharingNotice.SAVE_FAILED to R.string.settings_location_sharing_save_failed,
+            LocationSharingNotice.SAVED_OFFLINE to R.string.settings_location_sharing_saved_offline,
+        )
+
+    for ((notice, message) in messages) {
+      state = SettingsUiState(locationSharing = false, locationSharingNotice = notice)
+
+      composeTestRule
+          .onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE)
+          .assertTextEquals(context.getString(message))
     }
   }
 
@@ -56,7 +129,7 @@ class SettingsScreenTest {
 
   @Test
   fun changeMode_offersTheOtherMode() {
-    setScreen(mode = UserMode.ORGANIZER)
+    setScreen(SettingsUiState(mode = UserMode.ORGANIZER))
 
     composeTestRule
         .onNodeWithText(context.getString(R.string.settings_switch_to_volunteer))
@@ -65,7 +138,7 @@ class SettingsScreenTest {
 
   @Test
   fun changingMode_disablesTheButton() {
-    setScreen(changingMode = true)
+    setScreen(SettingsUiState(changingMode = true))
 
     composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).assertIsNotEnabled()
   }
@@ -95,6 +168,20 @@ class SettingsScreenTest {
 
     assertEquals(1, signOutClicks)
     assertEquals(0, backClicks)
+  }
+
+  @Test
+  fun signOut_whileLocationSharingIsSaved_cannotBeClicked() {
+    setScreen()
+    signOutButton().assertIsEnabled()
+
+    state = SettingsUiState(locationSharing = false, savingLocationSharing = true)
+    signOutButton().assertIsNotEnabled().performClick()
+    assertEquals(0, signOutClicks)
+
+    state = SettingsUiState(locationSharing = false)
+    signOutButton().assertIsEnabled().performClick()
+    assertEquals(1, signOutClicks)
   }
 
   @Test

@@ -325,7 +325,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   nobody reads the position any more, whatever happened to the consent or the membership. Inside
   the period, only a delete hides it, and only the volunteer themself may delete it:
 
-  - **Sharing turned off:** done (#404). `UserRepository.setLocationSharing` writes
+  - **Sharing turned off:** done in Settings (#404). `UserRepository.setLocationSharing` writes
     the setting and deletes the volunteer's position in each of their teams **in one batch**, so
     the server receives both at once and the manager stops seeing the position at that moment.
     The teams are those of every event the volunteer was accepted to.
@@ -335,7 +335,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
     - **Offline:** the batch is saved on the device and sent as a whole once it reconnects, also
       after the app was closed. Until then the manager sees the **last position this device shared
       before going offline**, and no newer one from it: a device sends its queued writes in order,
-      so a position it queued after the change arrives after the setting and is refused.
+      so a position it queued after the change arrives after the setting and is refused. Settings
+      tells the volunteer so.
     - **Another device of the same user:** the rules check the consent stored on the server, so a
       device that is online keeps publishing until the server receives the change.
     - **A team the device never loaded:** offline, the teams come from the cache, so a team never
