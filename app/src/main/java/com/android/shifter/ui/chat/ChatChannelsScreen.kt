@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.swent.shifter.R
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.theme.shifter_divider
@@ -50,7 +52,7 @@ object ChatChannelsTestTags {
 
 /**
  * The channels of an event listed by [viewModel]; [onOpenChannel] opens one. The only channel the
- * user can open is opened at once, the first time it is listed.
+ * user can open is opened at once, the first time it is listed while the screen is resumed.
  */
 @Composable
 fun ChatChannelsScreen(
@@ -59,10 +61,14 @@ fun ChatChannelsScreen(
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
   uiState.channelToOpen?.let { channel ->
     LaunchedEffect(channel) {
-      viewModel.onChannelOpened()
-      onOpenChannel(channel)
+      // Waits until the screen is shown, and gives up if the user leaves it first.
+      lifecycle.withResumed {
+        viewModel.onChannelOpened()
+        onOpenChannel(channel)
+      }
     }
   }
   ChatChannelsContent(uiState, onOpenChannel, viewModel::load, modifier)

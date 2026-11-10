@@ -3,13 +3,21 @@ package com.swent.shifter.ui.chat
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
@@ -27,6 +35,12 @@ class ChatChannelsContentTest {
 
   private val opened = mutableListOf<String>()
   private var retries = 0
+
+  /** The lifecycle of the screen, resumed unless a test says otherwise. */
+  private val screen = ScreenLifecycle()
+
+  /** Whether the screen is shown; hiding it is like leaving Discussions. */
+  private var shown by mutableStateOf(true)
 
   private fun setContent(state: ChatChannelsUiState) {
     composeTestRule.setContent {
@@ -109,6 +123,34 @@ class ChatChannelsContentTest {
   }
 
   @Test
+  fun singleChannel_beforeTheScreenIsResumed_waitsToOpenIt() {
+    screen.lifecycle.currentState = Lifecycle.State.STARTED
+    showScreen(listOf(team("bar", "Bar")))
+
+    composeTestRule.waitForIdle()
+    assertEquals(emptyList<String>(), opened)
+
+    composeTestRule.runOnIdle { screen.lifecycle.currentState = Lifecycle.State.RESUMED }
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("bar"), opened)
+  }
+
+  @Test
+  fun singleChannel_screenLeftBeforeResumed_opensNothing() {
+    screen.lifecycle.currentState = Lifecycle.State.STARTED
+    showScreen(listOf(team("bar", "Bar")))
+    composeTestRule.waitForIdle()
+
+    // The user goes to another tab while the screen is still animating out.
+    composeTestRule.runOnIdle { shown = false }
+    composeTestRule.runOnIdle { screen.lifecycle.currentState = Lifecycle.State.RESUMED }
+    composeTestRule.waitForIdle()
+
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  @Test
   fun severalChannels_opensNone() {
     showScreen(listOf(team("bar", "Bar"), team("kitchen", "Kitchen")))
 
@@ -118,8 +160,8 @@ class ChatChannelsContentTest {
   }
 
   /**
-   * The screen with its ViewModel, as a volunteer of [teams]. Reading [recompositions] redraws it
-   * each time the value changes.
+   * The screen with its ViewModel, as a volunteer of [teams], while [shown], with the lifecycle of
+   * [screen]. Reading [recompositions] redraws it each time the value changes.
    */
   private fun showScreen(
       teams: List<Team>,
@@ -129,9 +171,11 @@ class ChatChannelsContentTest {
         ChatChannelsViewModel(EVENT, asOrganizer = false, FakeTeamRepository(teams)) { ME }
     composeTestRule.setContent {
       ShifterTheme {
-        Column {
-          Text("Redrawn ${recompositions.intValue} times")
-          ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
+        CompositionLocalProvider(LocalLifecycleOwner provides screen) {
+          Column {
+            Text("Redrawn ${recompositions.intValue} times")
+            if (shown) ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
+          }
         }
       }
     }
@@ -147,6 +191,12 @@ class ChatChannelsContentTest {
           memberIds = listOf(ME),
           createdAt = Instant.EPOCH,
       )
+
+  /** A lifecycle the tests move by hand, without checking it is on the main thread. */
+  private class ScreenLifecycle : LifecycleOwner {
+    override val lifecycle: LifecycleRegistry =
+        LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+  }
 
   private companion object {
     const val EVENT = "event-1"
