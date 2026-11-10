@@ -154,7 +154,10 @@ fun SettingsScreen(
     ) {
       PrivacySection(state, onLocationSharingChange)
       ChangeModeButton(mode = state.mode, enabled = !state.changingMode, onClick = onChangeMode)
-      SignOutButton(onClick = onSignOut)
+      // Signing out while a change of location sharing is saved would make its remaining reads
+      // fail before anything is written, with the error shown on a screen already left. Waiting is
+      // bounded: once written, the change is either confirmed or queued by Firestore.
+      SignOutButton(enabled = !state.savingLocationSharing, onClick = onSignOut)
     }
   }
 }
@@ -267,10 +270,11 @@ private val LocationSharingNotice.message: Int
       }
 
 @Composable
-private fun SignOutButton(onClick: () -> Unit) {
+private fun SignOutButton(enabled: Boolean, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
   OutlinedButton(
       onClick = onClick,
+      enabled = enabled,
       modifier =
           Modifier.fillMaxWidth().height(48.dp).testTag(SettingsScreenTestTags.SIGN_OUT_BUTTON),
       shape = RoundedCornerShape(16.dp),

@@ -59,6 +59,9 @@ class SettingsScreenTest {
   private fun sharingSwitch() =
       composeTestRule.onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH)
 
+  private fun signOutButton() =
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+
   @Test
   fun locationSharing_showsTheSettingAndExplainsWhoSeesIt() {
     setScreen(SettingsUiState(locationSharing = true))
@@ -165,6 +168,20 @@ class SettingsScreenTest {
 
     assertEquals(1, signOutClicks)
     assertEquals(0, backClicks)
+  }
+
+  @Test
+  fun signOut_whileLocationSharingIsSaved_cannotBeClicked() {
+    setScreen()
+    signOutButton().assertIsEnabled()
+
+    state = SettingsUiState(locationSharing = false, savingLocationSharing = true)
+    signOutButton().assertIsNotEnabled().performClick()
+    assertEquals(0, signOutClicks)
+
+    state = SettingsUiState(locationSharing = false)
+    signOutButton().assertIsEnabled().performClick()
+    assertEquals(1, signOutClicks)
   }
 
   @Test
