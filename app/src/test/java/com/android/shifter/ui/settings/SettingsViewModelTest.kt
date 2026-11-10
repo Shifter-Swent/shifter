@@ -17,6 +17,7 @@ import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
@@ -200,7 +201,11 @@ class SettingsViewModelTest {
     assertTrue(waiting.uiState.value.modeChangeFailed)
     assertNull(waiting.uiState.value.modeChanged)
     assertFalse(waiting.uiState.value.changingMode)
-    coVerify { offline.setMode("uid-1", UserMode.VOLUNTEER) }
+    // The mode queued back must land after the write that timed out.
+    coVerifyOrder {
+      offline.setMode("uid-1", UserMode.ORGANIZER)
+      offline.setMode("uid-1", UserMode.VOLUNTEER)
+    }
   }
 
   @Test
