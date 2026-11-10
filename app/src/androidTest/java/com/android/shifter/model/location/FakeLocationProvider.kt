@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 
 /**
  * In-memory [LocationProvider] for instrumented tests, so a test needs no GPS.
@@ -31,6 +32,12 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   val activeCollectors: Int
     get() = position.subscriptionCount.value
 
+  /** When true, [positions] fails once collected, to exercise a session fault. */
+  var failing = false
+
+  /** Set to true the moment a failing [positions] stream is collected. */
+  val faultTriggered = MutableStateFlow(false)
+
   /** Sets the current position, replayed to any session collecting [positions]. */
   fun setPosition(newPosition: GeoPosition) {
     position.value = newPosition
@@ -39,6 +46,14 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   override fun refreshStatus() = Unit
 
   override fun positions(): Flow<GeoPosition> = status.flatMapLatest {
-    if (it == LocationStatus.GRANTED) position.filterNotNull() else emptyFlow()
+    when {
+      it != LocationStatus.GRANTED -> emptyFlow()
+      failing ->
+          flow {
+            faultTriggered.value = true
+            throw RuntimeException("GPS failure")
+          }
+      else -> position.filterNotNull()
+    }
   }
 }

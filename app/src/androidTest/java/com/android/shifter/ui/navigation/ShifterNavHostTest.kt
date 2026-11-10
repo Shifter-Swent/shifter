@@ -1274,6 +1274,50 @@ class ShifterNavHostTest {
     return GeoPosition(latitude, longitude)
   }
 
+  /**
+   * A publishing session whose GPS source fails is reported by the app-level handler and does not
+   * crash the composition: the app stays on the events screen. This drives the live-location
+   * publisher's failure path end to end, which a unit test cannot reach.
+   */
+  @Test
+  fun liveLocation_whenASessionFails_isReportedWithoutCrashingTheApp() {
+    val event = acceptedEvent(asManager = false, running = true)
+    val volunteer = checkNotNull(repositories.authRepository.currentUser())
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(
+          volunteer.uid,
+          "Vera",
+          volunteer.email ?: "vera@example.com",
+      )
+      repositories.userRepository.setLocationSharing(volunteer.uid, true, emptyList())
+    }
+    createdPaths.add(0, "users/${volunteer.uid}")
+    createdPaths.add(0, "publicProfiles/${volunteer.uid}")
+
+    val locationProvider = FakeLocationProvider().apply { failing = true }
+    try {
+      composeTestRule.setContent {
+        ShifterTheme {
+          ShifterNavHost(
+              isSignedIn = true,
+              repositories = repositories,
+              locationProvider = locationProvider,
+          )
+        }
+      }
+      waitForNode(MyEventsTestTags.STAFF_SCREEN)
+
+      // The eligible session starts, collects the failing GPS and throws; the handler reports it.
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) { locationProvider.faultTriggered.value }
+      composeTestRule.waitForIdle()
+
+      // The fault did not propagate to the UI: the events screen is still usable.
+      composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    } finally {
+      AuthEmulator.auth.signOut()
+    }
+  }
+
   /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
   private fun signInAndShowApp(name: String = "Ada"): NavHostController {
     runBlocking {
