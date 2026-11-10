@@ -36,7 +36,7 @@ class EdgeToEdgeTest {
 
   @Test
   @Config(qualifiers = "notnight")
-  fun theme_withTheSystemInLightMode_keepsTheIconsLight() {
+  fun enableShifterEdgeToEdge_withTheSystemInLightMode_keepsTheIconsLight() {
     showTheApp()
 
     val window = composeTestRule.activity.window
