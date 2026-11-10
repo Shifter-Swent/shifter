@@ -351,7 +351,7 @@ private fun ParticipantCard(
             CardAction(
                 R.string.participants_add_to_team,
                 Icons.Rounded.SwapHoriz,
-                true,
+                ActionStyle.MAIN,
                 enabled,
                 moveTag,
                 it,
@@ -361,7 +361,7 @@ private fun ParticipantCard(
           CardAction(
               R.string.participants_stop_managing,
               Icons.Rounded.PersonRemove,
-              false,
+              ActionStyle.WARNING,
               enabled,
               managerTag,
               onManagerAction,
@@ -371,7 +371,7 @@ private fun ParticipantCard(
             CardAction(
                 R.string.participants_change_team,
                 Icons.Rounded.SwapHoriz,
-                false,
+                ActionStyle.QUIET,
                 enabled,
                 moveTag,
                 it,
@@ -380,7 +380,7 @@ private fun ParticipantCard(
           CardAction(
               R.string.participants_make_manager,
               Icons.Rounded.WorkspacePremium,
-              true,
+              ActionStyle.MAIN,
               enabled,
               managerTag,
               onManagerAction,
@@ -432,12 +432,22 @@ private fun Initials(name: String, highlighted: Boolean) {
   }
 }
 
-/** One action of an open card: the accent for the main one, a quieter step for the other. */
+/** How an action of an open card stands out. */
+private enum class ActionStyle {
+  /** The main action, in the accent. */
+  MAIN,
+  /** A secondary one, on a quieter step. */
+  QUIET,
+  /** One that takes something away, in the error colour, like the delete of a team (#399). */
+  WARNING,
+}
+
+/** One action of an open card, drawn in its [style]. */
 @Composable
 private fun RowScope.CardAction(
     @StringRes label: Int,
     icon: ImageVector,
-    primary: Boolean,
+    style: ActionStyle,
     enabled: Boolean,
     testTag: String,
     onClick: () -> Unit,
@@ -450,8 +460,13 @@ private fun RowScope.CardAction(
       contentPadding = PaddingValues(horizontal = 12.dp),
       colors =
           ButtonDefaults.buttonColors(
-              containerColor = if (primary) colors.primary else colors.background,
-              contentColor = if (primary) colors.onPrimary else colors.onSurface,
+              containerColor = if (style == ActionStyle.MAIN) colors.primary else colors.background,
+              contentColor =
+                  when (style) {
+                    ActionStyle.MAIN -> colors.onPrimary
+                    ActionStyle.QUIET -> colors.onSurface
+                    ActionStyle.WARNING -> colors.error
+                  },
           ),
       modifier = Modifier.weight(1f).height(44.dp).testTag(testTag),
   ) {
