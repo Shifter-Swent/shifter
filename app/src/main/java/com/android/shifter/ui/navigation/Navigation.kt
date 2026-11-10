@@ -20,10 +20,11 @@ import kotlinx.serialization.Serializable
  *   └── SignIn
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
- *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions
+ *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
- *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map, Discussions
+ *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map,
+ *       Discussions (+ Channel)
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -50,6 +51,17 @@ sealed interface Tab {
 sealed interface TabSet {
   val all: List<Tab>
   val home: Tab
+}
+
+/**
+ * The channel of the team [teamId], opened on top of the Discussions tab of either mode. The team's
+ * name is in the route, so the bar shows it without loading the team.
+ */
+sealed interface ChannelScreen : Destination {
+  val teamId: String
+  val teamName: String
+  override val title: String
+    get() = teamName
 }
 
 /**
@@ -169,6 +181,14 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object Discussions : VolunteerEventScreen {
     override val title = "Discussions"
+    override val tab
+      get() = VolunteerTabs.Discussions
+  }
+
+  /** A team's channel, opened from Discussions. */
+  @Serializable
+  data class Channel(override val teamId: String, override val teamName: String) :
+      VolunteerEventScreen, ChannelScreen {
     override val tab
       get() = VolunteerTabs.Discussions
   }
@@ -321,6 +341,14 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object Discussions : OrganizerEventScreen {
     override val title = "Discussions"
+    override val tab
+      get() = OrganizerTabs.Discussions
+  }
+
+  /** A team's channel, opened from Discussions. */
+  @Serializable
+  data class Channel(override val teamId: String, override val teamName: String) :
+      OrganizerEventScreen, ChannelScreen {
     override val tab
       get() = OrganizerTabs.Discussions
   }

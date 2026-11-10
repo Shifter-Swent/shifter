@@ -1,13 +1,25 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -21,12 +33,18 @@ class ChatChannelsContentTest {
   private val opened = mutableListOf<String>()
   private var retries = 0
 
+  /** The lifecycle of the screen, resumed unless a test says otherwise. */
+  private val screen = ScreenLifecycle()
+
+  /** Whether the screen is shown; hiding it is like leaving Discussions. */
+  private var shown by mutableStateOf(true)
+
   private fun setContent(state: ChatChannelsUiState) {
     composeTestRule.setContent {
       ShifterTheme {
         ChatChannelsContent(
             state = state,
-            onOpenChannel = { opened += it },
+            onOpenChannel = { opened += it.teamId },
             onRetry = { retries++ },
         )
       }
@@ -88,7 +106,99 @@ class ChatChannelsContentTest {
     composeTestRule.onNodeWithText("The channels could not be loaded.").assertIsDisplayed()
   }
 
+  @Test
+  fun singleChannel_backToTheList_opensItOnce() {
+    showScreen(listOf(team("bar", "Bar")))
+    composeTestRule.waitForIdle()
+
+    // Back from the channel: the list leaves the composition and comes back.
+    composeTestRule.runOnIdle { shown = false }
+    composeTestRule.runOnIdle { shown = true }
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("bar"), opened)
+  }
+
+  @Test
+  fun singleChannel_beforeTheScreenIsResumed_waitsToOpenIt() {
+    screen.lifecycle.currentState = Lifecycle.State.STARTED
+    showScreen(listOf(team("bar", "Bar")))
+
+    composeTestRule.waitForIdle()
+    assertEquals(emptyList<String>(), opened)
+
+    composeTestRule.runOnIdle { screen.lifecycle.currentState = Lifecycle.State.RESUMED }
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("bar"), opened)
+  }
+
+  @Test
+  fun singleChannel_screenLeftBeforeResumed_opensNothing() {
+    screen.lifecycle.currentState = Lifecycle.State.STARTED
+    showScreen(listOf(team("bar", "Bar")))
+    composeTestRule.waitForIdle()
+
+    // The user goes to another tab while the screen is still animating out.
+    composeTestRule.runOnIdle { shown = false }
+    composeTestRule.runOnIdle { screen.lifecycle.currentState = Lifecycle.State.RESUMED }
+    composeTestRule.waitForIdle()
+
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  @Test
+  fun severalChannels_opensNone() {
+    showScreen(listOf(team("bar", "Bar"), team("kitchen", "Kitchen")))
+
+    tag(ChatChannelsTestTags.channel("kitchen")).assertIsDisplayed()
+
+    assertEquals(emptyList<String>(), opened)
+  }
+
+  /**
+   * The screen with its ViewModel, as a volunteer of [teams], while [shown], with the lifecycle of
+   * [screen].
+   */
+  private fun showScreen(teams: List<Team>) {
+    val viewModel =
+        ChatChannelsViewModel(
+            EVENT,
+            asOrganizer = false,
+            FakeTeamRepository(teams),
+            SavedStateHandle(),
+        ) {
+          ME
+        }
+    composeTestRule.setContent {
+      ShifterTheme {
+        CompositionLocalProvider(LocalLifecycleOwner provides screen) {
+          if (shown) ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId })
+        }
+      }
+    }
+  }
+
+  private fun team(id: String, name: String) =
+      Team(
+          id = id,
+          eventId = EVENT,
+          name = name,
+          description = "",
+          icon = "wine",
+          memberIds = listOf(ME),
+          createdAt = Instant.EPOCH,
+      )
+
+  /** A lifecycle the tests move by hand, without checking it is on the main thread. */
+  private class ScreenLifecycle : LifecycleOwner {
+    override val lifecycle: LifecycleRegistry =
+        LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+  }
+
   private companion object {
+    const val EVENT = "event-1"
+    const val ME = "me"
     val CHANNELS = listOf(ChatChannel("bar", "Bar", "wine"), ChatChannel("kitchen", "Kitchen", ""))
   }
 }
