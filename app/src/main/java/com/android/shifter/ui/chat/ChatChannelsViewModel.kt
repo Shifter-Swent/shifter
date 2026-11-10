@@ -56,7 +56,7 @@ class ChatChannelsViewModel(
     private val eventId: String,
     private val asOrganizer: Boolean,
     private val teamRepository: TeamRepository,
-    private val savedState: SavedStateHandle = SavedStateHandle(),
+    private val savedState: SavedStateHandle,
     private val currentUserId: () -> String?,
 ) : ViewModel() {
 

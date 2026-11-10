@@ -30,7 +30,7 @@ class ChatChannelsViewModelTest {
       )
 
   private fun viewModel(asOrganizer: Boolean = false, userId: String? = ME) =
-      ChatChannelsViewModel(EVENT, asOrganizer, teams) { userId }
+      ChatChannelsViewModel(EVENT, asOrganizer, teams, SavedStateHandle()) { userId }
 
   @Test
   fun load_asVolunteer_listsTheTeamsIBelongToOrManage() = runTest {
@@ -45,7 +45,10 @@ class ChatChannelsViewModelTest {
   @Test
   fun load_asMemberAndManagerOfATeam_listsItOnce() = runTest {
     val team = team("bar", "Bar", managerId = ME, memberIds = listOf(ME))
-    val viewModel = ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team))) { ME }
+    val viewModel =
+        ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team)), SavedStateHandle()) {
+          ME
+        }
 
     assertEquals(listOf("bar"), viewModel.uiState.value.channels.map { it.teamId })
   }

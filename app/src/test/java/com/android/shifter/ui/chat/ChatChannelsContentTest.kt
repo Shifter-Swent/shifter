@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.team.FakeTeamRepository
@@ -161,7 +162,14 @@ class ChatChannelsContentTest {
    */
   private fun showScreen(teams: List<Team>) {
     val viewModel =
-        ChatChannelsViewModel(EVENT, asOrganizer = false, FakeTeamRepository(teams)) { ME }
+        ChatChannelsViewModel(
+            EVENT,
+            asOrganizer = false,
+            FakeTeamRepository(teams),
+            SavedStateHandle(),
+        ) {
+          ME
+        }
     composeTestRule.setContent {
       ShifterTheme {
         CompositionLocalProvider(LocalLifecycleOwner provides screen) {
