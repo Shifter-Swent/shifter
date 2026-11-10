@@ -404,12 +404,27 @@ fun ShifterNavHost(
             },
         ) {
           composable<OrganizerEventScreen.AddMission> { entry ->
-            MissionForm(entry, missionId = null, navController, repositories, currentUserId, nav)
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            AddMissionRoute(eventId, repositories, currentUserId, onBack = nav::goBack)
           }
           composable<OrganizerEventScreen.EditMission> { entry ->
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
             val missionId =
                 remember(entry) { entry.toRoute<OrganizerEventScreen.EditMission>().missionId }
-            MissionForm(entry, missionId, navController, repositories, currentUserId, nav)
+            AddMissionRoute(eventId, repositories, currentUserId, nav::goBack, missionId)
           }
           composable<OrganizerEventScreen.ManageTeams> { entry ->
             // The event's id is in the route of the event graph this screen belongs to.
@@ -661,23 +676,21 @@ private fun RefreshOnReturn(refresh: () -> Unit) {
 }
 
 /**
- * The mission form of the event open in [navController], adding a mission, or editing [missionId]
- * when given. Goes back to the event's Overview once the mission is saved.
+ * The mission form of the event [eventId], for its organizer or the manager of one of its teams:
+ * the form itself offers each only what they may create. It adds a mission, or edits [missionId]
+ * when given.
+ *
+ * @param onBack goes back to the event's Overview, once the mission is saved or when the user
+ *   leaves the form.
  */
 @Composable
-private fun MissionForm(
-    entry: NavBackStackEntry,
-    missionId: String?,
-    navController: NavHostController,
+private fun AddMissionRoute(
+    eventId: String,
     repositories: RepositoryProvider,
     currentUserId: () -> String?,
-    nav: NavigationActions,
+    onBack: () -> Unit,
+    missionId: String? = null,
 ) {
-  // The event's id is in the route of the event graph this screen belongs to.
-  val eventId =
-      remember(entry) {
-        navController.getBackStackEntry<OrganizerEvent>().toRoute<OrganizerEvent>().eventId
-      }
   AddMissionScreen(
       viewModel =
           viewModel(
@@ -696,8 +709,9 @@ private fun MissionForm(
                       missionId = missionId,
                   )
           ),
-      onMissionSaved = { nav.goBack() },
-      onBack = nav::goBack,
+      // Back to the event's overview, the mission saved.
+      onMissionSaved = { onBack() },
+      onBack = onBack,
   )
 }
 
