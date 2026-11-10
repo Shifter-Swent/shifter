@@ -423,7 +423,7 @@ fun ShifterNavHost(
                             )
                     ),
                 // Back to the event's overview, the mission saved.
-                onMissionAdded = { nav.goBack() },
+                onMissionSaved = { nav.goBack() },
                 onBack = nav::goBack,
             )
           }

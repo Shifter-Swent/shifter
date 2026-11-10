@@ -121,23 +121,23 @@ object AddMissionScreenTestTags {
 /**
  * Lets the organizer of an event, or the manager of one of its teams, add a mission to it.
  *
- * @param onMissionAdded called once with the persisted mission, e.g. to go back to the management
+ * @param onMissionSaved called once with the persisted mission, e.g. to go back to the management
  *   screen and confirm it.
  * @param onBack called when the organizer leaves without adding the mission.
  */
 @Composable
 fun AddMissionScreen(
     viewModel: AddMissionViewModel,
-    onMissionAdded: (Mission) -> Unit,
+    onMissionSaved: (Mission) -> Unit,
     onBack: () -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
 
-  val createdMission = uiState.createdMission
-  LaunchedEffect(createdMission, uiState.createdMissionHandled) {
-    if (createdMission != null && !uiState.createdMissionHandled) {
-      viewModel.onMissionAddedHandled()
-      onMissionAdded(createdMission)
+  val savedMission = uiState.savedMission
+  LaunchedEffect(savedMission, uiState.savedMissionHandled) {
+    if (savedMission != null && !uiState.savedMissionHandled) {
+      viewModel.onSaveHandled()
+      onMissionSaved(savedMission)
     }
   }
 
@@ -163,7 +163,7 @@ fun AddMissionScreen(
               onConfirmLocation = viewModel::onConfirmLocation,
               onCancelLocationPicker = viewModel::onCancelLocationPicker,
               onClearLocation = viewModel::onClearLocation,
-              onSubmit = viewModel::addMission,
+              onSubmit = viewModel::save,
               onRetryLoad = viewModel::loadEvent,
               onBack = onBack,
           ),
