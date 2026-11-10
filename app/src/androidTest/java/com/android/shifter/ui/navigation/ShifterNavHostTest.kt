@@ -35,6 +35,7 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
+import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
@@ -65,6 +66,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -743,6 +746,66 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun organizerPeople_reopeningTheTabKeepsTheListWithoutASpinner() {
+    val event = createEvent(signIn())
+    val holdReads = AtomicBoolean(false)
+    val reloadStarted = CompletableDeferred<Unit>()
+    val reload = CompletableDeferred<Unit>()
+    val requestRepository = repositories.membershipRequestRepository
+    val heldRepositories =
+        RepositoryProvider(
+            authRepository = repositories.authRepository,
+            eventRepository = repositories.eventRepository,
+            userRepository = repositories.userRepository,
+            membershipRequestRepository =
+                object : MembershipRequestRepository by requestRepository {
+                  override suspend fun getMembershipRequestsByEId(
+                      eventId: String
+                  ): List<MembershipRequest> {
+                    if (holdReads.get()) {
+                      reloadStarted.complete(Unit)
+                      reload.await()
+                    }
+                    return requestRepository.getMembershipRequestsByEId(eventId)
+                  }
+                },
+            missionRepository = repositories.missionRepository,
+            teamRepository = repositories.teamRepository,
+            checkInRepository = repositories.checkInRepository,
+            chatRepository = repositories.chatRepository,
+            liveLocationRepository = repositories.liveLocationRepository,
+        )
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = heldRepositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread {
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+    }
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+    val teamBar = ParticipantsListTestTags.teamBar(teamIds.getValue(event.id))
+    waitForNode(teamBar)
+
+    holdReads.set(true)
+    composeTestRule.onNodeWithTag(OrganizerTabs.Overview.testTag).performClick()
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+
+    // The reload is held: the list on screen can only be the one kept from the first visit.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { reloadStarted.isCompleted }
+    composeTestRule.onNodeWithTag(teamBar).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ParticipantsListTestTags.LOADING).assertDoesNotExist()
+    reload.complete(Unit)
   }
 
   @Test

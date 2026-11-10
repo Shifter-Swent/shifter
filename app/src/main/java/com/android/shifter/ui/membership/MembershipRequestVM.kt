@@ -12,6 +12,7 @@ import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +25,13 @@ data class MembershipRequestItemUIState(
     val displayName: String,
 )
 
+/**
+ * State of the organizer's requests list.
+ *
+ * @property isLoading whether there is no list to show yet because it is being read, which shows
+ *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
+ *   it.
+ */
 data class MembershipRequestUIState(
     val requests: List<MembershipRequestItemUIState> = emptyList(),
     val isLoading: Boolean = true,
@@ -39,15 +47,29 @@ class MembershipRequestVM(
   private val _uiState = MutableStateFlow(MembershipRequestUIState(isLoading = false))
   val uiState: StateFlow<MembershipRequestUIState> = _uiState.asStateFlow()
 
+  /** The load running, if any: a decision cancels it, as it may predate the write. */
+  private var loadJob: Job? = null
+
+  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
+  private var loaded = false
+
+  /** A load was cancelled or refused by a decision: it runs once no decision is being written. */
+  private var reloadPending = false
+
   init {
     loadRequests()
   }
 
   fun loadRequests() {
-    // Avoid overlapping reads or a stale reload replacing a decision in progress.
-    if (_uiState.value.isLoading || _uiState.value.processingRequestIds.isNotEmpty()) return
-    _uiState.update { it.copy(isLoading = true, errorMsg = null) }
-    viewModelScope.launch {
+    if (loadJob?.isActive == true) return
+    // A read started now could answer before the decision is written and bring the old status back.
+    if (_uiState.value.processingRequestIds.isNotEmpty()) {
+      reloadPending = true
+      return
+    }
+    reloadPending = false
+    _uiState.update { it.copy(isLoading = !loaded, errorMsg = null) }
+    loadJob = viewModelScope.launch {
       try {
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
         val names = userRepository.displayNames(requests.map { it.userId })
@@ -59,6 +81,7 @@ class MembershipRequestVM(
                 "Some applicant names could not be loaded. Please try again."
             else null
         _uiState.update { it.copy(requests = items, errorMsg = profileError) }
+        loaded = true
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {
@@ -78,7 +101,12 @@ class MembershipRequestVM(
   private fun decide(userId: String, status: MembershipRequestStatus) {
     val state = _uiState.value
     val request = state.requests.firstOrNull { it.request.userId == userId }?.request ?: return
-    if (state.isLoading || request.id in state.processingRequestIds) return
+    if (request.id in state.processingRequestIds) return
+    // It read the requests before this decision, so its answer would bring the old status back.
+    if (loadJob?.isActive == true) {
+      loadJob?.cancel()
+      reloadPending = true
+    }
     _uiState.update {
       it.copy(processingRequestIds = it.processingRequestIds + request.id, errorMsg = null)
     }
@@ -103,6 +131,9 @@ class MembershipRequestVM(
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {
         _uiState.update { it.copy(processingRequestIds = it.processingRequestIds - request.id) }
+        // Only the last decision to finish gets past the check in loadRequests. After a failed
+        // one, the reload waits for the next call, so that it does not clear the error.
+        if (reloadPending && _uiState.value.errorMsg == null) loadRequests()
       }
     }
   }
