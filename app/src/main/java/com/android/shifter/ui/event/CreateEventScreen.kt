@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Celebration
@@ -32,15 +33,28 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Park
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +80,11 @@ import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
 
 object CreateEventScreenTestTags {
   const val TITLE_FIELD = "CreateEventTitleField"
@@ -80,9 +99,14 @@ object CreateEventScreenTestTags {
   const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
   const val SAVE_UNCONFIRMED_ICON = "CreateEventSaveUnconfirmedIcon"
 
+  /** Confirm button shared by the date and the time dialogs: only one is ever open at a time. */
+  const val PICKER_CONFIRM = "CreateEventPickerConfirm"
+
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
   fun error(field: EventFormField) = "CreateEventError_${field.name}"
+
+  fun pickerButton(field: EventFormField) = "CreateEventPicker_${field.name}"
 }
 
 /**
@@ -367,11 +391,23 @@ private fun DateCard(
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      Text(
-          text = labelText,
-          style = MaterialTheme.typography.labelSmall,
-          color = colorScheme.onSurfaceVariant,
-      )
+      // The picker sits on the label row, so the value field keeps the card's full width and the
+      // whole "dd/MM/yyyy HH:mm" stays visible in the narrow two-column layout.
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = labelText,
+            style = MaterialTheme.typography.labelSmall,
+            color = colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        DateTimePickerButton(
+            value = value,
+            onValueChange = onValueChange,
+            label = labelText,
+            enabled = !state.isSaving,
+            testTag = CreateEventScreenTestTags.pickerButton(field),
+        )
+      }
       BasicTextField(
           value = value,
           onValueChange = onValueChange,
@@ -412,6 +448,132 @@ private fun DateCard(
     }
   }
 }
+
+/**
+ * A calendar button that picks a date with a Material3 [DatePicker], then a time with a
+ * [TimePicker], and writes the result back through [onValueChange] as `dd/MM/yyyy HH:mm`, the
+ * format the form's text fields use. It is the picker counterpart of the manual [DateCard] text
+ * field, so both ways of entering the value stay available.
+ *
+ * The existing [value] is preselected when it parses, so confirming without changing anything keeps
+ * it. Cancelling or dismissing either dialog leaves [value] untouched. The date is read and written
+ * in UTC midnight millis, the representation Material3 uses, so the chosen day never shifts with
+ * the device's zone.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateTimePickerButton(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    enabled: Boolean,
+    testTag: String,
+) {
+  var showDate by rememberSaveable { mutableStateOf(false) }
+  var showTime by rememberSaveable { mutableStateOf(false) }
+  // The day chosen in the first dialog, kept for the second as an epoch day so it survives a
+  // configuration change while the time dialog is open.
+  var pickedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
+  val existing = remember(value) { parseEventDateTime(value) }
+
+  IconButton(
+      onClick = { showDate = true },
+      enabled = enabled,
+      modifier = Modifier.testTag(testTag),
+  ) {
+    Icon(
+        imageVector = Icons.Filled.DateRange,
+        contentDescription = stringResource(R.string.create_event_pick_date_time, label),
+    )
+  }
+
+  if (showDate) {
+    val initialDay = existing?.toLocalDate() ?: LocalDate.now()
+    val pickerState =
+        rememberDatePickerState(initialSelectedDateMillis = initialDay.toPickerMillis())
+    DatePickerDialog(
+        onDismissRequest = { showDate = false },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                pickerState.selectedDateMillis?.let {
+                  pickedEpochDay = it.toPickerDate().toEpochDay()
+                }
+                showDate = false
+                showTime = true
+              },
+              modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
+          ) {
+            Text(stringResource(R.string.create_event_dialog_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showDate = false }) {
+            Text(stringResource(R.string.create_event_dialog_cancel))
+          }
+        },
+    ) {
+      DatePicker(state = pickerState)
+    }
+  }
+
+  if (showTime) {
+    val start = existing?.toLocalTime() ?: LocalTime.NOON
+    val pickerState =
+        rememberTimePickerState(
+            initialHour = start.hour,
+            initialMinute = start.minute,
+            is24Hour = true,
+        )
+    AlertDialog(
+        onDismissRequest = { showTime = false },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                pickedEpochDay?.let { epochDay ->
+                  val dateTime =
+                      LocalDateTime.of(
+                          LocalDate.ofEpochDay(epochDay),
+                          LocalTime.of(pickerState.hour, pickerState.minute),
+                      )
+                  onValueChange(dateTime.format(EVENT_DATE_TIME_FORMAT))
+                }
+                showTime = false
+              },
+              modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
+          ) {
+            Text(stringResource(R.string.create_event_dialog_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showTime = false }) {
+            Text(stringResource(R.string.create_event_dialog_cancel))
+          }
+        },
+        text = { TimePicker(state = pickerState) },
+    )
+  }
+}
+
+/** The date-and-time format the form reads and writes, matching the hint and the ViewModel. */
+private val EVENT_DATE_TIME_FORMAT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+/** The field value as a date and time, or null while it is empty or not yet a full valid value. */
+private fun parseEventDateTime(value: String): LocalDateTime? =
+    try {
+      LocalDateTime.parse(value.trim(), EVENT_DATE_TIME_FORMAT)
+    } catch (_: DateTimeParseException) {
+      null
+    }
+
+/** The date picker works in UTC milliseconds at midnight, whatever the device's zone. */
+private const val MILLIS_PER_DAY = 86_400_000L
+
+private fun LocalDate.toPickerMillis(): Long = toEpochDay() * MILLIS_PER_DAY
+
+private fun Long.toPickerDate(): LocalDate =
+    LocalDate.ofEpochDay(Math.floorDiv(this, MILLIS_PER_DAY))
 
 /** Two-column grid of selectable event type cards. */
 @Composable
