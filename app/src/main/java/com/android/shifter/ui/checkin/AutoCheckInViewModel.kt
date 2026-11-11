@@ -152,13 +152,16 @@ class AutoCheckInViewModel(
             .flatMapLatest { events -> checkInsTo(events, userId) }
             .stateIn(this, SharingStarted.Eagerly, KnownCheckIns())
     // Positions are only read while there is a mission to check in to.
-    missions
-        .map { it.isNotEmpty() }
-        .distinctUntilChanged()
-        .flatMapLatest { any -> if (any) locationProvider.positions() else emptyFlow() }
-        .collect { position ->
+    val positions =
+        missions
+            .map { it.isNotEmpty() }
+            .distinctUntilChanged()
+            .flatMapLatest { any -> if (any) locationProvider.positions() else emptyFlow() }
+    // The last position is checked again when the check-ins change, so a position that came before
+    // they were known is not lost until the next one.
+    combine(positions, known) { position, checkIns -> position to checkIns }
+        .collect { (position, checkIns) ->
           val time = now()
-          val checkIns = known.value
           missions.value
               // Before the check-ins of a mission's event are known, a position could check in to
               // it twice: the mission waits for the next position.

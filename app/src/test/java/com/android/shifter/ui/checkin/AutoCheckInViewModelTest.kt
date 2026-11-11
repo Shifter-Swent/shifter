@@ -20,10 +20,12 @@ import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset.UTC
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -357,6 +359,22 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
+  fun positionBeforeTheCheckInsAreKnown_checksInWhenTheyArrive() = runTest {
+    addMission()
+    val late = LateCheckIns(checkIns)
+    open(late)
+
+    moveTo(NEAR)
+    assertTrue(checkIns.checkIns.isEmpty())
+    late.arrive()
+    runCurrent()
+
+    // Checked in without waiting for the next position.
+    assertEquals(1, checkIns.checkIns.size)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
   fun missionUnassignedWhileOpen_isNotTried() = runTest {
     val mission = addMission()
     open()
@@ -462,6 +480,20 @@ class AutoCheckInViewModelTest {
     override fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>> =
         if (eventId == this.eventId) flow { awaitCancellation() }
         else delegate.observeMyCheckIns(eventId, userId)
+  }
+
+  /** Delegates to [checkIns], except that no check-ins are emitted before [arrive] is called. */
+  private class LateCheckIns(checkIns: CheckInRepository) : CheckInRepository by checkIns {
+    private val delegate = checkIns
+    private val arrived = CompletableDeferred<Unit>()
+
+    /** Lets the check-ins through, as when Firestore answers. */
+    fun arrive() = arrived.complete(Unit)
+
+    override fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>> = flow {
+      arrived.await()
+      emitAll(delegate.observeMyCheckIns(eventId, userId))
+    }
   }
 
   /** Delegates to [checkIns], except that a check-in never answers, like an offline write. */
