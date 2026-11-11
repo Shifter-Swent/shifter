@@ -30,7 +30,6 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -149,7 +148,9 @@ class ParticipantsListTest {
       val layout = results.single()
       assertEquals(1, layout.lineCount)
       assertTrue(layout.isLineEllipsized(0))
-      assertFalse(layout.didOverflowHeight)
+      // didOverflowHeight also reports exceeding maxLines, which is expected with ellipsis.
+      // Check the displayed line's geometry instead of treating truncation as vertical clipping.
+      assertTrue(layout.getLineBottom(0) <= layout.size.height)
       assertTrue(button.fetchSemanticsNode().boundsInRoot.height >= layout.size.height)
     }
   }
