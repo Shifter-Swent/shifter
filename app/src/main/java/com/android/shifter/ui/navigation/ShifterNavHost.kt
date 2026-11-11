@@ -221,7 +221,7 @@ fun ShifterNavHost(
             navController,
             // The Overview lays out its own content, so it is not put in the stand-in page.
             built = true,
-            content = { _, event ->
+            content = { entry, event ->
               val eventId = event.eventId
               val userId = currentUserId()
               // No session: authState above is already on its way back to sign-in, and nobody is
@@ -240,11 +240,18 @@ fun ShifterNavHost(
                                 repositories.checkInRepository,
                             )
                     )
-                // Shows the missions a manager added while the creation form was on top.
+                // Shows the missions a manager added or changed while the form was on top.
                 RefreshOnReturn(viewModel::refresh)
                 EventOverviewScreen(
                     viewModel = viewModel,
                     onAddMission = { nav.navigateTo(VolunteerEventScreen.AddMission) },
+                    onEditMission = {
+                      // A second pencil tapped before the form opens would reuse its entry, with
+                      // the first mission's ViewModel: only the Overview still on top may open one.
+                      if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                        nav.navigateTo(VolunteerEventScreen.EditMission(it))
+                      }
+                    },
                     volunteerOverview = {
                       // Scrolls as one page, the card and the Planning together.
                       Column(
@@ -293,6 +300,18 @@ fun ShifterNavHost(
                       .eventId
                 }
             AddMissionRoute(eventId, repositories, currentUserId, onBack = nav::goBack)
+          }
+          composable<VolunteerEventScreen.EditMission> { entry ->
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<VolunteerEvent>()
+                      .toRoute<VolunteerEvent>()
+                      .eventId
+                }
+            val missionId =
+                remember(entry) { entry.toRoute<VolunteerEventScreen.EditMission>().missionId }
+            AddMissionRoute(eventId, repositories, currentUserId, nav::goBack, missionId)
           }
         }
         mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(

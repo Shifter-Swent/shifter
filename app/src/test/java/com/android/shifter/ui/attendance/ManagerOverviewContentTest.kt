@@ -93,6 +93,7 @@ class ManagerOverviewContentTest {
       onMarkCompleted: (String) -> Unit = {},
       onCompletionFailureShown: () -> Unit = {},
       onAddMission: (() -> Unit)? = null,
+      onEditMission: ((String) -> Unit)? = null,
   ) {
     compose.setContent {
       ShifterTheme {
@@ -108,6 +109,7 @@ class ManagerOverviewContentTest {
             onMarkCompleted = onMarkCompleted,
             onCompletionFailureShown = onCompletionFailureShown,
             onAddMission = onAddMission,
+            onEditMission = onEditMission,
         )
       }
     }
@@ -738,6 +740,60 @@ class ManagerOverviewContentTest {
     show(loaded)
 
     compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_tapped_givesTheMissionIdWithoutExpandingTheCard() {
+    val edited = mutableListOf<String>()
+    show(loaded, onEditMission = { edited += it })
+
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.edit("m1"))
+        .assertContentDescriptionEquals("Edit the mission")
+        .performClick()
+
+    assertEquals(listOf("m1"), edited)
+    compose.onNodeWithTag(ManagerOverviewTestTags.present("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_isNotOfferedToTheOrganizer() {
+    show(loaded.copy(isOrganizer = true), onEditMission = {})
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_isNotOfferedOnACompletedMission() {
+    val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))
+    val closed = setUp.copy(id = "closed", completed = true)
+    show(loaded.copy(missions = listOf(drinks, over, closed)), onEditMission = {})
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m2")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("over")).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("closed")).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_whileBeingClosed_isNotOffered() {
+    show(loaded.copy(markingCompletedIds = setOf("m1")), onEditMission = {})
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m2")).assertIsDisplayed()
+  }
+
+  @Test
+  fun editMission_withoutCallback_isNotOffered() {
+    show(loaded)
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_hasATouchTargetOfAtLeast48dp() {
+    show(loaded, onEditMission = {})
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertHeightIsAtLeast(48.dp)
   }
 
   private companion object {

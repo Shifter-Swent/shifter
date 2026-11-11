@@ -1121,7 +1121,7 @@ class AddMissionViewModelTest {
   private suspend fun storedMission(
       vararg assigneeIds: String,
       startHour: Int = 14,
-      teamId: String = "logistics",
+      teamId: String? = "logistics",
   ): Mission =
       missions.createMission(
           Mission(
@@ -1389,6 +1389,18 @@ class AddMissionViewModelTest {
     userId = managerId
 
     openEdit(bar.id)
+
+    assertTrue(state.notAllowed)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_ofAGeneralMissionByAManager_isNotAllowed() = runTest {
+    // A General mission has no team, so no manager: only the organizer changes it.
+    val general = storedMission(teamId = null)
+    userId = managerId
+
+    openEdit(general.id)
 
     assertTrue(state.notAllowed)
     assertFalse(state.canSubmit)

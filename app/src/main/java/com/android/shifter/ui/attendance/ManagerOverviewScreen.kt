@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -35,6 +36,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -120,6 +122,9 @@ object ManagerOverviewTestTags {
   const val SNACKBAR = "managerOverviewSnackbar"
 
   fun markCompleted(missionId: String) = "managerOverviewMarkCompleted_$missionId"
+
+  /** The pencil of a mission card, which opens its edit form. */
+  fun edit(missionId: String) = "managerOverviewEdit_$missionId"
 }
 
 /** What a card says about the attendance of its mission; the first case that holds wins. */
@@ -162,6 +167,9 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  * @param onCompletionFailureShown called once the failure to close a mission has been reported.
  * @param onAddMission opens the mission creation form. Its button is shown only when it is given,
  *   and only to a manager: the organizer adds missions from their own Overview.
+ * @param onEditMission opens the edit form of a mission. Its pencil is shown only when it is given,
+ *   to a manager, on a mission they can still change: the organizer edits missions from their own
+ *   Overview.
  */
 @Composable
 fun ManagerOverviewContent(
@@ -177,6 +185,7 @@ fun ManagerOverviewContent(
     onMarkCompleted: (String) -> Unit = {},
     onCompletionFailureShown: () -> Unit = {},
     onAddMission: (() -> Unit)? = null,
+    onEditMission: ((String) -> Unit)? = null,
 ) {
   // The teams of the missions the user may watch: no query of its own, and none invented.
   val teams =
@@ -259,6 +268,15 @@ fun ManagerOverviewContent(
             },
             onMarkCompleted = { confirmingMissionId = mission.id },
             onCheckIn = { userId -> onCheckIn(mission.id, userId) },
+            // Not while it is being closed: it is about to be completed, which cannot be changed.
+            onEdit =
+                onEditMission
+                    ?.takeIf {
+                      !state.isOrganizer &&
+                          !mission.isCompleted(now) &&
+                          mission.id !in state.markingCompletedIds
+                    }
+                    ?.let { edit -> { edit(mission.id) } },
         )
       }
       if (missions.isEmpty()) {
@@ -542,6 +560,8 @@ private fun MissionsHeader(count: Int?) {
  * One mission and its live attendance. Only the header is tappable, so the counter and the lists
  * keep their own accessibility nodes instead of being merged into the card; and it is tappable only
  * when there is something under it, so the arrow never flips on an empty card.
+ *
+ * @param onEdit opens the mission's edit form from a pencil in the header, none when null.
  */
 @Composable
 private fun MissionCard(
@@ -555,6 +575,7 @@ private fun MissionCard(
     onToggle: () -> Unit,
     onMarkCompleted: () -> Unit,
     onCheckIn: (userId: String) -> Unit,
+    onEdit: (() -> Unit)?,
 ) {
   val shape = RoundedCornerShape(18.dp)
   // Nobody can be present before the check-in opens, and nobody is known while it is not.
@@ -607,6 +628,20 @@ private fun MissionCard(
             style = MaterialTheme.typography.labelSmall,
             color = shifter_mutedText,
         )
+      }
+      // A button of its own, so tapping it opens the form without expanding the card.
+      if (onEdit != null) {
+        IconButton(
+            onClick = onEdit,
+            // As large as a touch target, so a tap meant for it never lands on the card.
+            modifier = Modifier.size(48.dp).testTag(ManagerOverviewTestTags.edit(mission.id)),
+        ) {
+          Icon(
+              imageVector = Icons.Filled.Edit,
+              contentDescription = stringResource(R.string.overview_edit_mission),
+              tint = MaterialTheme.colorScheme.primary,
+          )
+        }
       }
       if (expandable) {
         Icon(
