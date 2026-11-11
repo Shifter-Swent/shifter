@@ -4,6 +4,7 @@
 package com.swent.shifter.firebase
 
 import com.google.firebase.FirebaseApp
+import com.google.firebase.Timestamp
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
@@ -24,11 +25,12 @@ object FirestoreEmulatorAdmin {
 
   /**
    * Creates the document at [path] with [fields], whatever `firestore.rules` say, so a test can
-   * store a document no client may write, such as a malformed one. Each value is a [String], a
-   * [Boolean], a [Double], an [Instant], a nested [Map] or a [List] of them, stored as a string, a
-   * boolean, a number, a timestamp, a map or an array.
+   * store a document no client may write, such as a malformed one. Each value is null, a [String],
+   * a [Boolean], an [Int] or a [Long], a [Double], an [Instant] or a [Timestamp], a nested [Map] or
+   * a [List] of them, stored as null, a string, a boolean, an integer, a number, a timestamp, a map
+   * or an array.
    */
-  suspend fun createDocument(path: String, fields: Map<String, Any>) {
+  suspend fun createDocument(path: String, fields: Map<String, Any?>) {
     val parent = path.substringBeforeLast('/')
     val id = path.substringAfterLast('/')
     val body =
@@ -56,12 +58,22 @@ object FirestoreEmulatorAdmin {
     return path
   }
 
-  private fun toValue(value: Any): JSONObject =
+  private fun toValue(value: Any?): JSONObject =
       when (value) {
+        null -> JSONObject().put("nullValue", JSONObject.NULL)
         is String -> JSONObject().put("stringValue", value)
         is Boolean -> JSONObject().put("booleanValue", value)
+        // The REST API takes 64-bit integers as strings.
+        is Int,
+        is Long -> JSONObject().put("integerValue", value.toString())
         is Double -> JSONObject().put("doubleValue", value)
         is Instant -> JSONObject().put("timestampValue", value.toString())
+        is Timestamp ->
+            JSONObject()
+                .put(
+                    "timestampValue",
+                    Instant.ofEpochSecond(value.seconds, value.nanoseconds.toLong()).toString(),
+                )
         is Map<*, *> ->
             JSONObject()
                 .put(
@@ -71,7 +83,7 @@ object FirestoreEmulatorAdmin {
                             "fields",
                             JSONObject().apply {
                               value.forEach { (name, nested) ->
-                                put(name as String, toValue(checkNotNull(nested)))
+                                put(name as String, toValue(nested))
                               }
                             },
                         ),
@@ -80,7 +92,7 @@ object FirestoreEmulatorAdmin {
             JSONObject()
                 .put(
                     "arrayValue",
-                    JSONObject().put("values", JSONArray(value.map { toValue(checkNotNull(it)) })),
+                    JSONObject().put("values", JSONArray(value.map { toValue(it) })),
                 )
         else -> throw IllegalArgumentException("Unsupported field value: $value")
       }
