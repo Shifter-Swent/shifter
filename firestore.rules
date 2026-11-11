@@ -415,6 +415,34 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // channels/admin/messages/{messageId}: the event's admin channel, where its organizer and the
+      // managers of its teams coordinate. A manager is someone the managers index lists with at
+      // least one team, which is written in the same commit as the team, so a replaced manager
+      // loses access at once and a new one gets it. The index alone is not enough, as it can go
+      // stale (a deleted team, #398): the manager must still take part in the event, so someone
+      // who withdraws or is rejected loses access at once too. The check is on the path, not on
+      // the message, so the whole channel can be queried.
+      match /channels/admin/messages/{messageId} {
+        function managesATeam() {
+          let entry = /databases/$(database)/documents/events/$(eventId)/managers/$(request.auth.uid);
+          return exists(entry) && get(entry).data.get('teamIds', []).size() > 0;
+        }
+
+        function canAdmin() {
+          return isOrganizer(eventId) || (isParticipant(eventId) && managesATeam());
+        }
+
+        // Only the organizer sends announcements here, not the managers.
+        function mayAnnounce() {
+          return !request.resource.data.get('announcement', false) || isOrganizer(eventId);
+        }
+
+        allow read: if canAdmin();
+        allow create: if canAdmin() && isValidMessage() && mayAnnounce();
+        // A message is final, like in the other channels.
+        allow update, delete: if false;
+      }
+
       match /shifts/{shiftId} {
         allow read: if canReadEventContent(eventId);
         allow write: if isOrganizer(eventId);

@@ -24,4 +24,12 @@ sealed interface ChatChannelId {
    * organizer sends announcements, not the managers nor the participants.
    */
   data class General(override val eventId: String) : ChatChannelId
+
+  /**
+   * The admin channel of [eventId], where its organizer and the managers of its teams coordinate:
+   * the managers as they are now, while they take part in the event. A volunteer who manages no
+   * team cannot read it, and a manager who is replaced, withdraws or is rejected loses access at
+   * once, as a new manager gets it. Only the organizer sends announcements, not the managers.
+   */
+  data class Admin(override val eventId: String) : ChatChannelId
 }
