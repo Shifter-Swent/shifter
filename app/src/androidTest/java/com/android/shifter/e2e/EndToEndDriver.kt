@@ -300,9 +300,8 @@ class EndToEndDriver(
 
   /**
    * A Google account, the same person on every sign-in: the Auth emulator maps its fixed subject to
-   * the same Firebase user each time.
+   * the same Firebase user each time. Its [name] is the display name the app shows for that user.
    */
-  /** A Google account whose [name] is the display name the app shows for its user. */
   class GoogleAccount(val name: String) {
     private val subject = "google-${UUID.randomUUID()}"
     private val email = "${name.lowercase()}-${UUID.randomUUID()}@example.com"
