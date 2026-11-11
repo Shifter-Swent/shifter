@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -13,6 +14,7 @@ import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate

@@ -23,9 +23,16 @@
         <item quantity="one">%d h</item>
         <item quantity="other">%d h</item>
     </plurals>
+    <!-- The coordinate fields and the action that opens the picker, in both forms. -->
+    <string name="map_field_latitude">Latitude</string>
+    <string name="map_field_longitude">Longitude</string>
+    <string name="map_pick_on_map">Pick on the map</string>
     <!-- The location picker: tap the map to place a point. -->
     <string name="map_picker_hint">Tap the map to place the location</string>
     <string name="map_picker_selected">Selected: %1$s, %2$s</string>
     <string name="map_picker_marker">Selected place</string>
     <string name="map_picker_description">Map to pick a place. Tap it to place the location.</string>
+    <string name="map_picker_title">Pick the location</string>
+    <string name="map_picker_confirm">Use this place</string>
+    <string name="map_picker_close">Close the map</string>
 </resources>
