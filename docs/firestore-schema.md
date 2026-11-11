@@ -127,7 +127,8 @@ It is written in the same commit as the team: `createTeam` with a manager, `setM
 withdrawal or rejection of a manager, which takes them out of their team. A team written directly,
 outside the repositories, is not re-indexed: the rules check every write to the index against the
 team, but cannot require a write to the team to come with one to the index. Managers appointed
-before the index existed are not in it until they are appointed again.
+before the index existed are not in it until `setManager` appoints them again, the same manager
+included.
 
 ### `events/{eventId}/teams/{teamId}/liveLocations/{uid}`
 

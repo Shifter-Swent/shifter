@@ -32,16 +32,18 @@ private fun managerEntry(team: DocumentReference, managerId: String): DocumentRe
 
 /**
  * Mirrors in this transaction the change of manager of [team] from [previous] to [next]: the team
- * leaves the entry of [previous] and joins that of [next]. Nothing is written when they are the
- * same, as the rules refuse an index write that changes nothing about the team.
+ * leaves the entry of [previous] and joins that of [next]. When [next] is already the manager, the
+ * team is still added to their entry: a no-op once it is listed, it indexes a manager appointed
+ * before the index existed.
  */
 internal fun Transaction.indexManagerChange(
     team: DocumentReference,
     previous: String?,
     next: String?,
 ) {
-  if (previous == next) return
-  previous?.let { set(managerEntry(team, it), removing(team), SetOptions.merge()) }
+  if (previous != null && previous != next) {
+    set(managerEntry(team, previous), removing(team), SetOptions.merge())
+  }
   next?.let { set(managerEntry(team, it), adding(team), SetOptions.merge()) }
 }
 
@@ -50,7 +52,10 @@ internal fun WriteBatch.indexManager(team: DocumentReference, managerId: String)
   set(managerEntry(team, managerId), adding(team), SetOptions.merge())
 }
 
-/** Merged rather than rewritten, so the other teams the manager leads stay listed. */
+/*
+ * The writes of the index, merged rather than rewritten, so the other teams of the manager stay
+ * listed: [adding] lists [team] in an entry, [removing] takes it out.
+ */
 private fun adding(team: DocumentReference) =
     mapOf(ManagerIndexSchema.TEAM_IDS to FieldValue.arrayUnion(team.id))
 

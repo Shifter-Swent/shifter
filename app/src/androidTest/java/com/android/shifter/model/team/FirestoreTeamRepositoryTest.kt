@@ -215,6 +215,17 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
+  fun setManager_withTheCurrentManager_indexesAManagerAppointedBeforeTheIndex() = emulatorTest {
+    val team = create(richTeam(newEvent()))
+    // Appointed before the index existed: the team has its manager, the index does not list them.
+    index(team.eventId, MANAGER_ID).delete().await()
+
+    repository.setManager(team.eventId, team.id, MANAGER_ID)
+
+    assertEquals(listOf(team.id), managedTeams(team.eventId, MANAGER_ID))
+  }
+
+  @Test
   fun setManager_withNull_putsTheManagerBackInTheMembers() = emulatorTest {
     val team = create(richTeam(newEvent()))
 
