@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -130,6 +131,7 @@ class SettingsRouteTest {
             repositories.membershipRequestRepository,
             repositories.teamRepository,
             UserMode.VOLUNTEER,
+            repositories.localSharingConsent,
         )
     composeTestRule.setContent {
       ShifterTheme {

@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
 import android.util.Log
@@ -75,11 +76,12 @@ class SettingsViewModel(
     private val teamRepository: TeamRepository,
     mode: UserMode,
     /**
-     * The shared local sharing decision the foreground publisher also reads (#377). Defaulted so a
-     * test that does not exercise the publisher can leave it out; production passes the shared
-     * instance from [RepositoryProvider] through [factory].
+     * The shared local sharing decision the foreground publisher also reads (#377): the one
+     * instance [RepositoryProvider] holds, passed through [factory]. Required, so that leaving it
+     * out of the wiring fails to compile rather than giving Settings an instance of its own that
+     * the publisher never reads.
      */
-    private val localSharingConsent: LocalSharingConsent = LocalSharingConsent(),
+    private val localSharingConsent: LocalSharingConsent,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -204,9 +206,11 @@ class SettingsViewModel(
                     userRepository.setLocationSharing(uid, enabled, teams)
                   }
               // The off is now persisted, or queued offline: confirm it, so the next consent the
-              // publisher observes (the write's own off, or a newer on) ends the local decision and
-              // Firestore drives again, without resuming GPS from the stale true in between (#377).
-              // Inside NonCancellable, so it still confirms if Settings has left the screen.
+              // publisher observes ends the local decision and Firestore drives again, without
+              // resuming GPS from the stale true in between (#377). Usually that is a later on: the
+              // write's own off reached the publisher while the decision was pending (Firestore
+              // commits locally before the server answers) and was held off as such. Inside
+              // NonCancellable, so it still confirms if Settings has left the screen.
               if (!enabled) localSharingConsent.confirmOff(uid)
               result
             }

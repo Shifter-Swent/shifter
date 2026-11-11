@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import kotlinx.coroutines.flow.Flow
@@ -21,11 +22,16 @@ import kotlinx.coroutines.flow.withIndex
  *   ends it**: a fail-closed `false` the observation emits on a failure, or a stale `true` it still
  *   holds, are both ignored, so neither can resume GPS while the write is in flight.
  * - **[confirmOff] - confirmed.** Once Settings' write has landed (or is queued offline), the
- *   **next value the publisher actually observes** ends the decision and hands control back to
- *   Firestore: the write's own `false` (so GPS stays off, with no window - the decision ends
- *   exactly as the stream reaches `false`), or a newer `true` saved meanwhile on another device (so
- *   GPS resumes). A phase change alone never ends it, so the stale `true` cached before the write
- *   is never used to resume GPS.
+ *   **next fresh value the publisher observes** ends the decision and hands control back to
+ *   Firestore. Usually that is a newer `true` saved meanwhile on another device, which resumes GPS:
+ *   online, Firestore commits the write to its local cache before the server answers, so the
+ *   write's own `false` reaches the publisher while the decision is still pending and is ignored as
+ *   such, and the confirmation that follows the answer repeats nothing on the distinct stream. The
+ *   decision then stays confirmed, harmlessly (sharing reads off either way), until that newer
+ *   value. Should the `false` reach the publisher only after the confirmation (an observation
+ *   lagging the write), it ends the decision itself, with no window: GPS stays off as the stream
+ *   reaches `false`. A phase change alone never ends it, so the stale `true` cached before the
+ *   write is never used to resume GPS.
  *
  * [release] ends it outright, with no wait, for the two cases that supersede it directly: the
  * volunteer turning sharing back on, and a failed save rolled back. Turning on is never
@@ -58,9 +64,12 @@ class LocalSharingConsent {
   }
 
   /**
-   * Marks [userId]'s off write as landed, or queued offline: from now the next value the publisher
-   * observes ends the decision and Firestore drives again, so it never outlives the write that
-   * confirms it. A no-op unless a pending off is held for [userId].
+   * Marks [userId]'s off write as landed, or queued offline: from now the next fresh value the
+   * publisher observes ends the decision and Firestore drives again. The write's own `false` has
+   * usually been observed, and ignored, while the decision was still pending (see the class
+   * documentation), so that value is normally a later `true`: the decision outlives the write, but
+   * never past the next consent value, and reads off meanwhile exactly as Firestore does. A no-op
+   * unless a pending off is held for [userId].
    */
   fun confirmOff(userId: String) {
     decision.update {
@@ -96,8 +105,9 @@ class LocalSharingConsent {
           val freshReal = index != lastIndex
           lastIndex = index
           // Once confirmed, the first value observed from then on is the persisted truth after the
-          // write (its own off, or a newer on): the decision ends and Firestore drives again. A
-          // stale cached value, re-paired by a phase change with no new observation, never ends it.
+          // write (a newer on, or its own off when that arrives only now): the decision ends and
+          // Firestore drives again. A stale cached value, re-paired by a phase change with no new
+          // observation, never ends it.
           if (freshReal && phase == Phase.CONFIRMED) release(userId)
           consent && phase == null
         }

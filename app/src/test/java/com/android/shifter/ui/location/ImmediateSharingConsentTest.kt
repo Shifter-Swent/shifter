@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.location
 
 import com.swent.shifter.model.authentication.AuthUser
@@ -38,9 +39,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -223,10 +226,51 @@ class ImmediateSharingConsentTest {
         // Another device turns sharing back on, and this device syncs it.
         users.setLocationSharing(UID, true, emptyList())
 
-        // The publisher starts again: the off decision was released by the write that confirmed it,
-        // so the re-enabled consent is honoured instead of being held off by a stale local
+        // The publisher starts again: the off decision, confirmed but ended by nothing yet since no
+        // publisher observed anything after it, ends on the first value this one observes, the
+        // re-enabled consent, which is honoured instead of being held off by a stale local
         // decision.
         startPublisher()
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+      }
+
+  /**
+   * The usual order online: Firestore commits the off to its local cache before the server answers,
+   * so the publisher observes the write's own false while the decision is still pending, and the
+   * confirmation, which comes with the answer, repeats nothing on the distinct consent stream. The
+   * decision then stays confirmed until a newer value arrives: a remote on must end it and resume
+   * the GPS, which it does not without [LocalSharingConsent.confirmOff].
+   */
+  @Test
+  fun aSavedOff_observedBeforeItIsConfirmed_stillLetsALaterRemoteOnResumeTheGps() =
+      runTest(mainDispatcherRule.dispatcher) {
+        memberOfATeam()
+        // The server's answer is held back: the write is committed locally, not yet confirmed.
+        val serverAnswer = CompletableDeferred<Unit>()
+        users.unconfirmedWrite = serverAnswer
+        val viewModel = settings()
+        startPublisher()
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+
+        viewModel.setLocationSharing(false)
+        runCurrent()
+
+        // The GPS stopped, and the publisher has already observed the committed off, still pending.
+        assertEquals(0, provider.activeCollectors)
+        assertFalse(users.users.getValue(UID).locationSharingEnabled)
+        assertTrue(viewModel.uiState.value.savingLocationSharing)
+
+        // The server answers: Settings confirms the off, and nothing new reaches the publisher.
+        serverAnswer.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(viewModel.uiState.value.savingLocationSharing)
+        assertNull(viewModel.uiState.value.locationSharingNotice)
+        assertEquals(0, provider.activeCollectors)
+
+        // Another device turns sharing back on, and this device syncs it: the GPS resumes.
+        users.setLocationSharing(UID, true, emptyList())
         advanceUntilIdle()
         assertEquals(1, provider.activeCollectors)
       }
