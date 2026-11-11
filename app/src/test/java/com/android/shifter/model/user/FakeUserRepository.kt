@@ -4,17 +4,34 @@ package com.swent.shifter.model.user
 import com.swent.shifter.model.team.Team
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 
 /**
  * In-memory [UserRepository] for ViewModel unit tests. Set [failure] to make every call throw it.
  *
  * Every user in [users] has a public profile with their name, as after signing in.
+ *
+ * [observeLocationSharing] is live: a test changes the consent with [setLocationSharing] and the
+ * flow emits the new value, as a snapshot listener would, or set [observeFailure] to make it fail
+ * like a lost observation.
  */
 class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepository {
 
   val users: MutableMap<String, User> = initialUsers.associateBy { it.uid }.toMutableMap()
 
   var failure: Exception? = null
+
+  /** When set, [observeLocationSharing] fails with it, to test the fail-safe. */
+  var observeFailure: UserRepositoryException? = null
+
+  /** Per-user consent streams, so [observeLocationSharing] reflects [setLocationSharing] live. */
+  private val consentFlows = mutableMapOf<String, MutableStateFlow<Boolean>>()
+
+  private fun consentFlow(uid: String): MutableStateFlow<Boolean> =
+      consentFlows.getOrPut(uid) { MutableStateFlow(users[uid]?.locationSharingEnabled ?: false) }
 
   override suspend fun getUser(uid: String): User? {
     failure?.let { throw it }
@@ -58,7 +75,13 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     val user = users[uid] ?: throw UserRepositoryException.PermissionDenied()
     users[uid] = user.copy(locationSharingEnabled = enabled)
     if (!enabled) positionsRemovedFrom = sharedIn.toList()
+    consentFlow(uid).value = enabled
     unconfirmedWrite?.await()
+  }
+
+  override fun observeLocationSharing(uid: String): Flow<Boolean> = flow {
+    observeFailure?.let { throw it }
+    emitAll(consentFlow(uid))
   }
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? {

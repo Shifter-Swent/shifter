@@ -24,6 +24,8 @@ import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -170,6 +172,8 @@ class SettingsRouteTest {
         enabled: Boolean,
         sharedIn: Collection<Team>,
     ) = throw UnsupportedOperationException()
+
+    override fun observeLocationSharing(uid: String): Flow<Boolean> = flowOf(false)
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */

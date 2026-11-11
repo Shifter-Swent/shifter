@@ -25,6 +25,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
@@ -35,6 +36,8 @@ import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.FakeLocationProvider
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
@@ -71,6 +74,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -1309,6 +1313,126 @@ class ShifterNavHostTest {
     composeTestRule.waitForIdle()
   }
 
+  /**
+   * The end-to-end publishing path. A signed-in volunteer, an accepted member of a team of an event
+   * in progress with sharing turned on, has their position shared under that team while the app is
+   * in the foreground, whatever screen is shown, without any screen being opened for it. This
+   * exercises the ShifterNavHost wiring against the real repositories on the emulators, with a fake
+   * location provider so no GPS is needed. The composition is torn down at the end of the test,
+   * which cancels the publishing session.
+   */
+  @Test
+  fun liveLocation_withAConsentingVolunteerInAnOngoingEvent_sharesTheirPosition() {
+    val event = acceptedEvent(asManager = false, running = true)
+    val volunteer = checkNotNull(repositories.authRepository.currentUser())
+    val teamId = teamIds.getValue(event.id)
+    // The rules accept a position only while the volunteer's profile has sharing on, so the profile
+    // is created and the consent turned on, as the sign-in and Settings would.
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(
+          volunteer.uid,
+          "Vera",
+          volunteer.email ?: "vera@example.com",
+      )
+      repositories.userRepository.setLocationSharing(volunteer.uid, true, emptyList())
+    }
+    // Children first, so tearDown deletes them before the event and the profile they belong to.
+    createdPaths.add(0, "events/${event.id}/teams/$teamId/liveLocations/${volunteer.uid}")
+    createdPaths.add(0, "users/${volunteer.uid}")
+    createdPaths.add(0, "publicProfiles/${volunteer.uid}")
+
+    val locationProvider = FakeLocationProvider().apply { setPosition(GENEVA) }
+    try {
+      composeTestRule.setContent {
+        ShifterTheme {
+          ShifterNavHost(
+              isSignedIn = true,
+              repositories = repositories,
+              locationProvider = locationProvider,
+          )
+        }
+      }
+      waitForNode(MyEventsTestTags.STAFF_SCREEN)
+
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) {
+        runBlocking { sharedPosition(event.id, teamId, volunteer.uid) != null }
+      }
+      val shared = runBlocking { sharedPosition(event.id, teamId, volunteer.uid) }
+      assertEquals(GENEVA.latitude, shared!!.latitude, COORDINATE_TOLERANCE)
+      assertEquals(GENEVA.longitude, shared.longitude, COORDINATE_TOLERANCE)
+    } finally {
+      // Stop the publishing session before tearDown deletes the data, even if an assertion above
+      // failed: signing out cancels it as in production, so no write can race the cleanup. The wait
+      // confirms GPS collection has really stopped, and a successful sign-out reaches it well
+      // within
+      // the bound, so it does not mask an earlier failure.
+      AuthEmulator.auth.signOut()
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) { locationProvider.activeCollectors == 0 }
+    }
+  }
+
+  /**
+   * The position the volunteer has shared in the team, read from their own live-location document,
+   * which the rules let them get, or null when none is stored yet.
+   */
+  private suspend fun sharedPosition(eventId: String, teamId: String, uid: String): GeoPosition? {
+    val snapshot =
+        FirestoreEmulator.firestore
+            .document("events/$eventId/teams/$teamId/liveLocations/$uid")
+            .get(Source.SERVER)
+            .await()
+    // Only a server-confirmed write counts: a locally pending one has not reached the emulator.
+    if (!snapshot.exists() || snapshot.metadata.hasPendingWrites()) return null
+    val position = snapshot.get("position") as? Map<*, *> ?: return null
+    val latitude = (position["latitude"] as? Number)?.toDouble() ?: return null
+    val longitude = (position["longitude"] as? Number)?.toDouble() ?: return null
+    return GeoPosition(latitude, longitude)
+  }
+
+  /**
+   * A publishing session whose GPS source fails is reported by the app-level handler and does not
+   * crash the composition: the app stays on the events screen. This drives the live-location
+   * publisher's failure path end to end, which a unit test cannot reach.
+   */
+  @Test
+  fun liveLocation_whenASessionFails_isReportedWithoutCrashingTheApp() {
+    val event = acceptedEvent(asManager = false, running = true)
+    val volunteer = checkNotNull(repositories.authRepository.currentUser())
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(
+          volunteer.uid,
+          "Vera",
+          volunteer.email ?: "vera@example.com",
+      )
+      repositories.userRepository.setLocationSharing(volunteer.uid, true, emptyList())
+    }
+    createdPaths.add(0, "users/${volunteer.uid}")
+    createdPaths.add(0, "publicProfiles/${volunteer.uid}")
+
+    val locationProvider = FakeLocationProvider().apply { failing = true }
+    try {
+      composeTestRule.setContent {
+        ShifterTheme {
+          ShifterNavHost(
+              isSignedIn = true,
+              repositories = repositories,
+              locationProvider = locationProvider,
+          )
+        }
+      }
+      waitForNode(MyEventsTestTags.STAFF_SCREEN)
+
+      // The eligible session starts, collects the failing GPS and throws; the handler reports it.
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) { locationProvider.faultTriggered.value }
+      composeTestRule.waitForIdle()
+
+      // The fault did not propagate to the UI: the events screen is still usable.
+      composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    } finally {
+      AuthEmulator.auth.signOut()
+    }
+  }
+
   /** Opens a real session, then shows the app on Volunteer events and returns its controller. */
   private fun signInAndShowApp(name: String = "Ada"): NavHostController {
     runBlocking {
@@ -1342,9 +1466,17 @@ class ShifterNavHostTest {
         }
       }
 
-  /** Creates an upcoming event organized by [organizer], who must be the signed-in user. */
-  private fun createEvent(organizer: AuthUser): Event {
+  /**
+   * Creates an event organized by [organizer], who must be the signed-in user: upcoming by default,
+   * or in progress now when [running], for the tests that need an event whose period is open.
+   */
+  private fun createEvent(organizer: AuthUser, running: Boolean = false): Event {
     val now = Instant.now()
+    // On a whole minute, as a mission's time is picked to the minute.
+    val startAt =
+        if (running) now.minus(Duration.ofHours(1)).truncatedTo(ChronoUnit.MINUTES)
+        else now.plus(Duration.ofDays(1)).truncatedTo(ChronoUnit.MINUTES)
+    val endAt = if (running) now.plus(Duration.ofHours(1)) else now.plus(Duration.ofDays(2))
     val event = runBlocking {
       repositories.eventRepository.createEvent(
           Event(
@@ -1352,9 +1484,8 @@ class ShifterNavHostTest {
               title = "Beach cleanup",
               description = "Collect the litter left on the beach.",
               type = EventType.NATURE,
-              // On a whole minute, as a mission's time is picked to the minute.
-              startAt = now.plus(Duration.ofDays(1)).truncatedTo(ChronoUnit.MINUTES),
-              endAt = now.plus(Duration.ofDays(2)),
+              startAt = startAt,
+              endAt = endAt,
               location = EventLocation("Vidy beach, Lausanne"),
               createdAt = now,
           )
@@ -1388,8 +1519,9 @@ class ShifterNavHostTest {
       asManager: Boolean,
       organizerAccount: GoogleIdTokenCredential = googleCredential("Olga"),
       volunteerAccount: GoogleIdTokenCredential = googleCredential(),
+      running: Boolean = false,
   ): Event {
-    val event = createEvent(signIn(organizerAccount))
+    val event = createEvent(signIn(organizerAccount), running = running)
     val volunteer = signIn(volunteerAccount)
     applyTo(event, volunteer)
     signIn(organizerAccount)
@@ -1466,5 +1598,12 @@ class ShifterNavHostTest {
 
   private companion object {
     const val TIMEOUT_MILLIS = 20_000L
+
+    /** Long enough for the coordinator to resolve the target and the publisher to write once. */
+    const val PUBLISH_TIMEOUT_MILLIS = 30_000L
+
+    const val COORDINATE_TOLERANCE = 1e-9
+
+    val GENEVA = GeoPosition(46.2044, 6.1432)
   }
 }

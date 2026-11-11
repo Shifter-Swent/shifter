@@ -157,6 +157,7 @@ dependencies {
   implementation(libs.compose.icons.extended)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.runtime.compose)
+  testImplementation(libs.androidx.lifecycle.runtime.testing)
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
   testImplementation(libs.mockk)

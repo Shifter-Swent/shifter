@@ -14,6 +14,10 @@ import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamSchema
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
 const val USERS_COLLECTION = "users"
@@ -116,6 +120,45 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
           .document(team.id)
           .collection(LiveLocationSchema.COLLECTION)
           .document(uid)
+
+  /**
+   * Listens to `users/{uid}`, so a publishing session follows the consent without polling.
+   *
+   * Firestore delivers a local write to this listener before the server confirms it (the snapshot
+   * then carries `hasPendingWrites`), so turning sharing off through [setLocationSharing] stops GPS
+   * at once even while that batch is still queued offline, without waiting for the call to return.
+   *
+   * The first snapshot is the current value, so the flow emits nothing before the setting is known:
+   * no placeholder `false` that would delete a valid position, nor a `true` that would authorize
+   * GPS too early. A document that does not exist reads as `false`, consent being opt-in.
+   * [distinctUntilChanged] suppresses duplicate consent values: the listener fires on any change to
+   * `users/{uid}`, so editing another field such as `mode` (#436) re-delivers the unchanged
+   * boolean, which is dropped rather than forwarded as a spurious change. The listener does not
+   * request `MetadataChanges.INCLUDE`, so it receives no metadata-only acknowledgement snapshots to
+   * filter.
+   *
+   * A listener error ends the flow with a [UserRepositoryException]; a malformed profile ends it
+   * with [UserRepositoryException.Unknown]. The flow never goes quiet on the last value read, so a
+   * lost observation cannot keep authorizing GPS; the caller decides what to do with the failure.
+   */
+  override fun observeLocationSharing(uid: String): Flow<Boolean> = callbackFlow {
+    val registration =
+        db.collection(USERS_COLLECTION).document(uid).addSnapshotListener { snapshot, error ->
+          when {
+            error != null -> close(toRepositoryException(error))
+            snapshot == null || !snapshot.exists() -> trySend(false)
+            else ->
+                try {
+                  trySend(snapshot.requireBoolean(ENTITY, LOCATION_SHARING_ENABLED))
+                } catch (e: IllegalStateException) {
+                  close(UserRepositoryException.Unknown(e))
+                }
+          }
+        }
+    // Keeps the flow open while collected, then removes the listener so Firestore stops it.
+    awaitClose { registration.remove() }
+  }
+      .distinctUntilChanged()
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
     db.collection(PUBLIC_PROFILES_COLLECTION)

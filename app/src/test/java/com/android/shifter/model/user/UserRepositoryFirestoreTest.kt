@@ -6,10 +6,12 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
@@ -18,8 +20,12 @@ import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_S
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import java.time.Instant
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -28,6 +34,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class UserRepositoryFirestoreTest {
 
   private val db = mockk<FirebaseFirestore>()
@@ -410,6 +417,91 @@ class UserRepositoryFirestoreTest {
     assertTrue(map(Code.UNAVAILABLE) is UserRepositoryException.Unavailable)
     assertTrue(map(Code.DEADLINE_EXCEEDED) is UserRepositoryException.Unavailable)
     assertTrue(map(Code.INTERNAL) is UserRepositoryException.Unknown)
+  }
+
+  /**
+   * Captures the snapshot listener [observeLocationSharing] registers on `users/{uid}`, so a test
+   * can drive it with the snapshots and errors Firestore would deliver. The registration is a
+   * relaxed mock, since the flow only calls `remove()` on it.
+   */
+  private fun captureSnapshotListener() =
+      slot<EventListener<DocumentSnapshot>>().also {
+        every { ref.addSnapshotListener(capture(it)) } returns
+            mockk<ListenerRegistration>(relaxed = true)
+      }
+
+  @Test
+  fun observeLocationSharing_emitsTheStoredSetting() = runTest {
+    val listener = captureSnapshotListener()
+    stored(mapOf(LOCATION_SHARING_ENABLED to true))
+    val seen = mutableListOf<Boolean>()
+    val job = backgroundScope.launch {
+      repository.observeLocationSharing(UID).collect { seen += it }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    job.cancel()
+
+    assertEquals(listOf(true), seen)
+  }
+
+  @Test
+  fun observeLocationSharing_whenTheProfileIsMissing_emitsFalse() = runTest {
+    val listener = captureSnapshotListener()
+    stored(null)
+    val seen = mutableListOf<Boolean>()
+    val job = backgroundScope.launch {
+      repository.observeLocationSharing(UID).collect { seen += it }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    job.cancel()
+
+    assertEquals(listOf(false), seen)
+  }
+
+  @Test
+  fun observeLocationSharing_whenTheProfileIsMalformed_failsWithUnknown() = runTest {
+    val listener = captureSnapshotListener()
+    // Present but without the boolean field: requireBoolean rejects it as a malformed document.
+    stored(mapOf(DISPLAY_NAME to "Ada"))
+    var thrown: Throwable? = null
+    backgroundScope.launch {
+      try {
+        repository.observeLocationSharing(UID).collect {}
+      } catch (e: Throwable) {
+        thrown = e
+      }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+
+    assertTrue(thrown is UserRepositoryException.Unknown)
+  }
+
+  @Test
+  fun observeLocationSharing_whenTheListenerFails_failsWithTheMappedException() = runTest {
+    val listener = captureSnapshotListener()
+    var thrown: Throwable? = null
+    backgroundScope.launch {
+      try {
+        repository.observeLocationSharing(UID).collect {}
+      } catch (e: Throwable) {
+        thrown = e
+      }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(null, FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
+    runCurrent()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
   }
 
   private companion object {
