@@ -46,7 +46,7 @@ import kotlinx.coroutines.withTimeout
 
 /** Why the automatic check-in shows an error. The screen turns each into a translated message. */
 enum class AutoCheckInError {
-  /** The backend refused the check-in: it is not tried again. */
+  /** The backend refused the check-in: it is not tried again while the mission stays assigned. */
   NOT_ALLOWED,
 
   /** The backend could not be reached in time: the check-in is tried again on the next position. */
@@ -100,7 +100,10 @@ class AutoCheckInViewModel(
 
   private val _uiState = MutableStateFlow(AutoCheckInUiState(locationProvider.status.value))
 
-  /** Missions tried, as (event id, mission id): in flight, recorded or refused. */
+  /**
+   * Missions tried, as (event id, mission id): in flight, recorded or refused. A mission is
+   * forgotten once it leaves the open missions, so that it is tried again if it comes back.
+   */
   private val tried = mutableSetOf<Pair<String, String>>()
 
   // [watch] never emits: it only updates [_uiState], and runs while the screen collects.
@@ -143,6 +146,9 @@ class AutoCheckInViewModel(
             .observeMissionsAssignedTo(userId)
             .flatMapLatest { assigned -> openMissions(assigned) }
             .stateIn(this)
+    // A refusal is about the assignment it was made for: a mission unassigned then assigned again
+    // is tried again.
+    launch { missions.collect { open -> tried.retainAll(open.map { it.key }.toSet()) } }
     // Follows the check-ins of the events the missions belong to, including events that appear
     // later.
     val known =

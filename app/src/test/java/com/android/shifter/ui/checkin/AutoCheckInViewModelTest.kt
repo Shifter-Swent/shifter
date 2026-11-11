@@ -375,6 +375,25 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
+  fun missionRefusedThenAssignedAgain_isTriedAgain() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+    moveTo(NEAR)
+    checkIns.failure = null
+
+    // Unassigned by mistake, then assigned again by the manager.
+    missions.updateAssignees(EVENT, mission.id, emptyList())
+    runCurrent()
+    missions.updateAssignees(EVENT, mission.id, listOf(USER))
+    runCurrent()
+    moveTo(NEAR)
+
+    assertEquals(1, checkIns.checkIns.size)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
   fun missionUnassignedWhileOpen_isNotTried() = runTest {
     val mission = addMission()
     open()
