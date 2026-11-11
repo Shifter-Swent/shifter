@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
@@ -73,6 +74,12 @@ class SettingsViewModel(
     private val membershipRequestRepository: MembershipRequestRepository,
     private val teamRepository: TeamRepository,
     mode: UserMode,
+    /**
+     * The shared local sharing decision the foreground publisher also reads (#377). Defaulted so a
+     * test that does not exercise the publisher can leave it out; production passes the shared
+     * instance from [RepositoryProvider] through [factory].
+     */
+    private val localSharingConsent: LocalSharingConsent = LocalSharingConsent(),
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -177,6 +184,10 @@ class SettingsViewModel(
     val uid = repository.currentUser()?.uid
     val previous = state.locationSharing
     if (uid == null || previous == null || state.savingLocationSharing) return
+    // Tell the foreground publisher at once, before the teams are read or anything is written, so
+    // turning sharing off stops GPS now rather than after the lookups and the Firestore round-trip
+    // (#377). Turning it on only drops a pending off: consent is not published before it is valid.
+    if (enabled) localSharingConsent.release(uid) else localSharingConsent.turnOff(uid)
     _uiState.update {
       it.copy(locationSharing = enabled, savingLocationSharing = true, locationSharingNotice = null)
     }
@@ -202,6 +213,10 @@ class SettingsViewModel(
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
+        // Nothing was written, so the local decision is dropped and the publisher follows the
+        // unchanged Firestore consent again, rather than a value that never reached the backend.
+        // Synchronous, so it still runs if Settings has already left and the scope is cancelling.
+        localSharingConsent.release(uid)
         _uiState.update {
           it.copy(
               locationSharing = previous,
@@ -286,6 +301,7 @@ class SettingsViewModel(
                 repositories.membershipRequestRepository,
                 repositories.teamRepository,
                 mode,
+                repositories.localSharingConsent,
             )
           }
         }
