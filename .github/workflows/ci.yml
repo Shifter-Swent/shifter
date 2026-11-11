@@ -17,8 +17,10 @@ on:
 # emulators. Sonar then merges the coverage of all of them, and the "CI" job, the check required
 # to merge, reports whether everything passed.
 env:
-  # How many emulators share the instrumented tests: keep it equal to the length of the shard list
-  # of the instrumented job.
+  # How many emulators share the instrumented tests, read only by the sonar job to check it got the
+  # coverage of each: keep it equal to the length of the shard list of the instrumented job. The
+  # shards themselves take their count from the matrix, so a mismatch fails the sonar job instead
+  # of skipping tests.
   SHARDS: 4
 
 jobs:
@@ -159,7 +161,8 @@ jobs:
         run: npm install -g firebase-tools@15
 
       # Run this shard's part of the connected tests on the emulator. The test runner splits the
-      # tests by a hash of their name, so each runs in exactly one shard.
+      # tests by a hash of their name, so each runs in exactly one shard. The count and the index
+      # come from the matrix, so they always agree with the jobs that run.
       #
       # `firebase emulators:exec` starts the Auth and Firestore emulators on the runner (the host),
       # runs the given command, and shuts the emulator down afterwards - also when the tests fail.
@@ -174,7 +177,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: firebase emulators:exec --only auth,firestore "./gradlew connectedDebugAndroidTest --parallel --build-cache -Pandroid.testInstrumentationRunnerArguments.numShards=${{ env.SHARDS }} -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
+          script: firebase emulators:exec --only auth,firestore "./gradlew connectedDebugAndroidTest --parallel --build-cache -Pandroid.testInstrumentationRunnerArguments.numShards=${{ strategy.job-total }} -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ strategy.job-index }}"
 
       # The count of each shard adds up to all the instrumented tests, each run once.
       - name: Count the tests of this shard
