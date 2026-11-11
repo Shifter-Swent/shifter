@@ -70,8 +70,8 @@ interface MembershipRequestRepository {
    *
    * Only the organizer can move a volunteer: security rules deny anyone else with
    * [MembershipRequestRepositoryException.PermissionDenied]. A request that is missing or not
-   * accepted, a volunteer who manages their team, or a [teamId] that does not exist are reported as
-   * [MembershipRequestRepositoryException.Unknown].
+   * accepted, a volunteer who manages their team, a [teamId] that does not exist, or a request that
+   * changed team during the move are reported as [MembershipRequestRepositoryException.Unknown].
    *
    * A Firestore-backed implementation also deletes the position [userId] shared with the team they
    * leave. The in-memory fakes do not model it, nor the missions.

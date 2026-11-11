@@ -573,21 +573,23 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     val eventId = event()
     apply(eventId, volunteer)
     val other = account()
-    apply(eventId, other)
+    apply(eventId, other, OTHER_TEAM_ID)
     signIn(organizer)
     repository.accept(eventId, volunteer.uid)
     repository.accept(eventId, other.uid)
     teamRepository.setManager(eventId, OTHER_TEAM_ID, other.uid)
 
-    // Neither the volunteer, nor a participant, even the manager of the team they would join.
+    // Neither the volunteer, nor a participant, even the manager of the team they would join:
+    // through the repository, nor by writing the team of the request directly.
     for (user in listOf(volunteer, other)) {
       signIn(user)
       assertDenied { repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID) }
+      assertDenied { requestRef(eventId, volunteer).update("teamId", OTHER_TEAM_ID).await() }
     }
     signIn(organizer)
     // The organizer cannot change the team of a request without moving the volunteer.
     assertDenied { requestRef(eventId, volunteer).update("teamId", OTHER_TEAM_ID).await() }
-    assertEquals(listOf(volunteer.uid, other.uid), memberIds(eventId, TEAM_ID))
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, TEAM_ID))
     assertEquals(TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
   }
 

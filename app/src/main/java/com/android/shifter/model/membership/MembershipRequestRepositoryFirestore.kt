@@ -136,7 +136,11 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   /**
    * The missions are found before the transaction, which cannot run a query: those of the old team
    * that [userId] is assigned to. A mission assigned to them meanwhile keeps them, as it would if
-   * it were assigned right after the move.
+   * it were assigned right after the move. If their request changed team meanwhile, that list is
+   * outdated, so the move is refused rather than leaving them on the missions of their old team.
+   *
+   * A refusal is returned by the transaction and thrown after it: thrown inside, a
+   * [FirebaseFirestoreException] would make the SDK run the transaction again, up to five times.
    */
   override suspend fun moveToTeam(eventId: String, userId: String, teamId: String) {
     translatingErrors {
@@ -152,39 +156,47 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
               .documents
               .filter { it.getString(MissionSchema.TEAM_ID) == previousTeamId }
               .map { it.reference }
-      db.runTransaction { transaction ->
-            val snapshot = transaction.get(request)
-            if (
-                snapshot.getString(MembershipRequestSchema.STATUS) !=
-                    MembershipRequestStatus.ACCEPTED.name
-            ) {
-              throw cannotMove("'$userId' is not an accepted volunteer of event '$eventId'")
-            }
-            val from = snapshot.getString(MembershipRequestSchema.TEAM_ID)
-            if (from == teamId) return@runTransaction null
-            val target = team(eventId, teamId)
-            if (!transaction.get(target).exists()) {
-              throw cannotMove("Team '$teamId' of event '$eventId' does not exist")
-            }
-            val previous = from?.let { team(eventId, it) }
-            val previousSnapshot = previous?.let { transaction.get(it) }
-            if (previousSnapshot?.getString(TeamSchema.MANAGER_ID) == userId) {
-              throw cannotMove("'$userId' manages their team and cannot be moved")
-            }
-            val assigned = missions.filter {
-              from == previousTeamId && transaction.get(it).exists()
-            }
-            if (previous != null && previousSnapshot?.exists() == true) {
-              transaction.leaveTeam(previous, previousSnapshot, userId)
-            }
-            transaction.update(target, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
-            transaction.update(request, MembershipRequestSchema.TEAM_ID, teamId)
-            assigned.forEach {
-              transaction.update(it, MissionSchema.ASSIGNEE_IDS, FieldValue.arrayRemove(userId))
-            }
-            null
-          }
-          .await()
+      val refusal: String? =
+          db.runTransaction { transaction ->
+                val snapshot = transaction.get(request)
+                if (
+                    snapshot.getString(MembershipRequestSchema.STATUS) !=
+                        MembershipRequestStatus.ACCEPTED.name
+                ) {
+                  return@runTransaction "'$userId' is not an accepted volunteer of event '$eventId'"
+                }
+                val from = snapshot.getString(MembershipRequestSchema.TEAM_ID)
+                if (from == teamId) return@runTransaction null
+                if (from != previousTeamId) {
+                  return@runTransaction "The team of '$userId' changed meanwhile, try again"
+                }
+                val target = team(eventId, teamId)
+                if (!transaction.get(target).exists()) {
+                  return@runTransaction "Team '$teamId' of event '$eventId' does not exist"
+                }
+                val previous = from?.let { team(eventId, it) }
+                val previousSnapshot = previous?.let { transaction.get(it) }
+                if (previousSnapshot?.getString(TeamSchema.MANAGER_ID) == userId) {
+                  return@runTransaction "'$userId' manages their team and cannot be moved"
+                }
+                // Read again, so a mission deleted or given to another team meanwhile is left
+                // alone.
+                val assigned = missions.filter {
+                  val mission = transaction.get(it)
+                  mission.exists() && mission.getString(MissionSchema.TEAM_ID) == from
+                }
+                if (previous != null && previousSnapshot?.exists() == true) {
+                  transaction.leaveTeam(previous, previousSnapshot, userId)
+                }
+                transaction.update(target, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
+                transaction.update(request, MembershipRequestSchema.TEAM_ID, teamId)
+                assigned.forEach {
+                  transaction.update(it, MissionSchema.ASSIGNEE_IDS, FieldValue.arrayRemove(userId))
+                }
+                null
+              }
+              .await()
+      refusal?.let { throw MembershipRequestRepositoryException.Unknown(IllegalStateException(it)) }
     }
   }
 
@@ -269,10 +281,6 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     if (!snapshot.exists()) throw undecidable(snapshot, eventId, userId)
     return team(eventId, snapshot.toRequestOrThrow().teamId)
   }
-
-  /** Why a volunteer cannot be moved, failing the transaction with a code that names it. */
-  private fun cannotMove(message: String) =
-      FirebaseFirestoreException(message, Code.FAILED_PRECONDITION)
 
   /**
    * Why the request in [snapshot] cannot be decided: it does not exist, or it does not match the
