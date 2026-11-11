@@ -27,6 +27,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -190,6 +191,36 @@ class LocationPickerTest {
     compose
         .onNodeWithTag(LocationPickerTestTags.SELECTED)
         .assertTextEquals("Selected: 46.50690, 6.62660")
+  }
+
+  @Test
+  fun parseCoordinate_acceptsAPointOrACommaWithinTheRange() {
+    assertEquals(46.5, parseCoordinate(" 46.5 ", -90.0..90.0))
+    assertEquals(-6.25, parseCoordinate("-6,25", -90.0..90.0))
+    assertNull(parseCoordinate("", -90.0..90.0))
+    assertNull(parseCoordinate("   ", -90.0..90.0))
+    assertNull(parseCoordinate("abc", -90.0..90.0))
+    assertNull(parseCoordinate("-90.5", -90.0..90.0))
+  }
+
+  @Test
+  fun parseCoordinate_atTheEdgesOfTheRange_acceptsThem() {
+    assertEquals(-90.0, parseCoordinate("-90", -90.0..90.0))
+    assertEquals(90.0, parseCoordinate("90", -90.0..90.0))
+    assertEquals(180.0, parseCoordinate("180", -180.0..180.0))
+  }
+
+  @Test
+  fun parseCoordinate_withAUnitOrAHemisphere_refusesIt() {
+    assertNull(parseCoordinate("46.5N", -90.0..90.0))
+    assertNull(parseCoordinate("46.5°", -90.0..90.0))
+  }
+
+  @Test
+  fun parseCoordinate_withNaNOrInfinity_refusesThem() {
+    // Java's number syntax has words for these; the range is what rejects them.
+    assertNull(parseCoordinate("NaN", -90.0..90.0))
+    assertNull(parseCoordinate("Infinity", -90.0..90.0))
   }
 
   private companion object {

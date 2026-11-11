@@ -14,7 +14,6 @@ import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
-import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -1070,15 +1069,6 @@ class AddMissionViewModelTest {
     viewModel.save()
     advanceUntilIdle()
     assertEquals(2, missions.created.size)
-  }
-
-  @Test
-  fun parseCoordinate_acceptsAPointOrACommaWithinTheRange() {
-    assertEquals(46.5, parseCoordinate(" 46.5 ", -90.0..90.0))
-    assertEquals(-6.25, parseCoordinate("-6,25", -90.0..90.0))
-    assertNull(parseCoordinate("", -90.0..90.0))
-    assertNull(parseCoordinate("abc", -90.0..90.0))
-    assertNull(parseCoordinate("-90.5", -90.0..90.0))
   }
 
   @Test
