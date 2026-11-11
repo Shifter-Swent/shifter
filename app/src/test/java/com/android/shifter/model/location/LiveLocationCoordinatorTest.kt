@@ -577,16 +577,20 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
-  fun of_addressesTheSessionWithTheTargetsEventAndTeam() =
+  fun of_addressesTheSessionWithTheTargetsEventAndTeamAndPassesOnItsStates() =
       runTest(UnconfinedTestDispatcher()) {
         val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
         val provider = FakeLocationProvider()
         val publisher = LiveLocationPublisher(provider, repository, now = { clock })
+        val reported = mutableListOf<LiveLocationSharingState>()
         backgroundScope.launch {
-          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true)) {}
+          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true), reported::add)
         }
 
         provider.emit(GENEVA)
+
+        // What the publisher reports reaches the coordinator: without it, no state would ever show.
+        assertEquals(listOf(WAITING, SHARED), reported)
 
         assertEquals(
             listOf(LiveLocation(VOLUNTEER, GENEVA, clock)),

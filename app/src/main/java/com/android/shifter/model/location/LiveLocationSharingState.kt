@@ -50,10 +50,12 @@ enum class LiveLocationSharingState {
   NO_LOCATION_ACCESS,
 
   /**
-   * The backend refused the last position written, so the manager does not see it. The causes
-   * [LiveLocationRepositoryException.PermissionDenied] lists all land here. The next position worth
-   * a write tries again, so this lasts at least [LiveLocationPublisher.MIN_INTERVAL], and up to
-   * [LiveLocationPublisher.REFRESH_INTERVAL] for a volunteer standing still.
+   * The backend refused the last position written: it was not accepted, but this does not mean the
+   * manager sees no position. One accepted before stays visible, a measure older than it being one
+   * of the reasons for a refusal. The causes [LiveLocationRepositoryException.PermissionDenied]
+   * lists all land here. The next position worth a write tries again, so this lasts at least
+   * [LiveLocationPublisher.MIN_INTERVAL], and up to [LiveLocationPublisher.REFRESH_INTERVAL] for a
+   * volunteer standing still.
    */
   REFUSED,
 }
