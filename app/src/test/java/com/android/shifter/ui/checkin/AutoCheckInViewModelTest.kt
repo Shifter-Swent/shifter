@@ -192,7 +192,8 @@ class AutoCheckInViewModelTest {
   @Test
   fun missionWithoutLocationOrOver_isNotTried() = runTest {
     addMission("Anywhere", at = null)
-    addMission("Over", endsIn = Duration.ofMinutes(-1))
+    // Ended a minute ago, after an hour: a mission always ends after it starts.
+    addMission("Over", startAt = NOW - Duration.ofHours(1), endsIn = Duration.ofMinutes(59))
     isEligible = { _, _, _ -> true }
     open()
 
@@ -203,7 +204,8 @@ class AutoCheckInViewModelTest {
 
   @Test
   fun missionAtTheEndOfItsWindow_isStillTried() = runTest {
-    addMission(endsIn = Duration.ZERO)
+    // Ending right now, after an hour.
+    addMission(startAt = NOW - Duration.ofHours(1), endsIn = Duration.ofHours(1))
     open()
 
     moveTo(NEAR)
