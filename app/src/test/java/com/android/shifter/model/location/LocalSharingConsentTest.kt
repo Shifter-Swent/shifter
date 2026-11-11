@@ -66,32 +66,17 @@ class LocalSharingConsentTest {
       }
 
   @Test
-  fun applyTo_releasesTheDecision_onceTheRealConsentConfirmsTheOff() =
+  fun applyTo_aTransientFalseInTheRealConsent_doesNotReleaseTheForcedOff() =
       runTest(UnconfinedTestDispatcher()) {
         val real = MutableStateFlow(true)
         consent.turnOff(USER)
         val seen = mutableListOf<Boolean>()
         val job = backgroundScope.launch { consent.applyTo(real, USER).toList(seen) }
 
-        // The real consent catches up to the off: the decision is reconciled and dropped.
+        // A fail-closed false (the observation briefly reports off while the write is in flight)
+        // must not be taken for the write landing: when the real consent recovers to the
+        // still-persisted true, sharing stays off until it is explicitly released.
         real.value = false
-        // A later on, e.g. from another device, is then followed rather than held off.
-        real.value = true
-        job.cancel()
-
-        assertEquals(listOf(false, true), seen)
-      }
-
-  @Test
-  fun applyTo_doesNotReleaseTheDecision_whileTheRealConsentStillSaysOn() =
-      runTest(UnconfinedTestDispatcher()) {
-        val real = MutableStateFlow(true)
-        consent.turnOff(USER)
-        val seen = mutableListOf<Boolean>()
-        val job = backgroundScope.launch { consent.applyTo(real, USER).toList(seen) }
-
-        // The real consent is still the stale on: the forced off must not be dropped onto it, or
-        // GPS would resume from an older snapshot.
         real.value = true
         job.cancel()
 
@@ -112,6 +97,65 @@ class LocalSharingConsentTest {
         job.cancel()
 
         assertEquals(listOf(false, true), seen)
+      }
+
+  @Test
+  fun confirmOff_withAStaleOn_doesNotResumeUntilTheObservedOff() =
+      runTest(UnconfinedTestDispatcher()) {
+        val real = MutableStateFlow(true)
+        val seen = mutableListOf<Boolean>()
+        val job = backgroundScope.launch { consent.applyTo(real, USER).toList(seen) }
+
+        consent.turnOff(USER)
+        // The write lands, but the publisher's stream still holds the stale on: confirming must not
+        // resume GPS from it. Only the off the publisher then observes ends the decision.
+        consent.confirmOff(USER)
+        assertEquals(listOf(true, false), seen)
+
+        real.value = false
+        job.cancel()
+
+        // Never an on between the forced off and the observed off: no window.
+        assertEquals(listOf(true, false), seen)
+      }
+
+  @Test
+  fun confirmOff_thenANewerOn_resumes() =
+      runTest(UnconfinedTestDispatcher()) {
+        val real = MutableStateFlow(true)
+        val seen = mutableListOf<Boolean>()
+        val job = backgroundScope.launch { consent.applyTo(real, USER).toList(seen) }
+
+        consent.turnOff(USER)
+        consent.confirmOff(USER)
+        // The publisher observes the write's off, then a newer on saved on another device: the
+        // confirmed decision ends and Firestore drives again, so sharing resumes.
+        real.value = false
+        real.value = true
+        job.cancel()
+
+        assertEquals(listOf(true, false, true), seen)
+      }
+
+  @Test
+  fun applyTo_afterConfirm_doesNotTellAFailClosedFalseFromTheObservedOff() =
+      runTest(UnconfinedTestDispatcher()) {
+        val real = MutableStateFlow(true)
+        val seen = mutableListOf<Boolean>()
+        val job = backgroundScope.launch { consent.applyTo(real, USER).toList(seen) }
+
+        consent.turnOff(USER)
+        consent.confirmOff(USER)
+        // A fail-closed false is a fresh value, so it ends the confirmed decision just as the real
+        // off would: applyTo alone cannot keep a stale on that follows it from resuming sharing.
+        // The backend ordering is what rules that out, not applyTo: the next real value after a
+        // confirmed off is the committed off, never a stale on. See the integration counterpart
+        // aFailClosedFalseAfterConfirm_thenTheCommittedOff_doesNotResumeTheGps.
+        real.value = false // stands in for the fail-closed false
+        real.value = true // a stale on, which production never delivers here
+        job.cancel()
+
+        assertEquals(listOf(true, false, true), seen)
       }
 
   @Test

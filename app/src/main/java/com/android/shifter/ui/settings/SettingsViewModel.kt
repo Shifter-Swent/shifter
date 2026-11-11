@@ -199,9 +199,16 @@ class SettingsViewModel(
         val confirmed =
             withContext(NonCancellable) {
               val teams = if (enabled) emptyList() else teamsOf(uid)
-              withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) {
-                userRepository.setLocationSharing(uid, enabled, teams)
-              }
+              val result =
+                  withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) {
+                    userRepository.setLocationSharing(uid, enabled, teams)
+                  }
+              // The off is now persisted, or queued offline: confirm it, so the next consent the
+              // publisher observes (the write's own off, or a newer on) ends the local decision and
+              // Firestore drives again, without resuming GPS from the stale true in between (#377).
+              // Inside NonCancellable, so it still confirms if Settings has left the screen.
+              if (!enabled) localSharingConsent.confirmOff(uid)
+              result
             }
         _uiState.update {
           it.copy(

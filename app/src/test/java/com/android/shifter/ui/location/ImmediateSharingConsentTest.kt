@@ -3,6 +3,7 @@ package com.swent.shifter.ui.location
 
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
+import com.swent.shifter.model.location.CONSENT_RETRY_DELAY
 import com.swent.shifter.model.location.FakeLiveLocationRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.LiveLocationPublisher
@@ -18,14 +19,21 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.ui.settings.LocationSharingNotice
 import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
+import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -174,6 +182,140 @@ class ImmediateSharingConsentTest {
             viewModel.uiState.value.locationSharingNotice,
         )
         assertEquals(false, viewModel.uiState.value.locationSharing)
+        assertEquals(0, provider.activeCollectors)
+      }
+
+  @Test
+  fun aFailClosedConsentDuringAnOff_doesNotResumeTheGps() =
+      runTest(mainDispatcherRule.dispatcher) {
+        // The consent stream as sharingConsent yields it across a lost observation: the persisted
+        // on, then a fail-closed off, then the persisted on again once the observation recovers.
+        val real = MutableStateFlow(true)
+        backgroundScope.launch { publisher.publish(EVENT, TEAM, consent.applyTo(real, UID)) }
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+
+        // Settings forces off; its write is still in flight, so the real consent is still on.
+        consent.turnOff(UID)
+        advanceUntilIdle()
+        assertEquals(0, provider.activeCollectors)
+
+        // The observation fails then recovers: neither the fail-closed off nor the recovered on
+        // ends the local decision, so the GPS does not come back on while the switch is off.
+        real.value = false
+        real.value = true
+        advanceUntilIdle()
+        assertEquals(0, provider.activeCollectors)
+      }
+
+  @Test
+  fun aSuccessfulOff_releasesTheDecision_soALaterRemoteOnTakesEffect() =
+      runTest(mainDispatcherRule.dispatcher) {
+        // The publisher is not running when the off is saved, so it never observes the write that
+        // would have ended the decision.
+        val viewModel = settings()
+        advanceUntilIdle()
+
+        viewModel.setLocationSharing(false)
+        advanceUntilIdle()
+        assertFalse(users.users.getValue(UID).locationSharingEnabled)
+
+        // Another device turns sharing back on, and this device syncs it.
+        users.setLocationSharing(UID, true, emptyList())
+
+        // The publisher starts again: the off decision was released by the write that confirmed it,
+        // so the re-enabled consent is honoured instead of being held off by a stale local
+        // decision.
+        startPublisher()
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+      }
+
+  @Test
+  fun aDelayedConsentFalse_afterTheWrite_neverResumesTheGps() =
+      runTest(mainDispatcherRule.dispatcher) {
+        // The publisher's consent stream, kept separate from the write so it can lag it: the
+        // Firestore snapshot has not delivered the off to the publisher yet when Settings finishes.
+        val publisherConsent = MutableStateFlow(true)
+        backgroundScope.launch {
+          publisher.publish(EVENT, TEAM, consent.applyTo(publisherConsent, UID))
+        }
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+
+        // Settings turns sharing off and its write returns, which lets it end the local decision -
+        // but the publisher's stream still holds the stale true.
+        val viewModel = settings()
+        advanceUntilIdle()
+        viewModel.setLocationSharing(false)
+        advanceUntilIdle()
+
+        // The GPS must not have resumed on that stale true during the gap.
+        assertEquals(0, provider.activeCollectors)
+
+        // The delayed off finally reaches the publisher: the GPS stays off, no flicker.
+        publisherConsent.value = false
+        advanceUntilIdle()
+        assertEquals(0, provider.activeCollectors)
+
+        // And a later remote on still takes effect.
+        publisherConsent.value = true
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+      }
+
+  @Test
+  fun aFailClosedFalseAfterConfirm_thenTheCommittedOff_doesNotResumeTheGps() =
+      runTest(mainDispatcherRule.dispatcher) {
+        // The device's local cache, which the publisher's observation reads. The observation fails
+        // once, after the off is confirmed; the fail-closed retry re-reads the cache.
+        val cache = MutableStateFlow(true)
+        val failObservation = CompletableDeferred<Unit>()
+        var subscription = 0
+        val observe = flow {
+          if (subscription++ == 0) {
+            emit(cache.value) // the on that was in effect
+            failObservation.await() // stay open until the test fails the observation
+            throw UserRepositoryException.Unavailable()
+          } else {
+            emitAll(cache) // the recovery reads the cache
+          }
+        }
+        // The production composition: the fail-closed retry wraps the observation (so a failure
+        // emits a synthetic off and retries), and the local decision wraps that.
+        val consentStream = observe.retryWhen { cause, _ ->
+          if (cause is UserRepositoryException) {
+            emit(false)
+            delay(CONSENT_RETRY_DELAY.toKotlinDuration())
+            true
+          } else {
+            false
+          }
+        }
+        backgroundScope.launch {
+          publisher.publish(EVENT, TEAM, consent.applyTo(consentStream, UID))
+        }
+        advanceUntilIdle()
+        assertEquals(1, provider.activeCollectors)
+
+        // Settings turns sharing off; the write commits to the local cache before it confirms.
+        consent.turnOff(UID)
+        cache.value = false
+        consent.confirmOff(UID)
+        advanceUntilIdle()
+        assertEquals(0, provider.activeCollectors)
+
+        // The observation now fails: the fail-closed false ends the confirmed decision, but it is
+        // not a stale on, so nothing resumes.
+        failObservation.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(0, provider.activeCollectors)
+
+        // Past the retry delay the observation recovers and reads the committed off from the cache,
+        // never a stale on, so the GPS stays off: the Firestore ordering is what rules the resume
+        // out, since the off is in the cache before confirm.
+        advanceTimeBy(CONSENT_RETRY_DELAY.toKotlinDuration())
+        advanceUntilIdle()
         assertEquals(0, provider.activeCollectors)
       }
 
