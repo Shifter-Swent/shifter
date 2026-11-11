@@ -77,12 +77,12 @@ data class Mission(
 }
 
 /**
- * Checks the input of [MissionRepository.updateMission] that needs no stored data, so every
- * implementation rejects it the same way, with an [IllegalArgumentException].
+ * Checks what every written [mission] must respect, created or updated, with no stored data needed,
+ * so every implementation rejects it the same way, with an [IllegalArgumentException]. Firestore
+ * would also reject an empty event id, but with a message that does not say which one.
  */
-internal fun requireValidUpdate(mission: Mission) {
+internal fun requireValidMission(mission: Mission) {
   require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
-  require(mission.id.isNotEmpty()) { "Only a created mission can be updated" }
   require(mission.startAt < mission.endAt) { "A mission must end after it starts" }
   require(mission.volunteersNeeded >= 1) { "A mission needs at least one volunteer" }
 }
@@ -93,6 +93,32 @@ internal fun requireValidUpdate(mission: Mission) {
  */
 internal fun requireNotCompleted(stored: Mission, now: Instant) {
   if (isCompleted(stored.completed, stored.endAt, now)) throw MissionCompletedException(stored)
+}
+
+/**
+ * Checks the input of [MissionRepository.createMission] that needs no stored data: a valid
+ * [mission], whose assignees are listed once and fit in the volunteers needed.
+ */
+internal fun requireValidCreation(mission: Mission) {
+  requireValidMission(mission)
+  require(mission.assigneeIds.size == mission.assigneeIds.toSet().size) {
+    "A mission cannot list the same assignee twice"
+  }
+  require(mission.assigneeIds.size <= mission.volunteersNeeded) {
+    "A mission needing ${mission.volunteersNeeded} volunteers cannot have " +
+        "${mission.assigneeIds.size} assignees"
+  }
+}
+
+/**
+ * Checks the input of [MissionRepository.updateMission] that needs no stored data: a valid
+ * [mission] that was created. Its assignees are not checked, as an update keeps the stored ones.
+ */
+internal fun requireValidUpdate(mission: Mission) {
+  // The event and the id first, as they say which mission is meant.
+  require(mission.eventId.isNotEmpty()) { "A mission must belong to an event" }
+  require(mission.id.isNotEmpty()) { "Only a created mission can be updated" }
+  requireValidMission(mission)
 }
 
 /**

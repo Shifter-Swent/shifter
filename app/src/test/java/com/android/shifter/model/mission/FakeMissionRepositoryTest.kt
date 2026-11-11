@@ -17,7 +17,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers the assignee rules of [FakeMissionRepository.createMission], and the contract of
+ * Covers what [FakeMissionRepository.createMission] refuses (no event, a slot that does not end
+ * after it starts, no volunteer needed, assignees listed twice or too many), and the contract of
  * [FakeMissionRepository.getMissionsAssignedTo], [FakeMissionRepository.observeMissionsAssignedTo],
  * [FakeMissionRepository.updateAssignees] and [FakeMissionRepository.updateMission], so the
  * ViewModels tested with the fake behave as with the Firestore repository.
@@ -55,6 +56,36 @@ class FakeMissionRepositoryTest {
     assertTrue(failure is IllegalArgumentException)
     assertEquals("A mission needing 1 volunteers cannot have 2 assignees", failure?.message)
     assertTrue(repository.created.isEmpty())
+  }
+
+  @Test
+  fun createMission_withAnInvertedSlot_isRejected() = runTest {
+    val valid = mission("event-1", startHour = 9)
+
+    assertRejected(
+        valid.copy(endAt = valid.startAt.minusSeconds(3600)),
+        "A mission must end after it starts",
+    )
+  }
+
+  @Test
+  fun createMission_withAnEmptySlot_isRejected() = runTest {
+    val valid = mission("event-1", startHour = 9)
+
+    assertRejected(valid.copy(endAt = valid.startAt), "A mission must end after it starts")
+  }
+
+  @Test
+  fun createMission_withNoVolunteerNeeded_isRejected() = runTest {
+    assertRejected(
+        mission("event-1", startHour = 9).copy(volunteersNeeded = 0),
+        "A mission needs at least one volunteer",
+    )
+  }
+
+  @Test
+  fun createMission_withoutAnEvent_isRejected() = runTest {
+    assertRejected(mission("", startHour = 9), "A mission must belong to an event")
   }
 
   @Test
@@ -440,6 +471,15 @@ class FakeMissionRepositoryTest {
         .exceptionOrNull()
 
     assertTrue(failure is MissionCompletedException)
+  }
+
+  /** Checks [mission] is refused with [message], and nothing is created. */
+  private suspend fun assertRejected(mission: Mission, message: String) {
+    val failure = runCatching { repository.createMission(mission) }.exceptionOrNull()
+
+    assertTrue(failure is IllegalArgumentException)
+    assertEquals(message, failure?.message)
+    assertTrue(repository.created.isEmpty())
   }
 
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */

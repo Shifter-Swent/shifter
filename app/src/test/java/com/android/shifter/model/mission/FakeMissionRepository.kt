@@ -37,13 +37,7 @@ class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : Miss
 
   override suspend fun createMission(mission: Mission): Mission {
     failure?.let { throw it }
-    require(mission.assigneeIds.size == mission.assigneeIds.toSet().size) {
-      "A mission cannot list the same assignee twice"
-    }
-    require(mission.assigneeIds.size <= mission.volunteersNeeded) {
-      "A mission needing ${mission.volunteersNeeded} volunteers cannot have " +
-          "${mission.assigneeIds.size} assignees"
-    }
+    requireValidCreation(mission)
     missions.firstOrNull { mission.conflictsWith(it) }?.let { throw MissionOverlapException(it) }
     val stored = mission.copy(id = "mission-${missions.size + 1}")
     state.update { it + stored }
