@@ -54,7 +54,13 @@ fun LiveLocationPublishing(
         publish = { userId ->
           runLiveLocationPublishing(
               coordinator = buildCoordinator(userId, repositories, locationProvider),
-              consent = repositories.userRepository.sharingConsent(userId),
+              // The real Firestore consent, forced off at once while the volunteer's local "off"
+              // decision from Settings holds, so GPS stops before the teams are even read (#377).
+              consent =
+                  repositories.localSharingConsent.applyTo(
+                      repositories.userRepository.sharingConsent(userId),
+                      userId,
+                  ),
               onSessionFault = { Log.e(TAG, "A live location session failed unexpectedly", it) },
           )
         },

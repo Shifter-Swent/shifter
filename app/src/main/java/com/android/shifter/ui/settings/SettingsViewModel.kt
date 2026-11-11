@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
 import android.util.Log
@@ -12,6 +13,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.authentication.AuthRepository
+import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
@@ -73,6 +75,13 @@ class SettingsViewModel(
     private val membershipRequestRepository: MembershipRequestRepository,
     private val teamRepository: TeamRepository,
     mode: UserMode,
+    /**
+     * The shared local sharing decision the foreground publisher also reads (#377): the one
+     * instance [RepositoryProvider] holds, passed through [factory]. Required, so that leaving it
+     * out of the wiring fails to compile rather than giving Settings an instance of its own that
+     * the publisher never reads.
+     */
+    private val localSharingConsent: LocalSharingConsent,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -177,6 +186,10 @@ class SettingsViewModel(
     val uid = repository.currentUser()?.uid
     val previous = state.locationSharing
     if (uid == null || previous == null || state.savingLocationSharing) return
+    // Tell the foreground publisher at once, before the teams are read or anything is written, so
+    // turning sharing off stops GPS now rather than after the lookups and the Firestore round-trip
+    // (#377). Turning it on only drops a pending off: consent is not published before it is valid.
+    if (enabled) localSharingConsent.release(uid) else localSharingConsent.turnOff(uid)
     _uiState.update {
       it.copy(locationSharing = enabled, savingLocationSharing = true, locationSharingNotice = null)
     }
@@ -188,9 +201,18 @@ class SettingsViewModel(
         val confirmed =
             withContext(NonCancellable) {
               val teams = if (enabled) emptyList() else teamsOf(uid)
-              withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) {
-                userRepository.setLocationSharing(uid, enabled, teams)
-              }
+              val result =
+                  withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) {
+                    userRepository.setLocationSharing(uid, enabled, teams)
+                  }
+              // The off is now persisted, or queued offline: confirm it, so the next consent the
+              // publisher observes ends the local decision and Firestore drives again, without
+              // resuming GPS from the stale true in between (#377). Usually that is a later on: the
+              // write's own off reached the publisher while the decision was pending (Firestore
+              // commits locally before the server answers) and was held off as such. Inside
+              // NonCancellable, so it still confirms if Settings has left the screen.
+              if (!enabled) localSharingConsent.confirmOff(uid)
+              result
             }
         _uiState.update {
           it.copy(
@@ -202,6 +224,10 @@ class SettingsViewModel(
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
+        // Nothing was written, so the local decision is dropped and the publisher follows the
+        // unchanged Firestore consent again, rather than a value that never reached the backend.
+        // Synchronous, so it still runs if Settings has already left and the scope is cancelling.
+        localSharingConsent.release(uid)
         _uiState.update {
           it.copy(
               locationSharing = previous,
@@ -286,6 +312,7 @@ class SettingsViewModel(
                 repositories.membershipRequestRepository,
                 repositories.teamRepository,
                 mode,
+                repositories.localSharingConsent,
             )
           }
         }

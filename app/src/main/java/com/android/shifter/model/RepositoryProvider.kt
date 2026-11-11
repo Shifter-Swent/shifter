@@ -7,6 +7,7 @@ import com.swent.shifter.model.chat.ChatRepository
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.location.LiveLocationRepository
+import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.TeamRepository
@@ -34,4 +35,10 @@ class RepositoryProvider(
     val checkInRepository: CheckInRepository,
     val chatRepository: ChatRepository,
     val liveLocationRepository: LiveLocationRepository,
+    /**
+     * The volunteer's just-made location-sharing decision, shared between Settings and the
+     * foreground publisher so turning sharing off stops GPS at once (#377). In memory, not a
+     * backend, so it is held here with a default rather than built by [RepositoryProviderFactory].
+     */
+    val localSharingConsent: LocalSharingConsent = LocalSharingConsent(),
 )

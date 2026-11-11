@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
 import android.os.Looper
@@ -13,6 +14,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
+import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.FakeMembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequest
@@ -51,9 +53,10 @@ class SettingsViewModelTest {
   private val users = FakeUserRepository(listOf(User(UID, "Ada", "ada@example.com")))
   private val requests = FakeMembershipRequestRepository()
   private val teams = FakeTeamRepository()
+  private val consent = LocalSharingConsent()
   private val credentialManager = mockk<CredentialManager>()
   private val viewModel by lazy {
-    SettingsViewModel(repository, users, requests, teams, UserMode.VOLUNTEER)
+    SettingsViewModel(repository, users, requests, teams, UserMode.VOLUNTEER, consent)
   }
 
   init {
@@ -172,7 +175,8 @@ class SettingsViewModelTest {
   @Test
   fun changeMode_fromOrganizer_switchesToVolunteer() {
     users.users[UID] = User(UID, "Ada", "ada@example.com", mode = UserMode.ORGANIZER)
-    val organizer = SettingsViewModel(repository, users, requests, teams, UserMode.ORGANIZER)
+    val organizer =
+        SettingsViewModel(repository, users, requests, teams, UserMode.ORGANIZER, consent)
 
     organizer.changeMode()
     idle()
@@ -200,7 +204,8 @@ class SettingsViewModelTest {
     val offline = mockk<UserRepository>()
     coEvery { offline.setMode(UID, UserMode.ORGANIZER) } coAnswers { awaitCancellation() }
     coEvery { offline.setMode(UID, UserMode.VOLUNTEER) } just runs
-    val waiting = SettingsViewModel(repository, offline, requests, teams, UserMode.VOLUNTEER)
+    val waiting =
+        SettingsViewModel(repository, offline, requests, teams, UserMode.VOLUNTEER, consent)
 
     waiting.changeMode()
     idle()
@@ -223,7 +228,7 @@ class SettingsViewModelTest {
     val pending = CompletableDeferred<Unit>()
     val slow = mockk<UserRepository>()
     coEvery { slow.setMode(any(), any()) } coAnswers { pending.await() }
-    val changing = SettingsViewModel(repository, slow, requests, teams, UserMode.VOLUNTEER)
+    val changing = SettingsViewModel(repository, slow, requests, teams, UserMode.VOLUNTEER, consent)
 
     changing.changeMode()
     idle()
@@ -393,7 +398,14 @@ class SettingsViewModelTest {
             store,
             viewModelFactory {
               initializer {
-                SettingsViewModel(repository, users, requests, slowTeams, UserMode.VOLUNTEER)
+                SettingsViewModel(
+                    repository,
+                    users,
+                    requests,
+                    slowTeams,
+                    UserMode.VOLUNTEER,
+                    consent,
+                )
               }
             },
         )[SettingsViewModel::class.java]
