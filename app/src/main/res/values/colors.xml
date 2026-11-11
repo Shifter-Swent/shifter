@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- md_theme_dark_background, the window shows it before the app draws. -->
+    <color name="shifter_background">#FF151D27</color>
 </resources>

@@ -14,6 +14,7 @@ import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,7 +25,7 @@ import org.junit.runner.RunWith
  *
  * The rules only accept well-formed messages, so the malformed bodies these tests need are written
  * with [FirestoreEmulatorAdmin]. The signed-in user is a member of the team, which the rules let
- * read its channel. A pending message is covered by `FirestoreTeamChatRepositoryTest`.
+ * read its channel. A pending message is covered by `FirestoreChatRepositoryTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class ChatMessageFirestoreMapperTest {
@@ -58,6 +59,24 @@ class ChatMessageFirestoreMapperTest {
     val mapped = storeAndRead(valid()).toChatMessage()
 
     assertEquals(ChatMessage(MESSAGE_ID, SENDER_ID, "Hello team", SENT_AT), mapped)
+  }
+
+  @Test
+  fun toChatMessage_withoutAnnouncement_readsANormalMessage() = emulatorTest {
+    // valid() has no announcement field, like the messages sent before announcements existed.
+    assertFalse(storeAndRead(valid()).toChatMessage().announcement)
+  }
+
+  @Test
+  fun toChatMessage_readsAnAnnouncement() = emulatorTest {
+    assertTrue(storeAndRead(valid() + ("announcement" to true)).toChatMessage().announcement)
+  }
+
+  @Test
+  fun toChatMessage_rejectsAnAnnouncementThatIsNotABoolean() = emulatorTest {
+    val stored = storeAndRead(valid() + ("announcement" to "yes"))
+
+    assertFailsNaming(stored, "'announcement'")
   }
 
   @Test

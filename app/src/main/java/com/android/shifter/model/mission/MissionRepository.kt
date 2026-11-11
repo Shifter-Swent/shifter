@@ -61,6 +61,26 @@ interface MissionRepository {
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
 
   /**
+   * Saves the [Mission.title], [Mission.description], [Mission.startAt], [Mission.endAt],
+   * [Mission.location] and [Mission.volunteersNeeded] of [mission] on the existing mission
+   * identified by its [Mission.eventId] and [Mission.id]. Its team, assignees, creation time and
+   * completion are kept as stored, whatever [mission] holds. Volunteers already checked in keep
+   * their check-in.
+   *
+   * The checks run in this order, so every implementation reports the same error first. Nothing is
+   * written when one fails.
+   *
+   * @throws IllegalArgumentException when [Mission.id] or [Mission.eventId] is empty, the slot does
+   *   not end after it starts, or [Mission.volunteersNeeded] is below 1.
+   * @throws MissionRepositoryException.NotFound when the mission does not exist.
+   * @throws MissionOverlapException when the new values make the mission
+   *   [conflict][Mission.conflictsWith] with another mission of its stored team.
+   * @throws VolunteersBelowAssigneesException when [Mission.volunteersNeeded] is lower than the
+   *   number of people already assigned.
+   */
+  suspend fun updateMission(mission: Mission)
+
+  /**
    * Closes the mission identified by [missionId] in the event [eventId] before its end, which
    * cannot be undone.
    *

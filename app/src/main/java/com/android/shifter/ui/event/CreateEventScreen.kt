@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -144,6 +146,10 @@ fun CreateEventContent(
         modifier =
             Modifier.fillMaxSize()
                 .padding(padding)
+                // The Scaffold leaves room for the bars, not the keyboard: the fields scroll above
+                // it.
+                .consumeWindowInsets(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),

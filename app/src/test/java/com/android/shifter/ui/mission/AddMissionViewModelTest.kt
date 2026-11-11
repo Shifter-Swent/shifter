@@ -10,6 +10,7 @@ import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import java.time.Clock
@@ -181,7 +182,7 @@ class AddMissionViewModelTest {
 
     assertTrue(state.isLoadingEvent)
     assertFalse(state.canSubmit)
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertTrue(missions.created.isEmpty())
@@ -283,7 +284,7 @@ class AddMissionViewModelTest {
     viewModel.onStartTimeChange(LocalTime.of(11, 0))
     viewModel.onEndTimeChange(LocalTime.of(12, 0))
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals("logistics", missions.created.single().teamId)
@@ -299,7 +300,7 @@ class AddMissionViewModelTest {
     assertTrue(state.teams.isEmpty())
     assertFalse(state.canSubmit)
     viewModel.onTitleChange("Sneaky")
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
     assertTrue(missions.created.isEmpty())
   }
@@ -356,10 +357,10 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withEmptyForm_reportsEveryMissingField() = runTest {
+  fun save_withEmptyForm_reportsEveryMissingField() = runTest {
     openForm()
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(
         setOf(
@@ -373,38 +374,38 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withoutEndTime_reportsIt() = runTest {
+  fun save_withoutEndTime_reportsIt() = runTest {
     openForm()
     viewModel.onTitleChange("Sort")
     viewModel.onDescriptionChange("Sort the products")
     viewModel.onStartTimeChange(LocalTime.of(14, 0))
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(setOf(MissionFormError.END_MISSING), state.errors)
   }
 
   @Test
-  fun addMission_endingWhenItStarts_reportsIt() = runTest {
+  fun save_endingWhenItStarts_reportsIt() = runTest {
     openForm()
     fillValidForm()
     viewModel.onEndTimeChange(LocalTime.of(14, 0))
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(setOf(MissionFormError.END_NOT_AFTER_START), state.errors)
     assertEquals(MissionFormError.END_NOT_AFTER_START, state.errorFor(MissionFormField.SCHEDULE))
   }
 
   @Test
-  fun addMission_endingBeforeItStarts_endsTheNextDayWithinTheEvent() = runTest {
+  fun save_endingBeforeItStarts_endsTheNextDayWithinTheEvent() = runTest {
     openForm()
     fillValidForm()
     viewModel.onStartTimeChange(LocalTime.of(17, 0))
     viewModel.onEndTimeChange(LocalTime.of(9, 0))
 
     assertTrue(state.endsNextDay)
-    viewModel.addMission()
+    viewModel.save()
 
     // 17:00 to 09:00 the next morning overflows an event ending at 18:00 the same day.
     assertEquals(setOf(MissionFormError.OUTSIDE_EVENT), state.errors)
@@ -412,7 +413,7 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_crossingMidnightWithinANightEvent_createsTheMissionUntilTheNextDay() = runTest {
+  fun save_crossingMidnightWithinANightEvent_createsTheMissionUntilTheNextDay() = runTest {
     // A festival night, 21 June 18:00 to 22 June 03:00.
     events =
         StubEventRepository(
@@ -426,7 +427,7 @@ class AddMissionViewModelTest {
     viewModel.onStartTimeChange(LocalTime.of(22, 0))
     viewModel.onEndTimeChange(LocalTime.of(2, 0))
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertTrue(state.errors.isEmpty())
@@ -451,14 +452,14 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withTooLongTitleAndDescription_reportsThem() = runTest {
+  fun save_withTooLongTitleAndDescription_reportsThem() = runTest {
     openForm()
     fillValidForm()
     // Surrounding blanks are trimmed before counting, so they alone cannot make a text too long.
     viewModel.onTitleChange(" " + "a".repeat(AddMissionUiState.TITLE_MAX_LENGTH) + " ")
     viewModel.onDescriptionChange("b".repeat(AddMissionUiState.DESCRIPTION_MAX_LENGTH))
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
     assertTrue(state.errors.isEmpty())
 
@@ -467,7 +468,7 @@ class AddMissionViewModelTest {
     viewModel.onTitleChange("a".repeat(AddMissionUiState.TITLE_MAX_LENGTH + 1))
     viewModel.onDescriptionChange("b".repeat(AddMissionUiState.DESCRIPTION_MAX_LENGTH + 1))
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(
         setOf(MissionFormError.TITLE_TOO_LONG, MissionFormError.DESCRIPTION_TOO_LONG),
@@ -476,36 +477,36 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_outsideTheEventHours_reportsIt() = runTest {
+  fun save_outsideTheEventHours_reportsIt() = runTest {
     openForm()
     fillValidForm()
     viewModel.onStartTimeChange(LocalTime.of(17, 0))
     viewModel.onEndTimeChange(LocalTime.of(18, 30))
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(setOf(MissionFormError.OUTSIDE_EVENT), state.errors)
   }
 
   @Test
-  fun addMission_onAnotherDay_reportsIt() = runTest {
+  fun save_onAnotherDay_reportsIt() = runTest {
     openForm()
     fillValidForm()
     viewModel.onDayChange(eventDay.plusDays(1))
 
-    viewModel.addMission()
+    viewModel.save()
 
     assertEquals(setOf(MissionFormError.OUTSIDE_EVENT), state.errors)
   }
 
   @Test
-  fun addMission_exactlyOnTheEventBounds_isAccepted() = runTest {
+  fun save_exactlyOnTheEventBounds_isAccepted() = runTest {
     openForm()
     fillValidForm()
     viewModel.onStartTimeChange(LocalTime.of(10, 0))
     viewModel.onEndTimeChange(LocalTime.of(18, 0))
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertTrue(state.errors.isEmpty())
@@ -515,7 +516,7 @@ class AddMissionViewModelTest {
   @Test
   fun afterAFailedSubmit_errorsFollowEveryEdit() = runTest {
     openForm()
-    viewModel.addMission()
+    viewModel.save()
     assertTrue(MissionFormError.TITLE_EMPTY in state.errors)
 
     viewModel.onTitleChange("Sort")
@@ -525,11 +526,11 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withValidForm_createsTheMission() = runTest {
+  fun save_withValidForm_createsTheMission() = runTest {
     openForm()
     fillValidForm()
 
-    viewModel.addMission()
+    viewModel.save()
     assertTrue(state.isSaving)
     advanceUntilIdle()
 
@@ -546,61 +547,61 @@ class AddMissionViewModelTest {
             createdAt = now,
         )
     assertEquals(listOf(expected), missions.created)
-    assertEquals(expected, state.createdMission)
+    assertEquals(expected, state.savedMission)
     assertFalse(state.isSaving)
     assertFalse(state.saveFailed)
   }
 
   @Test
-  fun addMission_withGeneral_createsAMissionWithoutTeam() = runTest {
+  fun save_withGeneral_createsAMissionWithoutTeam() = runTest {
     openForm()
     fillValidForm()
     viewModel.onTeamChange(null)
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertNull(missions.created.single().teamId)
   }
 
   @Test
-  fun addMission_isIgnoredWhileSaving() = runTest {
+  fun save_isIgnoredWhileSaving() = runTest {
     openForm()
     fillValidForm()
 
-    viewModel.addMission()
-    viewModel.addMission()
+    viewModel.save()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(1, missions.created.size)
   }
 
   @Test
-  fun addMission_isIgnoredAfterSuccess() = runTest {
+  fun save_isIgnoredAfterSuccess() = runTest {
     openForm()
     fillValidForm()
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
     assertFalse(state.canSubmit)
     // A second tap before the screen is left must not create the mission twice.
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(1, missions.created.size)
   }
 
   @Test
-  fun onMissionAddedHandled_marksTheCreatedMissionAsHandled() = runTest {
+  fun onSaveHandled_marksTheSavedMissionAsHandled() = runTest {
     openForm()
     fillValidForm()
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
-    assertFalse(state.createdMissionHandled)
+    assertFalse(state.savedMissionHandled)
 
-    viewModel.onMissionAddedHandled()
+    viewModel.onSaveHandled()
 
-    assertTrue(state.createdMissionHandled)
+    assertTrue(state.savedMissionHandled)
   }
 
   @Test
@@ -694,26 +695,26 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_savesThePeoplePicked() = runTest {
+  fun save_savesThePeoplePicked() = runTest {
     openForm()
     fillValidForm()
     advanceUntilIdle()
     viewModel.onToggleAssignee("cleo")
     viewModel.onToggleAssignee("ana")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(listOf("cleo", "ana"), missions.created.single().assigneeIds)
   }
 
   @Test
-  fun addMission_withNobodyPicked_savesAMissionWithoutAssignees() = runTest {
+  fun save_withNobodyPicked_savesAMissionWithoutAssignees() = runTest {
     openForm()
     fillValidForm()
     advanceUntilIdle()
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(emptyList<String>(), missions.created.single().assigneeIds)
@@ -755,17 +756,17 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_whenTheRepositoryFails_reportsItAndClearsOnEdit() = runTest {
+  fun save_whenTheRepositoryFails_reportsItAndClearsOnEdit() = runTest {
     openForm()
     fillValidForm()
     missions.failure = IllegalStateException("offline")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertTrue(state.saveFailed)
     assertFalse(state.isSaving)
-    assertNull(state.createdMission)
+    assertNull(state.savedMission)
 
     viewModel.onTitleChange("Sort the donations")
     assertFalse(state.saveFailed)
@@ -778,23 +779,23 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withoutLocation_createsAMissionThatIsNotGeoTimed() = runTest {
+  fun save_withoutLocation_createsAMissionThatIsNotGeoTimed() = runTest {
     openForm()
     fillValidForm()
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertNull(missions.created.single().location)
   }
 
   @Test
-  fun addMission_withLocation_createsAGeoTimedMission() = runTest {
+  fun save_withLocation_createsAGeoTimedMission() = runTest {
     openForm()
     fillValidForm()
     fillLocation("  Grand Place, Lille ", "50.6366", " 3,0635")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(
@@ -804,12 +805,12 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withPartialLocation_reportsEveryMissingPart() = runTest {
+  fun save_withPartialLocation_reportsEveryMissingPart() = runTest {
     openForm()
     fillValidForm()
     viewModel.onLatitudeChange("50.6")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(
@@ -820,12 +821,12 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_withInvalidCoordinates_reportsThem() = runTest {
+  fun save_withInvalidCoordinates_reportsThem() = runTest {
     openForm()
     fillValidForm()
     fillLocation("Grand Place, Lille", "90.1", "north")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(
@@ -840,7 +841,7 @@ class AddMissionViewModelTest {
     openForm()
     fillValidForm()
     viewModel.onAddressChange("Grand Place, Lille")
-    viewModel.addMission()
+    viewModel.save()
     assertTrue(MissionFormError.LATITUDE_INVALID in state.errors)
 
     viewModel.onAddressChange(" ")
@@ -979,7 +980,7 @@ class AddMissionViewModelTest {
     openForm()
     fillValidForm()
     viewModel.onAddressChange("Ouchy, Lausanne")
-    viewModel.addMission()
+    viewModel.save()
     assertTrue(MissionFormError.LATITUDE_INVALID in state.errors)
 
     viewModel.onPickLocation()
@@ -994,7 +995,7 @@ class AddMissionViewModelTest {
     openForm()
     fillValidForm()
     fillLocation("Grand Place, Lille", "50.6366", "north")
-    viewModel.addMission()
+    viewModel.save()
     assertTrue(MissionFormError.LONGITUDE_INVALID in state.errors)
 
     viewModel.onClearLocation()
@@ -1003,13 +1004,13 @@ class AddMissionViewModelTest {
     assertEquals("", state.latitude)
     assertEquals("", state.longitude)
     assertTrue(state.errors.isEmpty())
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
     assertNull(missions.created.single().location)
   }
 
   @Test
-  fun addMission_afterPicking_savesThePickedPosition() = runTest {
+  fun save_afterPicking_savesThePickedPosition() = runTest {
     openForm()
     fillValidForm()
     viewModel.onAddressChange("Ouchy, Lausanne")
@@ -1017,7 +1018,7 @@ class AddMissionViewModelTest {
     viewModel.onLocationDraftChange(OUCHY)
     viewModel.onConfirmLocation()
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(
@@ -1027,7 +1028,7 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun addMission_overlappingAMissionOfTheSameTeam_reportsTheConflictAndClearsOnEdit() = runTest {
+  fun save_overlappingAMissionOfTheSameTeam_reportsTheConflictAndClearsOnEdit() = runTest {
     val existing =
         missions.createMission(
             Mission(
@@ -1046,7 +1047,7 @@ class AddMissionViewModelTest {
     fillValidForm()
     fillLocation("Grand Place, Lille", "50.6366", "3.0635")
 
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
 
     assertEquals(
@@ -1059,12 +1060,12 @@ class AddMissionViewModelTest {
     )
     assertFalse(state.saveFailed)
     assertFalse(state.isSaving)
-    assertNull(state.createdMission)
+    assertNull(state.savedMission)
     assertEquals(listOf(existing), missions.created)
 
     viewModel.onTeamChange("bar")
     assertNull(state.conflict)
-    viewModel.addMission()
+    viewModel.save()
     advanceUntilIdle()
     assertEquals(2, missions.created.size)
   }
@@ -1111,6 +1112,297 @@ class AddMissionViewModelTest {
         at(21, 14, 0) to at(21, 14, 0),
         missionSlot(day, LocalTime.of(14, 0), LocalTime.of(14, 0)),
     )
+  }
+
+  /**
+   * A mission of [teamId] on the event day, from [startHour] for an hour and a half in the hall,
+   * needing 3 people, with [assigneeIds] assigned.
+   */
+  private suspend fun storedMission(
+      vararg assigneeIds: String,
+      startHour: Int = 14,
+      teamId: String = "logistics",
+  ): Mission =
+      missions.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Sort the food donations",
+              description = "Sort the products.",
+              teamId = teamId,
+              volunteersNeeded = 3,
+              startAt = eventDay.atTime(startHour, 0).atZone(zone).toInstant(),
+              endAt = eventDay.atTime(startHour + 1, 30).atZone(zone).toInstant(),
+              location = MissionLocation("Hall B", LILLE),
+              assigneeIds = assigneeIds.toList(),
+              createdAt = Instant.parse("2027-05-01T08:00:00Z"),
+          )
+      )
+
+  /** Opens the form on the mission [missionId] and lets it load. */
+  private fun TestScope.openEdit(missionId: String) {
+    viewModel =
+        AddMissionViewModel(
+            event.id,
+            missions,
+            events,
+            teamRepository,
+            candidates,
+            { userId },
+            clock,
+            missionId,
+        )
+    advanceUntilIdle()
+  }
+
+  @Test
+  fun edit_prefillsTheFormWithTheMission() = runTest {
+    val stored = storedMission("ana")
+
+    openEdit(stored.id)
+
+    assertTrue(state.isEditing)
+    assertEquals("Sort the food donations", state.title)
+    assertEquals("Sort the products.", state.description)
+    assertEquals("logistics", state.teamId)
+    assertEquals(3, state.volunteersNeeded)
+    assertEquals(eventDay, state.day)
+    assertEquals(LocalTime.of(14, 0), state.startTime)
+    assertEquals(LocalTime.of(15, 30), state.endTime)
+    assertEquals("Hall B", state.address)
+    assertEquals(LILLE, state.position)
+    assertEquals(1, state.assigneeCount)
+  }
+
+  @Test
+  fun edit_save_updatesTheMissionWithoutCreatingOne() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Welcome the donors")
+    viewModel.onEndTimeChange(LocalTime.of(16, 0))
+    viewModel.save()
+    advanceUntilIdle()
+
+    val expected =
+        stored.copy(
+            title = "Welcome the donors",
+            endAt = eventDay.atTime(16, 0).atZone(zone).toInstant(),
+        )
+    assertEquals(listOf(expected), missions.created)
+    assertEquals(expected, state.savedMission)
+  }
+
+  @Test
+  fun edit_keepsTheTeamAndTheAssignees() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+
+    viewModel.onTeamChange("bar")
+    viewModel.onToggleAssignee("ben")
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals("logistics", state.teamId)
+    assertEquals(listOf("ana"), missions.created.single().assigneeIds)
+    assertTrue(state.assignees.selectedIds.isEmpty())
+  }
+
+  @Test
+  fun edit_overlapping_reportsTheConflict() = runTest {
+    val other = storedMission()
+    val stored = storedMission(startHour = 16)
+    openEdit(stored.id)
+
+    viewModel.onStartTimeChange(LocalTime.of(14, 0))
+    viewModel.onEndTimeChange(LocalTime.of(15, 30))
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals(other.title, state.conflict?.title)
+    assertNull(state.savedMission)
+  }
+
+  @Test
+  fun edit_belowTheAssignees_reportsTheCount() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+    // Two more people are assigned from the Overview while the form is open.
+    missions.updateAssignees(event.id, stored.id, listOf("ana", "ben", "cleo"))
+
+    repeat(2) { viewModel.onDecreaseVolunteers() }
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals(3, state.belowAssignees)
+    assertEquals(3, state.minVolunteers)
+    // Raised back to the people assigned, so the stepper starts from a valid need.
+    assertEquals(3, state.volunteersNeeded)
+    assertNull(state.savedMission)
+  }
+
+  @Test
+  fun edit_retryLoadAssignees_loadsNothing() = runTest {
+    openEdit(storedMission("ana").id)
+
+    viewModel.retryLoadAssignees()
+    advanceUntilIdle()
+
+    // The candidates of logistics would be listed if they had been loaded.
+    assertEquals(AssigneeSelection(), state.assignees)
+  }
+
+  @Test
+  fun edit_decreaseVolunteers_stopsAtTheAssigneeCount() = runTest {
+    openEdit(storedMission("ana", "ben").id)
+
+    repeat(3) { viewModel.onDecreaseVolunteers() }
+
+    assertEquals(2, state.volunteersNeeded)
+  }
+
+  @Test
+  fun edit_ofAMissingMission_showsNotFound() = runTest {
+    openEdit("missing")
+
+    assertTrue(state.missionNotFound)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_ofACompletedMission_cannotBeSaved() = runTest {
+    val stored = storedMission()
+    missions.markCompleted(event.id, stored.id)
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Too late")
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertTrue(state.missionCompleted)
+    assertFalse(state.canSubmit)
+    assertEquals("Sort the food donations", missions.created.single().title)
+  }
+
+  @Test
+  fun edit_invalidValues_showTheFieldErrors() = runTest {
+    val stored = storedMission()
+    openEdit(stored.id)
+
+    viewModel.onTitleChange(" ")
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals(MissionFormError.TITLE_EMPTY, state.errorFor(MissionFormField.TITLE))
+    assertEquals(stored, missions.created.single())
+  }
+
+  /** The event now ends at 06:00 the next day, so night missions fit in it. */
+  private fun extendTheEventOverNight() {
+    events =
+        StubEventRepository(
+            event.copy(endAt = eventDay.plusDays(1).atTime(6, 0).atZone(zone).toInstant())
+        )
+  }
+
+  /** The stored mission once [change] is saved on it directly, as another device would. */
+  private suspend fun changed(stored: Mission, change: (Mission) -> Mission): Mission {
+    missions.updateMission(change(stored))
+    return checkNotNull(missions.getMission(event.id, stored.id))
+  }
+
+  @Test
+  fun edit_crossingMidnight_roundTripsUnchanged() = runTest {
+    extendTheEventOverNight()
+    val night =
+        changed(storedMission()) {
+          it.copy(
+              startAt = eventDay.atTime(22, 0).atZone(zone).toInstant(),
+              endAt = eventDay.plusDays(1).atTime(2, 0).atZone(zone).toInstant(),
+          )
+        }
+    openEdit(night.id)
+
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertTrue(state.endsNextDay)
+    assertEquals(listOf(night), missions.created)
+  }
+
+  @Test
+  fun edit_untouchedLocation_keepsTheExactCoordinates() = runTest {
+    val precise = MissionLocation("Hall B", GeoPosition(50.636612345, 3.063598765))
+    val stored = changed(storedMission()) { it.copy(location = precise) }
+    openEdit(stored.id)
+
+    viewModel.onTitleChange("Welcome the donors")
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals(precise, missions.created.single().location)
+  }
+
+  @Test
+  fun edit_ofADayLongMission_cannotBeSaved() = runTest {
+    extendTheEventOverNight()
+    val dayLong =
+        changed(storedMission()) {
+          it.copy(
+              startAt = eventDay.atTime(10, 0).atZone(zone).toInstant(),
+              endAt = eventDay.plusDays(1).atTime(10, 0).atZone(zone).toInstant(),
+          )
+        }
+
+    openEdit(dayLong.id)
+
+    assertTrue(state.slotNotEditable)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_saveFailure_reportsIt() = runTest {
+    openEdit(storedMission().id)
+    missions.failure = IllegalStateException("backend down")
+
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertTrue(state.saveFailed)
+    assertNull(state.savedMission)
+  }
+
+  @Test
+  fun edit_missionDeletedMeanwhile_showsNotFound() = runTest {
+    openEdit(storedMission().id)
+    missions.failure = MissionRepositoryException.NotFound()
+
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertTrue(state.missionNotFound)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_byTheManagerOfAnotherTeam_isNotAllowed() = runTest {
+    val bar = storedMission(teamId = "bar")
+    userId = managerId
+
+    openEdit(bar.id)
+
+    assertTrue(state.notAllowed)
+    assertFalse(state.canSubmit)
+  }
+
+  @Test
+  fun edit_byTheManagerOfItsTeam_isAllowed() = runTest {
+    val stored = storedMission()
+    userId = managerId
+
+    openEdit(stored.id)
+
+    assertFalse(state.notAllowed)
+    assertTrue(state.canSubmit)
   }
 
   /** [hour]:[minute] on [dayOfMonth] July 2027. */

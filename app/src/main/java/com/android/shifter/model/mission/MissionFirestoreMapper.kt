@@ -67,6 +67,23 @@ internal fun Mission.toFirestoreMap(): Map<String, Any?> =
     )
 
 /**
+ * The fields [MissionRepository.updateMission] writes, the ones of [Mission.withEditableFieldsOf].
+ * The team, assignees, creation time and completion are left out, so an update never touches them.
+ */
+internal fun Mission.toEditableFieldsMap(): Map<String, Any?> =
+    toFirestoreMap().filterKeys { it in EDITABLE_FIELDS }
+
+private val EDITABLE_FIELDS =
+    setOf(
+        MissionSchema.TITLE,
+        MissionSchema.DESCRIPTION,
+        MissionSchema.VOLUNTEERS_NEEDED,
+        MissionSchema.START_AT,
+        MissionSchema.END_AT,
+        MissionSchema.LOCATION,
+    )
+
+/**
  * Rebuilds the [Mission] stored in this document, taking [Mission.id] from the document id and
  * [Mission.eventId] from the id of the event document it is nested under.
  *

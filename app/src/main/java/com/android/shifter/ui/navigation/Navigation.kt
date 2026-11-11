@@ -3,9 +3,9 @@ package com.swent.shifter.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -21,9 +21,11 @@ import kotlinx.serialization.Serializable
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId): Overview (VM-01) (+ AddMission), Map, Discussions
+ *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
- *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map, Discussions
+ *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map,
+ *       Discussions (+ Channel)
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -50,6 +52,17 @@ sealed interface Tab {
 sealed interface TabSet {
   val all: List<Tab>
   val home: Tab
+}
+
+/**
+ * The channel of the team [teamId], opened on top of the Discussions tab of either mode. The team's
+ * name is in the route, so the bar shows it without loading the team.
+ */
+sealed interface ChannelScreen : Destination {
+  val teamId: String
+  val teamName: String
+  override val title: String
+    get() = teamName
 }
 
 /**
@@ -120,7 +133,7 @@ object VolunteerTabs : TabSet {
       get() = VolunteerEventScreen.Overview
 
     override val label = "Overview"
-    override val icon = Icons.Filled.Home
+    override val icon = Icons.Outlined.Dashboard
     override val testTag = NavigationTestTags.OVERVIEW_TAB
     override val set
       get() = VolunteerTabs
@@ -177,6 +190,14 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object Discussions : VolunteerEventScreen {
     override val title = "Discussions"
+    override val tab
+      get() = VolunteerTabs.Discussions
+  }
+
+  /** A team's channel, opened from Discussions. */
+  @Serializable
+  data class Channel(override val teamId: String, override val teamName: String) :
+      VolunteerEventScreen, ChannelScreen {
     override val tab
       get() = VolunteerTabs.Discussions
   }
@@ -245,7 +266,7 @@ object OrganizerTabs : TabSet {
       get() = OrganizerEventScreen.Overview
 
     override val label = "Overview"
-    override val icon = Icons.Filled.Home
+    override val icon = Icons.Outlined.Dashboard
     override val testTag = NavigationTestTags.OVERVIEW_TAB
     override val set
       get() = OrganizerTabs
@@ -304,6 +325,16 @@ sealed interface OrganizerEventScreen : Destination {
       get() = OrganizerTabs.Overview
   }
 
+  /** Edit form of the mission [missionId], opened on top of the event's Overview. */
+  @Serializable
+  data class EditMission(val missionId: String) : OrganizerEventScreen {
+    override val title
+      get() = "Edit mission"
+
+    override val tab
+      get() = OrganizerTabs.Overview
+  }
+
   /** Teams of an event that already exists, opened on top of its Overview. */
   @Serializable
   data object ManageTeams : OrganizerEventScreen {
@@ -329,6 +360,14 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object Discussions : OrganizerEventScreen {
     override val title = "Discussions"
+    override val tab
+      get() = OrganizerTabs.Discussions
+  }
+
+  /** A team's channel, opened from Discussions. */
+  @Serializable
+  data class Channel(override val teamId: String, override val teamName: String) :
+      OrganizerEventScreen, ChannelScreen {
     override val tab
       get() = OrganizerTabs.Discussions
   }

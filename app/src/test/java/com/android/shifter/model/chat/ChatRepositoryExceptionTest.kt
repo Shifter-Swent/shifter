@@ -4,7 +4,7 @@ package com.swent.shifter.model.chat
 import org.junit.Assert.assertSame
 import org.junit.Test
 
-class TeamChatRepositoryExceptionTest {
+class ChatRepositoryExceptionTest {
 
   @Test
   fun everyException_keepsTheBackendErrorAsItsCause() {
@@ -14,9 +14,9 @@ class TeamChatRepositoryExceptionTest {
     // only the generic message.
     for (exception in
         listOf(
-            TeamChatRepositoryException.NotAllowed(backendError),
-            TeamChatRepositoryException.Unavailable(backendError),
-            TeamChatRepositoryException.Unknown(backendError),
+            ChatRepositoryException.NotAllowed(backendError),
+            ChatRepositoryException.Unavailable(backendError),
+            ChatRepositoryException.Unknown(backendError),
         )) {
       assertSame(exception::class.simpleName, backendError, exception.cause)
     }

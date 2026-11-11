@@ -5,13 +5,8 @@ package com.swent.shifter.ui.people
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,8 +19,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.ShifterNavigationBar
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.UnderlinedTab
 import com.swent.shifter.ui.components.UnderlinedTabRow
@@ -34,7 +29,6 @@ import com.swent.shifter.ui.membership.MembershipRequestsScreen
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.Tab
 import com.swent.shifter.ui.theme.ShifterTheme
-import com.swent.shifter.ui.theme.shifter_tabInactive
 
 /** Tags of the People screen's own tabs, which switch between participants and requests. */
 object PeopleScreenTestTags {
@@ -75,7 +69,7 @@ fun PeopleScreen(
       modifier = modifier,
       containerColor = colors.background,
       topBar = { ShifterTopBar(stringResource(R.string.people_title), onBack) },
-      bottomBar = { OrganizerNavigationBar(onNavigate) },
+      bottomBar = { ShifterNavigationBar(OrganizerTabs.all, OrganizerTabs.People, onNavigate) },
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
       PeopleTabs(
@@ -137,30 +131,6 @@ private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> U
           onClick = { onSelect(index) },
           width = 150.dp,
           modifier = Modifier.testTag(tags[index]),
-      )
-    }
-  }
-}
-
-@Composable
-private fun OrganizerNavigationBar(onNavigate: (Tab) -> Unit) {
-  val colors = MaterialTheme.colorScheme
-  NavigationBar(containerColor = colors.surfaceContainer) {
-    OrganizerTabs.all.forEach { tab ->
-      NavigationBarItem(
-          selected = tab == OrganizerTabs.People,
-          onClick = { onNavigate(tab) },
-          icon = { Icon(tab.icon, contentDescription = null) },
-          label = { Text(tab.label, fontSize = 11.sp) },
-          colors =
-              NavigationBarItemDefaults.colors(
-                  selectedIconColor = colors.primary,
-                  selectedTextColor = colors.primary,
-                  indicatorColor = colors.primaryContainer,
-                  unselectedIconColor = shifter_tabInactive,
-                  unselectedTextColor = shifter_tabInactive,
-              ),
-          modifier = Modifier.testTag(tab.testTag),
       )
     }
   }

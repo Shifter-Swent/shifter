@@ -1,10 +1,11 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.chat.ChatMessage
+import com.swent.shifter.model.chat.ChatRepositoryException
 import com.swent.shifter.model.chat.ChatRules
-import com.swent.shifter.model.chat.FakeTeamChatRepository
-import com.swent.shifter.model.chat.TeamChatRepositoryException
+import com.swent.shifter.model.chat.FakeChatRepository
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -25,7 +26,7 @@ class TeamChatViewModelTest {
 
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
-  private val chat = FakeTeamChatRepository(currentUserId = ME, clock = { SENT_AT.plusSeconds(60) })
+  private val chat = FakeChatRepository(currentUserId = ME, clock = { SENT_AT.plusSeconds(60) })
   private val users =
       FakeUserRepository(listOf(user(ME, "Liam"), user(OTHER, "Alice"), user(NAMELESS, " ")))
 
@@ -34,7 +35,7 @@ class TeamChatViewModelTest {
   private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, profiles) { ME }
 
   private fun receive(id: String, from: String, text: String) =
-      chat.add(EVENT, TEAM, ChatMessage(id, from, text, SENT_AT))
+      chat.add(ChatChannelId.Team(EVENT, TEAM), ChatMessage(id, from, text, SENT_AT))
 
   @Test
   fun load_showsTheMessagesWithTheirSenders() = runTest {
@@ -126,7 +127,7 @@ class TeamChatViewModelTest {
 
   @Test
   fun load_whenUnavailable_showsOffline() = runTest {
-    chat.failure = TeamChatRepositoryException.Unavailable()
+    chat.failure = ChatRepositoryException.Unavailable()
 
     val state = viewModel().uiState.value
 
@@ -136,14 +137,14 @@ class TeamChatViewModelTest {
 
   @Test
   fun load_whenItFails_showsTheUnexpectedError() = runTest {
-    chat.failure = TeamChatRepositoryException.Unknown()
+    chat.failure = ChatRepositoryException.Unknown()
 
     assertEquals(ChatError.UNEXPECTED, viewModel().uiState.value.error)
   }
 
   @Test
   fun load_whenNotAllowed_showsNotAllowed() = runTest {
-    chat.failure = TeamChatRepositoryException.NotAllowed()
+    chat.failure = ChatRepositoryException.NotAllowed()
 
     assertEquals(ChatError.NOT_ALLOWED, viewModel().uiState.value.error)
   }
@@ -153,7 +154,7 @@ class TeamChatViewModelTest {
     receive("1", OTHER, "Hello")
     val viewModel = viewModel()
 
-    chat.failure = TeamChatRepositoryException.NotAllowed()
+    chat.failure = ChatRepositoryException.NotAllowed()
 
     val state = viewModel.uiState.value
     assertEquals(ChatError.NOT_ALLOWED, state.error)
@@ -167,7 +168,7 @@ class TeamChatViewModelTest {
     viewModel.onDraftChange("On my way")
     viewModel.send()
 
-    chat.failure = TeamChatRepositoryException.NotAllowed()
+    chat.failure = ChatRepositoryException.NotAllowed()
     viewModel.onDraftChange("Hello?")
 
     val state = viewModel.uiState.value
@@ -177,7 +178,7 @@ class TeamChatViewModelTest {
 
   @Test
   fun load_afterAnError_showsTheMessages() = runTest {
-    chat.failure = TeamChatRepositoryException.Unavailable()
+    chat.failure = ChatRepositoryException.Unavailable()
     val viewModel = viewModel()
     chat.failure = null
     receive("1", OTHER, "Hello")
@@ -254,7 +255,7 @@ class TeamChatViewModelTest {
     viewModel.onDraftChange("On my way")
     viewModel.send()
 
-    confirmation.completeExceptionally(TeamChatRepositoryException.Unavailable())
+    confirmation.completeExceptionally(ChatRepositoryException.Unavailable())
 
     // Still queued by the backend: giving the text back would let the user post it twice.
     val state = viewModel.uiState.value
@@ -271,7 +272,7 @@ class TeamChatViewModelTest {
     viewModel.onDraftChange("On my way")
     viewModel.send()
 
-    confirmation.completeExceptionally(TeamChatRepositoryException.NotAllowed())
+    confirmation.completeExceptionally(ChatRepositoryException.NotAllowed())
 
     val state = viewModel.uiState.value
     assertEquals("On my way", state.draft)
@@ -294,7 +295,7 @@ class TeamChatViewModelTest {
   @Test
   fun send_whenItFails_givesTheTextBack() = runTest {
     val viewModel = viewModel()
-    chat.failure = TeamChatRepositoryException.Unknown()
+    chat.failure = ChatRepositoryException.Unknown()
     viewModel.onDraftChange("On my way")
 
     viewModel.send()
@@ -314,7 +315,7 @@ class TeamChatViewModelTest {
     viewModel.send()
     viewModel.onDraftChange(" ")
 
-    confirmation.completeExceptionally(TeamChatRepositoryException.NotAllowed())
+    confirmation.completeExceptionally(ChatRepositoryException.NotAllowed())
 
     assertEquals("On my way", viewModel.uiState.value.draft)
   }
@@ -322,7 +323,7 @@ class TeamChatViewModelTest {
   @Test
   fun onDraftChange_clearsTheSendFailure() = runTest {
     val viewModel = viewModel()
-    chat.failure = TeamChatRepositoryException.Unknown()
+    chat.failure = ChatRepositoryException.Unknown()
     viewModel.onDraftChange("On my way")
     viewModel.send()
 

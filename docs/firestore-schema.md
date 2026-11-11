@@ -32,6 +32,7 @@ eventParticipants/{eventId}
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/teams/{teamId}/liveLocations/{uid}` | Where a volunteer of the team is, keyed by their uid | `LiveLocationSchema` |
+| `events/{eventId}/channels/general/messages/{messageId}` | A message of the event's general chat channel | `ChatMessageSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/missions/{missionId}/checkIns/{uid}` | A volunteer's presence at a mission, keyed by their uid | `CheckInSchema` |
@@ -152,12 +153,20 @@ final: it is never edited or deleted.
 | `senderId` | string | uid of the sender, always the signed-in user. Only the uid is stored: names are read from the public profiles, so a renamed user never shows up under an old name |
 | `text` | string | Trimmed, 1 to 1000 characters |
 | `sentAt` | timestamp | Server timestamp, equal to `request.time` |
+| `announcement` | boolean | `true` for an announcement, which only the team's manager can send: not its members, nor the organizer, and a team with no manager has none. In the general channel, only the event's organizer can send one. Absent on the messages sent before announcements existed, which are read as normal messages. Never changed, like the rest of the message |
 
 The channel is read with `orderBy(sentAt)` and `limitToLast(100)`, which only needs Firestore's
 automatic single-field index. A message sent offline is shown at once, before the server has set
 `sentAt`: it is read with an estimate of the server time (`ServerTimestampBehavior.ESTIMATE`)
 instead of being rejected as malformed. Firestore sorts it last until the server has it, then by the
 time the server received it.
+
+### `events/{eventId}/channels/general/messages/{messageId}`
+
+The event's general channel, where its organizer and all its participants talk, the managers of its
+teams included. Its messages have the same fields as a team's message above, are read the same way
+and are final too. Only the event's organizer sends announcements there. `channels/general` is only a path: no document is stored there. The event's
+other channels, such as an admin channel, would sit next to it in `channels`.
 
 ### `events/{eventId}/shifts/{shiftId}`
 
@@ -183,8 +192,10 @@ time the server received it.
 | `completed` | boolean | `true` once closed by hand before its end, which cannot be undone (checked by the rules). A mission past its `endAt` is completed whatever this says: that is computed, never written |
 
 Two GeoTimed missions of the same team must not overlap; adjacent slots are allowed. The app checks
-this before writing (`FirestoreMissionRepository.createMission`), not the rules, and the check is
-not atomic.
+this before writing (`FirestoreMissionRepository.createMission` and `updateMission`), not the
+rules, and the check is not atomic. `updateMission` only writes `title`, `description`,
+`volunteersNeeded`, `startAt`, `endAt` and `location`. It refuses a `volunteersNeeded` lower than
+the number of `assigneeIds`, and keeps the check-ins.
 
 ### `events/{eventId}/missions/{missionId}/checkIns/{uid}`
 
@@ -258,7 +269,8 @@ every access to it is denied.
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
-| `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters. No update, no delete |
+| `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters, and an optional boolean `announcement`, `true` only from the team's manager. No update, no delete |
+| `channels/general/messages/{messageId}` | The event's organizer and its participants (`participantIds`), checked on the participants as they are now, so someone who withdraws or is rejected loses access at once. A team's manager is always a participant, since they are appointed among its members. Checked on the path, so the whole channel can be queried | Create only, by the same users, with the same fields as a team's message, an announcement only from the organizer. No update, no delete |
 | `missions/{missionId}/checkIns/{uid}` | The volunteer, the manager of the mission's team, or the organizer. Checked on the path, so a missing check-in can be read | Create only, for a uid in the mission's `assigneeIds` who is still a participant of the event (a volunteer who withdrew or was rejected stays assigned until unassigned), with `userId` equal to the document id, `checkedInBy` equal to the signed-in user and `checkedInAt` equal to the request time. `SELF` by the volunteer themself; `MANAGER` by the manager of the mission's team or the organizer (only the organizer for a mission of no team). No update, no delete |
 
 A collection-group rule (`/{path=**}/membershipRequests/{uid}`) lets a volunteer list their own
@@ -313,7 +325,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   nobody reads the position any more, whatever happened to the consent or the membership. Inside
   the period, only a delete hides it, and only the volunteer themself may delete it:
 
-  - **Sharing turned off:** done (#404). `UserRepository.setLocationSharing` writes
+  - **Sharing turned off:** done in Settings (#404). `UserRepository.setLocationSharing` writes
     the setting and deletes the volunteer's position in each of their teams **in one batch**, so
     the server receives both at once and the manager stops seeing the position at that moment.
     The teams are those of every event the volunteer was accepted to.
@@ -323,7 +335,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
     - **Offline:** the batch is saved on the device and sent as a whole once it reconnects, also
       after the app was closed. Until then the manager sees the **last position this device shared
       before going offline**, and no newer one from it: a device sends its queued writes in order,
-      so a position it queued after the change arrives after the setting and is refused.
+      so a position it queued after the change arrives after the setting and is refused. Settings
+      tells the volunteer so.
     - **Another device of the same user:** the rules check the consent stored on the server, so a
       device that is online keeps publishing until the server receives the change.
     - **A team the device never loaded:** offline, the teams come from the cache, so a team never

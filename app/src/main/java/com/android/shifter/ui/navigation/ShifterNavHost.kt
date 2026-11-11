@@ -5,15 +5,13 @@ package com.swent.shifter.ui.navigation
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,7 +22,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
@@ -41,12 +38,19 @@ import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
+import com.swent.shifter.ui.chat.ChatChannel
+import com.swent.shifter.ui.chat.ChatChannelsScreen
+import com.swent.shifter.ui.chat.ChatChannelsViewModel
+import com.swent.shifter.ui.chat.TeamChatScreen
+import com.swent.shifter.ui.chat.TeamChatViewModel
 import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
+import com.swent.shifter.ui.components.ShifterNavigationBar
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.event.CreateEventScreen
 import com.swent.shifter.ui.event.CreateEventViewModel
@@ -164,7 +168,9 @@ fun ShifterNavHost(
         SettingsRoute(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
-            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
+            viewModel =
+                viewModel(factory = SettingsViewModel.factory(repositories, UserMode.VOLUNTEER)),
             credentialManager = credentialManager,
         )
       }
@@ -282,9 +288,19 @@ fun ShifterNavHost(
               repositories.teamRepository.getTeamsManagedBy(eventId, userId)
             },
         )
-        tab<VolunteerTabs.Discussions, VolunteerEventScreen.Discussions>(
+        discussionsTab<
             VolunteerTabs.Discussions,
+            VolunteerEventScreen.Discussions,
+            VolunteerEventScreen.Channel,
+            VolunteerEvent,
+        >(
+            VolunteerTabs.Discussions,
+            asOrganizer = false,
             nav,
+            navController,
+            repositories,
+            currentUserId,
+            channel = { VolunteerEventScreen.Channel(it.teamId, it.name) },
         )
       }
     }
@@ -312,7 +328,9 @@ fun ShifterNavHost(
         SettingsRoute(
             onBack = nav::goBack,
             onSignedOut = { nav.enterApp(SignedOut) },
-            viewModel = viewModel(factory = SettingsViewModel.factory(auth)),
+            onModeChanged = { mode -> nav.enterApp(appOfMode(mode)) },
+            viewModel =
+                viewModel(factory = SettingsViewModel.factory(repositories, UserMode.ORGANIZER)),
             credentialManager = credentialManager,
         )
       }
@@ -392,6 +410,13 @@ fun ShifterNavHost(
                   viewModel = viewModel,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
                   onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
+                  onEditMission = {
+                    // A second row tapped before the form opens would reuse its entry, with the
+                    // first mission's ViewModel: only the Overview still on top may open one.
+                    if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                      nav.navigateTo(OrganizerEventScreen.EditMission(it))
+                    }
+                  },
               )
             },
         ) {
@@ -405,6 +430,18 @@ fun ShifterNavHost(
                       .eventId
                 }
             AddMissionRoute(eventId, repositories, currentUserId, onBack = nav::goBack)
+          }
+          composable<OrganizerEventScreen.EditMission> { entry ->
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<OrganizerEvent>()
+                      .toRoute<OrganizerEvent>()
+                      .eventId
+                }
+            val missionId =
+                remember(entry) { entry.toRoute<OrganizerEventScreen.EditMission>().missionId }
+            AddMissionRoute(eventId, repositories, currentUserId, nav::goBack, missionId)
           }
           composable<OrganizerEventScreen.ManageTeams> { entry ->
             // The event's id is in the route of the event graph this screen belongs to.
@@ -482,9 +519,19 @@ fun ShifterNavHost(
             repositories,
             currentUserId,
         )
-        tab<OrganizerTabs.Discussions, OrganizerEventScreen.Discussions>(
+        discussionsTab<
             OrganizerTabs.Discussions,
+            OrganizerEventScreen.Discussions,
+            OrganizerEventScreen.Channel,
+            OrganizerEvent,
+        >(
+            OrganizerTabs.Discussions,
+            asOrganizer = true,
             nav,
+            navController,
+            repositories,
+            currentUserId,
+            channel = { OrganizerEventScreen.Channel(it.teamId, it.name) },
         )
       }
     }
@@ -505,7 +552,12 @@ private inline fun <reified T : Tab, reified S : Destination> NavGraphBuilder.ta
 ) {
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
-      TabPage(tab, nav) { if (built) content(entry) else PlaceholderPage { content(entry) } }
+      TabPage(tab, nav) { padding ->
+        // Consumed, so the content, e.g. its imePadding, does not leave room for the bars again.
+        Box(modifier = Modifier.padding(padding).consumeWindowInsets(padding)) {
+          if (built) content(entry) else PlaceholderPage { content(entry) }
+        }
+      }
     }
     screens()
   }
@@ -529,7 +581,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
-      TabPage(tab, nav) {
+      TabPage(tab, nav) { padding ->
         MapScreen(
             viewModel =
                 viewModel(
@@ -544,7 +596,72 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             watchedTeams = watchedTeams,
                             userRepository = repositories.userRepository,
                         )
-                )
+                ),
+            contentPadding = padding,
+        )
+      }
+    }
+  }
+}
+
+/**
+ * Registers the Discussions [tab] of the event open in the graph [E]: the channels the user can
+ * open, every team's for its organizer ([asOrganizer]), and on top of it the channel of a team, as
+ * the destination [channel] makes of it, under a bar with the team's name.
+ */
+private inline fun <
+    reified T : Tab,
+    reified S : Destination,
+    reified C : ChannelScreen,
+    reified E : EventMode,
+> NavGraphBuilder.discussionsTab(
+    tab: Tab,
+    asOrganizer: Boolean,
+    nav: NavigationActions,
+    navController: NavHostController,
+    repositories: RepositoryProvider,
+    noinline currentUserId: () -> String?,
+    noinline channel: (ChatChannel) -> C,
+) {
+  tab<T, S>(
+      tab,
+      nav,
+      built = true,
+      content = { entry ->
+        val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
+        ChatChannelsScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        ChatChannelsViewModel.factory(
+                            eventId,
+                            asOrganizer,
+                            repositories.teamRepository,
+                            currentUserId,
+                        )
+                ),
+            onOpenChannel = { nav.navigateTo(channel(it)) },
+        )
+      },
+  ) {
+    composable<C> { entry ->
+      val eventId = remember(entry) { navController.getBackStackEntry<E>().toRoute<E>().eventId }
+      val route = remember(entry) { entry.toRoute<C>() }
+      Scaffold(topBar = { ShifterTopBar(route.title, onBack = nav::goBack) }) { padding ->
+        TeamChatScreen(
+            viewModel =
+                viewModel(
+                    factory =
+                        TeamChatViewModel.factory(
+                            eventId,
+                            route.teamId,
+                            repositories.chatRepository,
+                            repositories.userRepository,
+                            currentUserId,
+                        )
+                ),
+            // The bar's height is already taken, so the field only rises by the keyboard's.
+            modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         )
       }
     }
@@ -612,6 +729,46 @@ private fun RefreshOnReturn(refresh: () -> Unit) {
   LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (shownOnce) refresh() else shownOnce = true }
 }
 
+/**
+ * The mission form of the event [eventId], for its organizer or the manager of one of its teams:
+ * the form itself offers each only what they may create. It adds a mission, or edits [missionId]
+ * when given.
+ *
+ * @param onBack goes back to the event's Overview, once the mission is saved or when the user
+ *   leaves the form.
+ */
+@Composable
+private fun AddMissionRoute(
+    eventId: String,
+    repositories: RepositoryProvider,
+    currentUserId: () -> String?,
+    onBack: () -> Unit,
+    missionId: String? = null,
+) {
+  AddMissionScreen(
+      viewModel =
+          viewModel(
+              factory =
+                  AddMissionViewModel.factory(
+                      eventId,
+                      repositories.missionRepository,
+                      repositories.eventRepository,
+                      repositories.teamRepository,
+                      RepositoryAssigneeCandidates(
+                          repositories.teamRepository,
+                          repositories.membershipRequestRepository,
+                          repositories.userRepository,
+                      ),
+                      currentUserId,
+                      missionId = missionId,
+                  )
+          ),
+      // Back to the event's overview, the mission saved.
+      onMissionSaved = { onBack() },
+      onBack = onBack,
+  )
+}
+
 /** Stand-in for a screen that is not built yet: the padded page of its [content], if any. */
 @Composable
 private fun PlaceholderPage(content: @Composable () -> Unit) {
@@ -620,27 +777,27 @@ private fun PlaceholderPage(content: @Composable () -> Unit) {
 
 /**
  * A tab of an event showing [content], under a top bar with its title and a way out of the event,
- * and above the bottom bar listing the other tabs of the event.
+ * and above the floating bar listing the other tabs of the event. [content] fills the page, and
+ * gets the padding that keeps it clear of the bars.
  */
 @Composable
-private fun TabPage(current: Tab, nav: NavigationActions, content: @Composable () -> Unit) {
+private fun TabPage(
+    current: Tab,
+    nav: NavigationActions,
+    content: @Composable (PaddingValues) -> Unit,
+) {
   BackHandler { nav.leaveEvent(current.set) }
   Scaffold(
       topBar = { ShifterTopBar(current.home.title, onBack = { nav.leaveEvent(current.set) }) },
-      bottomBar = {
-        NavigationBar(modifier = Modifier.testTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU)) {
-          current.set.all.forEach { tab ->
-            NavigationBarItem(
-                selected = tab == current,
-                onClick = { nav.switchTab(tab) },
-                icon = { Icon(tab.icon, contentDescription = null) },
-                label = { Text(tab.label) },
-                modifier = Modifier.testTag(tab.testTag),
-            )
-          }
-        }
-      },
+      bottomBar = { ShifterNavigationBar(current.set.all, current, nav::switchTab) },
   ) { padding ->
-    Box(modifier = Modifier.padding(padding)) { content() }
+    content(padding)
   }
 }
+
+/** The app a user of [mode] enters. */
+private fun appOfMode(mode: UserMode): App =
+    when (mode) {
+      UserMode.VOLUNTEER -> Volunteer
+      UserMode.ORGANIZER -> Organizer
+    }

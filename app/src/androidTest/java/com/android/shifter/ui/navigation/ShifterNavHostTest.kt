@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -35,13 +37,17 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
+import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
+import com.swent.shifter.ui.chat.ChatChannelsTestTags
+import com.swent.shifter.ui.chat.TeamChatTestTags
 import com.swent.shifter.ui.checkin.AutoCheckInTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -62,6 +68,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -412,6 +420,27 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun settings_changeModeEntersTheEventsOfTheNewMode() {
+    signInAndShowApp()
+    val user = checkNotNull(repositories.authRepository.currentUser())
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(user.uid, "Ada", "", UserMode.VOLUNTEER)
+    }
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
+    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    assertEquals(
+        UserMode.ORGANIZER,
+        runBlocking { repositories.userRepository.getUser(user.uid) }?.mode,
+    )
+    // The back stack is cleared: the Volunteer events are gone.
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
+  }
+
+  @Test
   fun organizerEvent_overviewOpensTeamManagementAndBackReturnsToIt() {
     val event = createEvent(signIn())
     openOrganizerEvent(event)
@@ -722,6 +751,66 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerPeople_reopeningTheTabKeepsTheListWithoutASpinner() {
+    val event = createEvent(signIn())
+    val holdReads = AtomicBoolean(false)
+    val reloadStarted = CompletableDeferred<Unit>()
+    val reload = CompletableDeferred<Unit>()
+    val requestRepository = repositories.membershipRequestRepository
+    val heldRepositories =
+        RepositoryProvider(
+            authRepository = repositories.authRepository,
+            eventRepository = repositories.eventRepository,
+            userRepository = repositories.userRepository,
+            membershipRequestRepository =
+                object : MembershipRequestRepository by requestRepository {
+                  override suspend fun getMembershipRequestsByEId(
+                      eventId: String
+                  ): List<MembershipRequest> {
+                    if (holdReads.get()) {
+                      reloadStarted.complete(Unit)
+                      reload.await()
+                    }
+                    return requestRepository.getMembershipRequestsByEId(eventId)
+                  }
+                },
+            missionRepository = repositories.missionRepository,
+            teamRepository = repositories.teamRepository,
+            checkInRepository = repositories.checkInRepository,
+            chatRepository = repositories.chatRepository,
+            liveLocationRepository = repositories.liveLocationRepository,
+        )
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = heldRepositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
+    composeTestRule.runOnUiThread {
+      NavigationActions(navController).enterEvent(OrganizerEvent(event.id))
+    }
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+    val teamBar = ParticipantsListTestTags.teamBar(teamIds.getValue(event.id))
+    waitForNode(teamBar)
+
+    holdReads.set(true)
+    composeTestRule.onNodeWithTag(OrganizerTabs.Overview.testTag).performClick()
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).performClick()
+
+    // The reload is held: the list on screen can only be the one kept from the first visit.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { reloadStarted.isCompleted }
+    composeTestRule.onNodeWithTag(teamBar).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ParticipantsListTestTags.LOADING).assertDoesNotExist()
+    reload.complete(Unit)
+  }
+
+  @Test
   fun organizerPeople_acceptingARequestShowsTheVolunteerUnderTheirTeam() {
     val organizerAccount = googleCredential()
     val organizer = signIn(organizerAccount)
@@ -890,7 +979,7 @@ class ShifterNavHostTest {
             repositories.missionRepository,
             UnreadableTeams(),
             repositories.checkInRepository,
-            repositories.teamChatRepository,
+            repositories.chatRepository,
             repositories.liveLocationRepository,
         )
     )
@@ -960,6 +1049,47 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerEvent_editMission_savesTheChangeAndShowsItInTheOverview() {
+    val event = createEvent(signIn())
+    val mission =
+        createMission(
+            event,
+            "Set up the stands",
+            teamId = null,
+            description = "Set up before the doors open.",
+        )
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
+
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(mission.id))
+        .performClick()
+    // The form only appears once the mission is read, filled with it.
+    waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .assertTextContains("Set up the stands")
+        .performTextReplacement("Set up the bar")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    // Back on the Overview, whose row of the mission shows the new title.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodes(
+              hasTestTag(OrganizerOverviewScreenTestTags.mission(mission.id)) and
+                  hasText("Set up the bar", substring = true)
+          )
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    val saved = runBlocking { repositories.missionRepository.getMission(event.id, mission.id) }
+    assertEquals(mission.copy(title = "Set up the bar"), saved)
+  }
+
+  @Test
   fun organizerEvent_overviewShowsAMissionAddedWhileTheFormWasOpen() {
     val event = createEvent(signIn())
     openOrganizerEvent(event)
@@ -973,6 +1103,50 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithText("Set up the stands").fetchSemanticsNodes().isNotEmpty()
     }
+  }
+
+  @Test
+  fun organizerDiscussions_opensTheChannelOfTheTeamPicked() {
+    val event = createEvent(signIn())
+    val bar = createTeam(event, "Bar")
+    openOrganizerEvent(event)
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+
+    // Every team of the event is listed, so none opens by itself.
+    waitForNode(ChatChannelsTestTags.channel(bar.id))
+    composeTestRule
+        .onNodeWithTag(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.channel(bar.id)).performClick()
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Bar")
+  }
+
+  @Test
+  fun volunteerDiscussions_withASingleTeam_opensItsChannelAndBackShowsTheList() {
+    val event = acceptedEvent(asManager = false)
+    showApp()
+    openEvent(event)
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+
+    // Their only team's channel opens at once, under the team's name.
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals("Litter pickers")
+
+    pressBack()
+
+    // Back on the list, which shows the channel rather than opening it again.
+    waitForNode(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals(VolunteerEventScreen.Discussions.title)
   }
 
   /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */
@@ -1012,14 +1186,22 @@ class ShifterNavHostTest {
     return team
   }
 
-  /** Creates a mission of [event] titled [title], in the team [teamId] or in no team when null. */
-  private fun createMission(event: Event, title: String, teamId: String?) {
+  /**
+   * Creates a mission of [event] titled [title], in the team [teamId] or in no team when null, and
+   * returns it.
+   */
+  private fun createMission(
+      event: Event,
+      title: String,
+      teamId: String?,
+      description: String = "",
+  ): Mission {
     val mission = runBlocking {
       repositories.missionRepository.createMission(
           Mission(
               eventId = event.id,
               title = title,
-              description = "",
+              description = description,
               teamId = teamId,
               volunteersNeeded = 1,
               startAt = event.startAt,
@@ -1030,6 +1212,7 @@ class ShifterNavHostTest {
     }
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    return mission
   }
 
   /** Signs in and opens the creation form; returns the signed-in organizer. */
