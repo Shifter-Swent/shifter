@@ -27,4 +27,7 @@
     <string name="map_picker_selected">Selected: %1$s, %2$s</string>
     <string name="map_picker_marker">Selected place</string>
     <string name="map_picker_description">Map to pick a place. Tap it to place the location.</string>
+    <string name="map_picker_title">Pick the location</string>
+    <string name="map_picker_confirm">Use this place</string>
+    <string name="map_picker_close">Close the map</string>
 </resources>
