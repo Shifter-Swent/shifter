@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** A form field of the team creation screen. */
 enum class TeamFormField {
@@ -110,8 +113,7 @@ class CreateTeamViewModel(
   /** Becomes true on the first submit, after which errors follow every edit. */
   private var submitAttempted = team != null
 
-  /** The team edited, as last sent to the backend, or null when the form creates one. */
-  private var saved: Team? = team
+  private val saveMutex = Mutex()
 
   /** The team edited, as the backend last confirmed it, which a failed save goes back to. */
   private var confirmed: Team? = team
@@ -166,31 +168,36 @@ class CreateTeamViewModel(
   }
 
   /**
-   * Saves the team edited, when the form is valid and differs from what was last saved: an invalid
-   * field keeps its error, and the team its last saved value. A failure is sent to [saveFailures],
-   * and the next call tries again from what the backend confirmed. Does nothing for a new team.
+   * Saves valid fields independently, keeping the confirmed value of any invalid field. Snapshots
+   * are processed in order, so a slow or failed write cannot overwrite a newer confirmed save. Does
+   * nothing for a new team; failures are reported once through [saveFailures].
    */
   fun saveChanges() {
-    val previous = saved ?: return
+    if (confirmed == null) return
     val form = _uiState.value
-    if (validate(form).isNotEmpty()) return
-    val next =
-        previous.copy(
-            name = form.name.trim(),
-            description = form.description.trim(),
-            icon = checkNotNull(form.icon).trim(),
-        )
-    if (next == previous) return
-    saved = next
+    val invalidFields = validate(form).map { it.field }.toSet()
     viewModelScope.launch {
-      try {
-        teamRepository.updateTeam(eventId, next.id, next.name, next.description, next.icon)
-        confirmed = next
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        saved = confirmed
-        _saveFailures.trySend(Unit)
+      saveMutex.withLock {
+        val previous = checkNotNull(confirmed)
+        val next =
+            previous.copy(
+                name = if (TeamFormField.NAME in invalidFields) previous.name else form.name.trim(),
+                description =
+                    if (TeamFormField.DESCRIPTION in invalidFields) previous.description
+                    else form.description.trim(),
+                icon =
+                    if (TeamFormField.ICON in invalidFields) previous.icon
+                    else checkNotNull(form.icon).trim(),
+            )
+        if (next == previous) return@withLock
+        try {
+          teamRepository.updateTeam(eventId, next.id, next.name, next.description, next.icon)
+          confirmed = next
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          _saveFailures.trySend(Unit)
+        }
       }
     }
   }

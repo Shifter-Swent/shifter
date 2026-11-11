@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
@@ -5,9 +6,11 @@ package com.swent.shifter.ui.team
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.toList
@@ -17,6 +20,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -447,6 +451,94 @@ class CreateTeamViewModelTest {
       viewModel.saveFailures.toList(failures)
     }
     return failures
+  }
+
+  @Test
+  fun saveChanges_withInvalidName_savesValidDescriptionAndIcon() = runTest {
+    editLogistics()
+    viewModel.onNameChange("")
+    viewModel.onDescriptionChange("Bring the water")
+    viewModel.onIconChange("wine")
+    save()
+
+    assertEquals(
+        logistics.copy(description = "Bring the water", icon = "wine"),
+        teams.teams.single(),
+    )
+    assertEquals(TeamFormError.NAME_EMPTY, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_withInvalidDescriptionAndIcon_savesValidName() = runTest {
+    editLogistics()
+    viewModel.onDescriptionChange("")
+    viewModel.onIconChange("")
+    viewModel.onNameChange("Supply")
+    save()
+
+    assertEquals(logistics.copy(name = "Supply"), teams.teams.single())
+  }
+
+  @Test
+  fun saveChanges_withOverlappingWrites_waitsBeforeStartingTheNext() = runTest {
+    checkOverlappingSaves(firstFails = false, secondFails = false)
+  }
+
+  @Test
+  fun saveChanges_withFirstWriteFailing_stillSavesTheLatestSnapshot() = runTest {
+    checkOverlappingSaves(firstFails = true, secondFails = false)
+  }
+
+  @Test
+  fun saveChanges_withSecondWriteFailing_retriesFromTheConfirmedState() = runTest {
+    checkOverlappingSaves(firstFails = false, secondFails = true)
+  }
+
+  private suspend fun TestScope.checkOverlappingSaves(firstFails: Boolean, secondFails: Boolean) {
+    teams.teams += logistics
+    val gates = List(2) { CompletableDeferred<Unit>() }
+    val started = mutableListOf<String>()
+    val repository =
+        object : TeamRepository by teams {
+          override suspend fun updateTeam(
+              eventId: String,
+              teamId: String,
+              name: String,
+              description: String,
+              icon: String,
+          ) {
+            val index = started.size
+            started += name
+            if (index < gates.size) gates[index].await()
+            if ((index == 0 && firstFails) || (index == 1 && secondFails)) error("denied")
+            teams.updateTeam(eventId, teamId, name, description, icon)
+          }
+        }
+    viewModel = CreateTeamViewModel(eventId, repository, clock, logistics)
+    val failures = saveFailures()
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    runCurrent()
+    viewModel.onNameChange("Bar")
+    viewModel.saveChanges()
+    runCurrent()
+    // Even if the second response is ready first, its request must wait for the first write.
+    gates[1].complete(Unit)
+    runCurrent()
+    assertEquals(listOf("Supply"), started)
+    gates[0].complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf("Supply", "Bar"), started)
+    assertEquals(if (secondFails) "Supply" else "Bar", teams.teams.single().name)
+    assertEquals(if (firstFails || secondFails) listOf(Unit) else emptyList<Unit>(), failures)
+    if (secondFails) {
+      save()
+      assertEquals("Bar", teams.teams.single().name)
+    }
+    // A return to an older value must be written, rather than skipped after late confirmation.
+    viewModel.onNameChange("Logistics")
+    save()
+    assertEquals("Logistics", teams.teams.single().name)
   }
 
   @Test

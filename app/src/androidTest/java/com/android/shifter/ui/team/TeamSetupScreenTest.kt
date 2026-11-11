@@ -1,8 +1,11 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +28,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
@@ -34,6 +43,7 @@ import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -372,6 +382,68 @@ class TeamSetupScreenTest {
     shown = false
 
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun pressBack_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      ShifterTheme {
+        navController = rememberNavController()
+        NavHost(navController, startDestination = "overview") {
+          composable("overview") {
+            Button(onClick = { navController.navigate("teams") }) { Text("Manage teams") }
+          }
+          composable("teams") {
+            val setup: TeamSetupViewModel =
+                viewModel(factory = TeamSetupViewModel.factory(eventId, teams))
+            TeamSetupScreen(
+                viewModel = setup,
+                onBack = { navController.popBackStack() },
+                onProceed = { navController.popBackStack() },
+                mode = TeamSetupMode.MANAGEMENT,
+            )
+          }
+        }
+      }
+    }
+    composeTestRule.onNodeWithText("Manage teams").performClick()
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    // The first Back dismisses the keyboard; focus stays on the edited field.
+    composeTestRule.runOnIdle {
+      composeTestRule.activity
+          .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+          .hideSoftInputFromWindow(composeTestRule.activity.window.decorView.windowToken, 0)
+    }
+    composeTestRule.waitForIdle()
+    pressBack()
+    composeTestRule.onNodeWithText("Manage teams").assertIsDisplayed()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+    composeTestRule.runOnIdle {
+      assertEquals("overview", navController.currentDestination?.route)
+      assertNull(navController.previousBackStackEntry)
+    }
+  }
+
+  @Test
+  fun editingASavedTeam_withInvalidName_savesTheDescriptionAndIcon() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD)
+        .performTextReplacement("Bring the water")
+    inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      teams.teams.single().description == "Bring the water" &&
+          teams.teams.single().icon == TeamIcon.WINE.id
+    }
+    assertEquals("Logistics", teams.teams.single().name)
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.create_team_error_name_empty))
+        .assertIsDisplayed()
   }
 
   @Test
