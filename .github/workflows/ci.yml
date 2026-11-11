@@ -240,13 +240,29 @@ jobs:
           name: unit-reports
           path: app/build
 
-      # Each shard's coverage lands in connected/coverage-shard-N/, which jacocoTestReport reads
-      # along with the unit tests' coverage.
       - name: Download the coverage of the shards
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-shard-*
-          path: app/build/outputs/code_coverage/debugAndroidTest/connected
+          path: shard-coverage
+
+      # jacocoTestReport reads connected/*/coverage.ec, one level only, along with the unit tests'
+      # coverage. The artifacts keep the emulator's folder, so each file is moved up to
+      # connected/coverage-shard-N/. Fails when a shard's coverage is missing, which would
+      # otherwise only show as a drop in Sonar.
+      - name: Place the coverage of each shard
+        run: |
+          connected=app/build/outputs/code_coverage/debugAndroidTest/connected
+          for shard in shard-coverage/coverage-shard-*; do
+            mkdir -p "$connected/$(basename "$shard")"
+            find "$shard" -name coverage.ec -exec cp {} "$connected/$(basename "$shard")/" \;
+          done
+          found=$(ls "$connected"/*/coverage.ec | wc -l)
+          ls -l "$connected"/*/coverage.ec
+          if [ "$found" -ne "$SHARDS" ]; then
+            echo "::error::Found the coverage of $found shards out of $SHARDS"
+            exit 1
+          fi
 
       - name: Generate Coverage Report
         run: |
