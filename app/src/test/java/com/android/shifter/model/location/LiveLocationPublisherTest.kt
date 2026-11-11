@@ -1,10 +1,17 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
+import com.swent.shifter.model.location.LiveLocationSharingState.NO_LOCATION_ACCESS
+import com.swent.shifter.model.location.LiveLocationSharingState.OFF
+import com.swent.shifter.model.location.LiveLocationSharingState.REFUSED
+import com.swent.shifter.model.location.LiveLocationSharingState.SHARED
+import com.swent.shifter.model.location.LiveLocationSharingState.WAITING
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -259,7 +266,9 @@ class LiveLocationPublisherTest {
         // The clock the other tests replace is what production leaves out, so the default has to
         // be the real one rather than any fixed instant.
         val withTheDefaultClock = LiveLocationPublisher(provider, repository)
-        backgroundScope.launch { withTheDefaultClock.publish(EVENT, TEAM, MutableStateFlow(true)) }
+        backgroundScope.launch {
+          withTheDefaultClock.publish(EVENT, TEAM, MutableStateFlow(true)) {}
+        }
 
         val before = Instant.now()
         provider.emit(GENEVA)
@@ -280,7 +289,7 @@ class LiveLocationPublisherTest {
         // Caught, so a session that failed would be this test's answer rather than its crash.
         var thrown: Throwable? = null
         val session = backgroundScope.launch {
-          thrown = runCatching { publisher.publish(EVENT, TEAM, sharing) }.exceptionOrNull()
+          thrown = runCatching { publisher.publish(EVENT, TEAM, sharing) {} }.exceptionOrNull()
         }
         provider.emit(GENEVA)
 
@@ -358,7 +367,7 @@ class LiveLocationPublisherTest {
         val unanswering = UnansweringRepository()
         val publisher = LiveLocationPublisher(provider, unanswering, now = { clock })
         val sharing = MutableStateFlow(true)
-        val session = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) }
+        val session = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) {} }
 
         provider.emit(GENEVA)
         assertEquals(1, unanswering.writes)
@@ -376,10 +385,260 @@ class LiveLocationPublisherTest {
         assertEquals(1, unanswering.removals)
       }
 
+  @Test
+  fun publish_withTheConsentOff_reportsOff() =
+      runTest(UnconfinedTestDispatcher()) {
+        startSession(MutableStateFlow(false))
+
+        assertEquals(listOf(OFF), states)
+      }
+
+  /**
+   * Offline, the removal keeps failing and is tried again until the connection is back: the
+   * volunteer must be told sharing is off at once, not once their position is out.
+   */
+  @Test
+  fun publish_whenTheConsentIsRevokedOffline_reportsOffBeforeThePositionIsOut() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(true)
+        startSession(sharing)
+        provider.emit(GENEVA)
+
+        repository.failure = LiveLocationRepositoryException.Unavailable()
+        sharing.value = false
+
+        assertEquals(listOf(WAITING, SHARED, OFF), states)
+      }
+
+  @Test
+  fun publish_withTheConsentOn_reportsWaitingUntilTheBackendConfirmsAPosition() =
+      runTest(UnconfinedTestDispatcher()) {
+        startSession()
+        assertEquals(listOf(WAITING), states)
+
+        provider.emit(GENEVA)
+
+        assertEquals(listOf(WAITING, SHARED), states)
+      }
+
+  @Test
+  fun publish_withoutLocationAccess_reportsItThenWaitsOnceItIsGranted() =
+      runTest(UnconfinedTestDispatcher()) {
+        provider.setStatus(LocationStatus.DENIED)
+        startSession()
+        assertEquals(listOf(NO_LOCATION_ACCESS), states)
+
+        provider.setStatus(LocationStatus.GRANTED)
+        assertEquals(listOf(NO_LOCATION_ACCESS, WAITING), states)
+
+        provider.emit(GENEVA)
+        assertEquals(listOf(NO_LOCATION_ACCESS, WAITING, SHARED), states)
+      }
+
+  /**
+   * The positions stop with the access, so only the status can tell: without it the volunteer would
+   * be told their position is shared while the one their manager sees no longer moves.
+   */
+  @Test
+  fun publish_whenTheAccessIsLostAfterSharing_reportsItInsteadOfShared() =
+      runTest(UnconfinedTestDispatcher()) {
+        startSession()
+        provider.emit(GENEVA)
+
+        provider.setStatus(LocationStatus.LOCATION_OFF)
+        assertEquals(listOf(WAITING, SHARED, NO_LOCATION_ACCESS), states)
+
+        // Back, but nothing written since: the success from before says nothing of now.
+        provider.setStatus(LocationStatus.GRANTED)
+        assertEquals(listOf(WAITING, SHARED, NO_LOCATION_ACCESS, WAITING), states)
+      }
+
+  /**
+   * Back from a lost access, the volunteer is shown as waiting: the next position must go out at
+   * once, not when the interval since the write before the loss allows it.
+   */
+  @Test
+  fun publish_whenTheAccessComesBack_sharesTheNextPositionAtOnce() =
+      runTest(UnconfinedTestDispatcher()) {
+        startSession()
+        provider.emit(GENEVA)
+        provider.setStatus(LocationStatus.LOCATION_OFF)
+        provider.setStatus(LocationStatus.GRANTED)
+
+        // Past the minimum interval but not the refresh one, and not moved: a write the gates
+        // would hold back if the attempt before the loss still counted.
+        elapse(MIN_INTERVAL_SECONDS * 3)
+        provider.emit(GENEVA)
+
+        val sharedAt = clock
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, sharedAt)), shared())
+        assertEquals(listOf(WAITING, SHARED, NO_LOCATION_ACCESS, WAITING, SHARED), states)
+
+        // Only that one: the next position waits for the minimum interval again, however far.
+        elapse(MIN_INTERVAL_SECONDS - 1)
+        provider.emit(LAUSANNE)
+        assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, sharedAt)), shared())
+      }
+
+  /**
+   * A write that fails still counts as an attempt, so a backend that keeps refusing costs one write
+   * per interval rather than one per position: the state it leaves is not "nothing reported".
+   */
+  @Test
+  fun publish_whenWritesKeepBeingRefused_triesOncePerInterval() =
+      runTest(UnconfinedTestDispatcher()) {
+        assertTriesOncePerInterval(LiveLocationRepositoryException.PermissionDenied())
+      }
+
+  @Test
+  fun publish_whenWritesKeepGoingUnconfirmed_triesOncePerInterval() =
+      runTest(UnconfinedTestDispatcher()) {
+        assertTriesOncePerInterval(LiveLocationRepositoryException.Unavailable())
+      }
+
+  /**
+   * A write can take seconds to answer, offline. One that answers once the access is lost must not
+   * report the position as shared: no new position comes without access, so nothing else would
+   * correct it until the access changes again.
+   */
+  @Test
+  fun publish_whenAWriteAnswersAfterTheAccessIsLost_stillReportsNoAccess() =
+      runTest(UnconfinedTestDispatcher()) {
+        val answer = CompletableDeferred<Unit>()
+        startSessionAnsweringWhen(answer)
+        provider.emit(GENEVA)
+
+        provider.setStatus(LocationStatus.DENIED)
+        answer.complete(Unit)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS), states)
+
+        // Nor once the access is back: that write is from before.
+        provider.setStatus(LocationStatus.GRANTED)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING), states)
+      }
+
+  /**
+   * The access lost and back while a write is answering: that write started before the loss, so it
+   * must not report the position as shared, though the access is granted again when it answers.
+   * Only a write started since then does.
+   */
+  @Test
+  fun publish_whenAWriteAnswersOnceTheAccessIsBack_waitsForANewWrite() =
+      runTest(UnconfinedTestDispatcher()) {
+        val answer = CompletableDeferred<Unit>()
+        startSessionAnsweringWhen(answer)
+        provider.emit(GENEVA)
+
+        provider.setStatus(LocationStatus.DENIED)
+        provider.setStatus(LocationStatus.GRANTED)
+        answer.complete(Unit)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING), states)
+
+        provider.emit(GENEVA)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING, SHARED), states)
+      }
+
+  @Test
+  fun publish_whenAWriteIsRefusedOnce_reportsRefusedThenSharedOnTheNextPosition() =
+      runTest(UnconfinedTestDispatcher()) {
+        repository.failure = LiveLocationRepositoryException.PermissionDenied()
+        startSession()
+        provider.emit(GENEVA)
+        assertEquals(listOf(WAITING, REFUSED), states)
+
+        repository.failure = null
+        elapse(MIN_INTERVAL_SECONDS)
+        provider.emit(GENEVA)
+
+        assertEquals(listOf(WAITING, REFUSED, SHARED), states)
+      }
+
+  /** A write not confirmed may still go out later, but the manager cannot be said to see it. */
+  @Test
+  fun publish_whenAWriteIsNotConfirmed_reportsWaitingThenSharedOnceOneIs() =
+      runTest(UnconfinedTestDispatcher()) {
+        repository.failure = LiveLocationRepositoryException.Unavailable()
+        startSession()
+        provider.emit(GENEVA)
+        assertEquals(listOf(WAITING), states)
+
+        repository.failure = null
+        elapse(MIN_INTERVAL_SECONDS)
+        provider.emit(GENEVA)
+
+        assertEquals(listOf(WAITING, SHARED), states)
+      }
+
+  @Test
+  fun publish_whenTheConsentIsRevoked_reportsOffAndNoLongerWatchesTheAccess() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(true)
+        startSession(sharing)
+        provider.emit(GENEVA)
+
+        sharing.value = false
+        // Off means the GPS is not used: losing access to it changes nothing for the volunteer.
+        provider.setStatus(LocationStatus.DENIED)
+
+        assertEquals(listOf(WAITING, SHARED, OFF), states)
+      }
+
+  /** Starts a session whose every write fails with [failure], and counts the writes it tries. */
+  private suspend fun TestScope.assertTriesOncePerInterval(
+      failure: LiveLocationRepositoryException
+  ) {
+    var attempts = 0
+    val failing =
+        object : LiveLocationRepository by repository {
+          override suspend fun shareLocation(
+              eventId: String,
+              teamId: String,
+              position: GeoPosition,
+              measuredAt: Instant,
+          ) {
+            attempts++
+            throw failure
+          }
+        }
+    backgroundScope.launch {
+      LiveLocationPublisher(provider, failing, now = { clock })
+          .publish(EVENT, TEAM, MutableStateFlow(true), states::add)
+    }
+
+    provider.emit(GENEVA)
+    elapse(MIN_INTERVAL_SECONDS - 1)
+    provider.emit(LAUSANNE)
+
+    assertEquals(1, attempts)
+  }
+
+  /** Every state the session reported, in order. */
+  private val states = mutableListOf<LiveLocationSharingState>()
+
   /** Starts a session in the background and returns its job, so a test can cancel it. */
   private fun TestScope.startSession(
       sharing: MutableStateFlow<Boolean> = MutableStateFlow(true)
-  ): Job = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) }
+  ): Job = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing, states::add) }
+
+  /** Starts a session whose writes only answer once [answer] completes, as a slow backend would. */
+  private fun TestScope.startSessionAnsweringWhen(answer: CompletableDeferred<Unit>): Job {
+    val slow =
+        object : LiveLocationRepository by repository {
+          override suspend fun shareLocation(
+              eventId: String,
+              teamId: String,
+              position: GeoPosition,
+              measuredAt: Instant,
+          ) {
+            answer.await()
+            repository.shareLocation(eventId, teamId, position, measuredAt)
+          }
+        }
+    return backgroundScope.launch {
+      LiveLocationPublisher(provider, slow, now = { clock })
+          .publish(EVENT, TEAM, MutableStateFlow(true), states::add)
+    }
+  }
 
   /** Moves the clock the publisher reads, as the time between two positions would. */
   private fun elapse(seconds: Long) {

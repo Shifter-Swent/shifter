@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import com.swent.shifter.model.user.FakeUserRepository
@@ -104,7 +105,7 @@ class LiveLocationPublishingTest {
         val publisher = LiveLocationPublisher(provider, liveLocations)
 
         val job = backgroundScope.launch {
-          publisher.publish(EVENT, TEAM, users.sharingConsent(USER))
+          publisher.publish(EVENT, TEAM, users.sharingConsent(USER)) {}
         }
 
         // Sharing is on: the GPS is collected and a measured position is published.
@@ -215,7 +216,11 @@ class LiveLocationPublishingTest {
     val consentSeen = mutableMapOf<LiveLocationTarget, MutableList<Boolean>>()
     val failing = mutableSetOf<LiveLocationTarget>()
 
-    override suspend fun publish(target: LiveLocationTarget, sharingEnabled: Flow<Boolean>) {
+    override suspend fun publish(
+        target: LiveLocationTarget,
+        sharingEnabled: Flow<Boolean>,
+        onState: (LiveLocationSharingState) -> Unit,
+    ) {
       started += target
       if (target in failing) throw IllegalStateException("The session of $target failed")
       active += target

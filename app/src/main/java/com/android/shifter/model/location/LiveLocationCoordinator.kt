@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import com.swent.shifter.model.event.EventRepositoryException
@@ -11,27 +12,37 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Publishes the signed-in volunteer's position for one target until cancelled:
- * [LiveLocationPublisher.publish] behind a single argument, so a coordinator can be driven without
- * a GPS.
+ * Publishes the signed-in volunteer's position for one target until cancelled, reporting what it is
+ * doing to `onState`: [LiveLocationPublisher.publish] behind one call per target, so a coordinator
+ * can be driven without a GPS.
  */
 fun interface LiveLocationSessions {
 
-  suspend fun publish(target: LiveLocationTarget, sharingEnabled: Flow<Boolean>)
+  suspend fun publish(
+      target: LiveLocationTarget,
+      sharingEnabled: Flow<Boolean>,
+      onState: (LiveLocationSharingState) -> Unit,
+  )
 
   companion object {
     /** The sessions [publisher] runs, which is what production shares positions with. */
-    fun of(publisher: LiveLocationPublisher) = LiveLocationSessions { target, sharingEnabled ->
-      publisher.publish(target.eventId, target.teamId, sharingEnabled)
-    }
+    fun of(publisher: LiveLocationPublisher) =
+        LiveLocationSessions { target, sharingEnabled, onState ->
+          publisher.publish(target.eventId, target.teamId, sharingEnabled, onState)
+        }
   }
 }
 
@@ -60,6 +71,35 @@ class LiveLocationCoordinator(
     private val maxStaleness: Duration = MAX_STALENESS,
     private val now: () -> Instant = Instant::now,
 ) {
+
+  /**
+   * The state each target's session last reported, with the session that reported it: a session
+   * cancelled and started again for the same target may end after its replacement started, and must
+   * then leave the replacement's state alone.
+   */
+  private val sessionStates =
+      MutableStateFlow<Map<LiveLocationTarget, Pair<Job, LiveLocationSharingState>>>(emptyMap())
+
+  /**
+   * What the sharing is doing for each target a session runs for, so the volunteer can see which
+   * event and team gets their position. Empty while none runs - before the first refresh, with no
+   * eligible target, once [run] is cancelled - and a target is missing until its session reports.
+   *
+   * A session that ends - cancelled because its target dropped out, failed, or ended with [run] -
+   * takes its state with it, so nothing is shown for a session that no longer exists. One cancelled
+   * here loses it at once, not when it has finished ending: a session may take a while to, and
+   * shows nothing for a target no longer eligible meanwhile.
+   */
+  val sharingStates: Flow<Map<LiveLocationTarget, LiveLocationSharingState>> =
+      sessionStates.map { states -> states.mapValues { it.value.second } }.distinctUntilChanged()
+
+  /**
+   * The state of [sharingStates] as a whole, `null` when it is empty. The most urgent state wins
+   * (see [LiveLocationSharingState]), so a team whose position is refused is not hidden behind
+   * another whose position is shared.
+   */
+  val sharingState: Flow<LiveLocationSharingState?> =
+      sharingStates.map { it.values.maxOrNull() }.distinctUntilChanged()
 
   /**
    * Runs the sessions of the eligible targets until cancelled, refreshing every [refreshInterval]
@@ -148,16 +188,44 @@ class LiveLocationCoordinator(
   ) {
     // A session that ended on its own is forgotten, so this refresh starts it again.
     running.values.removeAll { !it.isActive }
-    (running.keys - eligible).forEach { running.remove(it)?.cancel() }
+    (running.keys - eligible).forEach { target -> running.remove(target)?.let { stop(target, it) } }
     (eligible - running.keys).forEach { target ->
-      running[target] = launch { sessions.publish(target, sharingEnabled) }
+      running[target] = launch {
+        val session = coroutineContext.job
+        try {
+          sessions.publish(target, sharingEnabled) { state ->
+            // A cancelled session may have a replacement already: it reports nothing more.
+            if (session.isActive) sessionStates.update { it + (target to (session to state)) }
+          }
+        } finally {
+          // After publish has returned, so nothing it reports can bring the state back. Needed
+          // for a session that ends without being stopped: it failed, or [run] was cancelled.
+          forgetState(target, session)
+        }
+      }
     }
   }
 
   /** Cancels and forgets every session, without waiting for them: a refresh must not be held up. */
   private fun cancelAll(running: MutableMap<LiveLocationTarget, Job>) {
-    running.values.forEach { it.cancel() }
+    running.forEach { (target, session) -> stop(target, session) }
     running.clear()
+  }
+
+  /**
+   * Cancels [session] and takes its state out at once, without waiting for it to end. Nothing it
+   * reports afterwards comes back: a cancelled session is no longer active, and reports nothing.
+   */
+  private fun stop(target: LiveLocationTarget, session: Job) {
+    session.cancel()
+    forgetState(target, session)
+  }
+
+  /**
+   * Takes out the state of [target] if [session] reported it: the target may have a new session.
+   */
+  private fun forgetState(target: LiveLocationTarget, session: Job) = sessionStates.update {
+    if (it[target]?.first == session) it - target else it
   }
 
   companion object {

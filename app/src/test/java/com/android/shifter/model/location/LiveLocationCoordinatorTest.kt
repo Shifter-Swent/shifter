@@ -1,17 +1,26 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.location.LiveLocationSharingState.NO_LOCATION_ACCESS
+import com.swent.shifter.model.location.LiveLocationSharingState.OFF
+import com.swent.shifter.model.location.LiveLocationSharingState.REFUSED
+import com.swent.shifter.model.location.LiveLocationSharingState.SHARED
+import com.swent.shifter.model.location.LiveLocationSharingState.WAITING
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.team.TeamRepositoryException
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +31,9 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -391,16 +402,195 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
-  fun of_addressesTheSessionWithTheTargetsEventAndTeam() =
+  fun sharingState_withNoEligibleTarget_isNull() = runTest {
+    start()
+
+    assertNull(state())
+  }
+
+  @Test
+  fun sharingState_withSeveralSessions_isTheMostUrgentOfTheirs() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+
+    // Every pair of neighbours, each way round, so the order is checked whichever team is worse.
+    val leastToMostUrgent = listOf(OFF, SHARED, WAITING, NO_LOCATION_ACCESS, REFUSED)
+    leastToMostUrgent.zipWithNext().forEach { (lower, higher) ->
+      sessions.report(BAR, lower)
+      sessions.report(STAGE, higher)
+      assertEquals(higher, state())
+
+      sessions.report(BAR, higher)
+      sessions.report(STAGE, lower)
+      assertEquals(higher, state())
+    }
+  }
+
+  @Test
+  fun sharingState_whenATargetDropsOut_forgetsItsSessionsState() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+    sessions.report(BAR, SHARED)
+    sessions.report(STAGE, REFUSED)
+
+    eligible = listOf(BAR)
+    elapse(INTERVAL)
+
+    // The refusal belonged to a session that no longer runs: showing it would be wrong.
+    assertEquals(SHARED, state())
+    assertEquals(mapOf(BAR to SHARED), states())
+  }
+
+  @Test
+  fun sharingStates_keepsEachTargetsOwnState() = runTest {
+    eligible = listOf(BAR, STAGE, OTHER_EVENT_BAR)
+    start()
+    sessions.report(BAR, SHARED)
+    sessions.report(STAGE, REFUSED)
+    sessions.report(OTHER_EVENT_BAR, WAITING)
+
+    // Each target with its own state, the same team of another event included: the sheet lists
+    // which team does not get the position, not just that one does not.
+    assertEquals(
+        mapOf(BAR to SHARED, STAGE to REFUSED, OTHER_EVENT_BAR to WAITING),
+        states(),
+    )
+  }
+
+  @Test
+  fun sharingStates_whenAnOldSessionEndsAfterItsReplacementStarted_keepsTheReplacementsState() =
+      runTest {
+        eligible = listOf(BAR)
+        start()
+        sessions.report(BAR, SHARED)
+        val oldSessionEnds = CompletableDeferred<Unit>()
+        sessions.slowToEnd[BAR] = oldSessionEnds
+
+        // BAR drops out, its session is cancelled but still ending, and BAR comes back.
+        eligible = emptyList()
+        elapse(INTERVAL)
+        eligible = listOf(BAR)
+        elapse(INTERVAL)
+        sessions.report(BAR, WAITING)
+
+        oldSessionEnds.complete(Unit)
+        runCurrent()
+
+        assertEquals(mapOf(BAR to WAITING), states())
+      }
+
+  /** A session still finishing a write once cancelled must not be shown as sharing meanwhile. */
+  @Test
+  fun sharingStates_whenATargetDropsOut_forgetsItsStateBeforeItsSessionHasEnded() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+    sessions.report(BAR, SHARED)
+    sessions.report(STAGE, SHARED)
+    val sessionEnds = CompletableDeferred<Unit>()
+    sessions.slowToEnd[BAR] = sessionEnds
+
+    eligible = listOf(STAGE)
+    elapse(INTERVAL)
+
+    assertEquals(mapOf(STAGE to SHARED), states())
+    sessionEnds.complete(Unit)
+  }
+
+  @Test
+  fun sharingStates_whenTheSessionsGoStale_forgetsTheirStatesBeforeTheyHaveEnded() = runTest {
+    eligible = listOf(BAR)
+    start()
+    sessions.report(BAR, SHARED)
+    val sessionEnds = CompletableDeferred<Unit>()
+    sessions.slowToEnd[BAR] = sessionEnds
+
+    failure = unavailable()
+    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
+
+    assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
+    sessionEnds.complete(Unit)
+  }
+
+  @Test
+  fun sharingStates_whenACancelledSessionStillReports_keepsTheReplacementsState() = runTest {
+    eligible = listOf(BAR)
+    start()
+    val oldSession = sessions.reporterOf(BAR)
+
+    eligible = emptyList()
+    elapse(INTERVAL)
+    eligible = listOf(BAR)
+    elapse(INTERVAL)
+    sessions.report(BAR, WAITING)
+
+    // Too late: that session was cancelled, and its replacement is the one that says what BAR is.
+    oldSession(REFUSED)
+
+    assertEquals(mapOf(BAR to WAITING), states())
+  }
+
+  @Test
+  fun sharingStates_whenASessionFails_forgetsItsState() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+    sessions.report(BAR, SHARED)
+    sessions.report(STAGE, REFUSED)
+
+    sessions.fail(STAGE, IllegalStateException("The session of STAGE failed"))
+    runCurrent()
+
+    // A failed session shares nothing any more, until the next refresh starts it again.
+    assertEquals(mapOf(BAR to SHARED), states())
+  }
+
+  @Test
+  fun sharingStates_listsATargetOnlyOnceItsSessionReported() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+    sessions.report(BAR, WAITING)
+
+    assertEquals(mapOf(BAR to WAITING), states())
+  }
+
+  @Test
+  fun sharingState_whenTheSessionsGoStale_isNull() = runTest {
+    eligible = listOf(BAR)
+    start()
+    sessions.report(BAR, SHARED)
+
+    failure = unavailable()
+    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
+
+    assertEquals(emptySet<LiveLocationTarget>(), sessions.active)
+    assertNull(state())
+  }
+
+  @Test
+  fun sharingState_whenRunIsCancelled_isNull() = runTest {
+    eligible = listOf(BAR)
+    val running = start()
+    sessions.report(BAR, SHARED)
+
+    running.cancelAndJoin()
+
+    assertNull(state())
+  }
+
+  @Test
+  fun of_addressesTheSessionWithTheTargetsEventAndTeamAndPassesOnItsStates() =
       runTest(UnconfinedTestDispatcher()) {
         val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
         val provider = FakeLocationProvider()
         val publisher = LiveLocationPublisher(provider, repository, now = { clock })
+        val reported = mutableListOf<LiveLocationSharingState>()
         backgroundScope.launch {
-          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true))
+          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true), reported::add)
         }
 
         provider.emit(GENEVA)
+
+        // What the publisher reports reaches the coordinator: without it, no state would ever show.
+        assertEquals(listOf(WAITING, SHARED), reported)
 
         assertEquals(
             listOf(LiveLocation(VOLUNTEER, GENEVA, clock)),
@@ -412,6 +602,13 @@ class LiveLocationCoordinatorTest {
             repository.observeTeamLocations(BAR.teamId, BAR.eventId).first(),
         )
       }
+
+  /** What the coordinator reports right now. */
+  private suspend fun state(): LiveLocationSharingState? = coordinator.sharingState.first()
+
+  /** What the coordinator reports for each target right now. */
+  private suspend fun states(): Map<LiveLocationTarget, LiveLocationSharingState> =
+      coordinator.sharingStates.first()
 
   /** The kind of failure a repository raises when the backend cannot be reached. */
   private fun unavailable() = MembershipRequestRepositoryException.Unavailable()
@@ -465,17 +662,51 @@ class LiveLocationCoordinatorTest {
     /** Targets whose session returns at once instead of running until cancelled. */
     val completing = mutableSetOf<LiveLocationTarget>()
 
-    override suspend fun publish(target: LiveLocationTarget, sharingEnabled: Flow<Boolean>) {
+    /**
+     * Targets whose next session, once cancelled, only ends when its gate opens, as a publisher
+     * still finishing a write would. Taken by that session, so the one after ends at once.
+     */
+    val slowToEnd = mutableMapOf<LiveLocationTarget, CompletableDeferred<Unit>>()
+
+    /** How each running session reports its state, so a test can play the publisher's part. */
+    private val reporters = mutableMapOf<LiveLocationTarget, (LiveLocationSharingState) -> Unit>()
+
+    /** Reports [state] from the running session of [target], as the publisher would. */
+    fun report(target: LiveLocationTarget, state: LiveLocationSharingState) =
+        reporters.getValue(target)(state)
+
+    /** How the latest session of [target] reports, kept by a test to report from it later. */
+    fun reporterOf(target: LiveLocationTarget) = reporters.getValue(target)
+
+    /** Makes the running session of [target] fail with [cause], as an unexpected fault would. */
+    fun fail(target: LiveLocationTarget, cause: Throwable) =
+        faults.getValue(target).completeExceptionally(cause)
+
+    private val faults = mutableMapOf<LiveLocationTarget, CompletableDeferred<Nothing>>()
+
+    override suspend fun publish(
+        target: LiveLocationTarget,
+        sharingEnabled: Flow<Boolean>,
+        onState: (LiveLocationSharingState) -> Unit,
+    ) {
       started += target
+      reporters[target] = onState
       if (target in failing) throw IllegalStateException("The session of $target failed")
       if (target in completing) return
       active += target
+      val fault = CompletableDeferred<Nothing>().also { faults[target] = it }
       try {
-        sharingEnabled.collect { consentSeen.getOrPut(target) { mutableListOf() } += it }
-        // A consent flow that completes does not end the session, as the real publisher's does not.
-        awaitCancellation()
+        coroutineScope {
+          launch {
+            sharingEnabled.collect { consentSeen.getOrPut(target) { mutableListOf() } += it }
+          }
+          // Runs until cancelled or made to fail: a consent flow that completes does not end the
+          // session, as the real publisher's does not.
+          fault.await()
+        }
       } finally {
         active -= target
+        slowToEnd.remove(target)?.let { gate -> withContext(NonCancellable) { gate.await() } }
       }
     }
   }
