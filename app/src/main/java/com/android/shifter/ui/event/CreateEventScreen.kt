@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.annotation.StringRes
@@ -77,14 +78,14 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.toPickerDate
+import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
 
 object CreateEventScreenTestTags {
   const val TITLE_FIELD = "CreateEventTitleField"
@@ -101,6 +102,8 @@ object CreateEventScreenTestTags {
 
   /** Confirm button shared by the date and the time dialogs: only one is ever open at a time. */
   const val PICKER_CONFIRM = "CreateEventPickerConfirm"
+  const val DATE_PICKER = "CreateEventDatePicker"
+  const val TIME_PICKER = "CreateEventTimePicker"
 
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
@@ -451,14 +454,18 @@ private fun DateCard(
 
 /**
  * A calendar button that picks a date with a Material3 [DatePicker], then a time with a
- * [TimePicker], and writes the result back through [onValueChange] as `dd/MM/yyyy HH:mm`, the
- * format the form's text fields use. It is the picker counterpart of the manual [DateCard] text
+ * [TimePicker], and writes the result back through [onValueChange] in [EVENT_DATE_TIME_FORMATTER],
+ * the format the form's text fields use. It is the picker counterpart of the manual [DateCard] text
  * field, so both ways of entering the value stay available.
  *
- * The existing [value] is preselected when it parses, so confirming without changing anything keeps
- * it. Cancelling or dismissing either dialog leaves [value] untouched. The date is read and written
- * in UTC midnight millis, the representation Material3 uses, so the chosen day never shifts with
- * the device's zone.
+ * The existing [value] is preselected when it parses, read as strictly as the ViewModel reads it: a
+ * typed `31/02/2027 10:00` preselects nothing rather than the 28th, so confirming twice can never
+ * write a day the organizer did not choose. The date dialog's OK is disabled while no day is
+ * selected, which also happens when the typed year is outside the picker's range, so the time
+ * dialog only ever opens with a day to write. Cancelling or dismissing either dialog leaves [value]
+ * untouched and forgets the day picked, so a later interaction starts over from the date. The date
+ * is read and written in UTC midnight millis, the representation Material3 uses, so the chosen day
+ * never shifts with the device's zone.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -470,9 +477,8 @@ private fun DateTimePickerButton(
     testTag: String,
 ) {
   var showDate by rememberSaveable { mutableStateOf(false) }
-  var showTime by rememberSaveable { mutableStateOf(false) }
-  // The day chosen in the first dialog, kept for the second as an epoch day so it survives a
-  // configuration change while the time dialog is open.
+  // The day confirmed in the date dialog, which is what opens the time dialog: that one is open
+  // exactly while there is a day to write, and both survive a configuration change as an epoch day.
   var pickedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
   val existing = remember(value) { parseEventDateTime(value) }
 
@@ -489,6 +495,7 @@ private fun DateTimePickerButton(
 
   if (showDate) {
     val initialDay = existing?.toLocalDate() ?: LocalDate.now()
+    // A day outside the picker's year range is not preselected: the dialog opens with no selection.
     val pickerState =
         rememberDatePickerState(initialSelectedDateMillis = initialDay.toPickerMillis())
     DatePickerDialog(
@@ -500,24 +507,29 @@ private fun DateTimePickerButton(
                   pickedEpochDay = it.toPickerDate().toEpochDay()
                 }
                 showDate = false
-                showTime = true
               },
+              // Nothing to confirm without a day: the time dialog would have nothing to write.
+              enabled = pickerState.selectedDateMillis != null,
               modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
           ) {
-            Text(stringResource(R.string.create_event_dialog_confirm))
+            Text(stringResource(R.string.dialog_confirm))
           }
         },
         dismissButton = {
           TextButton(onClick = { showDate = false }) {
-            Text(stringResource(R.string.create_event_dialog_cancel))
+            Text(stringResource(R.string.dialog_cancel))
           }
         },
     ) {
-      DatePicker(state = pickerState)
+      DatePicker(
+          state = pickerState,
+          modifier = Modifier.testTag(CreateEventScreenTestTags.DATE_PICKER),
+      )
     }
   }
 
-  if (showTime) {
+  val pickedDay = pickedEpochDay
+  if (pickedDay != null) {
     val start = existing?.toLocalTime() ?: LocalTime.NOON
     val pickerState =
         rememberTimePickerState(
@@ -526,54 +538,37 @@ private fun DateTimePickerButton(
             is24Hour = true,
         )
     AlertDialog(
-        onDismissRequest = { showTime = false },
+        onDismissRequest = { pickedEpochDay = null },
         confirmButton = {
           TextButton(
               onClick = {
-                pickedEpochDay?.let { epochDay ->
-                  val dateTime =
-                      LocalDateTime.of(
-                          LocalDate.ofEpochDay(epochDay),
-                          LocalTime.of(pickerState.hour, pickerState.minute),
-                      )
-                  onValueChange(dateTime.format(EVENT_DATE_TIME_FORMAT))
-                }
-                showTime = false
+                val dateTime =
+                    LocalDateTime.of(
+                        LocalDate.ofEpochDay(pickedDay),
+                        LocalTime.of(pickerState.hour, pickerState.minute),
+                    )
+                onValueChange(dateTime.format(EVENT_DATE_TIME_FORMATTER))
+                pickedEpochDay = null
               },
               modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
           ) {
-            Text(stringResource(R.string.create_event_dialog_confirm))
+            Text(stringResource(R.string.dialog_confirm))
           }
         },
         dismissButton = {
-          TextButton(onClick = { showTime = false }) {
-            Text(stringResource(R.string.create_event_dialog_cancel))
+          TextButton(onClick = { pickedEpochDay = null }) {
+            Text(stringResource(R.string.dialog_cancel))
           }
         },
-        text = { TimePicker(state = pickerState) },
+        text = {
+          TimePicker(
+              state = pickerState,
+              modifier = Modifier.testTag(CreateEventScreenTestTags.TIME_PICKER),
+          )
+        },
     )
   }
 }
-
-/** The date-and-time format the form reads and writes, matching the hint and the ViewModel. */
-private val EVENT_DATE_TIME_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-
-/** The field value as a date and time, or null while it is empty or not yet a full valid value. */
-private fun parseEventDateTime(value: String): LocalDateTime? =
-    try {
-      LocalDateTime.parse(value.trim(), EVENT_DATE_TIME_FORMAT)
-    } catch (_: DateTimeParseException) {
-      null
-    }
-
-/** The date picker works in UTC milliseconds at midnight, whatever the device's zone. */
-private const val MILLIS_PER_DAY = 86_400_000L
-
-private fun LocalDate.toPickerMillis(): Long = toEpochDay() * MILLIS_PER_DAY
-
-private fun Long.toPickerDate(): LocalDate =
-    LocalDate.ofEpochDay(Math.floorDiv(this, MILLIS_PER_DAY))
 
 /** Two-column grid of selectable event type cards. */
 @Composable

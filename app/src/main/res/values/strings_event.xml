@@ -16,8 +16,6 @@
     <string name="create_event_field_end">End</string>
     <string name="create_event_date_time_hint">DD/MM/YYYY HH:MM</string>
     <string name="create_event_pick_date_time">Pick the %1$s date and time</string>
-    <string name="create_event_dialog_confirm">OK</string>
-    <string name="create_event_dialog_cancel">Cancel</string>
     <string name="create_event_submit">Create my event</string>
     <string name="create_event_error_title_empty">Enter a title</string>
     <string name="create_event_error_title_too_long">The title is too long</string>

@@ -1,6 +1,16 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
+import android.content.res.Configuration
+import android.icu.text.DateFormat
+import android.icu.text.DisplayContext
+import android.icu.util.TimeZone
+import androidx.compose.material3.DatePickerDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -31,7 +41,12 @@ import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -70,17 +85,45 @@ class CreateEventScreenTest {
       repository: EventRepository,
       onEventCreated: (Event) -> Unit = {},
       onBack: () -> Unit = {},
+      locale: Locale? = null,
   ) {
     val viewModel =
         CreateEventViewModel(repository, currentUserId = { "organizer-1" }, clock = clock)
     composeTestRule.setContent {
-      ShifterTheme {
-        CreateEventScreen(viewModel, onEventCreated = onEventCreated, onBack = onBack)
+      InLocale(locale) {
+        ShifterTheme {
+          CreateEventScreen(viewModel, onEventCreated = onEventCreated, onBack = onBack)
+        }
       }
     }
   }
 
+  /** The day picked in place of the typed 21st, in the month the pickers open on. */
+  private val JULY_22: LocalDate = LocalDate.of(2027, 7, 22)
+
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  private fun cancelLabel(): String =
+      InstrumentationRegistry.getInstrumentation().targetContext.getString(R.string.dialog_cancel)
+
+  /**
+   * The clickable cell of [day] in the open date picker. Material3 exposes each cell as its date
+   * written in the language of [locale], and nothing else (the number shown is cleared from the
+   * semantics), so the label is built here as the picker builds it: through ICU, for its
+   * [DatePickerDefaults.YearMonthWeekdayDaySkeleton], at UTC midnight. Today's cell prefixes it
+   * with "Today", hence the substring match.
+   */
+  @OptIn(ExperimentalMaterial3Api::class)
+  private fun dayCell(day: LocalDate, locale: Locale = Locale.getDefault()): SemanticsMatcher {
+    val format =
+        DateFormat.getInstanceForSkeleton(DatePickerDefaults.YearMonthWeekdayDaySkeleton, locale)
+            .apply {
+              setContext(DisplayContext.CAPITALIZATION_FOR_STANDALONE)
+              timeZone = TimeZone.GMT_ZONE
+            }
+    val label = format.format(Date(day.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()))
+    return hasText(label, substring = true) and hasClickAction()
+  }
 
   /** Error texts are merged into their text field, so they are only found in the unmerged tree. */
   private fun errorNode(field: EventFormField) =
@@ -367,10 +410,7 @@ class CreateEventScreenTest {
   @Test
   fun pickerButton_opensTheDatePicker() {
     setScreen(RecordingRepository())
-    val cancel =
-        InstrumentationRegistry.getInstrumentation()
-            .targetContext
-            .getString(R.string.create_event_dialog_cancel)
+    val cancel = cancelLabel()
 
     node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
         .performScrollTo()
@@ -401,7 +441,7 @@ class CreateEventScreenTest {
         .performClick()
     // Actually select a different day (the 22nd) by clicking its day cell, not by coordinates, so
     // the test fails if the picker does not write the newly selected date back to the field.
-    composeTestRule.onNode(hasText("Thursday, July 22, 2027") and hasClickAction()).performClick()
+    composeTestRule.onNode(dayCell(JULY_22)).performClick()
     node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick() // confirm the date
     node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick() // confirm the time
 
@@ -419,14 +459,167 @@ class CreateEventScreenTest {
     node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
         .performScrollTo()
         .performClick()
-    val cancel =
-        InstrumentationRegistry.getInstrumentation()
-            .targetContext
-            .getString(R.string.create_event_dialog_cancel)
+    val cancel = cancelLabel()
     composeTestRule.onNodeWithText(cancel).performClick()
 
     node(CreateEventScreenTestTags.PICKER_CONFIRM).assertDoesNotExist()
     node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("21/07/2027 14:00")
+  }
+
+  /**
+   * Material3 labels each day in the language of the configuration ("jeudi 22 juillet 2027" in
+   * French), so a test naming the day in English only passes on an English device: the cell is
+   * found by the label the picker itself gives it in that language.
+   */
+  @Test
+  fun pickingANewDate_inFrench_writesTheSelectedValueInTheExpectedFormat() {
+    val defaultLocale = Locale.getDefault()
+    Locale.setDefault(Locale.FRENCH)
+    try {
+      setScreen(RecordingRepository(), locale = Locale.FRENCH)
+      node(CreateEventScreenTestTags.START_FIELD)
+          .performScrollTo()
+          .performTextInput("21/07/2027 14:00")
+
+      node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+          .performScrollTo()
+          .performClick()
+      // The English label is not there to be found: the cell is reached by its French one.
+      composeTestRule.onNode(hasText("Thursday, July 22, 2027")).assertDoesNotExist()
+      composeTestRule.onNode(dayCell(JULY_22, Locale.FRENCH)).performClick()
+      node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+      node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+
+      node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("22/07/2027 14:00")
+    } finally {
+      Locale.setDefault(defaultLocale)
+    }
+  }
+
+  /**
+   * The picker reads the field as strictly as the ViewModel does. Read leniently, 31/02 would
+   * preselect the 28th, and two OKs would write a day the organizer never typed.
+   */
+  @Test
+  fun pickingFromAnImpossibleTypedDate_doesNotWriteTheAdjustedDate() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("31/02/2027 10:00")
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+
+    // Nothing to preselect, so the picker started from today at noon, as it does for an empty
+    // field.
+    val today = LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/uuuu"))
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("$today 12:00")
+  }
+
+  /**
+   * A typed year outside the picker's 1900–2100 range parses but cannot be preselected, so the date
+   * dialog opens with no day: its OK must not lead to a time dialog with nothing to write.
+   */
+  @Test
+  fun datePicker_withoutASelectedDay_disablesTheConfirmUntilADayIsPicked() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("01/01/2200 10:00")
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.DATE_PICKER).assertIsDisplayed()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertIsNotEnabled().performClick()
+    node(CreateEventScreenTestTags.DATE_PICKER).assertIsDisplayed()
+    node(CreateEventScreenTestTags.TIME_PICKER).assertDoesNotExist()
+
+    // Picking a day (the dialog shows the current month) enables the OK and leads to the time.
+    // Material3 falls back to the current month when the selected date is out of range.
+    composeTestRule.onNode(dayCell(LocalDate.now().withDayOfMonth(15))).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).assertIsEnabled().performClick()
+    node(CreateEventScreenTestTags.TIME_PICKER).assertIsDisplayed()
+
+    composeTestRule.onNodeWithText(cancelLabel()).performClick()
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("01/01/2200 10:00")
+  }
+
+  @Test
+  fun cancellingTheTimePicker_leavesTheValueUnchangedAndStartsOverFromTheDate() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("21/07/2027 14:00")
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNode(dayCell(JULY_22)).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.TIME_PICKER).assertIsDisplayed()
+
+    composeTestRule.onNodeWithText(cancelLabel()).performClick()
+
+    node(CreateEventScreenTestTags.TIME_PICKER).assertDoesNotExist()
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("21/07/2027 14:00")
+    // The 22nd went with the cancelled dialog: picking again starts from the date, and confirming
+    // the preselected 21st twice writes the 21st.
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.DATE_PICKER).assertIsDisplayed()
+    node(CreateEventScreenTestTags.TIME_PICKER).assertDoesNotExist()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("21/07/2027 14:00")
+  }
+
+  @Test
+  fun confirmingBothDialogsWithoutChanging_keepsTheEndValue() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.END_FIELD).performScrollTo().performTextInput("26/07/2027 23:30")
+
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.END))
+        .performScrollTo()
+        .performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+
+    node(CreateEventScreenTestTags.END_FIELD).assertTextEquals("26/07/2027 23:30")
+  }
+
+  @Test
+  fun restoringWhileTheTimePickerIsOpen_keepsThePickedDay() {
+    val viewModel =
+        CreateEventViewModel(
+            RecordingRepository(),
+            currentUserId = { "organizer-1" },
+            clock = clock,
+        )
+    val restorationTester = StateRestorationTester(composeTestRule)
+    restorationTester.setContent {
+      ShifterTheme { CreateEventScreen(viewModel, onEventCreated = {}, onBack = {}) }
+    }
+    node(CreateEventScreenTestTags.START_FIELD)
+        .performScrollTo()
+        .performTextInput("21/07/2027 14:00")
+    node(CreateEventScreenTestTags.pickerButton(EventFormField.START))
+        .performScrollTo()
+        .performClick()
+    composeTestRule.onNode(dayCell(JULY_22)).performClick()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.TIME_PICKER).assertIsDisplayed()
+
+    restorationTester.emulateSavedInstanceStateRestore()
+    composeTestRule.waitForIdle()
+
+    // The time dialog is back with the day picked before it: confirming writes the 22nd.
+    node(CreateEventScreenTestTags.TIME_PICKER).assertIsDisplayed()
+    node(CreateEventScreenTestTags.PICKER_CONFIRM).performClick()
+    node(CreateEventScreenTestTags.START_FIELD).assertTextEquals("22/07/2027 14:00")
   }
 
   @Test
@@ -449,5 +642,18 @@ class CreateEventScreenTest {
     node(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertTrue(backCalled)
+  }
+}
+
+/**
+ * [content] under a configuration in [locale], the language the Material3 pickers label days in.
+ */
+@Composable
+private fun InLocale(locale: Locale?, content: @Composable () -> Unit) {
+  if (locale == null) {
+    content()
+  } else {
+    val configuration = Configuration(LocalConfiguration.current).apply { setLocale(locale) }
+    CompositionLocalProvider(LocalConfiguration provides configuration, content = content)
   }
 }

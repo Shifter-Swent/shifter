@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.lifecycle.ViewModel
@@ -12,10 +13,6 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import java.time.Clock
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.DateTimeParseException
-import java.time.format.ResolverStyle
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -221,11 +218,7 @@ class CreateEventViewModel(
 
   /** Reads [text] as a local date and time in the clock's zone, or returns null if malformed. */
   private fun parseDateTime(text: String): Instant? =
-      try {
-        LocalDateTime.parse(text.trim(), DATE_TIME_FORMATTER).atZone(clock.zone).toInstant()
-      } catch (_: DateTimeParseException) {
-        null
-      }
+      parseEventDateTime(text)?.atZone(clock.zone)?.toInstant()
 
   companion object {
     /** Longest title accepted, so it fits on event cards and in lists. */
@@ -250,12 +243,5 @@ class CreateEventViewModel(
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer { CreateEventViewModel(repository, currentUserId, clock) }
     }
-
-    /**
-     * How the organizer types a date and time, e.g. `24/12/2027 18:30`. Strict, so impossible dates
-     * such as 31/02 are rejected instead of being adjusted.
-     */
-    private val DATE_TIME_FORMATTER: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("dd/MM/uuuu HH:mm").withResolverStyle(ResolverStyle.STRICT)
   }
 }
