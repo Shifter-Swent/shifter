@@ -66,7 +66,18 @@ object FirestoreEmulatorAdmin {
         // The REST API takes 64-bit integers as strings.
         is Int,
         is Long -> JSONObject().put("integerValue", value.toString())
-        is Double -> JSONObject().put("doubleValue", value)
+        // JSON has no NaN nor infinity, which the REST API takes as strings instead.
+        is Double ->
+            JSONObject()
+                .put(
+                    "doubleValue",
+                    when {
+                      value.isFinite() -> value
+                      value.isNaN() -> "NaN"
+                      value > 0 -> "Infinity"
+                      else -> "-Infinity"
+                    },
+                )
         is Instant -> JSONObject().put("timestampValue", value.toString())
         is Timestamp ->
             JSONObject()
