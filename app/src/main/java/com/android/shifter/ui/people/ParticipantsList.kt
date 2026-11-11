@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.people
 
@@ -20,7 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +69,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PillColors
+import com.swent.shifter.ui.components.avatarInitials
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 
@@ -119,8 +122,12 @@ fun ParticipantsList(
   val colors = MaterialTheme.colorScheme
   var expanded by rememberSaveable { mutableStateOf<String?>(null) }
   // A participant gone from the list, e.g. after a reload, leaves no card open behind them.
-  LaunchedEffect(state.groups) {
-    if (state.groups.none { group -> group.participants.any { it.userId == expanded } }) {
+  LaunchedEffect(state.groups, state.isLoading, state.error) {
+    if (
+        !state.isLoading &&
+            state.error == null &&
+            state.groups.none { group -> group.participants.any { it.userId == expanded } }
+    ) {
       expanded = null
     }
   }
@@ -271,7 +278,9 @@ private fun ParticipantCard(
 ) {
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(16.dp)
-  val name = participant.name ?: stringResource(R.string.participants_unknown_volunteer)
+  val name =
+      participant.name?.takeIf { it.isNotBlank() }
+          ?: stringResource(R.string.participants_unknown_volunteer)
   val border by
       animateColorAsState(
           if (expanded) colors.primary.copy(alpha = 0.7f) else colors.outlineVariant,
@@ -314,7 +323,7 @@ private fun ParticipantCard(
                 .semantics(mergeDescendants = true) { if (unfolds) stateDescription = state }
                 .testTag(ParticipantsListTestTags.participantCard(participant.userId)),
     ) {
-      Initials(name, highlighted = expanded)
+      Initials(participant.name, highlighted = expanded)
       Text(
           text = name,
           color = colors.onSurface,
@@ -413,18 +422,18 @@ private fun Chevron(expanded: Boolean, turn: Float) {
 
 /** The participant's initials in a disc, which takes the accent while their card is open. */
 @Composable
-private fun Initials(name: String, highlighted: Boolean) {
+private fun Initials(name: String?, highlighted: Boolean) {
   val colors = MaterialTheme.colorScheme
-  val initials = name.split(' ').mapNotNull { it.firstOrNull()?.uppercaseChar() }.take(2)
   Box(
       contentAlignment = Alignment.Center,
       modifier =
           Modifier.size(36.dp)
               .clip(CircleShape)
-              .background(if (highlighted) colors.primary else colors.primaryContainer),
+              .background(if (highlighted) colors.primary else colors.primaryContainer)
+              .clearAndSetSemantics {},
   ) {
     Text(
-        text = initials.joinToString(""),
+        text = avatarInitials(name),
         color = if (highlighted) colors.onPrimary else colors.primary,
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
@@ -468,7 +477,7 @@ private fun RowScope.CardAction(
                     ActionStyle.WARNING -> colors.error
                   },
           ),
-      modifier = Modifier.weight(1f).height(44.dp).testTag(testTag),
+      modifier = Modifier.weight(1f).heightIn(min = 44.dp).testTag(testTag),
   ) {
     Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
     Text(
@@ -476,6 +485,7 @@ private fun RowScope.CardAction(
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier.padding(start = 8.dp),
     )
   }

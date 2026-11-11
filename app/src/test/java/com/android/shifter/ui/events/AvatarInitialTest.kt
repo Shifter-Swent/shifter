@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.events
 
@@ -22,5 +23,10 @@ class AvatarInitialTest {
   fun avatarInitial_isAQuestionMarkWithoutNameOrEmail() {
     assertEquals("?", avatarInitial(AuthUser("uid", null, null)))
     assertEquals("?", avatarInitial(null))
+  }
+
+  @Test
+  fun avatarInitial_withEmojiName_returnsTheWholeCodePoint() {
+    assertEquals("😀", avatarInitial(AuthUser("uid", "sam@example.com", "😀 Sam")))
   }
 }

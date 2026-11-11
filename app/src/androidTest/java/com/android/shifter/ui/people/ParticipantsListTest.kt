@@ -1,24 +1,38 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.people
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasStateDescription
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -85,6 +99,105 @@ class ParticipantsListTest {
     node(ParticipantsListTestTags.noParticipants("logistics")).assertIsDisplayed()
     node(ParticipantsListTestTags.teamBar(null)).assertTextContains("No team · 1")
     node(ParticipantsListTestTags.participantCard("carol")).assertTextContains("Unknown volunteer")
+  }
+
+  @Test
+  fun card_accessibilityReadsTheNameWithoutDecorativeInitials() {
+    setList(ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob)))))
+
+    card("bob").assertTextEquals("Bob Rossi")
+  }
+
+  @Test
+  fun card_withBlankName_usesTheUnknownVolunteerLabel() {
+    setList(
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob.copy(name = " ")))))
+    )
+
+    card("bob").assertTextEquals("Unknown volunteer")
+  }
+
+  @Test
+  fun actions_withLargeFontOnNarrowScreen_ellipsizeWithoutVerticalClipping() {
+    composeTestRule.setContent {
+      CompositionLocalProvider(
+          LocalDensity provides Density(LocalDensity.current.density, fontScale = 3f)
+      ) {
+        ShifterTheme {
+          Box(Modifier.width(360.dp)) {
+            ParticipantsList(
+                ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob)))),
+                onRetry = {},
+                onManagerAction = { _, _ -> },
+                onMoveAction = {},
+            )
+          }
+        }
+      }
+    }
+    card("bob").performClick()
+
+    listOf("Change team" to moveButton("bob"), "Make manager" to managerButton("bob")).forEach {
+        (label, button) ->
+      val results = mutableListOf<TextLayoutResult>()
+      composeTestRule
+          .onNodeWithText(label, useUnmergedTree = true)
+          .fetchSemanticsNode()
+          .config[SemanticsActions.GetTextLayoutResult]
+          .action!!
+          .invoke(results)
+      val layout = results.single()
+      assertEquals(1, layout.lineCount)
+      assertTrue(layout.isLineEllipsized(0))
+      assertFalse(layout.didOverflowHeight)
+      assertTrue(button.fetchSemanticsNode().boundsInRoot.height >= layout.size.height)
+    }
+  }
+
+  @Test
+  fun reload_withTransientEmptyGroups_keepsTheCardOpen() {
+    val loaded = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob))))
+    val state = mutableStateOf(loaded)
+    composeTestRule.setContent { ShifterTheme { ParticipantsList(state.value, {}, { _, _ -> }) } }
+    card("bob").performClick()
+
+    composeTestRule.runOnIdle { state.value = ParticipantsUiState(isLoading = true) }
+    composeTestRule.runOnIdle {
+      state.value = ParticipantsUiState(error = ParticipantsError.OFFLINE)
+    }
+    composeTestRule.runOnIdle { state.value = loaded }
+
+    card("bob").assert(hasStateDescription("Expanded"))
+    managerButton("bob").assertIsDisplayed()
+  }
+
+  @Test
+  fun restoration_whileLoading_keepsTheCardOpenWhenParticipantsReturn() {
+    val loaded = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob))))
+    val state = mutableStateOf(loaded)
+    val restoration = StateRestorationTester(composeTestRule)
+    restoration.setContent { ShifterTheme { ParticipantsList(state.value, {}, { _, _ -> }) } }
+    card("bob").performClick()
+
+    composeTestRule.runOnIdle { state.value = ParticipantsUiState(isLoading = true) }
+    restoration.emulateSavedInstanceStateRestore()
+    composeTestRule.runOnIdle { state.value = loaded }
+
+    card("bob").assert(hasStateDescription("Expanded"))
+  }
+
+  @Test
+  fun reload_whenLoadedListConfirmsRemoval_foldsTheCard() {
+    val loaded = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob))))
+    val state = mutableStateOf(loaded)
+    composeTestRule.setContent { ShifterTheme { ParticipantsList(state.value, {}, { _, _ -> }) } }
+    card("bob").performClick()
+
+    composeTestRule.runOnIdle { state.value = ParticipantsUiState(isLoading = true) }
+    composeTestRule.runOnIdle { state.value = ParticipantsUiState() }
+    composeTestRule.runOnIdle { state.value = loaded }
+
+    card("bob").assert(hasStateDescription("Collapsed"))
   }
 
   @Test
