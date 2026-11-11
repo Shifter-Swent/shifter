@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
 import com.swent.shifter.ui.event.FakeClipboard
+import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -64,7 +65,7 @@ class OrganizerOverviewScreenTest {
 
   @Test
   fun loaded_showsTheInvitationCodeFirst() {
-    show(loaded.copy(joinCode = "ABC234"))
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
 
     compose
         .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
@@ -74,18 +75,40 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun joinCodeNotLoaded_showsNoCodeCard() {
-    show(loaded)
+  fun joinCodeLoading_keepsTheCardWithNothingToCopy() {
+    show(loaded.copy(joinCode = JoinCodeState.Loading))
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE).assertDoesNotExist()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertIsDisplayed()
+        .assertTextEquals(JOIN_CODE_PLACEHOLDER)
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
+        .assertIsNotEnabled()
+  }
+
+  @Test
+  fun joinCodeUnavailable_saysSoAndRetries() {
+    var retries = 0
+    show(
+        loaded.copy(joinCode = JoinCodeState.Unavailable),
+        OrganizerOverviewActions(onRetryJoinCode = { retries++ }),
+    )
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE_UNAVAILABLE)
+        .assertTextEquals(string(R.string.event_join_code_unavailable))
     compose
         .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
         .assertDoesNotExist()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.RETRY_JOIN_CODE_BUTTON).performClick()
+
+    assertEquals(1, retries)
   }
 
   @Test
   fun copy_putsTheCodeInTheClipboardAndConfirmsIt() {
-    show(loaded.copy(joinCode = "ABC234"))
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
 
@@ -97,7 +120,7 @@ class OrganizerOverviewScreenTest {
   @Test
   fun copy_whenTheClipboardRefuses_saysTheCopyFailed() {
     clipboard.failure = SecurityException("Clipboard access denied")
-    show(loaded.copy(joinCode = "ABC234"))
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
 

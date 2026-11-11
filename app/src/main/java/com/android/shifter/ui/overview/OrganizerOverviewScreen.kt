@@ -47,9 +47,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
 import com.swent.shifter.ui.event.JoinCodeCard
 import com.swent.shifter.ui.event.JoinCodeCardSize
 import com.swent.shifter.ui.event.JoinCodeCardTestTags
+import com.swent.shifter.ui.event.JoinCodeUnavailableCard
 import com.swent.shifter.ui.event.rememberCopyJoinCode
 import com.swent.shifter.ui.mission.AssigneePicker
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -76,6 +78,8 @@ object OrganizerOverviewScreenTestTags {
   const val ASSIGN_ERROR = "OrganizerOverviewAssignError"
   const val JOIN_CODE = JoinCodeCardTestTags.CODE
   const val COPY_JOIN_CODE_BUTTON = JoinCodeCardTestTags.COPY_BUTTON
+  const val JOIN_CODE_UNAVAILABLE = JoinCodeCardTestTags.UNAVAILABLE
+  const val RETRY_JOIN_CODE_BUTTON = JoinCodeCardTestTags.RETRY_BUTTON
   const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
@@ -114,6 +118,7 @@ fun OrganizerOverviewScreen(
               onEditMission = onEditMission,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
+              onRetryJoinCode = viewModel::retryJoinCode,
               onAssign = viewModel::openAssign,
               onToggleAssignee = viewModel::toggleAssignee,
               onRetryAssignees = viewModel::retryAssignees,
@@ -130,6 +135,7 @@ data class OrganizerOverviewActions(
     val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
+    val onRetryJoinCode: () -> Unit = {},
     // TODO: open the notification composer once notifications exist.
     val onSendNotification: () -> Unit = {},
     val onAssign: (String) -> Unit = {},
@@ -173,14 +179,7 @@ private fun OverviewColumn(
               .testTag(OrganizerOverviewScreenTestTags.SCREEN),
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    // Not shown until it is loaded: an empty card would offer nothing to copy.
-    state.joinCode?.let { joinCode ->
-      JoinCodeCard(
-          joinCode = joinCode,
-          onCopy = { onCopyJoinCode(joinCode) },
-          size = JoinCodeCardSize.Compact,
-      )
-    }
+    JoinCode(state.joinCode, onCopyJoinCode, actions.onRetryJoinCode)
     AddMissionButton(actions.onAddMission)
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
@@ -188,6 +187,34 @@ private fun OverviewColumn(
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
     Missions(state, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
+  }
+}
+
+/**
+ * The join code card, there from the start so the buttons below never move when the code arrives: a
+ * placeholder with nothing to copy while it is read, then the code, or a retry when unavailable.
+ */
+@Composable
+private fun JoinCode(
+    joinCode: JoinCodeState,
+    onCopy: (String) -> Unit,
+    onRetry: () -> Unit,
+) {
+  when (joinCode) {
+    JoinCodeState.Loading ->
+        JoinCodeCard(
+            joinCode = JOIN_CODE_PLACEHOLDER,
+            onCopy = {},
+            size = JoinCodeCardSize.Compact,
+            copyEnabled = false,
+        )
+    is JoinCodeState.Ready ->
+        JoinCodeCard(
+            joinCode = joinCode.code,
+            onCopy = { onCopy(joinCode.code) },
+            size = JoinCodeCardSize.Compact,
+        )
+    JoinCodeState.Unavailable -> JoinCodeUnavailableCard(onRetry)
   }
 }
 
@@ -600,7 +627,7 @@ private fun OrganizerOverviewContentPreview() {
                         OverviewMission("2", "Prepare the counter", "bar", false),
                         OverviewMission("3", "Welcome the volunteers", null, false),
                     ),
-                joinCode = "ABC234",
+                joinCode = JoinCodeState.Ready("ABC234"),
             ),
         actions = OrganizerOverviewActions(),
     )

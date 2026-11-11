@@ -52,4 +52,6 @@
     <string name="event_join_code_copy">Copy code</string>
     <string name="event_join_code_copied">Code copied</string>
     <string name="event_join_code_copy_failed">Could not copy the code</string>
+    <string name="event_join_code_unavailable">Code unavailable</string>
+    <string name="event_join_code_retry">Retry</string>
 </resources>

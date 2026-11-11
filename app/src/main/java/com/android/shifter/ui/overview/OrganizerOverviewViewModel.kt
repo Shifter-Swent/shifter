@@ -58,6 +58,18 @@ data class AssignState(
     val saveFailed: Boolean = false,
 )
 
+/** Where the event's join code stands, so its card keeps its place from the start. */
+sealed interface JoinCodeState {
+  /** Being read: the card waits, with nothing to copy yet. */
+  data object Loading : JoinCodeState
+
+  /** Read: the card shows [code] and copies it. */
+  data class Ready(val code: String) : JoinCodeState
+
+  /** Not readable, e.g. offline, or not assigned by the backend yet: the card offers to retry. */
+  data object Unavailable : JoinCodeState
+}
+
 /**
  * State of the organizer's management screen of an event.
  *
@@ -65,7 +77,7 @@ data class AssignState(
  * @property selectedTeamId the team whose missions are listed, or null to list them all.
  * @property loadFailed whether the last load failed. Data from an earlier load is kept and shown.
  * @property assigning the assignees being edited, or null when no mission is being assigned.
- * @property joinCode the code volunteers enter to join the event, or null until it is loaded.
+ * @property joinCode the code volunteers enter to join the event: being read, read, or unavailable.
  */
 data class OrganizerOverviewUiState(
     val isLoading: Boolean = true,
@@ -74,7 +86,7 @@ data class OrganizerOverviewUiState(
     val missions: List<OverviewMission> = emptyList(),
     val selectedTeamId: String? = null,
     val assigning: AssignState? = null,
-    val joinCode: String? = null,
+    val joinCode: JoinCodeState = JoinCodeState.Loading,
 ) {
   /** The missions of the selected team, or all of them when none is selected. */
   val visibleMissions: List<OverviewMission>
@@ -158,22 +170,32 @@ class OrganizerOverviewViewModel(
     }
   }
 
+  /** Reads the join code again after it was unavailable, without reloading the missions. */
+  fun retryJoinCode() = loadJoinCode()
+
   /**
-   * Reads the event's join code, unless it is already known or being read. On a failure it stays
-   * unknown and the screen shows no code, and the next [refresh] tries again. Read apart from the
-   * missions, so neither failing hides the other.
+   * Reads the event's join code, unless it is already read or being read. On a failure, or when the
+   * event has no code yet, it is [JoinCodeState.Unavailable]: [retryJoinCode] and the next
+   * [refresh] try again. Read apart from the missions, so neither failing hides the other.
    */
   private fun loadJoinCode() {
-    if (_uiState.value.joinCode != null || joinCodeJob?.isActive == true) return
+    if (_uiState.value.joinCode is JoinCodeState.Ready || joinCodeJob?.isActive == true) return
+    _uiState.update { it.copy(joinCode = JoinCodeState.Loading) }
     joinCodeJob = viewModelScope.launch {
-      try {
-        // Empty until the backend assigns one: not a code to show.
-        val joinCode = eventRepository.getEvent(eventId)?.joinCode?.takeIf { it.isNotBlank() }
-        _uiState.update { it.copy(joinCode = joinCode) }
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        // Stays unknown, to be read again by the next refresh.
+      val joinCode =
+          try {
+            // Empty until the backend assigns one: not a code to show.
+            eventRepository.getEvent(eventId)?.joinCode?.takeIf { it.isNotBlank() }
+          } catch (e: CancellationException) {
+            throw e
+          } catch (_: Exception) {
+            null
+          }
+      _uiState.update {
+        it.copy(
+            joinCode =
+                joinCode?.let { code -> JoinCodeState.Ready(code) } ?: JoinCodeState.Unavailable
+        )
       }
     }
   }

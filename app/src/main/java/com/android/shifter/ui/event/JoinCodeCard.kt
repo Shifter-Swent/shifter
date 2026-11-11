@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,8 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
@@ -24,11 +27,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,7 +48,12 @@ import kotlinx.coroutines.launch
 object JoinCodeCardTestTags {
   const val CODE = "JoinCodeCardCode"
   const val COPY_BUTTON = "JoinCodeCardCopyButton"
+  const val UNAVAILABLE = "JoinCodeCardUnavailable"
+  const val RETRY_BUTTON = "JoinCodeCardRetryButton"
 }
+
+/** Shown in place of a code still being read, so the card already has its final size. */
+const val JOIN_CODE_PLACEHOLDER = "······"
 
 /** How much room [JoinCodeCard] takes on its screen. */
 enum class JoinCodeCardSize {
@@ -58,6 +68,7 @@ enum class JoinCodeCardSize {
  * code is shown, so the organizer always recognizes it.
  *
  * @param onCopy called when the copy button is tapped; [rememberCopyJoinCode] does the copy.
+ * @param copyEnabled whether there is a code to copy, false while [JOIN_CODE_PLACEHOLDER] is shown.
  */
 @Composable
 fun JoinCodeCard(
@@ -65,15 +76,11 @@ fun JoinCodeCard(
     onCopy: () -> Unit,
     modifier: Modifier = Modifier,
     size: JoinCodeCardSize = JoinCodeCardSize.Normal,
+    copyEnabled: Boolean = true,
 ) {
   val colorScheme = MaterialTheme.colorScheme
   val shape = MaterialTheme.shapes.medium
-  val cardModifier =
-      modifier
-          .fillMaxWidth()
-          .clip(shape)
-          .background(colorScheme.primaryContainer)
-          .border(1.dp, colorScheme.primary, shape)
+  val cardModifier = modifier.cardStyle()
   when (size) {
     JoinCodeCardSize.Normal ->
         Column(
@@ -85,6 +92,7 @@ fun JoinCodeCard(
           Code(joinCode, large = true)
           OutlinedButton(
               onClick = onCopy,
+              enabled = copyEnabled,
               shape = shape,
               modifier = Modifier.testTag(JoinCodeCardTestTags.COPY_BUTTON),
           ) {
@@ -97,26 +105,92 @@ fun JoinCodeCard(
           }
         }
     JoinCodeCardSize.Compact ->
-        Row(
-            modifier = cardModifier.padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Label(R.string.event_join_code_label_short)
-            Code(joinCode, large = false)
-          }
+        CompactCard(modifier, line = { Code(joinCode, large = false) }) {
           IconButton(
               onClick = onCopy,
+              enabled = copyEnabled,
+              // Given to the button, not the icon, so a disabled copy is greyed out.
+              colors = IconButtonDefaults.iconButtonColors(contentColor = colorScheme.primary),
               modifier = Modifier.testTag(JoinCodeCardTestTags.COPY_BUTTON),
           ) {
             Icon(
                 Icons.Outlined.ContentCopy,
                 contentDescription = stringResource(R.string.event_join_code_copy),
-                tint = colorScheme.primary,
             )
           }
         }
   }
+}
+
+/**
+ * The compact [JoinCodeCard] when the code could not be read, or the event has none yet: says so,
+ * with a button to read it again, in the same place and look so nothing moves.
+ */
+@Composable
+fun JoinCodeUnavailableCard(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+  CompactCard(
+      modifier,
+      line = {
+        Text(
+            text = stringResource(R.string.event_join_code_unavailable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.testTag(JoinCodeCardTestTags.UNAVAILABLE),
+        )
+      },
+  ) {
+    IconButton(
+        onClick = onRetry,
+        colors =
+            IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+        modifier = Modifier.testTag(JoinCodeCardTestTags.RETRY_BUTTON),
+    ) {
+      Icon(
+          Icons.Outlined.Refresh,
+          contentDescription = stringResource(R.string.event_join_code_retry),
+      )
+    }
+  }
+}
+
+/**
+ * The layout every compact card shares, so a card never changes size from one state to another: the
+ * label, then [line] in a slot as tall as the code, then [action], an icon button.
+ */
+@Composable
+private fun CompactCard(
+    modifier: Modifier,
+    line: @Composable () -> Unit,
+    action: @Composable () -> Unit,
+) {
+  Row(
+      modifier = modifier.cardStyle().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Label(R.string.event_join_code_label_short)
+      Box(contentAlignment = Alignment.CenterStart) {
+        // An invisible code holds the line at the code's exact height, whatever the font scale and
+        // whatever [line] shows. Hidden from screen readers and tests.
+        Box(Modifier.alpha(0f).clearAndSetSemantics {}) {
+          Code(JOIN_CODE_PLACEHOLDER, large = false)
+        }
+        line()
+      }
+    }
+    action()
+  }
+}
+
+/** The highlighted background and border every join code card shares. */
+@Composable
+private fun Modifier.cardStyle(): Modifier {
+  val colorScheme = MaterialTheme.colorScheme
+  val shape = MaterialTheme.shapes.medium
+  return fillMaxWidth()
+      .clip(shape)
+      .background(colorScheme.primaryContainer)
+      .border(1.dp, colorScheme.primary, shape)
 }
 
 @Composable
@@ -185,6 +259,13 @@ private fun JoinCodeCardPreview() {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
       JoinCodeCard(joinCode = "ABC234", onCopy = {})
       JoinCodeCard(joinCode = "ABC234", onCopy = {}, size = JoinCodeCardSize.Compact)
+      JoinCodeCard(
+          joinCode = JOIN_CODE_PLACEHOLDER,
+          onCopy = {},
+          size = JoinCodeCardSize.Compact,
+          copyEnabled = false,
+      )
+      JoinCodeUnavailableCard(onRetry = {})
     }
   }
 }

@@ -627,7 +627,7 @@ class OrganizerOverviewViewModelTest {
   fun init_loadsTheEventsJoinCode() = runTest {
     open()
 
-    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Ready("ABC234"), viewModel.uiState.value.joinCode)
   }
 
   @Test
@@ -638,17 +638,17 @@ class OrganizerOverviewViewModelTest {
     advanceUntilIdle()
 
     assertEquals(1, events.reads)
-    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Ready("ABC234"), viewModel.uiState.value.joinCode)
   }
 
   @Test
-  fun joinCode_whenTheEventCannotBeRead_isUnknownAndTheMissionsStillLoad() = runTest {
+  fun joinCode_whenTheEventCannotBeRead_isUnavailableAndTheMissionsStillLoad() = runTest {
     addMission("Set up", "logistics", hour = 1)
     events.failure = EventRepositoryException.Unavailable()
 
     open()
 
-    assertNull(viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Unavailable, viewModel.uiState.value.joinCode)
     assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
     assertFalse(viewModel.uiState.value.loadFailed)
   }
@@ -662,26 +662,58 @@ class OrganizerOverviewViewModelTest {
     viewModel.refresh()
     advanceUntilIdle()
 
-    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Ready("ABC234"), viewModel.uiState.value.joinCode)
   }
 
   @Test
-  fun joinCode_ofAMissingEvent_isUnknown() = runTest {
+  fun joinCode_ofAMissingEvent_isUnavailable() = runTest {
     events.delegate.events.clear()
 
     open()
 
-    assertNull(viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Unavailable, viewModel.uiState.value.joinCode)
   }
 
   @Test
-  fun joinCode_ofAnEventWithoutCode_isUnknown() = runTest {
+  fun joinCode_ofAnEventWithoutCode_isUnavailable() = runTest {
     events.delegate.events.clear()
     events.delegate.events += event(joinCode = "")
 
     open()
 
-    assertNull(viewModel.uiState.value.joinCode)
+    assertEquals(JoinCodeState.Unavailable, viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun joinCode_whileItIsRead_isLoading() {
+    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates, events)
+
+    assertEquals(JoinCodeState.Loading, viewModel.uiState.value.joinCode)
+  }
+
+  @Test
+  fun retryJoinCode_afterAFailure_readsTheCode() = runTest {
+    events.failure = EventRepositoryException.Unavailable()
+    open()
+
+    events.failure = null
+    viewModel.retryJoinCode()
+    assertEquals(JoinCodeState.Loading, viewModel.uiState.value.joinCode)
+    advanceUntilIdle()
+
+    assertEquals(JoinCodeState.Ready("ABC234"), viewModel.uiState.value.joinCode)
+    assertEquals(2, events.reads)
+  }
+
+  @Test
+  fun retryJoinCode_whenTheCodeIsKnown_doesNotReadItAgain() = runTest {
+    open()
+
+    viewModel.retryJoinCode()
+    advanceUntilIdle()
+
+    assertEquals(1, events.reads)
+    assertEquals(JoinCodeState.Ready("ABC234"), viewModel.uiState.value.joinCode)
   }
 }
 
