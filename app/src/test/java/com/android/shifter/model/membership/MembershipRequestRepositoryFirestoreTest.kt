@@ -176,10 +176,10 @@ class MembershipRequestRepositoryFirestoreTest {
     every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
     every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
 
-    repository.reject("event", request.userId)
+    val removal = leavingTheIndex { repository.reject("event", request.userId) }
 
     verify { transaction.update(team, "managerId", null) }
-    verifyLeftTheIndex()
+    verifyLeftTheIndex(removal)
   }
 
   @Test
@@ -210,6 +210,8 @@ class MembershipRequestRepositoryFirestoreTest {
     }
     // The volunteer may not be allowed to read the participants document.
     verify(exactly = 0) { transaction.get(participants) }
+    // A member only: they are in no entry of the index, which is left alone.
+    verify(exactly = 0) { transaction.set(managerEntry, any(), any()) }
   }
 
   @Test
@@ -217,10 +219,10 @@ class MembershipRequestRepositoryFirestoreTest {
     every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
     every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
 
-    repository.withdraw("event", request.userId)
+    val removal = leavingTheIndex { repository.withdraw("event", request.userId) }
 
     verify { transaction.update(team, "managerId", null) }
-    verifyLeftTheIndex()
+    verifyLeftTheIndex(removal)
     verify { transaction.delete(ref) }
   }
 
@@ -472,15 +474,22 @@ class MembershipRequestRepositoryFirestoreTest {
     assertEquals(error, thrown!!.cause)
   }
 
-  /** The team was taken out of the volunteer's entry in the index of the managers, merged. */
-  private fun verifyLeftTheIndex() {
-    verify {
-      transaction.set(
-          managerEntry,
-          match<Map<String, Any>> { it.keys == setOf("teamIds") },
-          SetOptions.merge(),
-      )
+  /**
+   * Runs [action] with `arrayRemove` of the team returning a value of its own, which it returns:
+   * `FieldValue` has no equality, so only that instance tells the removal of this team apart.
+   */
+  private inline fun leavingTheIndex(action: () -> Unit): FieldValue {
+    val removal = FieldValue.arrayRemove(request.teamId)
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.teamId) } returns removal
+      action()
     }
+    return removal
+  }
+
+  /** The team was taken out of the volunteer's entry in the index of the managers, merged. */
+  private fun verifyLeftTheIndex(removal: FieldValue) {
+    verify { transaction.set(managerEntry, mapOf("teamIds" to removal), SetOptions.merge()) }
   }
 
   private fun teamSnapshot(
