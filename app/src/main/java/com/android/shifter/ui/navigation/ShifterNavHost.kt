@@ -684,43 +684,6 @@ private fun NavigationActions.leaveEvent(set: TabSet) {
 @Composable
 private fun RefreshOnReturn(viewModel: MyEventsViewModel) = RefreshOnReturn(viewModel::refresh)
 
-/**
- * The mission creation form of the event [eventId], for its organizer or the manager of one of its
- * teams: the form itself offers each only what they may create.
- *
- * @param onBack goes back to the event's Overview, once the mission is saved or when the user
- *   leaves the form.
- */
-@Composable
-private fun AddMissionRoute(
-    eventId: String,
-    repositories: RepositoryProvider,
-    currentUserId: () -> String?,
-    onBack: () -> Unit,
-) {
-  AddMissionScreen(
-      viewModel =
-          viewModel(
-              factory =
-                  AddMissionViewModel.factory(
-                      eventId,
-                      repositories.missionRepository,
-                      repositories.eventRepository,
-                      repositories.teamRepository,
-                      RepositoryAssigneeCandidates(
-                          repositories.teamRepository,
-                          repositories.membershipRequestRepository,
-                          repositories.userRepository,
-                      ),
-                      currentUserId,
-                  )
-          ),
-      // Back to the event's overview, the mission saved.
-      onMissionAdded = { onBack() },
-      onBack = onBack,
-  )
-}
-
 /** Calls [refresh] each time the screen comes back on top, but not when it is first shown. */
 @Composable
 private fun RefreshOnReturn(refresh: () -> Unit) {
