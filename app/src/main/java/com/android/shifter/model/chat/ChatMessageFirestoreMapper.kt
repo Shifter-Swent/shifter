@@ -23,12 +23,15 @@ internal object ChatMessageSchema {
 
   /**
    * The `channels` subcollection of each `/events/{eventId}` document, holding the channels of the
-   * whole event, such as [GENERAL].
+   * whole event, such as [GENERAL] and [ADMIN].
    */
   const val CHANNELS = "channels"
 
   /** The id of the event's general channel in [CHANNELS]. */
   const val GENERAL = "general"
+
+  /** The id of the event's admin channel in [CHANNELS]. */
+  const val ADMIN = "admin"
 
   const val SENDER_ID = "senderId"
   const val TEXT = "text"

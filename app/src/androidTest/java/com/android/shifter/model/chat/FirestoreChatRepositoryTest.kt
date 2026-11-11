@@ -31,9 +31,9 @@ import org.junit.runner.RunWith
 
 /**
  * [FirestoreChatRepository] against the emulators, with the real `firestore.rules`.
- * `TeamChatRulesTest` and `GeneralChatRulesTest` cover each rule on their own; these tests check
- * what the repository makes of them: the document it writes, the errors it throws, and what its
- * flow emits.
+ * `TeamChatRulesTest`, `GeneralChatRulesTest` and `AdminChatRulesTest` cover each rule on their
+ * own; these tests check what the repository makes of them: the document it writes, the errors it
+ * throws, and what its flow emits.
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreChatRepositoryTest {
@@ -58,6 +58,12 @@ class FirestoreChatRepositoryTest {
 
   private val generalPath
     get() = "events/$eventId/channels/general"
+
+  private val admin
+    get() = ChatChannelId.Admin(eventId)
+
+  private val adminPath
+    get() = "events/$eventId/channels/admin"
 
   @Before
   fun setUp() = emulatorTest {
@@ -284,6 +290,74 @@ class FirestoreChatRepositoryTest {
     )
   }
 
+  @Test
+  fun admin_sendAndMessages_byAManager_storesTheMessageUnderTheEvent() = emulatorTest {
+    signIn(manager)
+
+    repository.send(admin, "  The bar needs two more people  ")
+
+    val listed = repository.messages(admin).first().single()
+    assertEquals("The bar needs two more people", listed.text)
+    assertEquals(manager.uid, listed.senderId)
+    val stored = db.collection("$adminPath/messages").get(Source.SERVER).await()
+    assertEquals(listOf(listed.id), stored.documents.map { it.id })
+    // Not in the general channel, though the manager takes part in the event.
+    assertEquals(emptyList<ChatMessage>(), repository.messages(general).first())
+  }
+
+  @Test
+  fun admin_byTheOrganizer_isAllowed() = emulatorTest {
+    signIn(organizer)
+
+    repository.send(admin, "Briefing of the managers at 17:00")
+
+    assertEquals(
+        listOf("Briefing of the managers at 17:00"),
+        repository.messages(admin).first().texts(),
+    )
+  }
+
+  @Test
+  fun admin_byAMemberWhoManagesNoTeam_failsWithNotAllowed() = emulatorTest {
+    signIn(member)
+    // The general channel of the same event is open to them.
+    repository.send(general, "Hello everyone")
+
+    assertFailsWith<ChatRepositoryException.NotAllowed> { repository.messages(admin).first() }
+    assertFailsWith<ChatRepositoryException.NotAllowed> { repository.send(admin, "Hello managers") }
+  }
+
+  /** Like leaving a team: losing the management ends an open observation of the admin channel. */
+  @Test
+  fun admin_afterNoLongerManagingATeam_failsWithNotAllowed() = emulatorTest {
+    signIn(manager)
+    var replaced = false
+
+    val failure = runCatching {
+      step("denial") {
+        repository.messages(admin).collect {
+          if (replaced) return@collect
+          replaced = true
+          // Through the admin API, so the manager stays signed in: their entry no longer lists
+          // a team, as when they are replaced.
+          FirestoreEmulatorAdmin.deleteDocument(managerEntryPath)
+          FirestoreEmulatorAdmin.createDocument(
+              managerEntryPath,
+              mapOf("teamIds" to emptyList<String>()),
+          )
+          // The rules are checked again when the query's result changes.
+          messageAsAdmin("after", organizer, "Briefing at 17:00", Instant.now(), adminPath)
+        }
+      }
+    }
+
+    assertTrue("the listener never emitted", replaced)
+    assertTrue(
+        "Expected NotAllowed, got ${failure.exceptionOrNull()}",
+        failure.exceptionOrNull() is ChatRepositoryException.NotAllowed,
+    )
+  }
+
   /**
    * The promise of [ChatRepository.send] offline: the message is listed at once as pending, the
    * call gives up with `Unavailable` rather than waiting, and the message still goes out once the
@@ -329,7 +403,8 @@ class FirestoreChatRepositoryTest {
 
   /**
    * Creates an event of [organizer] with the team [TEAM_ID], led by [manager], of [member], both
-   * participants of the event.
+   * participants of the event. The manager is in the managers index, as the app writes it with the
+   * team.
    */
   private suspend fun event(): String {
     signIn(organizer)
@@ -340,11 +415,17 @@ class FirestoreChatRepositoryTest {
     paths += team.path
     team.set(mapOf("managerId" to manager.uid, "memberIds" to listOf(member.uid))).await()
     paths += FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(manager.uid, member.uid))
+    val entry = "events/${ref.id}/managers/${manager.uid}"
+    paths += entry
+    FirestoreEmulatorAdmin.createDocument(entry, mapOf("teamIds" to listOf(TEAM_ID)))
     return ref.id
   }
 
   private val participantsPath
     get() = "eventParticipants/$eventId"
+
+  private val managerEntryPath
+    get() = "events/$eventId/managers/${manager.uid}"
 
   /**
    * Stores a message of [sender] sent at [sentAt] in the channel at [channelPath], whatever the
@@ -366,12 +447,12 @@ class FirestoreChatRepositoryTest {
   }
 
   /**
-   * The paths of every message of the team's and the general channels, read as the organizer, who
-   * may read them all.
+   * The paths of every message of the team's, the general and the admin channels, read as the
+   * organizer, who may read them all.
    */
   private suspend fun channelPaths(): List<String> {
     signIn(organizer)
-    return listOf(teamPath, generalPath).flatMap { channelPath ->
+    return listOf(teamPath, generalPath, adminPath).flatMap { channelPath ->
       db.collection("$channelPath/messages").get(Source.SERVER).await().documents.map {
         it.reference.path
       }

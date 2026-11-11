@@ -40,6 +40,8 @@ class FirestoreChatRepository(
           is ChatChannelId.Team -> event.collection(TeamSchema.COLLECTION).document(channel.teamId)
           is ChatChannelId.General ->
               event.collection(ChatMessageSchema.CHANNELS).document(ChatMessageSchema.GENERAL)
+          is ChatChannelId.Admin ->
+              event.collection(ChatMessageSchema.CHANNELS).document(ChatMessageSchema.ADMIN)
         }
     return parent.collection(ChatMessageSchema.COLLECTION)
   }
