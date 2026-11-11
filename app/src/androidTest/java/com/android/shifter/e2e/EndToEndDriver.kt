@@ -3,6 +3,8 @@ package com.swent.shifter.e2e
 
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertTextContains
@@ -27,6 +29,7 @@ import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
@@ -88,30 +91,29 @@ class EndToEndDriver(
   fun launchApp(locationProvider: LocationProvider? = null) {
     AuthEmulator.auth.signOut()
     composeTestRule.setContent {
+      val context = LocalContext.current
+      // Without a provider, the app reads the device's position, as in production.
+      val provider = locationProvider ?: remember(context) { FusedLocationProvider(context) }
       ShifterTheme {
-        // Without a provider, the app reads the device's position, as in production.
-        if (locationProvider == null)
-            ShifterNavHost(
-                isSignedIn = false,
-                repositories = repositories,
-                credentialManager = accountPicker,
-            )
-        else
-            ShifterNavHost(
-                isSignedIn = false,
-                repositories = repositories,
-                credentialManager = accountPicker,
-                locationProvider = locationProvider,
-            )
+        ShifterNavHost(
+            isSignedIn = false,
+            repositories = repositories,
+            credentialManager = accountPicker,
+            locationProvider = provider,
+        )
       }
     }
   }
 
   /** Deletes what the test wrote, then signs out and removes the accounts. */
   fun cleanUp() {
-    runBlocking { createdPaths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
-    AuthEmulator.auth.signOut()
-    AuthEmulator.clearAccounts()
+    try {
+      runBlocking { createdPaths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
+    } finally {
+      // Even when a deletion fails, so the next tests do not find these accounts.
+      AuthEmulator.auth.signOut()
+      AuthEmulator.clearAccounts()
+    }
   }
 
   /**
@@ -300,7 +302,8 @@ class EndToEndDriver(
    * A Google account, the same person on every sign-in: the Auth emulator maps its fixed subject to
    * the same Firebase user each time.
    */
-  class GoogleAccount(private val name: String) {
+  /** A Google account whose [name] is the display name the app shows for its user. */
+  class GoogleAccount(val name: String) {
     private val subject = "google-${UUID.randomUUID()}"
     private val email = "${name.lowercase()}-${UUID.randomUUID()}@example.com"
 

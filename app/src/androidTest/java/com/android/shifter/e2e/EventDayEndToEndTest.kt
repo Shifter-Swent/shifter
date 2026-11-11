@@ -113,8 +113,8 @@ class EventDayEndToEndTest {
     app.signOut()
 
     // ── 2. The future manager and the volunteer apply to the team with the code ──
-    val managerId = apply(manager, joinCode, event.title, team.id)
-    val volunteerId = apply(volunteer, joinCode, event.title, team.id)
+    val managerId = applyAs(manager, joinCode, event.title, team.id)
+    val volunteerId = applyAs(volunteer, joinCode, event.title, team.id)
     app.createdPaths.add(0, "eventParticipants/${event.id}")
     for (id in listOf(managerId, volunteerId)) {
       app.createdPaths.add(0, "events/${event.id}/membershipRequests/$id")
@@ -218,7 +218,7 @@ class EventDayEndToEndTest {
     app.waitForNode(ManagerOverviewTestTags.present(mission.id))
     composeTestRule
         .onNode(
-            hasText("Victor") and
+            hasText(volunteer.name) and
                 hasAnyAncestor(hasTestTag(ManagerOverviewTestTags.present(mission.id))),
             useUnmergedTree = true,
         )
@@ -231,7 +231,7 @@ class EventDayEndToEndTest {
   }
 
   /** Signs [account] in, applies to [teamId] with [joinCode], signs out, and returns their id. */
-  private fun apply(
+  private fun applyAs(
       account: GoogleAccount,
       joinCode: String,
       eventTitle: String,
