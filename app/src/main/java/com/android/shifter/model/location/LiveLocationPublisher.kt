@@ -1,14 +1,20 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import java.time.Duration
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.toKotlinDuration
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 /**
  * Shares the signed-in volunteer's position with their team while they consent to it, reading the
@@ -24,9 +30,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  *   [locationSharingEnabled][com.swent.shifter.model.user.User.locationSharingEnabled] has no
  *   reactive API, so [publish] takes it as a flow from whoever already knows it. The rules check it
  *   again on every write, so a stale `true` is refused rather than shared.
- * - **It does not check the location permission.** [LocationProvider.positions] already emits only
- *   while the status is [LocationStatus.GRANTED] and resumes on its own when it becomes so again,
- *   which is exactly the behaviour wanted here.
+ * - **It does not check the location permission before writing.** [LocationProvider.positions]
+ *   already emits only while the status is [LocationStatus.GRANTED] and resumes on its own when it
+ *   becomes so again, which is exactly the behaviour wanted here. [LocationProvider.status] is only
+ *   read to tell the volunteer about it (see [publish]).
  *
  * [LocationProvider.positions] emits a [GeoPosition] with no time of its own, so each position is
  * stamped with [now] when it is collected rather than when the GPS measured it:
@@ -79,12 +86,29 @@ class LiveLocationPublisher(
    * position anyway, and so does cancelling this call, which leaves the position to the next
    * session. A device that never comes back online therefore keeps the position until the event's
    * period ends: closing that needs the backend mechanism #305 plans separately.
+   *
+   * **[onState] hears what the session is doing**, for the indicator of #405, on a coroutine of the
+   * session and each time the state changes. The consent off reports [LiveLocationSharingState.OFF]
+   * at once, whether the removal has gone out or not. The consent on reports
+   * [LiveLocationSharingState.NO_LOCATION_ACCESS] while the position cannot be read, and otherwise
+   * what became of the last write, [LiveLocationSharingState.WAITING] until there is one.
+   * Cancelling this call reports nothing: the caller knows it ended.
    */
-  suspend fun publish(eventId: String, teamId: String, sharingEnabled: Flow<Boolean>) {
+  suspend fun publish(
+      eventId: String,
+      teamId: String,
+      sharingEnabled: Flow<Boolean>,
+      onState: (LiveLocationSharingState) -> Unit,
+  ) {
     // collectLatest cancels the sharing as soon as the consent is turned off, so no write starts
     // after it, and cancels the removal as soon as it is turned back on.
     sharingEnabled.distinctUntilChanged().collectLatest { enabled ->
-      if (enabled) shareWhileGranted(eventId, teamId) else removeUntilItIsOut(eventId, teamId)
+      if (enabled) {
+        shareWhileGranted(eventId, teamId, onState)
+      } else {
+        onState(LiveLocationSharingState.OFF)
+        removeUntilItIsOut(eventId, teamId)
+      }
     }
   }
 
@@ -106,19 +130,57 @@ class LiveLocationPublisher(
     }
   }
 
-  /** Shares every position worth a write, for as long as this call is not cancelled. */
-  private suspend fun shareWhileGranted(eventId: String, teamId: String) {
+  /**
+   * Shares every position worth a write, for as long as this call is not cancelled, and reports to
+   * [onState] whether the position can be read and what became of the last write.
+   *
+   * The state is worked out from both at once, the access and the last write, rather than reported
+   * by each as it happens, so neither can overwrite the other:
+   * - **Without access, it is [LiveLocationSharingState.NO_LOCATION_ACCESS], whatever the last
+   *   write.** [LocationProvider.positions] emits nothing at all while the access is lost, so a
+   *   write that answers after it would otherwise leave [LiveLocationSharingState.SHARED] for a
+   *   position that no longer moves, until the access changes again.
+   * - **Losing the access forgets the last write**, so getting it back is
+   *   [LiveLocationSharingState.WAITING] until a new write says more, not a success from before,
+   *   and that write goes out with the first position read, not once the interval since the last
+   *   attempt has passed. Only a loss [LocationProvider.status] holds long enough to be read: a
+   *   state flow keeps the latest value, so one lost and back before this reads it goes unseen, the
+   *   last write with it.
+   */
+  private suspend fun shareWhileGranted(
+      eventId: String,
+      teamId: String,
+      onState: (LiveLocationSharingState) -> Unit,
+  ) = coroutineScope {
+    val lastWrite = MutableStateFlow<LiveLocationSharingState?>(null)
+    launch {
+      locationProvider.status
+          .onEach { if (it != LocationStatus.GRANTED) lastWrite.value = null }
+          .combine(lastWrite) { status, write ->
+            if (status == LocationStatus.GRANTED) write ?: LiveLocationSharingState.WAITING
+            else LiveLocationSharingState.NO_LOCATION_ACCESS
+          }
+          .distinctUntilChanged()
+          .collect(onState)
+    }
     var lastAttemptAt: Instant? = null
     var lastShared: GeoPosition? = null
     // Sequential on purpose: the next position waits for the write of the previous one, so two
     // writes of the same volunteer never overlap.
     locationProvider.positions().collect { position ->
       val measuredAt = now()
+      // Nothing reported since the session started or the access came back: the volunteer is
+      // waiting to be shown as shared, so this position goes out at once, whatever came before.
+      if (lastWrite.value == null) lastAttemptAt = null
       if (!isWorthSharing(position, measuredAt, lastShared, lastAttemptAt)) return@collect
       // Counted as attempted whether it succeeds or not, so a backend that keeps refusing costs
       // one write per interval rather than one per position.
       lastAttemptAt = measuredAt
-      if (share(eventId, teamId, position, measuredAt)) lastShared = position
+      val outcome = share(eventId, teamId, position, measuredAt)
+      if (outcome == LiveLocationSharingState.SHARED) lastShared = position
+      // A write that answers once the access is lost belongs to before: kept, it would come back
+      // as the state when the access does.
+      if (locationProvider.status.value == LocationStatus.GRANTED) lastWrite.value = outcome
     }
   }
 
@@ -137,7 +199,7 @@ class LiveLocationPublisher(
       lastAttemptAt: Instant?,
   ): Boolean =
       when {
-        // The first position of a session is always worth it: the manager has nothing yet.
+        // The first position of a session, or since the access came back, is always worth it.
         lastAttemptAt == null -> true
         measuredAt < lastAttemptAt + MIN_INTERVAL -> false
         // Nothing stored yet, because the attempts so far failed: distance has no baseline.
@@ -147,28 +209,33 @@ class LiveLocationPublisher(
       }
 
   /**
-   * Shares [position] and says whether the backend **confirmed** the write. A refusal, a missing
-   * connection or an unexpected failure all answer false and are left to the next position: this
-   * session goes on, and the position already shared is kept, whatever the cause.
+   * Shares [position] and says what became of it: [LiveLocationSharingState.SHARED] only when the
+   * backend **confirmed** the write, [LiveLocationSharingState.REFUSED] when the rules refused it,
+   * and [LiveLocationSharingState.WAITING] for a missing connection or an unexpected failure. All
+   * three are left to the next position: this session goes on, and the position already shared is
+   * kept, whatever the cause.
    *
-   * False does not mean nothing was stored. Firestore keeps a write it could not confirm and sends
-   * it when the connection is back, so a position reported here as unconfirmed may still reach the
-   * backend later. False only means this session cannot count on it: it keeps the older position as
-   * the distance baseline, which at worst costs one write more than needed.
+   * [LiveLocationSharingState.WAITING] does not mean nothing was stored. Firestore keeps a write it
+   * could not confirm and sends it when the connection is back, so a position reported here as
+   * unconfirmed may still reach the backend later. It only means this session cannot count on it:
+   * it keeps the older position as the distance baseline, which at worst costs one write more than
+   * needed.
    */
   private suspend fun share(
       eventId: String,
       teamId: String,
       position: GeoPosition,
       measuredAt: Instant,
-  ): Boolean =
+  ): LiveLocationSharingState =
       try {
         repository.shareLocation(eventId, teamId, position, measuredAt)
-        true
+        LiveLocationSharingState.SHARED
       } catch (e: CancellationException) {
         throw e
+      } catch (_: LiveLocationRepositoryException.PermissionDenied) {
+        LiveLocationSharingState.REFUSED
       } catch (_: LiveLocationRepositoryException) {
-        false
+        LiveLocationSharingState.WAITING
       }
 
   companion object {
