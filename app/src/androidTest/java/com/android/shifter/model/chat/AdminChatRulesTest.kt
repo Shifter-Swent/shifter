@@ -191,8 +191,8 @@ class AdminChatRulesTest {
   fun access_whenStillIndexedAfterLeavingTheEvent_isDenied() = emulatorTest {
     val sent = sentByManager()
 
-    // The index is not trusted alone: out of the participants, though the entry still lists the
-    // team, as when a team is deleted without cleaning it (#398).
+    // The index is not trusted alone: someone who left the event is denied, though their entry
+    // still lists the team. A deleted team's manager stays a participant, so #398 must clean it.
     setParticipantsAsAdmin(listOf(member))
 
     assertNoAccess(manager, sent)
