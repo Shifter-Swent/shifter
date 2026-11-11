@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
 import androidx.lifecycle.ViewModel
@@ -18,6 +19,7 @@ import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.map.formatCoordinate
+import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -63,13 +65,6 @@ internal fun missionSlot(
   val endDay = if (end.isBefore(start)) day.plusDays(1) else day
   return day.atTime(start) to endDay.atTime(end)
 }
-
-/**
- * The coordinate typed in [text], or null when it is not a number within [range]. A decimal comma
- * is accepted as well as a point, as typed on many keyboards.
- */
-internal fun parseCoordinate(text: String, range: ClosedFloatingPointRange<Double>): Double? =
-    text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in range }
 
 /**
  * An existing mission of the same team whose slot overlaps the one being saved, as local date-times

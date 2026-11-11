@@ -4,4 +4,7 @@
     <string name="content_description_back">Back</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
+    <string name="field_latitude">Latitude</string>
+    <string name="field_longitude">Longitude</string>
+    <string name="pick_on_map">Pick on the map</string>
 </resources>
