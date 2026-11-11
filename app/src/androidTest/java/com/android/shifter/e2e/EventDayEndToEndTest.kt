@@ -1,3 +1,4 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.e2e
 
@@ -136,6 +137,7 @@ class EventDayEndToEndTest {
 
     app.click(PeopleScreenTestTags.PARTICIPANTS_TAB)
     app.click(ParticipantsListTestTags.participantCard(managerId))
+    app.click(ParticipantsListTestTags.managerButton(managerId))
     app.click(ManagerDialogTestTags.CONFIRM_BUTTON)
     // The card merges its badge into itself.
     app.waitForNode(ParticipantsListTestTags.managerBadge(managerId), useUnmergedTree = true)
