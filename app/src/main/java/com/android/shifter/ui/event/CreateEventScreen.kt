@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.annotation.StringRes
@@ -22,6 +23,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Celebration
@@ -32,15 +34,28 @@ import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Park
 import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Storefront
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,9 +78,14 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.toPickerDate
+import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 
 object CreateEventScreenTestTags {
   const val TITLE_FIELD = "CreateEventTitleField"
@@ -80,9 +100,16 @@ object CreateEventScreenTestTags {
   const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
   const val SAVE_UNCONFIRMED_ICON = "CreateEventSaveUnconfirmedIcon"
 
+  /** Confirm button shared by the date and the time dialogs: only one is ever open at a time. */
+  const val PICKER_CONFIRM = "CreateEventPickerConfirm"
+  const val DATE_PICKER = "CreateEventDatePicker"
+  const val TIME_PICKER = "CreateEventTimePicker"
+
   fun typeChip(type: EventType) = "CreateEventTypeChip_${type.name}"
 
   fun error(field: EventFormField) = "CreateEventError_${field.name}"
+
+  fun pickerButton(field: EventFormField) = "CreateEventPicker_${field.name}"
 }
 
 /**
@@ -367,11 +394,23 @@ private fun DateCard(
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-      Text(
-          text = labelText,
-          style = MaterialTheme.typography.labelSmall,
-          color = colorScheme.onSurfaceVariant,
-      )
+      // The picker sits on the label row, so the value field keeps the card's full width and the
+      // whole "dd/MM/yyyy HH:mm" stays visible in the narrow two-column layout.
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = labelText,
+            style = MaterialTheme.typography.labelSmall,
+            color = colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        DateTimePickerButton(
+            value = value,
+            onValueChange = onValueChange,
+            label = labelText,
+            enabled = !state.isSaving,
+            testTag = CreateEventScreenTestTags.pickerButton(field),
+        )
+      }
       BasicTextField(
           value = value,
           onValueChange = onValueChange,
@@ -410,6 +449,124 @@ private fun DateCard(
           modifier = Modifier.testTag(CreateEventScreenTestTags.error(field)),
       )
     }
+  }
+}
+
+/**
+ * A calendar button that picks a date with a Material3 [DatePicker], then a time with a
+ * [TimePicker], and writes the result back through [onValueChange] in [EVENT_DATE_TIME_FORMATTER],
+ * the format the form's text fields use. It is the picker counterpart of the manual [DateCard] text
+ * field, so both ways of entering the value stay available.
+ *
+ * The existing [value] is preselected when it parses, read as strictly as the ViewModel reads it: a
+ * typed `31/02/2027 10:00` preselects nothing rather than the 28th, so confirming twice can never
+ * write a day the organizer did not choose. The date dialog's OK is disabled while no day is
+ * selected, which also happens when the typed year is outside the picker's range, so the time
+ * dialog only ever opens with a day to write. Cancelling or dismissing either dialog leaves [value]
+ * untouched and forgets the day picked, so a later interaction starts over from the date. The date
+ * is read and written in UTC midnight millis, the representation Material3 uses, so the chosen day
+ * never shifts with the device's zone.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateTimePickerButton(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    enabled: Boolean,
+    testTag: String,
+) {
+  var showDate by rememberSaveable { mutableStateOf(false) }
+  // The day confirmed in the date dialog, which is what opens the time dialog: that one is open
+  // exactly while there is a day to write, and both survive a configuration change as an epoch day.
+  var pickedEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
+  val existing = remember(value) { parseEventDateTime(value) }
+
+  IconButton(
+      onClick = { showDate = true },
+      enabled = enabled,
+      modifier = Modifier.testTag(testTag),
+  ) {
+    Icon(
+        imageVector = Icons.Filled.DateRange,
+        contentDescription = stringResource(R.string.create_event_pick_date_time, label),
+    )
+  }
+
+  if (showDate) {
+    val initialDay = existing?.toLocalDate() ?: LocalDate.now()
+    // A day outside the picker's year range is not preselected: the dialog opens with no selection.
+    val pickerState =
+        rememberDatePickerState(initialSelectedDateMillis = initialDay.toPickerMillis())
+    DatePickerDialog(
+        onDismissRequest = { showDate = false },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                pickerState.selectedDateMillis?.let {
+                  pickedEpochDay = it.toPickerDate().toEpochDay()
+                }
+                showDate = false
+              },
+              // Nothing to confirm without a day: the time dialog would have nothing to write.
+              enabled = pickerState.selectedDateMillis != null,
+              modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
+          ) {
+            Text(stringResource(R.string.dialog_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { showDate = false }) {
+            Text(stringResource(R.string.dialog_cancel))
+          }
+        },
+    ) {
+      DatePicker(
+          state = pickerState,
+          modifier = Modifier.testTag(CreateEventScreenTestTags.DATE_PICKER),
+      )
+    }
+  }
+
+  val pickedDay = pickedEpochDay
+  if (pickedDay != null) {
+    val start = existing?.toLocalTime() ?: LocalTime.NOON
+    val pickerState =
+        rememberTimePickerState(
+            initialHour = start.hour,
+            initialMinute = start.minute,
+            is24Hour = true,
+        )
+    AlertDialog(
+        onDismissRequest = { pickedEpochDay = null },
+        confirmButton = {
+          TextButton(
+              onClick = {
+                val dateTime =
+                    LocalDateTime.of(
+                        LocalDate.ofEpochDay(pickedDay),
+                        LocalTime.of(pickerState.hour, pickerState.minute),
+                    )
+                onValueChange(dateTime.format(EVENT_DATE_TIME_FORMATTER))
+                pickedEpochDay = null
+              },
+              modifier = Modifier.testTag(CreateEventScreenTestTags.PICKER_CONFIRM),
+          ) {
+            Text(stringResource(R.string.dialog_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { pickedEpochDay = null }) {
+            Text(stringResource(R.string.dialog_cancel))
+          }
+        },
+        text = {
+          TimePicker(
+              state = pickerState,
+              modifier = Modifier.testTag(CreateEventScreenTestTags.TIME_PICKER),
+          )
+        },
+    )
   }
 }
 

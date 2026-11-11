@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
 import androidx.annotation.StringRes
@@ -74,6 +75,8 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.toPickerDate
+import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.map.LocationPicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -865,13 +868,11 @@ private fun DayField(
               },
               modifier = Modifier.testTag(AddMissionScreenTestTags.PICKER_CONFIRM),
           ) {
-            Text(stringResource(R.string.add_mission_dialog_confirm))
+            Text(stringResource(R.string.dialog_confirm))
           }
         },
         dismissButton = {
-          TextButton(onClick = { open = false }) {
-            Text(stringResource(R.string.add_mission_cancel))
-          }
+          TextButton(onClick = { open = false }) { Text(stringResource(R.string.dialog_cancel)) }
         },
     ) {
       DatePicker(state = pickerState)
@@ -919,13 +920,11 @@ private fun TimeField(
               },
               modifier = Modifier.testTag(AddMissionScreenTestTags.PICKER_CONFIRM),
           ) {
-            Text(stringResource(R.string.add_mission_dialog_confirm))
+            Text(stringResource(R.string.dialog_confirm))
           }
         },
         dismissButton = {
-          TextButton(onClick = { open = false }) {
-            Text(stringResource(R.string.add_mission_cancel))
-          }
+          TextButton(onClick = { open = false }) { Text(stringResource(R.string.dialog_cancel)) }
         },
         text = { TimePicker(state = pickerState) },
     )
@@ -999,14 +998,6 @@ private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d M
 private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DATE_TIME_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEE d MMM uuuu HH:mm")
-
-/** The date picker works in UTC milliseconds at midnight, whatever the device's zone. */
-private const val MILLIS_PER_DAY = 86_400_000L
-
-private fun LocalDate.toPickerMillis(): Long = toEpochDay() * MILLIS_PER_DAY
-
-private fun Long.toPickerDate(): LocalDate =
-    LocalDate.ofEpochDay(Math.floorDiv(this, MILLIS_PER_DAY))
 
 @get:StringRes
 private val MissionFormError.message: Int

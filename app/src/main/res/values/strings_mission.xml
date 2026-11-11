@@ -33,7 +33,6 @@
     <string name="add_mission_location_hint">Optional. With a location, the mission is shown on the map and must not overlap another mission of its team.</string>
     <string name="add_mission_submit">Add the mission</string>
     <string name="add_mission_cancel">Cancel</string>
-    <string name="add_mission_dialog_confirm">OK</string>
     <string name="add_mission_load_failed">Could not load the event.</string>
     <string name="add_mission_retry">Retry</string>
     <string name="add_mission_not_allowed">Only the organizer and the team managers can add missions to this event.</string>

@@ -2,4 +2,6 @@
     <!-- Shared by several features. Feature strings go in strings_<feature>.xml. -->
     <string name="app_name">Shifter</string>
     <string name="content_description_back">Back</string>
+    <string name="dialog_confirm">OK</string>
+    <string name="dialog_cancel">Cancel</string>
 </resources>
