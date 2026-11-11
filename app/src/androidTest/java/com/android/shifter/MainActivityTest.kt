@@ -38,7 +38,7 @@ class MainActivityTest : TestCase() {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         appName {
           assertIsDisplayed()
-          assertTextEquals("Not Shifter")
+          assertTextEquals("Shifter")
         }
         signInButton {
           assertIsDisplayed()
