@@ -70,7 +70,7 @@ class OrganizerOverviewScreenTest {
         .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
         .assertIsDisplayed()
         .assertTextEquals("ABC234")
-    compose.onNodeWithText(string(R.string.join_code_label_short)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.event_join_code_label_short)).assertIsDisplayed()
   }
 
   @Test
@@ -91,7 +91,7 @@ class OrganizerOverviewScreenTest {
 
     compose.waitUntil { clipboard.text != null }
     assertEquals("ABC234", clipboard.text)
-    compose.onNodeWithText(string(R.string.join_code_copied)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.event_join_code_copied)).assertIsDisplayed()
   }
 
   @Test
@@ -103,11 +103,11 @@ class OrganizerOverviewScreenTest {
 
     compose.waitUntil {
       compose
-          .onAllNodesWithText(string(R.string.join_code_copy_failed))
+          .onAllNodesWithText(string(R.string.event_join_code_copy_failed))
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
-    compose.onNodeWithText(string(R.string.join_code_copied)).assertDoesNotExist()
+    compose.onNodeWithText(string(R.string.event_join_code_copied)).assertDoesNotExist()
     assertEquals(null, clipboard.text)
   }
 

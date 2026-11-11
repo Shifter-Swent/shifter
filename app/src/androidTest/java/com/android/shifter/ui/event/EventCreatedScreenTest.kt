@@ -120,7 +120,7 @@ class EventCreatedScreenTest {
 
     composeTestRule.waitUntil { clipboard.text != null }
     assertEquals("ABC234", clipboard.text)
-    composeTestRule.onNodeWithText(string(R.string.join_code_copied)).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.event_join_code_copied)).assertIsDisplayed()
   }
 
   @Test

@@ -90,7 +90,7 @@ fun JoinCodeCard(
           ) {
             Icon(Icons.Outlined.ContentCopy, contentDescription = null, Modifier.size(18.dp))
             Text(
-                text = stringResource(R.string.join_code_copy),
+                text = stringResource(R.string.event_join_code_copy),
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 8.dp),
             )
@@ -102,7 +102,7 @@ fun JoinCodeCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
           Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Label(R.string.join_code_label_short)
+            Label(R.string.event_join_code_label_short)
             Code(joinCode, large = false)
           }
           IconButton(
@@ -111,7 +111,7 @@ fun JoinCodeCard(
           ) {
             Icon(
                 Icons.Outlined.ContentCopy,
-                contentDescription = stringResource(R.string.join_code_copy),
+                contentDescription = stringResource(R.string.event_join_code_copy),
                 tint = colorScheme.primary,
             )
           }
@@ -155,9 +155,9 @@ private fun Code(joinCode: String, large: Boolean) {
 fun rememberCopyJoinCode(snackbarHostState: SnackbarHostState): (String) -> Unit {
   val clipboard = LocalClipboard.current
   val scope = rememberCoroutineScope()
-  val clipLabel = stringResource(R.string.join_code_label_short)
-  val copied = stringResource(R.string.join_code_copied)
-  val failed = stringResource(R.string.join_code_copy_failed)
+  val clipLabel = stringResource(R.string.event_join_code_label_short)
+  val copied = stringResource(R.string.event_join_code_copied)
+  val failed = stringResource(R.string.event_join_code_copy_failed)
   return remember(clipboard, scope, snackbarHostState, clipLabel, copied, failed) {
     { joinCode ->
       scope.launch {
