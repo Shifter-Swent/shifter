@@ -102,10 +102,27 @@ class FakeMissionRepositoryTest {
     val failure = IllegalStateException("backend down")
     repository.failure = failure
 
-    assertSame(
-        failure,
-        runCatching { repository.observeMissionsAssignedTo("user-1").first() }.exceptionOrNull(),
-    )
+    val thrown = runCatching {
+      repository.observeMissionsAssignedTo("user-1").first()
+    }
+        .exceptionOrNull()
+
+    assertSameFailure(failure, thrown)
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_failureWhileObserved_endsTheFlow() = runTest {
+    val failure = IllegalStateException("listener closed")
+    var ended: Throwable? = null
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      ended =
+          runCatching { repository.observeMissionsAssignedTo("user-1").collect {} }
+              .exceptionOrNull()
+    }
+
+    repository.failure = failure
+
+    assertSameFailure(failure, ended)
   }
 
   @Test
@@ -400,5 +417,14 @@ class FakeMissionRepositoryTest {
 
   private companion object {
     val HALL = MissionLocation("Hall 1", GeoPosition(46.52, 6.57))
+  }
+
+  /**
+   * [actual] is [expected], or the copy coroutines make of it when it crosses a coroutine (its
+   * stack trace recovery, in debug mode): same type and message.
+   */
+  private fun assertSameFailure(expected: Throwable, actual: Throwable?) {
+    assertEquals(expected::class, actual?.let { it::class })
+    assertEquals(expected.message, actual?.message)
   }
 }

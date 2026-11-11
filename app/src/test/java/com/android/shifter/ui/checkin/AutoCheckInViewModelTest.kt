@@ -20,7 +20,6 @@ import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset.UTC
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -373,11 +372,11 @@ class AutoCheckInViewModelTest {
   @Test
   fun missionsUpdateFailure_showsTheError() = runTest {
     addMission()
-    val failing = FailsLater(missions)
-    open(missionRepository = failing)
+    open()
     assertEquals(1, location.activeCollectors)
 
-    failing.failure.complete(MissionRepositoryException.Unavailable())
+    // The listener closes while the screen is open, as Firestore does mid-session.
+    missions.failure = MissionRepositoryException.Unavailable()
     runCurrent()
 
     assertEquals(AutoCheckInError.OFFLINE, state.error)
@@ -455,16 +454,6 @@ class AutoCheckInViewModelTest {
    * Delegates to [missions], except that the assigned missions are emitted once, then the flow
    * fails with [failure] when it is completed, like a listener that breaks.
    */
-  private class FailsLater(private val missions: MissionRepository) :
-      MissionRepository by missions {
-    val failure = CompletableDeferred<Exception>()
-
-    override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> = flow {
-      emit(missions.getMissionsAssignedTo(userId))
-      throw failure.await()
-    }
-  }
-
   /** Delegates to [checkIns], except that the check-ins of [eventId] are never emitted. */
   private class SilentEvent(checkIns: CheckInRepository, private val eventId: String) :
       CheckInRepository by checkIns {

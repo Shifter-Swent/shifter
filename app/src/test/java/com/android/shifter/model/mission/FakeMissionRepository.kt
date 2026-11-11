@@ -3,10 +3,8 @@ package com.swent.shifter.model.mission
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 /**
@@ -26,7 +24,14 @@ class FakeMissionRepository : MissionRepository {
   val created: List<Mission>
     get() = missions
 
-  var failure: Exception? = null
+  /** A flow, so that a failure set while a flow is observed ends it, like a Firestore listener. */
+  private val failures = MutableStateFlow<Exception?>(null)
+
+  var failure: Exception?
+    get() = failures.value
+    set(value) {
+      failures.value = value
+    }
 
   override suspend fun createMission(mission: Mission): Mission {
     failure?.let { throw it }
@@ -64,12 +69,14 @@ class FakeMissionRepository : MissionRepository {
     return missions.assignedTo(userId)
   }
 
-  override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> = flow {
-    failure?.let { throw it }
-    // A change to someone else's missions leaves the list as is: not emitted, like a Firestore
-    // listener that only sees its own query.
-    emitAll(state.map { it.assignedTo(userId) }.distinctUntilChanged())
-  }
+  override fun observeMissionsAssignedTo(userId: String): Flow<List<Mission>> =
+      combine(state, failures) { all, failure ->
+            failure?.let { throw it }
+            all.assignedTo(userId)
+          }
+          // A change to someone else's missions leaves the list as is: not emitted, like a
+          // Firestore listener that only sees its own query.
+          .distinctUntilChanged()
 
   override suspend fun updateAssignees(
       eventId: String,
