@@ -10,6 +10,9 @@ import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -37,6 +40,8 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.ui.map.LocationPickerTestTags
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Clock
@@ -165,10 +170,18 @@ class CreateEventScreenTest {
 
     node(CreateEventScreenTestTags.SUBMIT_BUTTON).performScrollTo().performClick()
 
-    EventFormField.entries
-        .filter { it != EventFormField.TYPE }
+    listOf(
+            EventFormField.TITLE,
+            EventFormField.DESCRIPTION,
+            EventFormField.ADDRESS,
+            EventFormField.START,
+            EventFormField.END,
+        )
         .forEach { errorNode(it).performScrollTo().assertIsDisplayed() }
     errorNode(EventFormField.TYPE).performScrollTo().assertIsDisplayed()
+    // The coordinates are optional, so an empty submit shows no error under them.
+    errorNode(EventFormField.LATITUDE).assertDoesNotExist()
+    errorNode(EventFormField.LONGITUDE).assertDoesNotExist()
     assertTrue(repository.created.isEmpty())
   }
 
@@ -621,6 +634,138 @@ class CreateEventScreenTest {
     node(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertTrue(backCalled)
+  }
+
+  /** Renders the stateless form with the given [state] and [actions], as the picker tests need. */
+  private fun setContent(
+      state: CreateEventUiState,
+      actions: CreateEventActions = CreateEventActions(),
+  ) {
+    composeTestRule.setContent { ShifterTheme { CreateEventContent(state, actions) } }
+  }
+
+  @Test
+  fun locationFields_areShown() {
+    setContent(CreateEventUiState())
+
+    node(CreateEventScreenTestTags.LATITUDE_FIELD).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.LONGITUDE_FIELD).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.COORDINATES_RULE).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun pickOnMap_opensThePicker() {
+    var opened = false
+    setContent(CreateEventUiState(), CreateEventActions(onPickLocation = { opened = true }))
+
+    node(CreateEventScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().performClick()
+
+    assertTrue(opened)
+  }
+
+  @Test
+  fun picking_withAPoint_showsItAndUsesIt() {
+    var confirmed = false
+    setContent(
+        CreateEventUiState(isPickingLocation = true, locationDraft = GeoPosition(46.5069, 6.6266)),
+        CreateEventActions(onConfirmLocation = { confirmed = true }),
+    )
+
+    node(CreateEventScreenTestTags.LOCATION_PICKER_DIALOG).assertIsDisplayed()
+    node(LocationPickerTestTags.SELECTED).assertTextEquals(selectedLabel("46.50690", "6.62660"))
+    node(CreateEventScreenTestTags.LOCATION_PICKER_CONFIRM).assertIsEnabled().performClick()
+
+    assertTrue(confirmed)
+  }
+
+  @Test
+  fun picking_withoutAPoint_cannotBeConfirmed() {
+    setContent(CreateEventUiState(isPickingLocation = true))
+
+    node(LocationPickerTestTags.HINT).assertIsDisplayed()
+    node(CreateEventScreenTestTags.LOCATION_PICKER_CONFIRM).assertIsNotEnabled()
+  }
+
+  @Test
+  fun closingThePicker_cancelsIt() {
+    var cancelled = false
+    setContent(
+        CreateEventUiState(isPickingLocation = true, locationDraft = GeoPosition(46.5069, 6.6266)),
+        CreateEventActions(onCancelLocationPicker = { cancelled = true }),
+    )
+
+    node(CreateEventScreenTestTags.LOCATION_PICKER_CLOSE).performClick()
+
+    assertTrue(cancelled)
+  }
+
+  @Test
+  fun clearCoordinates_isOfferedOnlyWithCoordinates() {
+    var hasCoordinates by mutableStateOf(true)
+    var cleared = false
+    composeTestRule.setContent {
+      ShifterTheme {
+        CreateEventContent(
+            if (hasCoordinates) CreateEventUiState(latitude = "46.5069", longitude = "6.6266")
+            else CreateEventUiState(),
+            CreateEventActions(onClearLocation = { cleared = true }),
+        )
+      }
+    }
+
+    node(CreateEventScreenTestTags.CLEAR_LOCATION_BUTTON).performScrollTo().performClick()
+    assertTrue(cleared)
+
+    hasCoordinates = false
+    node(CreateEventScreenTestTags.CLEAR_LOCATION_BUTTON).assertDoesNotExist()
+  }
+
+  /**
+   * Through the real ViewModel: the map opens on the typed point, closing it keeps the point as
+   * typed, and clearing the coordinates keeps the address, which stays required on its own.
+   */
+  @Test
+  fun typedCoordinates_surviveAClosedMapAndClearingKeepsTheAddress() {
+    setScreen(RecordingRepository())
+    node(CreateEventScreenTestTags.ADDRESS_FIELD).performScrollTo().performTextInput("Nyon")
+    node(CreateEventScreenTestTags.LATITUDE_FIELD).performScrollTo().performTextInput("46.5069")
+    node(CreateEventScreenTestTags.LONGITUDE_FIELD).performScrollTo().performTextInput("6.6266")
+
+    node(CreateEventScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().performClick()
+    node(CreateEventScreenTestTags.LOCATION_PICKER_DIALOG).assertIsDisplayed()
+    node(LocationPickerTestTags.SELECTED).assertTextEquals(selectedLabel("46.50690", "6.62660"))
+    node(CreateEventScreenTestTags.LOCATION_PICKER_CLOSE).performClick()
+
+    node(CreateEventScreenTestTags.LOCATION_PICKER_DIALOG).assertDoesNotExist()
+    assertEquals("46.5069", editableText(CreateEventScreenTestTags.LATITUDE_FIELD))
+    assertEquals("6.6266", editableText(CreateEventScreenTestTags.LONGITUDE_FIELD))
+
+    node(CreateEventScreenTestTags.CLEAR_LOCATION_BUTTON).performScrollTo().performClick()
+
+    assertEquals("", editableText(CreateEventScreenTestTags.LATITUDE_FIELD))
+    assertEquals("", editableText(CreateEventScreenTestTags.LONGITUDE_FIELD))
+    assertEquals("Nyon", editableText(CreateEventScreenTestTags.ADDRESS_FIELD))
+    node(CreateEventScreenTestTags.CLEAR_LOCATION_BUTTON).assertDoesNotExist()
+  }
+
+  /** The line the map shows over its selected point, as the app words it. */
+  private fun selectedLabel(latitude: String, longitude: String): String =
+      InstrumentationRegistry.getInstrumentation()
+          .targetContext
+          .getString(R.string.map_picker_selected, latitude, longitude)
+
+  /** What is typed in the field [tag], without its label. */
+  private fun editableText(tag: String): String =
+      node(tag).fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+
+  @Test
+  fun locationEditing_isDisabledWhileSaving() {
+    setContent(CreateEventUiState(address = "Nyon", isSaving = true))
+
+    node(CreateEventScreenTestTags.LATITUDE_FIELD).performScrollTo().assertIsNotEnabled()
+    node(CreateEventScreenTestTags.LONGITUDE_FIELD).performScrollTo().assertIsNotEnabled()
+    node(CreateEventScreenTestTags.PICK_ON_MAP_BUTTON).performScrollTo().assertIsNotEnabled()
   }
 }
 
