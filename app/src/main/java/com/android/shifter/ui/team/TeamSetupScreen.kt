@@ -1,7 +1,9 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,8 +21,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -31,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -110,12 +116,28 @@ fun TeamSetupScreen(
   // Null until the first load answers, which decides whether the step opens on a form: an event
   // without teams does, one the organizer comes back to lists what it has instead.
   var formShown by rememberSaveable { mutableStateOf<Boolean?>(null) }
+  val snackbarHostState = remember { SnackbarHostState() }
+  val focusManager = LocalFocusManager.current
+  // Submit the focused field while its ViewModel is still alive, before removing the entry.
+  val leave: (() -> Unit) -> Unit = { navigate ->
+    focusManager.clearFocus(force = true)
+    navigate()
+  }
+  BackHandler { leave(onBack) }
 
   TeamSetupContent(
       state = state,
       mode = mode,
-      onBack = onBack,
-      onProceed = onProceed,
+      snackbarHostState = snackbarHostState,
+      teamCard = { team ->
+        EditableTeamCard(
+            team = team,
+            factory = remember(team.id) { viewModel.editTeamFactory(team) },
+            snackbarHostState = snackbarHostState,
+        )
+      },
+      onBack = { leave(onBack) },
+      onProceed = { leave(onProceed) },
       onRetry = viewModel::refresh,
       onAddAnotherTeam = { formShown = true },
       form =
@@ -143,11 +165,14 @@ fun TeamSetupScreen(
  *
  * @param form the creation form to show under the teams, or null while none is open. A slot, so
  *   this stays free of the [CreateTeamViewModel] one needs.
+ * @param teamCard draws one of the teams; read-only by default, editable in [TeamSetupScreen].
  */
 @Composable
 fun TeamSetupContent(
     state: TeamSetupUiState,
     mode: TeamSetupMode = TeamSetupMode.CREATION,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    teamCard: @Composable (Team) -> Unit = { SavedTeamCard(it) },
     onBack: () -> Unit,
     onProceed: () -> Unit,
     onRetry: () -> Unit,
@@ -157,6 +182,7 @@ fun TeamSetupContent(
   // The first load failed and left nothing to show: the error takes the place of the teams.
   val teamsUnknown = state.loadFailed && state.teams.isEmpty()
   Scaffold(
+      snackbarHost = { SnackbarHost(snackbarHostState) },
       topBar = {
         ShifterTopBar(
             title = stringResource(mode.title),
@@ -193,7 +219,7 @@ fun TeamSetupContent(
         teamsUnknown -> LoadError(onRetry)
         else -> {
           SectionHeading()
-          state.teams.forEach { team -> key(team.id) { SavedTeamCard(team) } }
+          state.teams.forEach { team -> key(team.id) { teamCard(team) } }
           form?.let { Box(Modifier.testTag(TeamSetupScreenTestTags.ACTIVE_FORM)) { it() } }
           // A refresh that failed over teams an earlier load brought in: they stay listed above.
           if (state.loadFailed) LoadError(onRetry)
@@ -225,8 +251,8 @@ private fun SectionHeading() {
 }
 
 /**
- * A team the event already has, in the very card the form draws, which [CreateTeamUiState] leaves
- * read-only once a team has been created. Editing one is #226's business, not this step's.
+ * A team the event already has, in the very card the form draws, read-only: what [TeamSetupContent]
+ * shows when it is not given a way to edit the teams.
  */
 @Composable
 private fun SavedTeamCard(team: Team) {
@@ -240,6 +266,42 @@ private fun SavedTeamCard(team: Team) {
                 createdTeam = team,
             ),
         actions = CreateTeamActions(),
+    )
+  }
+}
+
+/**
+ * A team the event already has, editable in place over a [CreateTeamViewModel] of its own (#226). A
+ * field is saved when it loses the focus, which leaving the screen also does, and the icon as soon
+ * as it is picked; a failed save is reported in a Snackbar.
+ *
+ * The card keeps the values of [team] it first opened on: a reload that brings newer ones, saved
+ * meanwhile by another organizer, does not change it, and its next save writes all three fields.
+ */
+@Composable
+private fun EditableTeamCard(
+    team: Team,
+    factory: ViewModelProvider.Factory,
+    snackbarHostState: SnackbarHostState,
+) {
+  val form: CreateTeamViewModel =
+      viewModel(key = "$EDIT_TEAM_FORM_KEY${team.id}", factory = factory)
+  val state by form.uiState.collectAsState()
+  val failure = stringResource(R.string.team_setup_save_failed)
+  LaunchedEffect(form) { form.saveFailures.collect { snackbarHostState.showSnackbar(failure) } }
+  Box(modifier = Modifier.testTag(TeamSetupScreenTestTags.savedTeam(team.id))) {
+    CreateTeamContent(
+        state = state,
+        actions =
+            CreateTeamActions(
+                onNameChange = form::onNameChange,
+                onIconChange = {
+                  form.onIconChange(it)
+                  form.saveChanges()
+                },
+                onDescriptionChange = form::onDescriptionChange,
+                onFieldDone = form::saveChanges,
+            ),
     )
   }
 }
@@ -342,3 +404,4 @@ private val ACTION_HEIGHT = 48.dp
 
 /** Prefix of the key each creation form keeps its own ViewModel under. */
 private const val NEW_TEAM_FORM_KEY = "TeamSetupNewTeam-"
+private const val EDIT_TEAM_FORM_KEY = "TeamSetupEditTeam-"

@@ -1,9 +1,15 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -15,11 +21,20 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
@@ -28,7 +43,10 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,6 +72,7 @@ class TeamSetupScreenTest {
   private class FakeTeams(initialTeams: List<Team> = emptyList()) : TeamRepository {
     val teams: MutableList<Team> = initialTeams.toMutableList()
     var failure: Exception? = null
+    var beforeUpdate: suspend () -> Unit = {}
     private var createdCount = 0
 
     override suspend fun createTeam(team: Team): Team {
@@ -74,6 +93,19 @@ class TeamSetupScreenTest {
         emptyList()
 
     override suspend fun setManager(eventId: String, teamId: String, managerId: String?) = Unit
+
+    override suspend fun updateTeam(
+        eventId: String,
+        teamId: String,
+        name: String,
+        description: String,
+        icon: String,
+    ) {
+      beforeUpdate()
+      failure?.let { throw it }
+      val index = teams.indexOfFirst { it.id == teamId }
+      teams[index] = teams[index].copy(name = name, description = description, icon = icon)
+    }
 
     override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
 
@@ -138,7 +170,7 @@ class TeamSetupScreenTest {
           hasTestTag(tag) and hasAnyAncestor(hasTestTag(TeamSetupScreenTestTags.ACTIVE_FORM))
       )
 
-  /** A node of the read-only card of the team [teamId]. */
+  /** A node of the card of the team [teamId]. */
   private fun inSavedTeam(teamId: String, tag: String) =
       composeTestRule
           .onAllNodesWithTag(tag)
@@ -252,17 +284,203 @@ class TeamSetupScreenTest {
   }
 
   @Test
-  fun savedTeams_cannotBeEdited() {
-    open(FakeTeams(listOf(team("team-1", "Logistics"))))
+  fun savedTeams_withoutAWayToEdit_areReadOnly() {
+    show(TeamSetupUiState(isLoading = false, teams = listOf(team("team-1", "Logistics"))))
 
-    // The three interactive parts of the card, all of them read-only on a persisted team.
+    // TeamSetupContent alone draws the saved teams read-only; the screen makes them editable.
     inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).assertIsNotEnabled()
     inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).assertIsNotEnabled()
     inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).assertIsNotEnabled()
-    // Nothing opened the icon picker, so there is no icon to pick either.
+  }
+
+  @Test
+  fun editingASavedTeam_savesAFieldOnceItLosesTheFocus() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    composeTestRule.waitForIdle()
+    assertEquals("Logistics", teams.teams.single().name)
+    // Moving on to the description is leaving the name.
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun editingASavedTeam_savesTheDescriptionOnceItLosesTheFocus() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD)
+        .performTextReplacement("Bring the water")
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      teams.teams.single().description == "Bring the water"
+    }
+  }
+
+  @Test
+  fun editingASavedTeam_savesTheIconAsSoonAsItIsPicked() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().icon == TeamIcon.WINE.id }
+  }
+
+  @Test
+  fun editingASavedTeam_withAnEmptyName_showsTheErrorAndKeepsTheTeam() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
     composeTestRule
-        .onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.TRUCK))
-        .assertDoesNotExist()
+        .onNodeWithText(context.getString(R.string.create_team_error_name_empty))
+        .assertIsDisplayed()
+    composeTestRule.waitForIdle()
+    assertEquals("Logistics", teams.teams.single().name)
+  }
+
+  @Test
+  fun editingASavedTeam_thatFailsToSave_showsASnackbar() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+    composeTestRule.waitForIdle()
+    teams.failure = IllegalStateException("denied")
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performClick()
+
+    val failure = context.getString(R.string.team_setup_save_failed)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(failure).fetchSemanticsNodes().isNotEmpty()
+    }
+    // Typing on leaves the report on screen.
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD).performTextInput(" more")
+    composeTestRule.onNodeWithText(failure).assertIsDisplayed()
+  }
+
+  @Test
+  fun leavingTheScreen_savesWhatTheFocusedFieldHolds() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    var shown by mutableStateOf(true)
+    composeTestRule.setContent {
+      ShifterTheme {
+        if (shown) {
+          TeamSetupScreen(
+              viewModel = remember { TeamSetupViewModel(eventId, teams) },
+              onBack = {},
+              onProceed = {},
+          )
+        }
+      }
+    }
+
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+    // The field still has the focus, which it loses as the screen goes.
+    shown = false
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun pressBack_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave { pressBack() }
+  }
+
+  @Test
+  fun headerBack_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave {
+      composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    }
+  }
+
+  @Test
+  fun proceed_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave {
+      composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).performClick()
+    }
+  }
+
+  private fun checkNavigationWithDelayedSave(leave: () -> Unit) {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    lateinit var navController: NavHostController
+    lateinit var setup: TeamSetupViewModel
+    val release = CompletableDeferred<Unit>()
+    var updateStarted = false
+    teams.beforeUpdate = {
+      updateStarted = true
+      release.await()
+    }
+    composeTestRule.setContent {
+      ShifterTheme {
+        navController = rememberNavController()
+        NavHost(navController, startDestination = "overview") {
+          composable("overview") {
+            Button(onClick = { navController.navigate("teams") }) { Text("Manage teams") }
+          }
+          composable("teams") {
+            setup = viewModel(factory = TeamSetupViewModel.factory(eventId, teams))
+            TeamSetupScreen(
+                viewModel = setup,
+                onBack = { navController.popBackStack() },
+                onProceed = { navController.popBackStack() },
+                mode = TeamSetupMode.MANAGEMENT,
+            )
+          }
+        }
+      }
+    }
+    try {
+      composeTestRule.onNodeWithText("Manage teams").performClick()
+      inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+      // Hide the keyboard without moving focus, so Back leaves the destination.
+      composeTestRule.runOnIdle {
+        composeTestRule.activity
+            .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            .hideSoftInputFromWindow(composeTestRule.activity.window.decorView.windowToken, 0)
+      }
+      composeTestRule.waitForIdle()
+      leave()
+      composeTestRule.onNodeWithText("Manage teams").assertIsDisplayed()
+      composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+        updateStarted && setup.viewModelScope.coroutineContext[Job]?.isCancelled == true
+      }
+      composeTestRule.runOnIdle {
+        assertEquals("overview", navController.currentDestination?.route)
+        assertNull(navController.previousBackStackEntry)
+        assertEquals("Logistics", teams.teams.single().name)
+      }
+    } finally {
+      release.complete(Unit)
+    }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
+  }
+
+  @Test
+  fun editingASavedTeam_withInvalidName_savesTheDescriptionAndIcon() {
+    val teams = FakeTeams(listOf(team("team-1", "Logistics")))
+    open(teams)
+    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("")
+    inSavedTeam("team-1", CreateTeamFormTestTags.DESCRIPTION_FIELD)
+        .performTextReplacement("Bring the water")
+    inSavedTeam("team-1", CreateTeamFormTestTags.ICON_SELECTOR).performClick()
+    composeTestRule.onNodeWithTag(CreateTeamFormTestTags.iconOption(TeamIcon.WINE)).performClick()
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      teams.teams.single().description == "Bring the water" &&
+          teams.teams.single().icon == TeamIcon.WINE.id
+    }
+    assertEquals("Logistics", teams.teams.single().name)
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.create_team_error_name_empty))
+        .assertIsDisplayed()
   }
 
   @Test
@@ -409,5 +627,10 @@ class TeamSetupScreenTest {
     composeTestRule
         .onNodeWithTag(TeamSetupScreenTestTags.SUBTITLE)
         .assertTextEquals(context.getString(R.string.team_setup_subtitle))
+  }
+
+  private companion object {
+    /** Long enough for a slow CI emulator, where the default second is tight. */
+    const val TIMEOUT_MILLIS = 5_000L
   }
 }

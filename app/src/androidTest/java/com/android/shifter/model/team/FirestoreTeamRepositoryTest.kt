@@ -287,7 +287,20 @@ class FirestoreTeamRepositoryTest {
   }
 
   @Test
-  fun membershipWrites_onAMissingTeam_failWithoutCreatingIt() = emulatorTest {
+  fun updateTeam_changesTheNameDescriptionAndIconOnly() = emulatorTest {
+    val team = create(richTeam(newEvent()))
+
+    repository.updateTeam(team.eventId, team.id, "Supply", "Bring the water", "wine")
+
+    // The members and the manager are left as they were.
+    assertEquals(
+        team.copy(name = "Supply", description = "Bring the water", icon = "wine"),
+        reload(team),
+    )
+  }
+
+  @Test
+  fun writes_onAMissingTeam_failWithoutCreatingIt() = emulatorTest {
     val eventId = newEvent()
     val teamId = "missing-" + UUID.randomUUID()
     // Remembered in case a write wrongly creates the team.
@@ -296,6 +309,7 @@ class FirestoreTeamRepositoryTest {
     assertNotFound { repository.setManager(eventId, teamId, MANAGER_ID) }
     assertNotFound { repository.addMember(eventId, teamId, VOLUNTEER_ID) }
     assertNotFound { repository.removeMember(eventId, teamId, VOLUNTEER_ID) }
+    assertNotFound { repository.updateTeam(eventId, teamId, "Supply", "Bring the water", "wine") }
     assertNull("no write may create the team", repository.getTeam(eventId, teamId))
   }
 

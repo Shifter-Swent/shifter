@@ -1,17 +1,27 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.team.FakeTeamRepository
+import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -407,5 +417,276 @@ class CreateTeamViewModelTest {
     val created = teams.teams.single()
     assertEquals(eventId, created.eventId)
     assertEquals(now, created.createdAt)
+  }
+
+  // ── Editing a team (#226) ──
+
+  private val logistics =
+      Team(
+          id = "logistics",
+          eventId = eventId,
+          name = "Logistics",
+          description = "Move the equipment around the site",
+          icon = "truck",
+          managerId = "manager",
+          memberIds = listOf("volunteer"),
+          createdAt = now,
+      )
+
+  /** Edits [logistics], which the backend already holds. */
+  private fun editLogistics() {
+    teams.teams += logistics
+    viewModel = CreateTeamViewModel(eventId, teams, clock, logistics)
+  }
+
+  /** Saves and lets the write complete. */
+  private fun TestScope.save() {
+    viewModel.saveChanges()
+    advanceUntilIdle()
+  }
+
+  /** Every failed save reported from now on, as the screen collects them. */
+  private fun TestScope.saveFailures(): List<Unit> {
+    val failures = mutableListOf<Unit>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.saveFailures.toList(failures)
+    }
+    return failures
+  }
+
+  @Test
+  fun saveChanges_withInvalidName_savesValidDescriptionAndIcon() = runTest {
+    editLogistics()
+    viewModel.onNameChange("")
+    viewModel.onDescriptionChange("Bring the water")
+    viewModel.onIconChange("wine")
+    save()
+
+    assertEquals(
+        logistics.copy(description = "Bring the water", icon = "wine"),
+        teams.teams.single(),
+    )
+    assertEquals(TeamFormError.NAME_EMPTY, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_withInvalidDescriptionAndIcon_savesValidName() = runTest {
+    editLogistics()
+    viewModel.onDescriptionChange("")
+    viewModel.onIconChange("")
+    viewModel.onNameChange("Supply")
+    save()
+
+    assertEquals(logistics.copy(name = "Supply"), teams.teams.single())
+  }
+
+  @Test
+  fun saveChanges_whenViewModelIsCleared_finishesTheInFlightWrite() = runTest {
+    checkSavesAfterClearing(queueSecond = false)
+  }
+
+  @Test
+  fun saveChanges_whenViewModelIsCleared_finishesTheQueuedWrite() = runTest {
+    checkSavesAfterClearing(queueSecond = true)
+  }
+
+  private fun TestScope.checkSavesAfterClearing(queueSecond: Boolean) {
+    teams.teams += logistics
+    val release = CompletableDeferred<Unit>()
+    val started = mutableListOf<String>()
+    val repository =
+        object : TeamRepository by teams {
+          override suspend fun updateTeam(
+              eventId: String,
+              teamId: String,
+              name: String,
+              description: String,
+              icon: String,
+          ) {
+            started += name
+            release.await()
+            teams.updateTeam(eventId, teamId, name, description, icon)
+          }
+        }
+    viewModel = CreateTeamViewModel(eventId, repository, clock, logistics)
+    val store = ViewModelStore()
+    store.put("editor", viewModel)
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    runCurrent()
+    if (queueSecond) {
+      viewModel.onNameChange("Bar")
+      viewModel.saveChanges()
+      runCurrent()
+    }
+    assertEquals(listOf("Supply"), started)
+    store.clear()
+    release.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(if (queueSecond) listOf("Supply", "Bar") else listOf("Supply"), started)
+    assertEquals(if (queueSecond) "Bar" else "Supply", teams.teams.single().name)
+  }
+
+  @Test
+  fun saveChanges_withOverlappingWrites_waitsBeforeStartingTheNext() = runTest {
+    checkOverlappingSaves(firstFails = false, secondFails = false)
+  }
+
+  @Test
+  fun saveChanges_withFirstWriteFailing_stillSavesTheLatestSnapshot() = runTest {
+    checkOverlappingSaves(firstFails = true, secondFails = false)
+  }
+
+  @Test
+  fun saveChanges_withSecondWriteFailing_retriesFromTheConfirmedState() = runTest {
+    checkOverlappingSaves(firstFails = false, secondFails = true)
+  }
+
+  private suspend fun TestScope.checkOverlappingSaves(firstFails: Boolean, secondFails: Boolean) {
+    teams.teams += logistics
+    val gates = List(2) { CompletableDeferred<Unit>() }
+    val started = mutableListOf<String>()
+    val repository =
+        object : TeamRepository by teams {
+          override suspend fun updateTeam(
+              eventId: String,
+              teamId: String,
+              name: String,
+              description: String,
+              icon: String,
+          ) {
+            val index = started.size
+            started += name
+            if (index < gates.size) gates[index].await()
+            if ((index == 0 && firstFails) || (index == 1 && secondFails)) error("denied")
+            teams.updateTeam(eventId, teamId, name, description, icon)
+          }
+        }
+    viewModel = CreateTeamViewModel(eventId, repository, clock, logistics)
+    val failures = saveFailures()
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    runCurrent()
+    viewModel.onNameChange("Bar")
+    viewModel.saveChanges()
+    runCurrent()
+    // Even if the second response is ready first, its request must wait for the first write.
+    gates[1].complete(Unit)
+    runCurrent()
+    assertEquals(listOf("Supply"), started)
+    gates[0].complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf("Supply", "Bar"), started)
+    assertEquals(if (secondFails) "Supply" else "Bar", teams.teams.single().name)
+    assertEquals(if (firstFails || secondFails) listOf(Unit) else emptyList<Unit>(), failures)
+    if (secondFails) {
+      save()
+      assertEquals("Bar", teams.teams.single().name)
+    }
+    // A return to an older value must be written, rather than skipped after late confirmation.
+    viewModel.onNameChange("Logistics")
+    save()
+    assertEquals("Logistics", teams.teams.single().name)
+  }
+
+  @Test
+  fun editing_opensOnTheTeamWithoutWaitingForASubmitToShowErrors() {
+    editLogistics()
+
+    assertEquals("Logistics", state.name)
+    assertEquals("truck", state.icon)
+    assertEquals("Move the equipment around the site", state.description)
+    assertTrue(state.isEditable)
+    // There is no submit, so an error shows as soon as it appears.
+    viewModel.onNameChange(" ")
+    assertEquals(TeamFormError.NAME_EMPTY, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_writesTheTrimmedFieldsAndKeepsTheRest() = runTest {
+    editLogistics()
+
+    val failures = saveFailures()
+
+    viewModel.onNameChange("  Supply ")
+    viewModel.onIconChange("wine")
+    save()
+
+    assertEquals(
+        listOf(logistics.copy(name = "Supply", icon = "wine")),
+        teams.teams,
+    )
+    assertEquals(emptyList<Unit>(), failures)
+  }
+
+  @Test
+  fun saveChanges_withNothingChanged_writesNothing() = runTest {
+    editLogistics()
+    val failures = saveFailures()
+    teams.failure = IllegalStateException("must not be called")
+
+    viewModel.onNameChange("Logistics ")
+    save()
+
+    assertEquals(emptyList<Unit>(), failures)
+  }
+
+  @Test
+  fun saveChanges_withAnInvalidField_keepsTheSavedTeam() = runTest {
+    editLogistics()
+
+    viewModel.onNameChange("")
+    save()
+    viewModel.onNameChange(name(CreateTeamViewModel.NAME_MAX_LENGTH + 1))
+    save()
+
+    assertEquals(listOf(logistics), teams.teams)
+    assertEquals(TeamFormError.NAME_TOO_LONG, state.errorFor(TeamFormField.NAME))
+  }
+
+  @Test
+  fun saveChanges_thatFails_isReportedThenTriedAgain() = runTest {
+    editLogistics()
+    val failures = saveFailures()
+    teams.failure = IllegalStateException("denied")
+
+    viewModel.onDescriptionChange("Bring the water")
+    save()
+    // Typing on does not take the failure back.
+    viewModel.onDescriptionChange("Bring the water around")
+
+    assertEquals(listOf(Unit), failures)
+    // The change was not saved, so the next save sends it again.
+    teams.failure = null
+    save()
+    assertEquals("Bring the water around", teams.teams.single().description)
+  }
+
+  @Test
+  fun saveChanges_twoFailingInARow_goBackToWhatTheBackendHolds() = runTest {
+    editLogistics()
+    teams.failure = IllegalStateException("denied")
+
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    viewModel.onNameChange("Bar")
+    viewModel.saveChanges()
+    advanceUntilIdle()
+    // Back to the first value, which the backend never took: it is sent again.
+    teams.failure = null
+    viewModel.onNameChange("Supply")
+    save()
+
+    assertEquals("Supply", teams.teams.single().name)
+  }
+
+  @Test
+  fun saveChanges_onANewTeam_doesNothing() = runTest {
+    fillValidForm()
+
+    save()
+
+    assertEquals(emptyList<Team>(), teams.teams)
   }
 }

@@ -116,6 +116,30 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   }
 
   /**
+   * A plain update of the three fields, which Firestore refuses with `NOT_FOUND` when the team is
+   * gone. Offline, it is queued like any write.
+   */
+  override suspend fun updateTeam(
+      eventId: String,
+      teamId: String,
+      name: String,
+      description: String,
+      icon: String,
+  ) {
+    translatingErrors {
+      teamDocument(eventId, teamId)
+          .update(
+              mapOf(
+                  TeamSchema.NAME to name,
+                  TeamSchema.DESCRIPTION to description,
+                  TeamSchema.ICON to icon,
+              )
+          )
+          .await()
+    }
+  }
+
+  /**
    * A transaction, because whether [userId] may join depends on the current manager: checking it
    * before a plain write would let a concurrent [setManager] slip in between. Like every
    * transaction, it needs a connection.

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <!-- Team creation -->
     <string name="create_team_field_name">Team name</string>
@@ -27,6 +28,7 @@
     <string name="team_setup_done">Done</string>
     <string name="team_setup_load_error">Could not load the teams of the event.</string>
     <string name="team_setup_retry">Retry</string>
+    <string name="team_setup_save_failed">Couldn\'t save the team.</string>
     <!-- Shared by the name and the description: both only carry their own limit. -->
     <plurals name="create_team_error_too_long">
         <item quantity="one">Use at most %1$d character</item>

@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -75,6 +76,14 @@ class CreateTeamFormTest {
         emptyList()
 
     override suspend fun setManager(eventId: String, teamId: String, managerId: String?) = Unit
+
+    override suspend fun updateTeam(
+        eventId: String,
+        teamId: String,
+        name: String,
+        description: String,
+        icon: String,
+    ) = Unit
 
     override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
 

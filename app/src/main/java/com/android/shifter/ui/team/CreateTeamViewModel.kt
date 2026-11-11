@@ -1,3 +1,5 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -10,11 +12,19 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import java.time.Clock
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /** A form field of the team creation screen. */
 enum class TeamFormField {
@@ -84,6 +94,9 @@ data class CreateTeamUiState(
  * is created without a manager and without members, which the organizer assigns afterwards from the
  * team itself; its staffing need is configured on its own later, for the same reason.
  *
+ * Given an existing [team], it edits that team instead (#226): the form opens on its values, shows
+ * its errors as they appear, and [saveChanges] writes them, with no submit.
+ *
  * @param clock source of the current time, used to stamp [Team.createdAt]. Inject a fixed clock in
  *   tests.
  */
@@ -91,13 +104,30 @@ class CreateTeamViewModel(
     private val eventId: String,
     private val teamRepository: TeamRepository,
     private val clock: Clock = Clock.systemDefaultZone(),
+    team: Team? = null,
 ) : ViewModel() {
 
-  private val _uiState = MutableStateFlow(CreateTeamUiState())
+  private val _uiState =
+      MutableStateFlow(
+          team?.let { CreateTeamUiState(it.name, it.icon, it.description) } ?: CreateTeamUiState()
+      )
   val uiState: StateFlow<CreateTeamUiState> = _uiState.asStateFlow()
 
   /** Becomes true on the first submit, after which errors follow every edit. */
-  private var submitAttempted = false
+  private var submitAttempted = team != null
+
+  private val saveMutex = Mutex()
+
+  /** The team edited, as the backend last confirmed it, which a failed save goes back to. */
+  private var confirmed: Team? = team
+
+  private val _saveFailures = Channel<Unit>(Channel.CONFLATED)
+
+  /**
+   * One element per failed save of the team edited, for the screen to report once. An event rather
+   * than a flag of [uiState], so typing on does not take the report away.
+   */
+  val saveFailures: Flow<Unit> = _saveFailures.receiveAsFlow()
 
   fun onNameChange(name: String) = edit { it.copy(name = name) }
 
@@ -136,6 +166,47 @@ class CreateTeamViewModel(
         throw e
       } catch (_: Exception) {
         _uiState.update { it.copy(isSaving = false, saveFailed = true) }
+      }
+    }
+  }
+
+  /**
+   * Saves valid fields independently, keeping the confirmed value of any invalid field. Snapshots
+   * are processed in order, so a slow or failed write cannot overwrite a newer confirmed save. Does
+   * nothing for a new team; failures are reported once through [saveFailures].
+   */
+  fun saveChanges() {
+    if (confirmed == null) return
+    val form = _uiState.value
+    val invalidFields = validate(form).map { it.field }.toSet()
+    // Enter before navigation can clear this ViewModel. Once accepted, the write and any
+    // preceding writes must finish even if its destination is removed. This never delays Back;
+    // offline, pending writes can remain suspended until Firestore acknowledges them.
+    viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+      withContext(NonCancellable) {
+        saveMutex.withLock {
+          val previous = checkNotNull(confirmed)
+          val next =
+              previous.copy(
+                  name =
+                      if (TeamFormField.NAME in invalidFields) previous.name else form.name.trim(),
+                  description =
+                      if (TeamFormField.DESCRIPTION in invalidFields) previous.description
+                      else form.description.trim(),
+                  icon =
+                      if (TeamFormField.ICON in invalidFields) previous.icon
+                      else checkNotNull(form.icon).trim(),
+              )
+          if (next == previous) return@withLock
+          try {
+            teamRepository.updateTeam(eventId, next.id, next.name, next.description, next.icon)
+            confirmed = next
+          } catch (e: CancellationException) {
+            throw e
+          } catch (_: Exception) {
+            _saveFailures.trySend(Unit)
+          }
+        }
       }
     }
   }
@@ -184,8 +255,9 @@ class CreateTeamViewModel(
         eventId: String,
         teamRepository: TeamRepository,
         clock: Clock = Clock.systemDefaultZone(),
+        team: Team? = null,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { CreateTeamViewModel(eventId, teamRepository, clock) }
+      initializer { CreateTeamViewModel(eventId, teamRepository, clock, team) }
     }
   }
 }

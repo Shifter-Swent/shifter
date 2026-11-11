@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
@@ -35,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
@@ -60,6 +62,8 @@ data class CreateTeamActions(
     val onNameChange: (String) -> Unit = {},
     val onIconChange: (String) -> Unit = {},
     val onDescriptionChange: (String) -> Unit = {},
+    /** Called when the name or the description loses the focus, which saves a team edited. */
+    val onFieldDone: () -> Unit = {},
 )
 
 /**
@@ -103,6 +107,7 @@ fun CreateTeamContent(
             testTag = CreateTeamFormTestTags.NAME_FIELD,
             error = state.errorFor(TeamFormField.NAME),
             enabled = editable,
+            onFocusLost = actions.onFieldDone,
         )
       }
       LabeledField(R.string.create_team_field_icon) {
@@ -126,6 +131,7 @@ fun CreateTeamContent(
           error = state.errorFor(TeamFormField.DESCRIPTION),
           enabled = editable,
           singleLine = false,
+          onFocusLost = actions.onFieldDone,
       )
     }
   }
@@ -208,11 +214,13 @@ private fun FormTextField(
     error: TeamFormError?,
     enabled: Boolean,
     singleLine: Boolean = true,
+    onFocusLost: () -> Unit = {},
 ) {
   val colorScheme = MaterialTheme.colorScheme
   val shape = MaterialTheme.shapes.small
   val interactionSource = remember { MutableInteractionSource() }
   val focused by interactionSource.collectIsFocusedAsState()
+  var wasFocused by remember { mutableStateOf(false) }
   val labelText = stringResource(label)
   val errorText = error?.let { errorMessage(it) }
   // The name is the 14sp medium of the designs, the description their smaller 12sp regular.
@@ -241,10 +249,16 @@ private fun FormTextField(
         interactionSource = interactionSource,
         // Unlike OutlinedTextField, BasicTextField exposes neither its label nor its error.
         modifier =
-            Modifier.fillMaxWidth().testTag(testTag).semantics {
-              contentDescription = labelText
-              if (errorText != null) error(errorText)
-            },
+            Modifier.fillMaxWidth()
+                .onFocusChanged {
+                  if (wasFocused && !it.isFocused) onFocusLost()
+                  wasFocused = it.isFocused
+                }
+                .testTag(testTag)
+                .semantics {
+                  contentDescription = labelText
+                  if (errorText != null) error(errorText)
+                },
         decorationBox = { innerTextField ->
           Box(
               modifier =
