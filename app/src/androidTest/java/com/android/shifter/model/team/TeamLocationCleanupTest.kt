@@ -129,6 +129,9 @@ class TeamLocationCleanupTest {
 
         signIn(organizer)
         teams.setManager(eventId, TEAM_ID, volunteer.uid)
+        // The index entries the change wrote, deleted with the rest.
+        paths += managerEntry(manager).path
+        paths += managerEntry(volunteer).path
 
         // Promoted out of the members, so nothing of theirs would replace or remove the position.
         assertEquals(listOf(teammate.uid, manager.uid), memberIds())
@@ -315,6 +318,12 @@ class TeamLocationCleanupTest {
 
   private fun locationRef(user: Account, teamId: String = TEAM_ID): DocumentReference =
       liveLocations(teamId).document(user.uid).also { paths += it.path }
+
+  private fun managerEntry(user: Account) =
+      db.collection(EVENTS)
+          .document(eventId)
+          .collection(ManagerIndexSchema.COLLECTION)
+          .document(user.uid)
 
   private fun requestRef(user: Account) =
       db.collection(EVENTS).document(eventId).collection(REQUESTS).document(user.uid)

@@ -352,6 +352,52 @@ service cloud.firestore {
         }
       }
 
+      // managers/{uid}: the teams of the event that uid manages, mirroring their managerId, so a
+      // rule can tell whether someone manages any team of the event, which it cannot ask the teams
+      // (#426). The repositories write it in the same commit as the team. Each write changes one
+      // team at a time, which must agree with the team after the commit: a team added is managed
+      // by uid, a team removed no longer is. A team written directly, outside the repositories, is
+      // not re-indexed, as no rule can require a write to the team to come with one here.
+      match /managers/{uid} {
+        function teamsBefore() {
+          return resource == null ? [] : resource.data.get('teamIds', []);
+        }
+
+        function teamsAfter() {
+          return request.resource.data.get('teamIds', []);
+        }
+
+        function managesAfter(teamId) {
+          let team = /databases/$(database)/documents/events/$(eventId)/teams/$(teamId);
+          return existsAfter(team) && getAfter(team).data.get('managerId', null) == uid;
+        }
+
+        // A write that changes nothing is allowed, so a manager appointed before the index existed
+        // can still be replaced or leave.
+        function isValidChange() {
+          let added = teamsAfter().removeAll(teamsBefore());
+          let removed = teamsBefore().removeAll(teamsAfter());
+          return request.resource.data.keys().hasOnly(['teamIds'])
+            && added.size() + removed.size() <= 1
+            && (added.size() == 0 || managesAfter(added[0]))
+            && (removed.size() == 0 || !managesAfter(removed[0]));
+        }
+
+        allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
+        // The organizer appoints and replaces managers; a manager only takes themself out, when
+        // they withdraw, and only under an event that exists: isOrganizer fails without one, which
+        // would otherwise leave this branch open to an entry under any event id.
+        allow create, update: if signedIn()
+          && teamsAfter() is list
+          && teamsAfter().size() == teamsAfter().toSet().size()
+          && (isOrganizer(eventId)
+              || (request.auth.uid == uid
+                  && teamsAfter().removeAll(teamsBefore()).size() == 0
+                  && exists(/databases/$(database)/documents/events/$(eventId))))
+          && isValidChange();
+        allow delete: if isOrganizer(eventId);
+      }
+
       // channels/general/messages/{messageId}: the event's general channel. Its organizer and its
       // participants read and send. The managers are participants too, since a manager is always
       // appointed among the members of a team, who are all accepted. Checked on the participants as

@@ -35,7 +35,8 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   private fun teamDocument(eventId: String, teamId: String) = teamsOf(eventId).document(teamId)
 
   /**
-   * Writes [team] under a freshly generated document id in the subcollection of its event.
+   * Writes [team] under a freshly generated document id in the subcollection of its event, and
+   * indexes its manager, if it has one, in the same commit.
    *
    * [Team.createdAt] is persisted as the caller supplied it: the repository does not invent time,
    * which keeps writes deterministic and testable.
@@ -49,7 +50,9 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
     return translatingErrors {
       val document = teamsOf(team.eventId).document()
       val persisted = team.copy(id = document.id)
-      document.set(persisted.toFirestoreMap()).await()
+      val batch = firestore.batch().set(document, persisted.toFirestoreMap())
+      persisted.managerId?.let { batch.indexManager(document, it) }
+      batch.commit().await()
       persisted
     }
   }
@@ -70,6 +73,9 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    * A transaction, because the members written depend on the current manager and members: the
    * previous manager goes back to the members while the new one leaves them, which a single
    * `arrayUnion` or `arrayRemove` cannot do. Like every transaction, it needs a connection.
+   *
+   * The index of the event's managers ([ManagerIndexSchema]) changes in the same commit, so the
+   * previous manager loses what managing gives access to as soon as the new one gets it.
    */
   override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
     val document = teamDocument(eventId, teamId)
@@ -96,6 +102,7 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
                     TeamSchema.MEMBER_IDS to team.membersAfterAppointing(managerId),
                 ),
             )
+            transaction.indexManagerChange(document, team.managerId, managerId)
             // Appointing a member leaves them out of the members, so the position they shared as a
             // volunteer goes with it, in the same commit: a manager is not a member and cannot
             // share one, so nothing would replace or remove it afterwards (#305). Nothing to clean

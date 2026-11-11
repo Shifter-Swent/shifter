@@ -14,6 +14,7 @@ import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.team.TeamSchema
+import com.swent.shifter.model.team.indexManagerChange
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -177,9 +178,10 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   /**
    * Takes [userId] out of [team], read as [snapshot] earlier in this transaction: out of its
    * members, out of its management when they lead it, or they would keep managing a team of an
-   * event they no longer take part in, and out of the positions shared with its manager. Nothing is
-   * written to the team itself when they are in neither: the rules refuse a withdrawal that changes
-   * nothing on the team, which would fail the whole transaction.
+   * event they no longer take part in, with the index of the event's managers, and out of the
+   * positions shared with its manager. Nothing is written to the team itself when they are in
+   * neither: the rules refuse a withdrawal that changes nothing on the team, which would fail the
+   * whole transaction.
    *
    * The position goes in the same commit as the membership, so the manager never keeps reading the
    * position of someone who has left (#305). It is deleted whether one is stored or not: a delete
@@ -196,6 +198,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     if (userId in memberIds) update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayRemove(userId))
     if (snapshot.getString(TeamSchema.MANAGER_ID) == userId) {
       update(team, TeamSchema.MANAGER_ID, null)
+      indexManagerChange(team, previous = userId, next = null)
     }
     delete(team.collection(LiveLocationSchema.COLLECTION).document(userId))
   }

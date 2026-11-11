@@ -41,6 +41,7 @@ class MembershipRequestRepositoryFirestoreTest {
   private val participants = mockk<DocumentReference>()
   private val team = mockk<DocumentReference>()
   private val location = mockk<DocumentReference>()
+  private val managerEntry = mockk<DocumentReference>()
   private val repository = MembershipRequestRepositoryFirestore(db)
   private val request =
       MembershipRequest(
@@ -69,6 +70,13 @@ class MembershipRequestRepositoryFirestoreTest {
     val liveLocations = mockk<CollectionReference>()
     every { team.collection("liveLocations") } returns liveLocations
     every { liveLocations.document(request.userId) } returns location
+    // The index of the event's managers, reached from the team as the repository does.
+    every { team.id } returns request.teamId
+    every { team.parent } returns teams
+    every { teams.parent } returns event
+    val managers = mockk<CollectionReference>()
+    every { event.collection("managers") } returns managers
+    every { managers.document(request.userId) } returns managerEntry
     every { requests.document(request.userId) } returns ref
     every { ref.get() } returns Tasks.forResult(snapshot(request.copy(id = request.userId)))
     every { requests.get() } returns Tasks.forResult(result)
@@ -168,9 +176,10 @@ class MembershipRequestRepositoryFirestoreTest {
     every { transaction.get(ref) } returns snapshot(request.copy(id = request.userId))
     every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
 
-    repository.reject("event", request.userId)
+    val removal = leavingTheIndex { repository.reject("event", request.userId) }
 
     verify { transaction.update(team, "managerId", null) }
+    verifyLeftTheIndex(removal)
   }
 
   @Test
@@ -201,6 +210,8 @@ class MembershipRequestRepositoryFirestoreTest {
     }
     // The volunteer may not be allowed to read the participants document.
     verify(exactly = 0) { transaction.get(participants) }
+    // A member only: they are in no entry of the index, which is left alone.
+    verify(exactly = 0) { transaction.set(managerEntry, any(), any()) }
   }
 
   @Test
@@ -208,9 +219,10 @@ class MembershipRequestRepositoryFirestoreTest {
     every { transaction.get(ref) } returns statusSnapshot("ACCEPTED", request.teamId)
     every { transaction.get(team) } returns teamSnapshot(exists = true, managerId = request.userId)
 
-    repository.withdraw("event", request.userId)
+    val removal = leavingTheIndex { repository.withdraw("event", request.userId) }
 
     verify { transaction.update(team, "managerId", null) }
+    verifyLeftTheIndex(removal)
     verify { transaction.delete(ref) }
   }
 
@@ -460,6 +472,24 @@ class MembershipRequestRepositoryFirestoreTest {
     val thrown = runCatching { repository.apply("event", request) }.exceptionOrNull()
     assertTrue(thrown is MembershipRequestRepositoryException.Unavailable)
     assertEquals(error, thrown!!.cause)
+  }
+
+  /**
+   * Runs [action] with `arrayRemove` of the team returning a value of its own, which it returns:
+   * `FieldValue` has no equality, so only that instance tells the removal of this team apart.
+   */
+  private inline fun leavingTheIndex(action: () -> Unit): FieldValue {
+    val removal = FieldValue.arrayRemove(request.teamId)
+    mockkStatic(FieldValue::class) {
+      every { FieldValue.arrayRemove(request.teamId) } returns removal
+      action()
+    }
+    return removal
+  }
+
+  /** The team was taken out of the volunteer's entry in the index of the managers, merged. */
+  private fun verifyLeftTheIndex(removal: FieldValue) {
+    verify { transaction.set(managerEntry, mapOf("teamIds" to removal), SetOptions.merge()) }
   }
 
   private fun teamSnapshot(

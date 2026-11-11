@@ -32,6 +32,7 @@ eventParticipants/{eventId}
 | `events/{eventId}` | An event created by an organizer | `EventSchema` |
 | `events/{eventId}/teams/{teamId}` | A team of the event | `TeamSchema` |
 | `events/{eventId}/teams/{teamId}/liveLocations/{uid}` | Where a volunteer of the team is, keyed by their uid | `LiveLocationSchema` |
+| `events/{eventId}/managers/{uid}` | The teams of the event a user manages, keyed by their uid | `ManagerIndexSchema` |
 | `events/{eventId}/channels/general/messages/{messageId}` | A message of the event's general chat channel | `ChatMessageSchema` |
 | `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
@@ -111,6 +112,23 @@ stays in `users/{uid}`.
 | `createdAt` | timestamp | |
 
 Belonging to a team (`memberIds`) is not the same as working a given slot (`Shift.assigneeIds`).
+
+### `events/{eventId}/managers/{uid}`
+
+The teams of the event that a user manages: an index of the teams' `managerId`, so the rules can
+tell whether someone manages any team of the event, which they cannot ask the teams themselves.
+It is never read by the app.
+
+| Field | Type | Notes |
+|---|---|---|
+| `teamIds` | list of string | Ids of the teams whose `managerId` is this user, each once. Empty once they manage none: the document stays |
+
+It is written in the same commit as the team: `createTeam` with a manager, `setManager`, and the
+withdrawal or rejection of a manager, which takes them out of their team. A team written directly,
+outside the repositories, is not re-indexed: the rules check every write to the index against the
+team, but cannot require a write to the team to come with one to the index. Managers appointed
+before the index existed are not in it until `setManager` appoints them again, the same manager
+included.
 
 ### `events/{eventId}/teams/{teamId}/liveLocations/{uid}`
 
@@ -268,6 +286,7 @@ every access to it is denied.
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
+| `managers/{uid}` | The event's organizer, and the user themself | Create and update by the organizer, or by the user only to take a team out, as when they withdraw, and only under an event that exists. At most one team added or removed per write, which must agree with the team after the same commit: a team added has `managerId` equal to the uid, a team removed no longer has. Delete by the organizer |
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
 | `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters, and an optional boolean `announcement`, `true` only from the team's manager. No update, no delete |
 | `channels/general/messages/{messageId}` | The event's organizer and its participants (`participantIds`), checked on the participants as they are now, so someone who withdraws or is rejected loses access at once. A team's manager is always a participant, since they are appointed among its members. Checked on the path, so the whole channel can be queried | Create only, by the same users, with the same fields as a team's message, an announcement only from the organizer. No update, no delete |
