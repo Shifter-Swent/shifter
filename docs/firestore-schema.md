@@ -296,9 +296,9 @@ every access to it is denied.
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it. Either only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
-| `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
-| `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
-| `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Nothing is allowed under an event that does not exist |
+| `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, with valid fields (see below), never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
+| `shifts` | The organizer and the event's participants | The organizer only, with valid fields (see below). Nothing is allowed under an event that does not exist |
+| `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Always with valid fields (see below). Nothing is allowed under an event that does not exist |
 | `managers/{uid}` | The event's organizer, and the user themself | Create and update by the organizer, or by the user only to take a team out, as when they withdraw, and only under an event that exists. At most one team added or removed per write, which must agree with the team after the same commit: a team added has `managerId` equal to the uid, a team removed no longer has. Delete by the organizer |
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
 | `teams/{teamId}/messages/{messageId}` | The team's members (`memberIds`), its manager (`managerId`) and the event's organizer, checked on the team as it is now, so someone removed from the team or who withdraws loses access at once. Checked on the path, so the whole channel can be queried | Create only, by the same users, with only `senderId` equal to the signed-in user, `sentAt` equal to the request time and a trimmed `text` of 1 to 1000 characters, and an optional boolean `announcement`, `true` only from the team's manager. No update, no delete |
@@ -321,6 +321,12 @@ The emulator does not check indexes, so a missing one only fails in production. 
 Firestore" workflow deploys `firestore.rules` and `firestore.indexes.json` on every push to `main`
 that changes them; it can also be run by hand from the Actions tab.
 
+**Valid fields** of `teams`, `shifts` and `missions`: no field outside the ones of this page
+(except the legacy `checkInZone` of teams written before #164), and each field that is there with its type above (`volunteersNeeded` of a mission an integer of
+at least 1, a `location` with an address and coordinates in range). A time slot ends after it
+starts. A field may still be absent: the mappers fail loudly on a missing required one, and a rule
+requiring every field would refuse the partial documents the emulator tests write.
+
 A withdrawal is the one exception to the table above: a volunteer may delete their own request
 and, in the same commit, remove themself (and only themself) from `eventParticipants` and from their
 team: from its `memberIds`, or, for its manager, from `managerId`, which becomes `null`. A request
@@ -334,8 +340,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   assigned to the volunteer between that query and the commit keeps them, as it would if it were
   assigned right after the move. The missions that are completed or over keep them on purpose,
   since their attendance is built from their assignees.
-- **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
-  write them, and which assignees a manager adds; malformed documents are caught by the mappers.
+- **The rules do not require every field of `teams`, `shifts` and `missions`.** They refuse
+  unknown fields and wrong types, but a document missing a required field is only caught by the
+  mappers.
 - **A volunteer who left can still read their missions and check-ins.** They stay in
   `assigneeIds` until unassigned, and the rules that let a volunteer list their own missions and
   check-ins do not check participation; #337 is to address it.

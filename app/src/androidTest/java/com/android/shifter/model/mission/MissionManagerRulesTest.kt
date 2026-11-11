@@ -183,12 +183,16 @@ class MissionManagerRulesTest {
 
   @Test
   fun update_byTheManager_withMoreAssigneesThanNeeded_isDenied() = emulatorTest {
-    // The need is set first; assigning afterwards, as updateAssignees does, cannot exceed it.
+    // The need is set first; assigning afterwards, as updateAssignees does, cannot exceed it. The
+    // organizer may assign anyone, so the one place left goes to someone outside the team.
     signIn(organizer)
-    val mission = newMission().also { it.set(mission(TEAM_ID) + ("volunteersNeeded" to 0)).await() }
+    val mission =
+        newMission().also {
+          it.set(mission(TEAM_ID, formerMember.uid) + ("volunteersNeeded" to 1)).await()
+        }
     signIn(manager)
 
-    assertDenied { mission.update("assigneeIds", listOf(member.uid)).await() }
+    assertDenied { mission.update("assigneeIds", listOf(formerMember.uid, member.uid)).await() }
   }
 
   @Test
