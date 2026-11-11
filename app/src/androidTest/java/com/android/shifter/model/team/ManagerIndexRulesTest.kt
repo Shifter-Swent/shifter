@@ -151,6 +151,57 @@ class ManagerIndexRulesTest {
   }
 
   @Test
+  fun leaving_byAManagerAppointedBeforeTheIndex_isAllowed() = emulatorTest {
+    // They lead the team, but have no entry: the withdrawal still writes the removal to it.
+    teamAsAdmin(TEAM_ID, managerId = manager.uid, members = listOf(volunteer.uid))
+    signIn(manager)
+
+    db.batch()
+        .update(team(TEAM_ID), "managerId", null)
+        .set(entry(manager), removing(TEAM_ID), SetOptions.merge())
+        .commit()
+        .await()
+    assertEquals(emptyList<String>(), teamsOf(manager))
+  }
+
+  @Test
+  fun index_byTheUserUnderAnEventThatDoesNotExist_isDenied() = emulatorTest {
+    signIn(manager)
+    val missing =
+        db.collection("events")
+            .document("missing-${UUID.randomUUID()}")
+            .collection("managers")
+            .document(manager.uid)
+
+    assertDenied { missing.set(removing(TEAM_ID), SetOptions.merge()).await() }
+
+    // The same write under an event that exists goes through.
+    entry(manager).set(removing(TEAM_ID), SetOptions.merge()).await()
+  }
+
+  @Test
+  fun index_withADuplicate_isDenied() = emulatorTest {
+    managing(TEAM_ID)
+    signIn(organizer)
+
+    // Only a raw write can list a team twice: the repositories add with arrayUnion.
+    assertDenied { entry(manager).set(mapOf("teamIds" to listOf(TEAM_ID, TEAM_ID))).await() }
+
+    entry(manager).set(mapOf("teamIds" to listOf(TEAM_ID))).await()
+  }
+
+  @Test
+  fun delete_byTheOrganizerOnly() = emulatorTest {
+    managing(TEAM_ID)
+    signIn(manager)
+
+    assertDenied { entry(manager).delete().await() }
+
+    signIn(organizer)
+    entry(manager).delete().await()
+  }
+
+  @Test
   fun index_ofSomeoneElse_isDeniedToAVolunteer() = emulatorTest {
     managing(TEAM_ID)
     teamAsAdmin(TEAM_ID, managerId = null, members = listOf(manager.uid, volunteer.uid))

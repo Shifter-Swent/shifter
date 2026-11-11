@@ -385,12 +385,15 @@ service cloud.firestore {
 
         allow read: if isOrganizer(eventId) || (signedIn() && request.auth.uid == uid);
         // The organizer appoints and replaces managers; a manager only takes themself out, when
-        // they withdraw.
+        // they withdraw, and only under an event that exists: isOrganizer fails without one, which
+        // would otherwise leave this branch open to an entry under any event id.
         allow create, update: if signedIn()
           && teamsAfter() is list
           && teamsAfter().size() == teamsAfter().toSet().size()
           && (isOrganizer(eventId)
-              || (request.auth.uid == uid && teamsAfter().removeAll(teamsBefore()).size() == 0))
+              || (request.auth.uid == uid
+                  && teamsAfter().removeAll(teamsBefore()).size() == 0
+                  && exists(/databases/$(database)/documents/events/$(eventId))))
           && isValidChange();
         allow delete: if isOrganizer(eventId);
       }
