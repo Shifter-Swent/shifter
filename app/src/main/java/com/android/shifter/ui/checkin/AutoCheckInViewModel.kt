@@ -18,6 +18,7 @@ import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -25,6 +26,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -136,14 +138,10 @@ class AutoCheckInViewModel(
   @OptIn(ExperimentalCoroutinesApi::class)
   private suspend fun checkInWhenEligible() = coroutineScope {
     val userId = currentUserId() ?: return@coroutineScope
-    // A mission whose window is over cannot become eligible while the screen is open. A window not
-    // open yet can, so this is not a check that now is in the window.
     val missions =
         missionRepository
             .observeMissionsAssignedTo(userId)
-            .map { assigned ->
-              assigned.filter { it.isGeoTimed && now() <= it.checkInWindow().endInclusive }
-            }
+            .flatMapLatest { assigned -> openMissions(assigned) }
             .stateIn(this)
     // Follows the check-ins of the events the missions belong to, including events that appear
     // later.
@@ -172,6 +170,24 @@ class AutoCheckInViewModel(
                 launch { checkIn(mission, userId) }
               }
         }
+  }
+
+  /**
+   * The missions of [assigned] still open to a check-in, filtered again each time one's window
+   * ends, so the positions stop with the last window even when the assignments do not change. A
+   * mission closed by hand or whose window is over cannot become eligible again; a window not open
+   * yet can, so this is not a check that now is in the window.
+   */
+  private fun openMissions(assigned: List<Mission>): Flow<List<Mission>> = flow {
+    while (true) {
+      val open = assigned.filter {
+        !it.completed && it.isGeoTimed && now() <= it.checkInWindow().endInclusive
+      }
+      emit(open)
+      val nextEnd = open.minOfOrNull { it.checkInWindow().endInclusive } ?: break
+      // Just past the end, as a mission is still open at the end itself.
+      delay(Duration.between(now(), nextEnd).toMillis() + 1)
+    }
   }
 
   private fun checkInsTo(events: Set<String>, userId: String): Flow<KnownCheckIns> =

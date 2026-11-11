@@ -7,6 +7,7 @@ import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
@@ -207,6 +208,35 @@ class AutoCheckInViewModelTest {
     moveTo(NEAR)
 
     assertEquals(1, checkIns.checkIns.size)
+  }
+
+  @Test
+  fun positions_stopWhenTheLastWindowEnds() = runTest {
+    val windowEnd = addMission(endsIn = Duration.ofMinutes(30)).checkInWindow().endInclusive
+    open()
+    assertEquals(1, location.activeCollectors)
+
+    // The screen stays open and the assignments do not change: only the time passes.
+    val untilTheEnd = Duration.between(clock, windowEnd).toMillis()
+    clock = windowEnd.plusSeconds(1)
+    advanceTimeBy(untilTheEnd + 2)
+
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun missionClosedByHand_stopsThePositionsAndIsNotTried() = runTest {
+    val mission = addMission()
+    isEligible = { _, _, _ -> true }
+    open()
+    assertEquals(1, location.activeCollectors)
+
+    missions.markCompleted(EVENT, mission.id)
+    runCurrent()
+    moveTo(NEAR)
+
+    assertEquals(0, location.activeCollectors)
+    assertTrue(checkIns.checkIns.isEmpty())
   }
 
   @Test
