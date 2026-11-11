@@ -466,6 +466,7 @@ fun ShifterNavHost(
                             eventId,
                             repositories.membershipRequestRepository,
                             repositories.userRepository,
+                            repositories.eventRepository,
                         )
                 )
             val participants: ParticipantsViewModel =

@@ -67,6 +67,8 @@ object EventDetailsTestTags {
  * @param teams the teams of [event], of which the volunteer picks the one they apply to.
  * @param selectedTeamId the team picked; Apply stays disabled until there is one.
  * @param requestStatus the status of the volunteer's request once sent, shown in place of Apply.
+ * @param hasEnded whether the event has ended: it no longer takes applications, so it offers no
+ *   team to pick and no Apply, unless the volunteer applied before (#409).
  */
 @Composable
 fun EventDetailsContent(
@@ -79,7 +81,9 @@ fun EventDetailsContent(
     onBack: () -> Unit,
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
+    hasEnded: Boolean = false,
 ) {
+  val closed = hasEnded && requestStatus == null
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxSize()) {
     ShifterTopBar(title = stringResource(R.string.event_details_title), onBack = onBack)
@@ -128,19 +132,21 @@ fun EventDetailsContent(
             modifier = Modifier.testTag(EventDetailsTestTags.DESCRIPTION),
         )
       }
-      TeamSelector(
-          teams = teams,
-          selectedTeamId = selectedTeamId,
-          enabled = !isLoading && requestStatus == null,
-          onTeamSelected = onTeamSelected,
-      )
+      if (!closed) {
+        TeamSelector(
+            teams = teams,
+            selectedTeamId = selectedTeamId,
+            enabled = !isLoading && requestStatus == null,
+            onTeamSelected = onTeamSelected,
+        )
+      }
       IconLabel(
           Icons.Outlined.Info,
           stringResource(R.string.event_details_approval_notice),
           colors.onSurfaceVariant,
       )
     }
-    ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply)
+    ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply, closed)
   }
 }
 
@@ -217,6 +223,7 @@ private fun ApplyBar(
     error: JoinEventError?,
     canApply: Boolean,
     onApply: () -> Unit,
+    closed: Boolean = false,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxWidth()) {
@@ -231,6 +238,14 @@ private fun ApplyBar(
         when {
           isLoading -> CircularProgressIndicator(color = colors.primary)
           requestStatus != null -> StatusBadge(requestStatus)
+          closed ->
+              Text(
+                  text = stringResource(R.string.join_event_ended),
+                  color = colors.onSurfaceVariant,
+                  fontSize = 15.sp,
+                  textAlign = TextAlign.Center,
+                  modifier = Modifier.testTag(JoinEventScreenTestTags.ENDED),
+              )
           else ->
               PrimaryButton(
                   stringResource(R.string.join_event_apply),

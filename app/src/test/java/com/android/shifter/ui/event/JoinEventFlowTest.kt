@@ -83,7 +83,14 @@ class JoinEventFlowTest {
   @Test
   fun joining_withWrongThenRightCode_showsAnErrorThenLetsTheVolunteerApply() {
     val teams = FakeTeamRepository(listOf(TEAM))
-    val viewModel = JoinEventViewModel(events, requests, teams, { "volunteer-1" })
+    val viewModel =
+        JoinEventViewModel(
+            events,
+            requests,
+            teams,
+            { "volunteer-1" },
+            { Instant.ofEpochSecond(600) },
+        )
     composeTestRule.setContent { JoinEventScreen(viewModel) }
 
     typeCodeAndFind("WRNG23")

@@ -381,6 +381,53 @@ class JoinEventViewModelTest {
           createdAt = NOW,
       )
 
+  // ── An event that has ended (#409) ──
+
+  /** Finds [EVENT], ended exactly now: its end is no longer in the future. */
+  private fun findEndedEvent() {
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT.copy(endAt = NOW)
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+  }
+
+  @Test
+  fun findEvent_withAnEventThatHasEnded_saysSo() {
+    findEndedEvent()
+
+    assertTrue(viewModel.uiState.value.hasEnded)
+  }
+
+  @Test
+  fun findEvent_withAnEventStillRunning_takesApplications() {
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
+
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+
+    assertFalse(viewModel.uiState.value.hasEnded)
+  }
+
+  @Test
+  fun applyToEvent_onAnEventThatHasEnded_sendsNothing() {
+    findEndedEvent()
+
+    viewModel.onTeamSelected(TEAM_ID)
+    viewModel.applyToEvent()
+
+    assertNull(viewModel.uiState.value.selectedTeamId)
+    assertNull(viewModel.uiState.value.requestStatus)
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun changeCode_afterAnEventThatHasEnded_forgetsIt() {
+    findEndedEvent()
+
+    viewModel.changeCode()
+
+    assertFalse(viewModel.uiState.value.hasEnded)
+  }
+
   private companion object {
     const val UID = "volunteer-1"
     const val TEAM_ID = "team-a"

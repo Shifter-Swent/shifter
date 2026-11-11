@@ -221,6 +221,17 @@ class JoinEventScreenTest {
   }
 
   @Test
+  fun endedEvent_saysItHasEndedWithoutApply() {
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, hasEnded = true))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ENDED).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertDoesNotExist()
+  }
+
+  @Test
   fun eventWithoutTeam_tellsItHasNoTeam() {
     composeTestRule.setContent { content(uiState = JoinEventUiState(event = EVENT)) }
 
@@ -256,6 +267,23 @@ class JoinEventScreenTest {
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun endedEvent_withARequestSent_stillShowsTheRequest() {
+    composeTestRule.setContent {
+      content(
+          uiState =
+              JoinEventUiState(
+                  event = EVENT,
+                  requestStatus = MembershipRequestStatus.PENDING,
+                  hasEnded = true,
+              )
+      )
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ENDED).assertDoesNotExist()
   }
 
   @Test

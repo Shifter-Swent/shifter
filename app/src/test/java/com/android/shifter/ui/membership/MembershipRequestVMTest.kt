@@ -2,6 +2,10 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.membership
 
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
@@ -385,6 +389,82 @@ class MembershipRequestVMTest {
         assertEquals(items(requests), vm.uiState.value.requests)
         assertNull(vm.uiState.value.errorMsg)
         assertFalse(vm.uiState.value.isLoading)
+      }
+
+  // ── An event that has ended (#409) ──
+
+  private val now = Instant.ofEpochSecond(10_000)
+
+  /** A view model over an event that ends at [endAt], read from a mocked event repository. */
+  private fun vmEndingAt(endAt: Instant?): MembershipRequestVM {
+    val events = mockk<EventRepository>()
+    coEvery { events.getEvent("event") } answers
+        {
+          endAt?.let {
+            Event(
+                id = "event",
+                organizerId = "organizer",
+                title = "Festival",
+                description = "",
+                type = EventType.MUSIC,
+                startAt = it.minusSeconds(3600),
+                endAt = it,
+                location = EventLocation("Lausanne"),
+                createdAt = Instant.EPOCH,
+            )
+          }
+        }
+    return MembershipRequestVM("event", repository, userRepository, events) { now }
+  }
+
+  @Test
+  fun accept_onceTheEventHasEnded_isIgnoredButRejectWorks() =
+      runTest(dispatcher) {
+        val vm = vmEndingAt(now)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.hasEnded)
+        vm.accept("alice")
+        vm.reject("bob")
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { repository.accept(any(), any()) }
+        coVerify(exactly = 1) { repository.reject("event", "bob") }
+      }
+
+  @Test
+  fun accept_whileTheEventIsRunning_acceptsTheRequest() =
+      runTest(dispatcher) {
+        val vm = vmEndingAt(now.plusSeconds(1))
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.hasEnded)
+        vm.accept("alice")
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.accept("event", "alice") }
+      }
+
+  /** An event that cannot be read is taken as running: the rules still guard its end. */
+  @Test
+  fun load_withAnUnreadableEvent_takesItAsRunning() =
+      runTest(dispatcher) {
+        val events = mockk<EventRepository>()
+        coEvery { events.getEvent("event") } throws IllegalStateException("offline")
+        val vm = MembershipRequestVM("event", repository, userRepository, events) { now }
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.hasEnded)
+        assertEquals(items(requests), vm.uiState.value.requests)
+      }
+
+  @Test
+  fun load_withAMissingEvent_takesItAsRunning() =
+      runTest(dispatcher) {
+        val vm = vmEndingAt(null)
+        advanceUntilIdle()
+
+        assertFalse(vm.uiState.value.hasEnded)
       }
 
   private fun items(requests: List<MembershipRequest>) = requests.map {

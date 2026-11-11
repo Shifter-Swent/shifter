@@ -136,9 +136,18 @@ service cloud.firestore {
           return existsAfter(team) && uid in getAfter(team).data.get('memberIds', []);
         }
 
+        // An event that has ended no longer recruits (#409): nobody applies to it, and its
+        // organizer can no longer accept a request, only reject it. An event without an end, which
+        // only a hand-written document has, keeps recruiting.
+        function eventRunning() {
+          let endAt = get(/databases/$(database)/documents/events/$(eventId)).data.get('endAt', null);
+          return !(endAt is timestamp) || request.time < endAt;
+        }
+
         allow read: if isRequester() || isOrganizer(eventId);
         allow create: if isRequester()
           && exists(/databases/$(database)/documents/events/$(eventId))
+          && eventRunning()
           && request.resource.data.keys().hasOnly(
                ['userId', 'teamId', 'availability', 'status', 'createdAt'])
           && request.resource.data.userId == uid
@@ -174,6 +183,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
           && request.resource.data.status in ['ACCEPTED', 'REJECTED']
           && ((request.resource.data.status == 'ACCEPTED'
+                && eventRunning()
                 && uid in getAfter(/databases/$(database)/documents/eventParticipants/$(eventId))
                      .data.participantIds
                 && isTeamMemberAfter())
