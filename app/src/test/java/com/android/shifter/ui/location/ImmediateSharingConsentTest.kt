@@ -8,6 +8,9 @@ import com.swent.shifter.model.location.CONSENT_RETRY_DELAY
 import com.swent.shifter.model.location.FakeLiveLocationRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.LiveLocationPublisher
+import com.swent.shifter.model.location.LiveLocationSharingState
+import com.swent.shifter.model.location.LiveLocationSharingState.OFF
+import com.swent.shifter.model.location.LiveLocationSharingState.WAITING
 import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.location.sharingConsent
 import com.swent.shifter.model.membership.AvailabilitySlot
@@ -71,9 +74,12 @@ class ImmediateSharingConsentTest {
   private val liveLocations = FakeLiveLocationRepository(currentUserId = UID)
   private val publisher = LiveLocationPublisher(provider, liveLocations)
 
+  /** Every sharing state the publisher reported, in order, as the indicator of #405 reads it. */
+  private val states = mutableListOf<LiveLocationSharingState>()
+
   /** Runs the foreground publisher on the shared consent, as the navigation root does. */
   private fun TestScope.startPublisher(): Job = backgroundScope.launch {
-    publisher.publish(EVENT, TEAM, consent.applyTo(users.sharingConsent(UID), UID))
+    publisher.publish(EVENT, TEAM, consent.applyTo(users.sharingConsent(UID), UID), states::add)
   }
 
   private fun settings(teamRepository: TeamRepository = teams) =
@@ -127,10 +133,12 @@ class ImmediateSharingConsentTest {
         viewModel.setLocationSharing(false)
         advanceUntilIdle()
 
-        // The lookup is in progress and still held, yet the GPS has already stopped.
+        // The lookup is in progress and still held, yet the GPS has already stopped, and the
+        // publisher reports sharing as off: the indicator follows the local decision just as fast.
         assertTrue("Expected Settings to have reached the teams lookup", lookupReached.isCompleted)
         assertFalse("The lookup must still be pending", releaseLookup.isCompleted)
         assertEquals(0, provider.activeCollectors)
+        assertEquals(OFF, states.last())
         // No position is left shared either, and none can be read while the GPS is off.
         assertEquals(emptyList<Any>(), liveLocations.observeTeamLocations(EVENT, TEAM).first())
 
@@ -194,7 +202,7 @@ class ImmediateSharingConsentTest {
         // The consent stream as sharingConsent yields it across a lost observation: the persisted
         // on, then a fail-closed off, then the persisted on again once the observation recovers.
         val real = MutableStateFlow(true)
-        backgroundScope.launch { publisher.publish(EVENT, TEAM, consent.applyTo(real, UID)) }
+        backgroundScope.launch { publisher.publish(EVENT, TEAM, consent.applyTo(real, UID)) {} }
         advanceUntilIdle()
         assertEquals(1, provider.activeCollectors)
 
@@ -259,6 +267,7 @@ class ImmediateSharingConsentTest {
 
         // The GPS stopped, and the publisher has already observed the committed off, still pending.
         assertEquals(0, provider.activeCollectors)
+        assertEquals(OFF, states.last())
         assertFalse(users.users.getValue(UID).locationSharingEnabled)
         assertTrue(viewModel.uiState.value.savingLocationSharing)
 
@@ -269,10 +278,12 @@ class ImmediateSharingConsentTest {
         assertNull(viewModel.uiState.value.locationSharingNotice)
         assertEquals(0, provider.activeCollectors)
 
-        // Another device turns sharing back on, and this device syncs it: the GPS resumes.
+        // Another device turns sharing back on, and this device syncs it: the GPS resumes, and
+        // the publisher is waiting for a first position to share, as a fresh session is.
         users.setLocationSharing(UID, true, emptyList())
         advanceUntilIdle()
         assertEquals(1, provider.activeCollectors)
+        assertEquals(WAITING, states.last())
       }
 
   @Test
@@ -282,7 +293,7 @@ class ImmediateSharingConsentTest {
         // Firestore snapshot has not delivered the off to the publisher yet when Settings finishes.
         val publisherConsent = MutableStateFlow(true)
         backgroundScope.launch {
-          publisher.publish(EVENT, TEAM, consent.applyTo(publisherConsent, UID))
+          publisher.publish(EVENT, TEAM, consent.applyTo(publisherConsent, UID)) {}
         }
         advanceUntilIdle()
         assertEquals(1, provider.activeCollectors)
@@ -337,7 +348,7 @@ class ImmediateSharingConsentTest {
           }
         }
         backgroundScope.launch {
-          publisher.publish(EVENT, TEAM, consent.applyTo(consentStream, UID))
+          publisher.publish(EVENT, TEAM, consent.applyTo(consentStream, UID)) {}
         }
         advanceUntilIdle()
         assertEquals(1, provider.activeCollectors)
