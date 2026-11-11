@@ -68,6 +68,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
@@ -131,8 +133,8 @@ object AddMissionScreenTestTags {
  * Lets the organizer of an event, or the manager of one of its teams, add a mission to it, or edit
  * one when [viewModel] was given a mission.
  *
- * @param onMissionSaved called once with the persisted mission, added or edited, e.g. to go back to
- *   the management screen and confirm it.
+ * @param onMissionSaved called once with the persisted mission, added or edited, once the screen is
+ *   resumed, e.g. to go back to the management screen and confirm it.
  * @param onBack called when the organizer leaves without saving.
  */
 @Composable
@@ -142,14 +144,20 @@ fun AddMissionScreen(
     onBack: () -> Unit,
 ) {
   val uiState by viewModel.uiState.collectAsState()
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
 
-  val savedMission = uiState.savedMission
-  LaunchedEffect(savedMission, uiState.savedMissionHandled) {
-    if (savedMission != null && !uiState.savedMissionHandled) {
-      viewModel.onSaveHandled()
-      onMissionSaved(savedMission)
-    }
-  }
+  uiState.savedMission
+      ?.takeUnless { uiState.savedMissionHandled }
+      ?.let { saved ->
+        LaunchedEffect(saved) {
+          // Waits until the form is resumed: going back is ignored before, and the form would stay
+          // open with nothing left to save (#467). Gives up if the form is left first.
+          lifecycle.withResumed {
+            viewModel.onSaveHandled()
+            onMissionSaved(saved)
+          }
+        }
+      }
 
   AddMissionContent(
       state = uiState,
