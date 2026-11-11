@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.annotation.StringRes
@@ -86,6 +87,7 @@ object ManagerOverviewTestTags {
   const val MARK_COMPLETED_DIALOG = "managerOverviewMarkCompletedDialog"
   const val MARK_COMPLETED_CONFIRM = "managerOverviewMarkCompletedConfirm"
   const val MARK_COMPLETED_CANCEL = "managerOverviewMarkCompletedCancel"
+  const val ADD_MISSION_BUTTON = "managerOverviewAddMissionButton"
 
   fun teamChip(teamId: String) = "managerOverviewTeamChip_$teamId"
 
@@ -158,6 +160,8 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  *   shown.
  * @param onMarkCompleted called with a mission the manager has confirmed closing.
  * @param onCompletionFailureShown called once the failure to close a mission has been reported.
+ * @param onAddMission opens the mission creation form. Its button is shown only when it is given,
+ *   and only to a manager: the organizer adds missions from their own Overview.
  */
 @Composable
 fun ManagerOverviewContent(
@@ -173,6 +177,7 @@ fun ManagerOverviewContent(
     onCheckInErrorShown: () -> Unit = {},
     onMarkCompleted: (String) -> Unit = {},
     onCompletionFailureShown: () -> Unit = {},
+    onAddMission: (() -> Unit)? = null,
 ) {
   // The teams of the missions the user may watch: no query of its own, and none invented.
   val teams =
@@ -222,6 +227,15 @@ fun ManagerOverviewContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       item { Header(eventTitle, state.isOrganizer) }
+      if (onAddMission != null && !state.isOrganizer) {
+        item {
+          FormPrimaryButton(
+              text = stringResource(R.string.overview_add_mission),
+              onClick = onAddMission,
+              testTag = ManagerOverviewTestTags.ADD_MISSION_BUTTON,
+          )
+        }
+      }
       if (state.loadFailed) item { LoadError(onRetry) }
       if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
       item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }

@@ -20,7 +20,7 @@ import kotlinx.serialization.Serializable
  *   └── SignIn
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
- *   └── VolunteerEvent(eventId): Overview (VM-01), Map, Discussions (+ Channel)
+ *   └── VolunteerEvent(eventId): Overview (VM-01) (+ AddMission), Map, Discussions (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
  *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map,
@@ -167,6 +167,14 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object Overview : VolunteerEventScreen {
     override val title = "Overview"
+    override val tab
+      get() = VolunteerTabs.Overview
+  }
+
+  /** Mission creation form of a manager, opened on top of the event's Overview. */
+  @Serializable
+  data object AddMission : VolunteerEventScreen {
+    override val title = "Add mission"
     override val tab
       get() = VolunteerTabs.Overview
   }

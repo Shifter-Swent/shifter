@@ -212,58 +212,75 @@ fun ShifterNavHost(
               val userId = currentUserId()
               // No session: authState above is already on its way back to sign-in, and nobody is
               // the manager of anything, so no event is loaded on behalf of an empty user.
-              if (userId != null)
-                  EventOverviewScreen(
-                      viewModel =
-                          viewModel(
-                              factory =
-                                  AttendanceViewModel.factory(
-                                      eventId,
-                                      userId,
-                                      repositories.eventRepository,
-                                      repositories.missionRepository,
-                                      repositories.teamRepository,
-                                      repositories.userRepository,
-                                      repositories.checkInRepository,
-                                  )
-                          ),
-                      volunteerOverview = {
-                        // Scrolls as one page, the card and the Planning together.
-                        Column(
-                            modifier =
-                                Modifier.fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(16.dp)
-                        ) {
-                          AutoCheckInRoute(
-                              viewModel =
-                                  viewModel(
-                                      factory =
-                                          AutoCheckInViewModel.factory(
-                                              repositories.missionRepository,
-                                              repositories.checkInRepository,
-                                              locationProvider,
-                                              currentUserId,
-                                          )
-                                  )
-                          )
-                          PlanningScreen(
-                              viewModel =
-                                  viewModel(
-                                      factory =
-                                          PlanningViewModel.factory(
-                                              eventId,
-                                              repositories.missionRepository,
-                                              repositories.checkInRepository,
-                                              currentUserId,
-                                          )
-                                  )
-                          )
-                        }
-                      },
-                  )
+              if (userId != null) {
+                val viewModel: AttendanceViewModel =
+                    viewModel(
+                        factory =
+                            AttendanceViewModel.factory(
+                                eventId,
+                                userId,
+                                repositories.eventRepository,
+                                repositories.missionRepository,
+                                repositories.teamRepository,
+                                repositories.userRepository,
+                                repositories.checkInRepository,
+                            )
+                    )
+                // Shows the missions a manager added while the creation form was on top.
+                RefreshOnReturn(viewModel::refresh)
+                EventOverviewScreen(
+                    viewModel = viewModel,
+                    onAddMission = { nav.navigateTo(VolunteerEventScreen.AddMission) },
+                    volunteerOverview = {
+                      // Scrolls as one page, the card and the Planning together.
+                      Column(
+                          modifier =
+                              Modifier.fillMaxSize()
+                                  .verticalScroll(rememberScrollState())
+                                  .padding(16.dp)
+                      ) {
+                        AutoCheckInRoute(
+                            viewModel =
+                                viewModel(
+                                    factory =
+                                        AutoCheckInViewModel.factory(
+                                            repositories.missionRepository,
+                                            repositories.checkInRepository,
+                                            locationProvider,
+                                            currentUserId,
+                                        )
+                                )
+                        )
+                        PlanningScreen(
+                            viewModel =
+                                viewModel(
+                                    factory =
+                                        PlanningViewModel.factory(
+                                            eventId,
+                                            repositories.missionRepository,
+                                            repositories.checkInRepository,
+                                            currentUserId,
+                                        )
+                                )
+                        )
+                      }
+                    },
+                )
+              }
             },
-        )
+        ) {
+          composable<VolunteerEventScreen.AddMission> { entry ->
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId =
+                remember(entry) {
+                  navController
+                      .getBackStackEntry<VolunteerEvent>()
+                      .toRoute<VolunteerEvent>()
+                      .eventId
+                }
+            AddMissionRoute(eventId, repositories, currentUserId, onBack = nav::goBack)
+          }
+        }
         mapTab<VolunteerTabs.Map, VolunteerEventScreen.Map, VolunteerEvent>(
             VolunteerTabs.Map,
             nav,
