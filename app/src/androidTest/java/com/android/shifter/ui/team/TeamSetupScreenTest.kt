@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -42,6 +43,8 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -69,6 +72,7 @@ class TeamSetupScreenTest {
   private class FakeTeams(initialTeams: List<Team> = emptyList()) : TeamRepository {
     val teams: MutableList<Team> = initialTeams.toMutableList()
     var failure: Exception? = null
+    var beforeUpdate: suspend () -> Unit = {}
     private var createdCount = 0
 
     override suspend fun createTeam(team: Team): Team {
@@ -97,6 +101,7 @@ class TeamSetupScreenTest {
         description: String,
         icon: String,
     ) {
+      beforeUpdate()
       failure?.let { throw it }
       val index = teams.indexOfFirst { it.id == teamId }
       teams[index] = teams[index].copy(name = name, description = description, icon = icon)
@@ -386,8 +391,33 @@ class TeamSetupScreenTest {
 
   @Test
   fun pressBack_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave { pressBack() }
+  }
+
+  @Test
+  fun headerBack_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave {
+      composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    }
+  }
+
+  @Test
+  fun proceed_withFocusedEdit_popsTheEntryAndSavesTheTeam() {
+    checkNavigationWithDelayedSave {
+      composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).performClick()
+    }
+  }
+
+  private fun checkNavigationWithDelayedSave(leave: () -> Unit) {
     val teams = FakeTeams(listOf(team("team-1", "Logistics")))
     lateinit var navController: NavHostController
+    lateinit var setup: TeamSetupViewModel
+    val release = CompletableDeferred<Unit>()
+    var updateStarted = false
+    teams.beforeUpdate = {
+      updateStarted = true
+      release.await()
+    }
     composeTestRule.setContent {
       ShifterTheme {
         navController = rememberNavController()
@@ -396,8 +426,7 @@ class TeamSetupScreenTest {
             Button(onClick = { navController.navigate("teams") }) { Text("Manage teams") }
           }
           composable("teams") {
-            val setup: TeamSetupViewModel =
-                viewModel(factory = TeamSetupViewModel.factory(eventId, teams))
+            setup = viewModel(factory = TeamSetupViewModel.factory(eventId, teams))
             TeamSetupScreen(
                 viewModel = setup,
                 onBack = { navController.popBackStack() },
@@ -408,22 +437,30 @@ class TeamSetupScreenTest {
         }
       }
     }
-    composeTestRule.onNodeWithText("Manage teams").performClick()
-    inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
-    // The first Back dismisses the keyboard; focus stays on the edited field.
-    composeTestRule.runOnIdle {
-      composeTestRule.activity
-          .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-          .hideSoftInputFromWindow(composeTestRule.activity.window.decorView.windowToken, 0)
+    try {
+      composeTestRule.onNodeWithText("Manage teams").performClick()
+      inSavedTeam("team-1", CreateTeamFormTestTags.NAME_FIELD).performTextReplacement("Supply")
+      // Hide the keyboard without moving focus, so Back leaves the destination.
+      composeTestRule.runOnIdle {
+        composeTestRule.activity
+            .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            .hideSoftInputFromWindow(composeTestRule.activity.window.decorView.windowToken, 0)
+      }
+      composeTestRule.waitForIdle()
+      leave()
+      composeTestRule.onNodeWithText("Manage teams").assertIsDisplayed()
+      composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+        updateStarted && setup.viewModelScope.coroutineContext[Job]?.isCancelled == true
+      }
+      composeTestRule.runOnIdle {
+        assertEquals("overview", navController.currentDestination?.route)
+        assertNull(navController.previousBackStackEntry)
+        assertEquals("Logistics", teams.teams.single().name)
+      }
+    } finally {
+      release.complete(Unit)
     }
-    composeTestRule.waitForIdle()
-    pressBack()
-    composeTestRule.onNodeWithText("Manage teams").assertIsDisplayed()
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { teams.teams.single().name == "Supply" }
-    composeTestRule.runOnIdle {
-      assertEquals("overview", navController.currentDestination?.route)
-      assertNull(navController.previousBackStackEntry)
-    }
   }
 
   @Test

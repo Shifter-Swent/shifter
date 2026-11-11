@@ -3,6 +3,7 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
@@ -477,6 +478,54 @@ class CreateTeamViewModelTest {
     save()
 
     assertEquals(logistics.copy(name = "Supply"), teams.teams.single())
+  }
+
+  @Test
+  fun saveChanges_whenViewModelIsCleared_finishesTheInFlightWrite() = runTest {
+    checkSavesAfterClearing(queueSecond = false)
+  }
+
+  @Test
+  fun saveChanges_whenViewModelIsCleared_finishesTheQueuedWrite() = runTest {
+    checkSavesAfterClearing(queueSecond = true)
+  }
+
+  private fun TestScope.checkSavesAfterClearing(queueSecond: Boolean) {
+    teams.teams += logistics
+    val release = CompletableDeferred<Unit>()
+    val started = mutableListOf<String>()
+    val repository =
+        object : TeamRepository by teams {
+          override suspend fun updateTeam(
+              eventId: String,
+              teamId: String,
+              name: String,
+              description: String,
+              icon: String,
+          ) {
+            started += name
+            release.await()
+            teams.updateTeam(eventId, teamId, name, description, icon)
+          }
+        }
+    viewModel = CreateTeamViewModel(eventId, repository, clock, logistics)
+    val store = ViewModelStore()
+    store.put("editor", viewModel)
+    viewModel.onNameChange("Supply")
+    viewModel.saveChanges()
+    runCurrent()
+    if (queueSecond) {
+      viewModel.onNameChange("Bar")
+      viewModel.saveChanges()
+      runCurrent()
+    }
+    assertEquals(listOf("Supply"), started)
+    store.clear()
+    release.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(if (queueSecond) listOf("Supply", "Bar") else listOf("Supply"), started)
+    assertEquals(if (queueSecond) "Bar" else "Supply", teams.teams.single().name)
   }
 
   @Test

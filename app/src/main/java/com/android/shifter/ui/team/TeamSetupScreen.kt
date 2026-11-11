@@ -1,7 +1,9 @@
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -114,6 +117,13 @@ fun TeamSetupScreen(
   // without teams does, one the organizer comes back to lists what it has instead.
   var formShown by rememberSaveable { mutableStateOf<Boolean?>(null) }
   val snackbarHostState = remember { SnackbarHostState() }
+  val focusManager = LocalFocusManager.current
+  // Submit the focused field while its ViewModel is still alive, before removing the entry.
+  val leave: (() -> Unit) -> Unit = { navigate ->
+    focusManager.clearFocus(force = true)
+    navigate()
+  }
+  BackHandler { leave(onBack) }
 
   TeamSetupContent(
       state = state,
@@ -126,8 +136,8 @@ fun TeamSetupScreen(
             snackbarHostState = snackbarHostState,
         )
       },
-      onBack = onBack,
-      onProceed = onProceed,
+      onBack = { leave(onBack) },
+      onProceed = { leave(onProceed) },
       onRetry = viewModel::refresh,
       onAddAnotherTeam = { formShown = true },
       form =
