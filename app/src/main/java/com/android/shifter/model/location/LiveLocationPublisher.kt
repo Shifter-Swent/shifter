@@ -4,6 +4,7 @@ package com.swent.shifter.model.location
 
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.coroutineScope
@@ -146,6 +147,9 @@ class LiveLocationPublisher(
    *   attempt has passed. Only a loss [LocationProvider.status] holds long enough to be read: a
    *   state flow keeps the latest value, so one lost and back before this reads it goes unseen, the
    *   last write with it.
+   * - **A write that answers after a loss is dropped**, even once the access is back: started
+   *   before the loss, it says nothing of now, and kept it would report
+   *   [LiveLocationSharingState.SHARED] before anything is written since the access came back.
    */
   private suspend fun shareWhileGranted(
       eventId: String,
@@ -153,9 +157,16 @@ class LiveLocationPublisher(
       onState: (LiveLocationSharingState) -> Unit,
   ) = coroutineScope {
     val lastWrite = MutableStateFlow<LiveLocationSharingState?>(null)
+    // Counts the losses seen, so a write can tell whether one happened while it was answering.
+    val accessLosses = AtomicInteger()
     launch {
       locationProvider.status
-          .onEach { if (it != LocationStatus.GRANTED) lastWrite.value = null }
+          .onEach {
+            if (it != LocationStatus.GRANTED) {
+              accessLosses.incrementAndGet()
+              lastWrite.value = null
+            }
+          }
           .combine(lastWrite) { status, write ->
             if (status == LocationStatus.GRANTED) write ?: LiveLocationSharingState.WAITING
             else LiveLocationSharingState.NO_LOCATION_ACCESS
@@ -176,11 +187,17 @@ class LiveLocationPublisher(
       // Counted as attempted whether it succeeds or not, so a backend that keeps refusing costs
       // one write per interval rather than one per position.
       lastAttemptAt = measuredAt
+      val lossesBefore = accessLosses.get()
       val outcome = share(eventId, teamId, position, measuredAt)
       if (outcome == LiveLocationSharingState.SHARED) lastShared = position
       // A write that answers once the access is lost belongs to before: kept, it would come back
-      // as the state when the access does.
-      if (locationProvider.status.value == LocationStatus.GRANTED) lastWrite.value = outcome
+      // as the state when the access does. The status covers a loss not seen yet, the count one
+      // already over.
+      if (
+          locationProvider.status.value == LocationStatus.GRANTED &&
+              accessLosses.get() == lossesBefore
+      )
+          lastWrite.value = outcome
     }
   }
 

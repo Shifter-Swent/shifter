@@ -86,7 +86,9 @@ class LiveLocationCoordinator(
    * eligible target, once [run] is cancelled - and a target is missing until its session reports.
    *
    * A session that ends - cancelled because its target dropped out, failed, or ended with [run] -
-   * takes its state with it, so nothing is shown for a session that no longer exists.
+   * takes its state with it, so nothing is shown for a session that no longer exists. One cancelled
+   * here loses it at once, not when it has finished ending: a session may take a while to, and
+   * shows nothing for a target no longer eligible meanwhile.
    */
   val sharingStates: Flow<Map<LiveLocationTarget, LiveLocationSharingState>> =
       sessionStates.map { states -> states.mapValues { it.value.second } }.distinctUntilChanged()
@@ -186,7 +188,7 @@ class LiveLocationCoordinator(
   ) {
     // A session that ended on its own is forgotten, so this refresh starts it again.
     running.values.removeAll { !it.isActive }
-    (running.keys - eligible).forEach { running.remove(it)?.cancel() }
+    (running.keys - eligible).forEach { target -> running.remove(target)?.let { stop(target, it) } }
     (eligible - running.keys).forEach { target ->
       running[target] = launch {
         val session = coroutineContext.job
@@ -196,9 +198,9 @@ class LiveLocationCoordinator(
             if (session.isActive) sessionStates.update { it + (target to (session to state)) }
           }
         } finally {
-          // After publish has returned, so nothing it reports can bring the state back. Only its
-          // own: the target may already have a new session.
-          sessionStates.update { if (it[target]?.first == session) it - target else it }
+          // After publish has returned, so nothing it reports can bring the state back. Needed
+          // for a session that ends without being stopped: it failed, or [run] was cancelled.
+          forgetState(target, session)
         }
       }
     }
@@ -206,8 +208,24 @@ class LiveLocationCoordinator(
 
   /** Cancels and forgets every session, without waiting for them: a refresh must not be held up. */
   private fun cancelAll(running: MutableMap<LiveLocationTarget, Job>) {
-    running.values.forEach { it.cancel() }
+    running.forEach { (target, session) -> stop(target, session) }
     running.clear()
+  }
+
+  /**
+   * Cancels [session] and takes its state out at once, without waiting for it to end. Nothing it
+   * reports afterwards comes back: a cancelled session is no longer active, and reports nothing.
+   */
+  private fun stop(target: LiveLocationTarget, session: Job) {
+    session.cancel()
+    forgetState(target, session)
+  }
+
+  /**
+   * Takes out the state of [target] if [session] reported it: the target may have a new session.
+   */
+  private fun forgetState(target: LiveLocationTarget, session: Job) = sessionStates.update {
+    if (it[target]?.first == session) it - target else it
   }
 
   companion object {

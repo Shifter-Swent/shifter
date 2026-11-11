@@ -479,6 +479,38 @@ class LiveLocationCoordinatorTest {
         assertEquals(mapOf(BAR to WAITING), states())
       }
 
+  /** A session still finishing a write once cancelled must not be shown as sharing meanwhile. */
+  @Test
+  fun sharingStates_whenATargetDropsOut_forgetsItsStateBeforeItsSessionHasEnded() = runTest {
+    eligible = listOf(BAR, STAGE)
+    start()
+    sessions.report(BAR, SHARED)
+    sessions.report(STAGE, SHARED)
+    val sessionEnds = CompletableDeferred<Unit>()
+    sessions.slowToEnd[BAR] = sessionEnds
+
+    eligible = listOf(STAGE)
+    elapse(INTERVAL)
+
+    assertEquals(mapOf(STAGE to SHARED), states())
+    sessionEnds.complete(Unit)
+  }
+
+  @Test
+  fun sharingStates_whenTheSessionsGoStale_forgetsTheirStatesBeforeTheyHaveEnded() = runTest {
+    eligible = listOf(BAR)
+    start()
+    sessions.report(BAR, SHARED)
+    val sessionEnds = CompletableDeferred<Unit>()
+    sessions.slowToEnd[BAR] = sessionEnds
+
+    failure = unavailable()
+    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
+
+    assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
+    sessionEnds.complete(Unit)
+  }
+
   @Test
   fun sharingStates_whenACancelledSessionStillReports_keepsTheReplacementsState() = runTest {
     eligible = listOf(BAR)

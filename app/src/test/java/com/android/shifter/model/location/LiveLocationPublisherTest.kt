@@ -505,22 +505,7 @@ class LiveLocationPublisherTest {
   fun publish_whenAWriteAnswersAfterTheAccessIsLost_stillReportsNoAccess() =
       runTest(UnconfinedTestDispatcher()) {
         val answer = CompletableDeferred<Unit>()
-        val slow =
-            object : LiveLocationRepository by repository {
-              override suspend fun shareLocation(
-                  eventId: String,
-                  teamId: String,
-                  position: GeoPosition,
-                  measuredAt: Instant,
-              ) {
-                answer.await()
-                repository.shareLocation(eventId, teamId, position, measuredAt)
-              }
-            }
-        backgroundScope.launch {
-          LiveLocationPublisher(provider, slow, now = { clock })
-              .publish(EVENT, TEAM, MutableStateFlow(true), states::add)
-        }
+        startSessionAnsweringWhen(answer)
         provider.emit(GENEVA)
 
         provider.setStatus(LocationStatus.DENIED)
@@ -530,6 +515,27 @@ class LiveLocationPublisherTest {
         // Nor once the access is back: that write is from before.
         provider.setStatus(LocationStatus.GRANTED)
         assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING), states)
+      }
+
+  /**
+   * The access lost and back while a write is answering: that write started before the loss, so it
+   * must not report the position as shared, though the access is granted again when it answers.
+   * Only a write started since then does.
+   */
+  @Test
+  fun publish_whenAWriteAnswersOnceTheAccessIsBack_waitsForANewWrite() =
+      runTest(UnconfinedTestDispatcher()) {
+        val answer = CompletableDeferred<Unit>()
+        startSessionAnsweringWhen(answer)
+        provider.emit(GENEVA)
+
+        provider.setStatus(LocationStatus.DENIED)
+        provider.setStatus(LocationStatus.GRANTED)
+        answer.complete(Unit)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING), states)
+
+        provider.emit(GENEVA)
+        assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING, SHARED), states)
       }
 
   @Test
@@ -613,6 +619,26 @@ class LiveLocationPublisherTest {
   private fun TestScope.startSession(
       sharing: MutableStateFlow<Boolean> = MutableStateFlow(true)
   ): Job = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing, states::add) }
+
+  /** Starts a session whose writes only answer once [answer] completes, as a slow backend would. */
+  private fun TestScope.startSessionAnsweringWhen(answer: CompletableDeferred<Unit>): Job {
+    val slow =
+        object : LiveLocationRepository by repository {
+          override suspend fun shareLocation(
+              eventId: String,
+              teamId: String,
+              position: GeoPosition,
+              measuredAt: Instant,
+          ) {
+            answer.await()
+            repository.shareLocation(eventId, teamId, position, measuredAt)
+          }
+        }
+    return backgroundScope.launch {
+      LiveLocationPublisher(provider, slow, now = { clock })
+          .publish(EVENT, TEAM, MutableStateFlow(true), states::add)
+    }
+  }
 
   /** Moves the clock the publisher reads, as the time between two positions would. */
   private fun elapse(seconds: Long) {
