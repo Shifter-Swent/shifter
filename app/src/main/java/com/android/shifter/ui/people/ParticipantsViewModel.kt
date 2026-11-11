@@ -32,6 +32,8 @@ enum class ParticipantsError {
   UNEXPECTED,
   /** Changing a team's manager failed. */
   UPDATE_FAILED,
+  /** Moving a volunteer to another team failed. */
+  MOVE_FAILED,
 }
 
 /**
@@ -58,7 +60,7 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  * @property isLoading whether there is no list to show yet because it is being read, which shows
  *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
  *   it.
- * @property isUpdating whether a team's manager is being changed.
+ * @property isUpdating whether a team's manager is being changed, or a volunteer moved.
  */
 data class ParticipantsUiState(
     val groups: List<ParticipantGroup> = emptyList(),
@@ -139,20 +141,35 @@ class ParticipantsViewModel(
   fun removeManager(teamId: String) = changeManager(teamId, null)
 
   /**
-   * Writes [managerId] as the manager of the team [teamId], then loads the list again to show it. A
-   * load still running may have read the teams before the write, so it is cancelled first rather
-   * than left to show them.
+   * Moves [userId], a member of a team or of none, into the team [teamId]. They leave their team
+   * and the missions of it they were assigned to. Ignored while another change runs.
    */
-  private fun changeManager(teamId: String, managerId: String?) {
+  fun moveToTeam(userId: String, teamId: String) =
+      change(ParticipantsError.MOVE_FAILED) {
+        membershipRequestRepository.moveToTeam(eventId, userId, teamId)
+      }
+
+  /** Writes [managerId] as the manager of the team [teamId]. */
+  private fun changeManager(teamId: String, managerId: String?) =
+      change(ParticipantsError.UPDATE_FAILED) {
+        teamRepository.setManager(eventId, teamId, managerId)
+      }
+
+  /**
+   * Runs [write], then loads the list again to show it, or reports [failure]. A load still running
+   * may have read the teams before the write, so it is cancelled first rather than left to show
+   * them.
+   */
+  private fun change(failure: ParticipantsError, write: suspend () -> Unit) {
     if (_uiState.value.isUpdating) return
     _uiState.update { it.copy(isUpdating = true, error = null) }
     viewModelScope.launch {
       try {
-        teamRepository.setManager(eventId, teamId, managerId)
+        write()
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        _uiState.update { it.copy(isUpdating = false, error = ParticipantsError.UPDATE_FAILED) }
+        _uiState.update { it.copy(isUpdating = false, error = failure) }
         return@launch
       }
       loadJob?.cancelAndJoin()

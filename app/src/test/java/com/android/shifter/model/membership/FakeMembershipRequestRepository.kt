@@ -56,6 +56,30 @@ class FakeMembershipRequestRepository(
     }
   }
 
+  /**
+   * Like the backend, the volunteer leaves their team, when it still exists, for [teamId], and
+   * their request follows. Given teams, a manager or a missing [teamId] is refused with
+   * [MembershipRequestRepositoryException.Unknown].
+   */
+  override suspend fun moveToTeam(eventId: String, userId: String, teamId: String) {
+    failure?.let { throw it }
+    val request = requests[eventId]?.get(userId)
+    if (request?.status != MembershipRequestStatus.ACCEPTED) {
+      throw MembershipRequestRepositoryException.Unknown()
+    }
+    if (request.teamId == teamId) return
+    val teams = teams
+    if (teams != null) {
+      val previous = teams.getTeam(eventId, request.teamId)
+      if (teams.getTeam(eventId, teamId) == null || previous?.managerId == userId) {
+        throw MembershipRequestRepositoryException.Unknown()
+      }
+      if (previous != null) teams.removeMember(eventId, previous.id, userId)
+      teams.addMember(eventId, teamId, userId)
+    }
+    requests.getValue(eventId)[userId] = request.copy(teamId = teamId)
+  }
+
   /** Takes [userId] out of the team [teamId], and out of its management when they lead it. */
   private suspend fun leaveTeam(eventId: String, teamId: String, userId: String) {
     val teams = teams ?: return
