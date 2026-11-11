@@ -11,6 +11,9 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.ui.map.formatCoordinate
+import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -28,6 +31,8 @@ enum class EventFormField {
   DESCRIPTION,
   TYPE,
   ADDRESS,
+  LATITUDE,
+  LONGITUDE,
   START,
   END,
 }
@@ -40,6 +45,8 @@ enum class EventFormError(val field: EventFormField) {
   DESCRIPTION_TOO_LONG(EventFormField.DESCRIPTION),
   TYPE_MISSING(EventFormField.TYPE),
   ADDRESS_EMPTY(EventFormField.ADDRESS),
+  LATITUDE_INVALID(EventFormField.LATITUDE),
+  LONGITUDE_INVALID(EventFormField.LONGITUDE),
   START_INVALID(EventFormField.START),
   START_IN_PAST(EventFormField.START),
   END_INVALID(EventFormField.END),
@@ -61,12 +68,21 @@ enum class EventFormError(val field: EventFormField) {
  * @property createdEvent the persisted event once creation succeeded, null before.
  * @property createdEventHandled whether the screen already reacted to [createdEvent], e.g. by
  *   opening it, so it does not react again after a recomposition or configuration change.
+ * @property latitude the latitude of the optional point, as typed. The address stays mandatory on
+ *   its own; the coordinates are optional, but then both are required together.
+ * @property longitude the longitude of the optional point, as typed.
+ * @property isPickingLocation whether the map to pick the point on is open.
+ * @property locationDraft the point picked on the open map, not used until it is confirmed.
  */
 data class CreateEventUiState(
     val title: String = "",
     val description: String = "",
     val type: EventType? = null,
     val address: String = "",
+    val latitude: String = "",
+    val longitude: String = "",
+    val isPickingLocation: Boolean = false,
+    val locationDraft: GeoPosition? = null,
     val startAt: String = "",
     val endAt: String = "",
     val errors: Set<EventFormError> = emptySet(),
@@ -79,6 +95,18 @@ data class CreateEventUiState(
 ) {
   /** The error to show under [field], or null when it is valid. */
   fun errorFor(field: EventFormField): EventFormError? = errors.firstOrNull { it.field == field }
+
+  /** Whether the organizer started to give coordinates, which then both have to be valid. */
+  val hasCoordinates: Boolean
+    get() = latitude.isNotBlank() || longitude.isNotBlank()
+
+  /** The point the typed coordinates give, or null while either of them is missing or invalid. */
+  val position: GeoPosition?
+    get() {
+      val lat = parseCoordinate(latitude, GeoPosition.LATITUDE_RANGE) ?: return null
+      val lng = parseCoordinate(longitude, GeoPosition.LONGITUDE_RANGE) ?: return null
+      return GeoPosition(lat, lng)
+    }
 }
 
 /**
@@ -107,6 +135,9 @@ class CreateEventViewModel(
    */
   private val eventId = UUID.randomUUID().toString()
 
+  /** The point of the form when the map was opened, so confirming it unmoved changes nothing. */
+  private var pickerStart: GeoPosition? = null
+
   fun onTitleChange(title: String) = edit { it.copy(title = title) }
 
   fun onDescriptionChange(description: String) = edit { it.copy(description = description) }
@@ -114,6 +145,54 @@ class CreateEventViewModel(
   fun onTypeChange(type: EventType) = edit { it.copy(type = type) }
 
   fun onAddressChange(address: String) = edit { it.copy(address = address) }
+
+  fun onLatitudeChange(latitude: String) = edit { it.copy(latitude = latitude) }
+
+  fun onLongitudeChange(longitude: String) = edit { it.copy(longitude = longitude) }
+
+  /**
+   * Opens the map on the point the coordinates give. With no complete point, e.g. a latitude typed
+   * and not the longitude yet, it opens on the app's default place, and the point picked replaces
+   * both coordinates.
+   */
+  fun onPickLocation() {
+    pickerStart = _uiState.value.position
+    _uiState.update { it.copy(isPickingLocation = true, locationDraft = pickerStart) }
+  }
+
+  /** Moves the point picked on the open map, without touching the form yet. */
+  fun onLocationDraftChange(position: GeoPosition) {
+    _uiState.update { if (it.isPickingLocation) it.copy(locationDraft = position) else it }
+  }
+
+  /**
+   * Closes the map and fills the coordinates with the point picked. A point left where the map
+   * opened is not written again: the coordinates typed keep their precision, rather than being
+   * rounded to the decimals the map gives.
+   */
+  fun onConfirmLocation() {
+    val draft = _uiState.value.locationDraft
+    if (draft == null || draft == pickerStart) {
+      onCancelLocationPicker()
+      return
+    }
+    edit {
+      it.copy(
+          latitude = formatCoordinate(draft.latitude),
+          longitude = formatCoordinate(draft.longitude),
+          isPickingLocation = false,
+          locationDraft = null,
+      )
+    }
+  }
+
+  /** Closes the map and leaves the coordinates as they were. */
+  fun onCancelLocationPicker() {
+    _uiState.update { it.copy(isPickingLocation = false, locationDraft = null) }
+  }
+
+  /** Empties the coordinates, keeping the address: the event is then saved with no point. */
+  fun onClearLocation() = edit { it.copy(latitude = "", longitude = "") }
 
   fun onStartAtChange(startAt: String) = edit { it.copy(startAt = startAt) }
 
@@ -147,7 +226,9 @@ class CreateEventViewModel(
             type = checkNotNull(form.type),
             startAt = checkNotNull(parseDateTime(form.startAt)),
             endAt = checkNotNull(parseDateTime(form.endAt)),
-            location = EventLocation(address = form.address.trim()),
+            // Validation guarantees the coordinates are either both valid or both empty, so
+            // position is the typed point, or null for an address alone.
+            location = EventLocation(address = form.address.trim(), position = form.position),
             createdAt = clock.instant(),
         )
     _uiState.update {
@@ -203,6 +284,15 @@ class CreateEventViewModel(
     }
     if (form.type == null) add(EventFormError.TYPE_MISSING)
     if (form.address.isBlank()) add(EventFormError.ADDRESS_EMPTY)
+    // The address alone is enough; but once a coordinate is typed, both must be valid.
+    if (form.hasCoordinates) {
+      if (parseCoordinate(form.latitude, GeoPosition.LATITUDE_RANGE) == null) {
+        add(EventFormError.LATITUDE_INVALID)
+      }
+      if (parseCoordinate(form.longitude, GeoPosition.LONGITUDE_RANGE) == null) {
+        add(EventFormError.LONGITUDE_INVALID)
+      }
+    }
 
     val start = parseDateTime(form.startAt)
     val end = parseDateTime(form.endAt)

@@ -346,14 +346,7 @@ class CreateEventScreenTest {
       ShifterTheme {
         CreateEventContent(
             state = CreateEventUiState(saveFailed = true),
-            onTitleChange = {},
-            onDescriptionChange = {},
-            onTypeChange = {},
-            onAddressChange = {},
-            onStartAtChange = {},
-            onEndAtChange = {},
-            onSubmit = {},
-            onBack = {},
+            actions = CreateEventActions(),
         )
       }
     }
@@ -367,14 +360,7 @@ class CreateEventScreenTest {
       ShifterTheme {
         CreateEventContent(
             state = CreateEventUiState(notSignedIn = true),
-            onTitleChange = {},
-            onDescriptionChange = {},
-            onTypeChange = {},
-            onAddressChange = {},
-            onStartAtChange = {},
-            onEndAtChange = {},
-            onSubmit = {},
-            onBack = {},
+            actions = CreateEventActions(),
         )
       }
     }
@@ -389,14 +375,7 @@ class CreateEventScreenTest {
       ShifterTheme {
         CreateEventContent(
             state = CreateEventUiState(saveUnconfirmed = true),
-            onTitleChange = {},
-            onDescriptionChange = {},
-            onTypeChange = {},
-            onAddressChange = {},
-            onStartAtChange = {},
-            onEndAtChange = {},
-            onSubmit = {},
-            onBack = {},
+            actions = CreateEventActions(),
         )
       }
     }
