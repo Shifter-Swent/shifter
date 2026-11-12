@@ -83,6 +83,15 @@ class FakeTeamRepository(initialTeams: List<Team> = emptyList()) : TeamRepositor
   }
 
   /**
+   * Only the team goes: the fake holds no missions, messages, positions or applications. Deleting a
+   * missing team has no effect, like on the backend.
+   */
+  override suspend fun deleteTeam(eventId: String, teamId: String) {
+    failure?.let { throw it }
+    teams.removeAll { it.eventId == eventId && it.id == teamId }
+  }
+
+  /**
    * Replaces the team in place, so the order teams were created in is preserved.
    *
    * Throws [TeamRepositoryException.NotFound] when the team does not exist, like the backend: a

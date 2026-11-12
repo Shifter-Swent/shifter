@@ -33,6 +33,13 @@ internal object TeamSchema {
   const val MEMBER_IDS = "memberIds"
   const val VOLUNTEERS_NEEDED = "volunteersNeeded"
   const val CREATED_AT = "createdAt"
+
+  /**
+   * Set to `true` while the organizer deletes the team, so nobody sends a message the deletion
+   * would miss (#398). Read by `firestore.rules` only: the app never reads it, and [toTeam] ignores
+   * it.
+   */
+  const val DELETING = "deleting"
 }
 
 /**
@@ -68,11 +75,23 @@ internal fun DocumentSnapshot.toTeam(): Team =
         name = requireString(ENTITY, TeamSchema.NAME),
         description = requireString(ENTITY, TeamSchema.DESCRIPTION),
         icon = requireString(ENTITY, TeamSchema.ICON),
-        managerId = optionalString(ENTITY, TeamSchema.MANAGER_ID),
-        // Absent means nobody was assigned yet; a malformed entry fails rather than quietly
-        // removing a volunteer from the team.
-        memberIds = requireStringList(ENTITY, TeamSchema.MEMBER_IDS),
+        managerId = teamManagerId(),
+        memberIds = teamMemberIds(),
         // Absent means no staffing need has been set yet, which is how a team is created.
         volunteersNeeded = optionalInt(ENTITY, TeamSchema.VOLUNTEERS_NEEDED),
         createdAt = requireInstant(ENTITY, TeamSchema.CREATED_AT),
     )
+
+/**
+ * [Team.managerId] read on its own, as the deletion of a team needs nothing else: a team malformed
+ * in another field can still be deleted.
+ */
+internal fun DocumentSnapshot.teamManagerId(): String? =
+    optionalString(ENTITY, TeamSchema.MANAGER_ID)
+
+/**
+ * [Team.memberIds] read on its own, like [teamManagerId]. Absent means nobody was assigned yet; a
+ * malformed entry fails rather than quietly removing a volunteer from the team.
+ */
+internal fun DocumentSnapshot.teamMemberIds(): List<String> =
+    requireStringList(ENTITY, TeamSchema.MEMBER_IDS)
