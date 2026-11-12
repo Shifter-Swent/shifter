@@ -2,7 +2,9 @@
 package com.swent.shifter.model.mission
 
 import com.swent.shifter.model.location.GeoPosition
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -23,7 +25,9 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeMissionRepositoryTest {
 
-  private val repository = FakeMissionRepository()
+  /** Before every mission of these tests, so none is past its end. */
+  private val repository =
+      FakeMissionRepository(Clock.fixed(Instant.parse("2027-06-01T00:00:00Z"), ZoneOffset.UTC))
 
   @Test
   fun createMission_withAnAssigneeListedTwice_isRejected() = runTest {
@@ -392,6 +396,50 @@ class FakeMissionRepositoryTest {
         .exceptionOrNull()
 
     assertTrue(failure is MissionRepositoryException.NotFound)
+  }
+
+  @Test
+  fun updateMission_ofAMissionClosedByHand_isRejected() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+    repository.markCompleted("event-1", created.id)
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(title = "Too late"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionCompletedException)
+    assertEquals(created.copy(completed = true), repository.getMission("event-1", created.id))
+  }
+
+  @Test
+  fun updateMission_ofAMissionPastItsEnd_isRejected() = runTest {
+    val created = repository.createMission(mission("event-1", startHour = 9))
+    val afterItsEnd = FakeMissionRepository(Clock.fixed(created.endAt, ZoneOffset.UTC))
+    val copy = afterItsEnd.createMission(created.copy(id = ""))
+
+    val failure = runCatching {
+      afterItsEnd.updateMission(copy.copy(title = "Too late"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionCompletedException)
+  }
+
+  @Test
+  fun updateMission_ofACompletedMissionThatOverlaps_reportsTheCompletionFirst() = runTest {
+    val other =
+        repository.createMission(mission("event-1", startHour = 9, teamId = "team-1", at = HALL))
+    val created =
+        repository.createMission(mission("event-1", startHour = 11, teamId = "team-1", at = HALL))
+    repository.markCompleted("event-1", created.id)
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+    }
+        .exceptionOrNull()
+
+    assertTrue(failure is MissionCompletedException)
   }
 
   /** A mission needing just enough volunteers for [assigneeIds], and at least one. */

@@ -10,7 +10,9 @@ import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.GeoPosition
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -222,6 +224,41 @@ class FirestoreMissionUpdateTest {
         "a missing mission must fail with NotFound, but was: $failure",
         failure is MissionRepositoryException.NotFound,
     )
+  }
+
+  @Test
+  fun updateMission_ofAMissionClosedByHand_isRefusedAndWritesNothing() = emulatorTest {
+    val created = create(mission(newEvent()))
+    repository.markCompleted(created.eventId, created.id)
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(title = "Too late"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "expected MissionCompletedException, but was: $failure",
+        failure is MissionCompletedException,
+    )
+    assertEquals(created.copy(completed = true), stored(created))
+  }
+
+  @Test
+  fun updateMission_ofAMissionPastItsEnd_isRefusedAndWritesNothing() = emulatorTest {
+    val created = create(mission(newEvent()))
+    val afterItsEnd = Clock.fixed(created.endAt, ZoneOffset.UTC)
+
+    val failure = runCatching {
+      FirestoreMissionRepository(firestore, afterItsEnd)
+          .updateMission(created.copy(title = "Too late"))
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "expected MissionCompletedException, but was: $failure",
+        failure is MissionCompletedException,
+    )
+    assertEquals(created, stored(created))
   }
 
   private suspend fun create(mission: Mission): Mission =

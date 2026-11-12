@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -10,9 +11,10 @@ import kotlinx.coroutines.flow.update
 /**
  * In-memory [MissionRepository] for unit tests: ids are assigned in creation order, and setting
  * [failure] makes every call throw it, to exercise error handling. Like the real repository, it
- * refuses a mission that conflicts with one already created.
+ * refuses a mission that conflicts with one already created, and [clock] tells it, as the real one,
+ * whether a mission is past its end.
  */
-class FakeMissionRepository : MissionRepository {
+class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : MissionRepository {
 
   /** A flow, so that each write reaches the observers like a Firestore listener. */
   private val state = MutableStateFlow<List<Mission>>(emptyList())
@@ -102,6 +104,7 @@ class FakeMissionRepository : MissionRepository {
     val index = missions.indexOfFirst { it.eventId == mission.eventId && it.id == mission.id }
     if (index < 0) throw MissionRepositoryException.NotFound()
     val stored = missions[index]
+    requireNotCompleted(stored, clock.instant())
     val updated = stored.withEditableFieldsOf(mission)
     missions
         .firstOrNull { it.id != mission.id && updated.conflictsWith(it) }

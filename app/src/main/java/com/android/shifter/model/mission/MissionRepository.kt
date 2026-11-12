@@ -82,6 +82,8 @@ interface MissionRepository {
    * @throws IllegalArgumentException when [Mission.id] or [Mission.eventId] is empty, the slot does
    *   not end after it starts, or [Mission.volunteersNeeded] is below 1.
    * @throws MissionRepositoryException.NotFound when the mission does not exist.
+   * @throws MissionCompletedException when the stored mission is [completed][isCompleted], closed
+   *   by hand or past its end.
    * @throws MissionOverlapException when the new values make the mission
    *   [conflict][Mission.conflictsWith] with another mission of its stored team.
    * @throws VolunteersBelowAssigneesException when [Mission.volunteersNeeded] is lower than the

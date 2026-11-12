@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.MissionCompletedException
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionOverlapException
 import com.swent.shifter.model.mission.MissionRepository
@@ -640,6 +641,9 @@ class AddMissionViewModel(
         }
       } catch (_: MissionRepositoryException.NotFound) {
         _uiState.update { it.copy(isSaving = false, missionNotFound = true) }
+      } catch (_: MissionCompletedException) {
+        // Completed while the form was open: said as when it opens on a completed mission.
+        _uiState.update { it.copy(isSaving = false, missionCompleted = true) }
       } catch (_: Exception) {
         _uiState.update { it.copy(isSaving = false, saveFailed = true) }
       }

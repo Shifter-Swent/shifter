@@ -88,6 +88,14 @@ internal fun requireValidUpdate(mission: Mission) {
 }
 
 /**
+ * Throws [MissionCompletedException] when the [stored] mission is completed at [now], which
+ * [MissionRepository.updateMission] refuses to change.
+ */
+internal fun requireNotCompleted(stored: Mission, now: Instant) {
+  if (isCompleted(stored.completed, stored.endAt, now)) throw MissionCompletedException(stored)
+}
+
+/**
  * Throws [VolunteersBelowAssigneesException] when [edited] needs fewer volunteers than the people
  * already assigned to the [stored] mission.
  */
