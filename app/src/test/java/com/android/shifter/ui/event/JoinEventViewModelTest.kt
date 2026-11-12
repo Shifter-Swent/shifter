@@ -37,7 +37,8 @@ class JoinEventViewModelTest {
   private val requests = mockk<MembershipRequestRepository>()
   private val teams = FakeTeamRepository(listOf(team(TEAM_ID, "Welcome"), team("team-b", "Bar")))
   private var userId: String? = UID
-  private val viewModel = JoinEventViewModel(events, requests, teams, { userId }, { NOW })
+  private var clock = NOW
+  private val viewModel = JoinEventViewModel(events, requests, teams, { userId }, { clock })
 
   @Before
   fun setUp() {
@@ -408,15 +409,25 @@ class JoinEventViewModelTest {
   }
 
   @Test
-  fun applyToEvent_onAnEventThatHasEnded_sendsNothing() {
+  fun onTeamSelected_onAnEventThatHasEnded_picksNoTeam() {
     findEndedEvent()
 
     viewModel.onTeamSelected(TEAM_ID)
-    viewModel.applyToEvent()
 
     assertNull(viewModel.uiState.value.selectedTeamId)
-    assertNull(viewModel.uiState.value.requestStatus)
+  }
+
+  @Test
+  fun applyToEvent_afterTheEventEndsWhileOpen_sendsNothingAndSaysSo() {
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    clock = EVENT.endAt
+
+    viewModel.applyToEvent()
+
     coVerify(exactly = 0) { requests.apply(any(), any()) }
+    assertTrue(viewModel.uiState.value.hasEnded)
+    assertNull(viewModel.uiState.value.requestStatus)
   }
 
   @Test

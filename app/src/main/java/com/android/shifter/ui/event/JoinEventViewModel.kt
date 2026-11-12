@@ -157,8 +157,10 @@ class JoinEventViewModel(
     val state = _uiState.value
     val event = state.event ?: return
     val teamId = state.selectedTeamId ?: return
-    // An ended event no longer recruits, which the rules enforce too.
-    if (state.isLoading || state.requestStatus != null || state.hasEnded) return
+    if (state.isLoading || state.requestStatus != null) return
+    // The event may end while the screen is open: it no longer recruits, which the rules enforce
+    // too.
+    if (!now().isBefore(event.endAt)) return _uiState.update { it.copy(hasEnded = true) }
     val userId = currentUserId() ?: return showError(JoinEventError.NOT_SIGNED_IN)
     launchLoading {
       val request =
