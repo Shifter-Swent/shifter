@@ -214,6 +214,7 @@ private fun Message(@StringRes text: Int, tag: String) {
       text = stringResource(text),
       color = shifter_mutedText,
       textAlign = TextAlign.Center,
-      modifier = Modifier.padding(horizontal = 24.dp).testTag(tag),
+      // The full width, so the text is centered even on a single line inside the list.
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).testTag(tag),
   )
 }
