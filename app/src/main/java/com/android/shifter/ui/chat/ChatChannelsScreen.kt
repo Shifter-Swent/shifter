@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.theme.shifter_divider
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -53,13 +54,6 @@ object ChatChannelsTestTags {
   const val TEAMS_HEADER = "chatChannelsTeamsHeader"
 
   fun channel(teamId: String) = "chatChannel_$teamId"
-}
-
-/** Which chat channel of an event is opened: a team's, or one of the whole event. */
-enum class ChannelKind {
-  TEAM,
-  GENERAL,
-  ADMIN,
 }
 
 /**

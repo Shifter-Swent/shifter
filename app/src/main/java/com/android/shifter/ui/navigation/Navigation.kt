@@ -14,8 +14,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.chat.ChatChannelId
-import com.swent.shifter.ui.chat.ChannelKind
 import kotlinx.serialization.Serializable
 
 /*

@@ -36,6 +36,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
+import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.user.UserMode
@@ -43,7 +44,6 @@ import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
-import com.swent.shifter.ui.chat.ChannelKind
 import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
 import com.swent.shifter.ui.chat.TeamChatScreen
