@@ -19,5 +19,5 @@
     <string name="chat_announcement_tag">Announcement</string>
     <string name="chat_send_as_announcement">Send as an announcement</string>
     <string name="chat_announcement_placeholder">Write an announcement</string>
-    <string name="chat_announcement_refused">You can no longer send announcements here. Your message was kept.</string>
+    <string name="chat_announcement_refused">Your announcement could not be sent here. Your message was kept.</string>
 </resources>
