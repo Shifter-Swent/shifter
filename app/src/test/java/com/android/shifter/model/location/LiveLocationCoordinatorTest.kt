@@ -158,7 +158,7 @@ class LiveLocationCoordinatorTest {
 
   @Test
   fun run_whenATargetsEventPeriodChanges_restartsItsSessionOnTheNewPeriod() = runTest {
-    // The period is part of the target's identity (#406), so an organizer shortening or extending
+    // The period is part of the target's identity, so an organizer shortening or extending
     // the event is a new target: the session bounded to the old end is cancelled and one bounded to
     // the new end starts, instead of the old bound standing. A refresh is how the change is seen.
     eligible = listOf(BAR)
@@ -570,10 +570,10 @@ class LiveLocationCoordinatorTest {
   }
 
   /**
-   * Through the real sessions of [LiveLocationSessions.of]: a session ending with its event (#406)
-   * takes its state with it the moment the event ends, between two refreshes, so the indicator
-   * shows nothing for an event that is over. A session the next refresh starts for a target already
-   * past its end publishes nothing and reports nothing either.
+   * Through the real sessions of [LiveLocationSessions.of]: a session ending with its event takes
+   * its state with it the moment the event ends, between two refreshes, so the indicator shows
+   * nothing for an event that is over. A session the next refresh starts for a target already past
+   * its end publishes nothing and reports nothing either.
    */
   @Test
   fun sharingStates_whenASessionEndsWithItsEvent_forgetsItsStateWithoutARefresh() = runTest {

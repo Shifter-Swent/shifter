@@ -355,7 +355,7 @@ class LiveLocationPublisherTest {
       }
 
   /**
-   * #343 bounds the repository's own writes; this is the publisher's side of it. A write that never
+   * The repository bounds its own writes; this is the publisher's side of it. A write that never
    * answers must not keep the consent from being followed: the session has to cancel it and take
    * the position out all the same.
    */

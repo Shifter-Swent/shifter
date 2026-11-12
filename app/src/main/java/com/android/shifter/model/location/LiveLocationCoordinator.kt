@@ -40,7 +40,7 @@ fun interface LiveLocationSessions {
   companion object {
     /**
      * The sessions [publisher] runs, which is what production shares positions with, each bounded
-     * to its target's event period (#406).
+     * to its target's event period.
      *
      * A session collects no GPS before [LiveLocationTarget.startAt], and at
      * [LiveLocationTarget.endAt] it stops starting new work, even while the app stays open: no GPS
@@ -58,15 +58,16 @@ fun interface LiveLocationSessions {
      * what Firestore already queued.
      *
      * Stopping publication is all this does: the position already stored stays, as after any
-     * cancellation, to be hidden once it is older than an hour (#392) and read by nobody once an
-     * hour has passed after [LiveLocationTarget.endAt], the read margin `firestore.rules` allow.
+     * cancellation, to be hidden by the manager's map once it is older than an hour and read by
+     * nobody once an hour has passed after [LiveLocationTarget.endAt], the read margin
+     * `firestore.rules` allow.
      *
-     * The states the publisher reports go through `onState` unchanged (#405). Nothing is reported
-     * before the event starts, and a session ending at [LiveLocationTarget.endAt] reports nothing
-     * more: it returns, and the coordinator then drops the state it had reported, so the indicator
-     * shows nothing for an event that is over. The bounds are measured once, when the session
-     * starts, against [now] and then waited out on the coroutine clock, so a device clock set
-     * forwards or back meanwhile moves the end by as much.
+     * The states the publisher reports go through `onState` unchanged, for the sharing indicator.
+     * Nothing is reported before the event starts, and a session ending at
+     * [LiveLocationTarget.endAt] reports nothing more: it returns, and the coordinator then drops
+     * the state it had reported, so the indicator shows nothing for an event that is over. The
+     * bounds are measured once, when the session starts, against [now] and then waited out on the
+     * coroutine clock, so a device clock set forwards or back meanwhile moves the end by as much.
      *
      * @param now the clock bounding the session, replaceable in tests.
      */
@@ -102,7 +103,7 @@ fun interface LiveLocationSessions {
  *   refusing them. A session is cancelled when a successful refresh no longer lists its target:
  *   normally up to about one [refreshInterval] after eligibility is lost, later when a refresh is
  *   slow, fails or times out (see [run]). **An event ending is the exception**: each session is
- *   bounded to its target's period and stops at `endAt` (#406) without waiting for a refresh; see
+ *   bounded to its target's period and stops at `endAt` without waiting for a refresh; see
  *   [LiveLocationSessions.of]. A period *edited* mid-event is a change of eligibility like the
  *   others, seen only at the next refresh: the new period makes a new target, so the session is
  *   restarted on it, and until then the session holds the period it began with. Shortening an event

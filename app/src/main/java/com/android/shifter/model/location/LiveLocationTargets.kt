@@ -20,7 +20,7 @@ import kotlinx.coroutines.coroutineScope
  * Whose position it is never appears: a volunteer can only ever write their own.
  *
  * [startAt] and [endAt] are the event's period. A session for this target publishes only within it
- * and stops starting new work at [endAt] (#406), rather than waiting for the coordinator's next
+ * and stops starting new work at [endAt], rather than waiting for the coordinator's next
  * eligibility refresh; see [LiveLocationSessions.of], which also covers the one write Firestore may
  * still send after the end. They are part of the target's identity, so an event whose period is
  * edited makes a different target and the coordinator restarts its session on the new window.

@@ -24,7 +24,7 @@ import org.junit.Test
 
 /**
  * [LiveLocationSessions.of] against the fake provider and repository, bounding a session to its
- * target's event period (#406).
+ * target's event period.
  *
  * The clock the session reads tracks the test scheduler, so delaying to
  * [LiveLocationTarget.startAt] and stopping at [LiveLocationTarget.endAt] stay consistent with
@@ -37,7 +37,7 @@ class LiveLocationSessionsTest {
   private val provider = FakeLocationProvider()
   private val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
 
-  /** Every state the session reported, in order, as the indicator of #405 reads it. */
+  /** Every state the session reported, in order, as the sharing indicator reads it. */
   private val states = mutableListOf<LiveLocationSharingState>()
 
   @Test
@@ -107,9 +107,9 @@ class LiveLocationSessionsTest {
       }
 
   /**
-   * The consent turning off shortly before the end is still the consent turning off (#377): the
-   * position goes out at once. The end that follows ends the session as usual, and turning sharing
-   * back on afterwards starts nothing, the event being over.
+   * The consent turning off shortly before the end is still the consent turning off: the position
+   * goes out at once. The end that follows ends the session as usual, and turning sharing back on
+   * afterwards starts nothing, the event being over.
    */
   @Test
   fun publish_whenTheConsentTurnsOffBeforeTheEnd_takesThePositionOutThenEndsWithTheEvent() =

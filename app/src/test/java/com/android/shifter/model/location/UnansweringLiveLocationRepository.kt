@@ -7,9 +7,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
 /**
- * A [LiveLocationRepository] whose writes never answer, as Firestore's did offline before #343
- * bounded them, and as a write queued offline does not until the device reconnects. Only the counts
- * matter: whether the client began another write or removal. Nothing is stored.
+ * A [LiveLocationRepository] whose writes never answer, as Firestore's did offline before the
+ * repository bounded them, and as a write queued offline does not until the device reconnects. Only
+ * the counts matter: whether the client began another write or removal. Nothing is stored.
  */
 internal class UnansweringLiveLocationRepository : LiveLocationRepository {
   var writes = 0
