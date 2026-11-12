@@ -1,6 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -12,7 +14,6 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,6 +43,12 @@ class ChatChannelsContentTest {
 
   private fun tag(tag: String) = composeTestRule.onNodeWithTag(tag)
 
+  /** The test tags of the rows of the list, in their order. */
+  private fun rows(): List<String?> =
+      tag(ChatChannelsTestTags.LIST).fetchSemanticsNode().children.map {
+        it.config.getOrNull(SemanticsProperties.TestTag)
+      }
+
   @Test
   fun loading_showsTheSpinner() {
     setContent(ChatChannelsUiState())
@@ -63,18 +70,18 @@ class ChatChannelsContentTest {
   fun general_isListedAboveTheTeams_andOpensTheGeneralChannel() {
     setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
 
-    val general = tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
-    val header = tag(ChatChannelsTestTags.TEAMS_HEADER).assertIsDisplayed()
     composeTestRule.onNodeWithText("Teams").assertIsDisplayed()
-    val generalTop = general.fetchSemanticsNode().boundsInRoot.top
-    val headerTop = header.fetchSemanticsNode().boundsInRoot.top
-    val barTop = tag(ChatChannelsTestTags.channel("bar")).fetchSemanticsNode().boundsInRoot.top
-    assertTrue(
-        "General $generalTop, header $headerTop, Bar $barTop",
-        generalTop < headerTop && headerTop < barTop,
+    assertEquals(
+        listOf(
+            ChatChannelsTestTags.GENERAL,
+            ChatChannelsTestTags.TEAMS_HEADER,
+            ChatChannelsTestTags.channel("bar"),
+            ChatChannelsTestTags.channel("kitchen"),
+        ),
+        rows(),
     )
 
-    general.performClick()
+    tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed().performClick()
 
     assertEquals(listOf(Triple(ChannelKind.GENERAL, null, "General")), opened)
   }
@@ -83,16 +90,18 @@ class ChatChannelsContentTest {
   fun admin_whenShown_isListedBetweenTheGeneralChannelAndTheTeams_andOpensIt() {
     setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
 
-    val generalTop = tag(ChatChannelsTestTags.GENERAL).fetchSemanticsNode().boundsInRoot.top
-    val admin = tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
-    val adminTop = admin.fetchSemanticsNode().boundsInRoot.top
-    val headerTop = tag(ChatChannelsTestTags.TEAMS_HEADER).fetchSemanticsNode().boundsInRoot.top
-    assertTrue(
-        "General $generalTop, Admin $adminTop, header $headerTop",
-        generalTop < adminTop && adminTop < headerTop,
+    assertEquals(
+        listOf(
+            ChatChannelsTestTags.GENERAL,
+            ChatChannelsTestTags.ADMIN,
+            ChatChannelsTestTags.TEAMS_HEADER,
+            ChatChannelsTestTags.channel("bar"),
+            ChatChannelsTestTags.channel("kitchen"),
+        ),
+        rows(),
     )
 
-    admin.performClick()
+    tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed().performClick()
 
     assertEquals(listOf(Triple(ChannelKind.ADMIN, null, "Admin")), opened)
   }
