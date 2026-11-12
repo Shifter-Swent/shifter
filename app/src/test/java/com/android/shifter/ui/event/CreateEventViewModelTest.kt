@@ -3,6 +3,7 @@ package com.swent.shifter.ui.event
 
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventStatus
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
@@ -331,6 +332,25 @@ class CreateEventViewModelTest {
 
     assertFalse(state.saveFailed)
     assertEquals(repository.events.single(), state.createdEvent)
+  }
+
+  @Test
+  fun createEvent_offline_reportsItAndClearsItOnEdit() = runTest {
+    fillValidForm()
+    repository.failure = EventRepositoryException.Unavailable()
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    // Nothing is queued: creating an event needs the server, which reserves its join code.
+    assertTrue(state.offline)
+    assertFalse(state.saveFailed)
+    assertFalse(state.saveUnconfirmed)
+    assertFalse(state.isSaving)
+    assertNull(state.createdEvent)
+
+    viewModel.onTitleChange("Paléo")
+    assertFalse(state.offline)
   }
 
   @Test

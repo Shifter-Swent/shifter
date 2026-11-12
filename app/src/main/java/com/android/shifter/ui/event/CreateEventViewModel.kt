@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import java.time.Clock
 import java.time.Instant
@@ -56,8 +57,11 @@ enum class EventFormError(val field: EventFormField) {
  *   so an untouched form is not shown in red; from then on it is kept up to date on every edit.
  * @property saveFailed the backend refused or failed the last save, so the event was not created.
  * @property notSignedIn the last submit found nobody signed in, so nothing was saved.
- * @property saveUnconfirmed the last save timed out, typically offline: the backend has not
- *   confirmed it yet, but it may still create the event once the device is back online.
+ * @property offline the last save found no connection: creating an event needs the server, which
+ *   reserves its join code, so nothing was queued and the organizer has to try again online.
+ * @property saveUnconfirmed the last save timed out on a slow connection: the backend has not
+ *   confirmed it, but it may still have created the event. Trying again is safe: it writes the same
+ *   event, which keeps its join code.
  * @property createdEvent the persisted event once creation succeeded, null before.
  * @property createdEventHandled whether the screen already reacted to [createdEvent], e.g. by
  *   opening it, so it does not react again after a recomposition or configuration change.
@@ -73,6 +77,7 @@ data class CreateEventUiState(
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
     val notSignedIn: Boolean = false,
+    val offline: Boolean = false,
     val saveUnconfirmed: Boolean = false,
     val createdEvent: Event? = null,
     val createdEventHandled: Boolean = false,
@@ -129,12 +134,16 @@ class CreateEventViewModel(
     submitAttempted = true
     val errors = validate(form)
     if (errors.isNotEmpty()) {
-      _uiState.update { it.copy(errors = errors, saveFailed = false, notSignedIn = false) }
+      _uiState.update {
+        it.copy(errors = errors, saveFailed = false, notSignedIn = false, offline = false)
+      }
       return
     }
     val organizerId = currentUserId()
     if (organizerId == null) {
-      _uiState.update { it.copy(errors = emptySet(), saveFailed = false, notSignedIn = true) }
+      _uiState.update {
+        it.copy(errors = emptySet(), saveFailed = false, notSignedIn = true, offline = false)
+      }
       return
     }
     // Validation guarantees the type and both dates are present and parseable.
@@ -156,20 +165,23 @@ class CreateEventViewModel(
           isSaving = true,
           saveFailed = false,
           notSignedIn = false,
+          offline = false,
           saveUnconfirmed = false,
       )
     }
     viewModelScope.launch {
       try {
-        // Offline, the backend may neither confirm nor reject the write, so stop waiting at some
-        // point instead of leaving the screen saving forever. The write is not refused, only
-        // unconfirmed: it may still go through once the device is back online.
+        // On a slow connection, the backend may neither confirm nor reject the write, so stop
+        // waiting at some point instead of leaving the screen saving forever. The write is not
+        // refused, only unconfirmed: it may still have gone through.
         val created = withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) { repository.createEvent(event) }
         _uiState.update {
           it.copy(isSaving = false, saveUnconfirmed = created == null, createdEvent = created)
         }
       } catch (e: CancellationException) {
         throw e
+      } catch (_: EventRepositoryException.Unavailable) {
+        _uiState.update { it.copy(isSaving = false, offline = true) }
       } catch (_: Exception) {
         _uiState.update { it.copy(isSaving = false, saveFailed = true) }
       }
@@ -186,7 +198,7 @@ class CreateEventViewModel(
 
   private fun edit(change: (CreateEventUiState) -> CreateEventUiState) {
     _uiState.update { state ->
-      val edited = change(state).copy(saveFailed = false, notSignedIn = false)
+      val edited = change(state).copy(saveFailed = false, notSignedIn = false, offline = false)
       if (submitAttempted) edited.copy(errors = validate(edited)) else edited
     }
   }
