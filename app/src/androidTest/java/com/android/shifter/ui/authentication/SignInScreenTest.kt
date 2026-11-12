@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
@@ -59,8 +60,11 @@ class SignInScreenTest {
 
   private var signedInCalls = 0
 
-  /** The modes entered, one per sign-in. */
+  /** The modes entered, one per sign-in of an existing account. */
   private val enteredModes = mutableListOf<UserMode>()
+
+  /** The sign-ins of an account without a profile, sent to choose their mode. */
+  private var newAccountCalls = 0
 
   @Before
   fun setUp() {
@@ -88,7 +92,15 @@ class SignInScreenTest {
   }
 
   @Test
-  fun organizerScreen_firstSignIn_savesOrganizerAndEntersIt() {
+  fun signInScreen_hasNoModeToChoose() {
+    composeTestRule.setContent { ShifterTheme { SignInScreen(authViewModel = viewModel) } }
+
+    composeTestRule.onNodeWithText("Organizer", substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText("Volunteer", substring = true).assertDoesNotExist()
+  }
+
+  @Test
+  fun existingAccount_entersTheSavedModeWithoutAsking() {
     val email = "organizer-${UUID.randomUUID()}@example.com"
     val credential =
         GoogleIdTokenCredential.Builder()
@@ -97,18 +109,20 @@ class SignInScreenTest {
                 AuthEmulator.fakeGoogleIdToken("google-${UUID.randomUUID()}", email, "Olga")
             )
             .build()
-    val organizerSignIn = SignInViewModel(authRepository, userRepository, UserMode.ORGANIZER)
+    // The account already has an Organizer profile, from an earlier sign-in.
+    runBlocking {
+      val uid = authRepository.signInWithGoogle(credential).getOrThrow().uid
+      userRepository.getOrCreateUser(uid, "Olga", email, UserMode.ORGANIZER)
+    }
     composeTestRule.setContent {
-      SignInContent(FakeCredentialManager { GetCredentialResponse(credential) }, organizerSignIn)
+      SignInContent(FakeCredentialManager { GetCredentialResponse(credential) })
     }
 
-    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE).assertTextEquals("Organizer")
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) { enteredModes.isNotEmpty() }
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedInCalls > 0 }
 
     assertEquals(listOf(UserMode.ORGANIZER), enteredModes)
-    val uid = AuthEmulator.auth.currentUser!!.uid
-    assertEquals(UserMode.ORGANIZER, runBlocking { userRepository.getUser(uid) }?.mode)
+    assertEquals(0, newAccountCalls)
   }
 
   @Test
@@ -138,7 +152,7 @@ class SignInScreenTest {
   }
 
   @Test
-  fun signInScreen_successfulGoogleSignIn_signsInWithFirebaseAndNavigates() {
+  fun newAccount_asksForTheModeWithoutCreatingAProfile() {
     val email = "volunteer-${UUID.randomUUID()}@example.com"
     val credential =
         GoogleIdTokenCredential.Builder()
@@ -157,8 +171,11 @@ class SignInScreenTest {
 
     assertEquals(email, AuthEmulator.auth.currentUser?.email)
     assertEquals(email, viewModel.uiState.value.user?.email)
+    assertEquals(1, newAccountCalls)
+    assertEquals(emptyList<UserMode>(), enteredModes)
+    // The profile is created once the mode is chosen, on the next screen.
     val uid = AuthEmulator.auth.currentUser!!.uid
-    assertEquals(DISPLAY_NAME, runBlocking { userRepository.getUser(uid) }?.displayName)
+    assertNull(runBlocking { userRepository.getUser(uid) })
 
     // Recreating the screen, as on a rotation, must not navigate a second time.
     restorationTester.emulateSavedInstanceStateRestore()
@@ -184,6 +201,10 @@ class SignInScreenTest {
           onSignedIn = {
             signedInCalls++
             enteredModes += it
+          },
+          onNewAccount = {
+            signedInCalls++
+            newAccountCalls++
           },
       )
     }

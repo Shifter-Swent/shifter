@@ -21,11 +21,24 @@ object StartScreenTestTags {
   const val LOADING = "startLoading"
 }
 
-/** A spinner while [viewModel] reads the user's mode, then [onModeRead] enters it. */
+/**
+ * A spinner while [viewModel] reads the user's mode, then [onModeRead] enters it, or [onNoProfile]
+ * asks for it when the user has no profile.
+ */
 @Composable
-fun StartScreen(viewModel: StartViewModel, onModeRead: (UserMode) -> Unit) {
-  val mode by viewModel.mode.collectAsState()
-  LaunchedEffect(mode) { mode?.let(onModeRead) }
+fun StartScreen(
+    viewModel: StartViewModel,
+    onModeRead: (UserMode) -> Unit,
+    onNoProfile: () -> Unit = {},
+) {
+  val state by viewModel.state.collectAsState()
+  LaunchedEffect(state) {
+    when (val read = state) {
+      StartState.Reading -> Unit
+      is StartState.Enter -> onModeRead(read.mode)
+      StartState.ChooseMode -> onNoProfile()
+    }
+  }
   Box(
       modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
       contentAlignment = Alignment.Center,

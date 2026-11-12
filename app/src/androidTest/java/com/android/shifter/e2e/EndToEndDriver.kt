@@ -33,6 +33,7 @@ import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -118,23 +119,30 @@ class EndToEndDriver(
   }
 
   /**
-   * Signs in through the sign-in screen of [from], the picker answering with [account], and waits
-   * for the events of the mode it [enters]. Returns the user's id and registers their profile for
-   * cleanup.
+   * Signs in, the picker answering with [account], and waits for the events of the mode it
+   * [enters]. A new account is asked its mode first and [chooses] it. Returns the user's id and
+   * registers their profile for cleanup.
    */
   fun signInAs(
       account: GoogleAccount,
-      from: UserMode = UserMode.VOLUNTEER,
-      enters: UserMode = from,
+      chooses: UserMode = UserMode.VOLUNTEER,
+      enters: UserMode = chooses,
   ): String {
     pickedAccount = account
-    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
-    if (from == UserMode.ORGANIZER) click(SignInScreenTestTags.SWITCH_SIGN_IN)
     click(SignInScreenTestTags.LOGIN_BUTTON)
-    waitForNode(
+    val events =
         if (enters == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
         else MyEventsTestTags.STAFF_SCREEN
-    )
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      exists(ChooseModeTestTags.SCREEN) || exists(events)
+    }
+    if (exists(ChooseModeTestTags.SCREEN)) {
+      click(
+          if (chooses == UserMode.ORGANIZER) ChooseModeTestTags.ORGANIZER
+          else ChooseModeTestTags.VOLUNTEER
+      )
+    }
+    waitForNode(events)
     val uid = checkNotNull(repositories.authRepository.currentUser()).uid
     if ("users/$uid" !in createdPaths) {
       createdPaths += "users/$uid"
@@ -273,6 +281,9 @@ class EndToEndDriver(
     }
     waitForNode(tag)
   }
+
+  private fun exists(tag: String): Boolean =
+      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
   fun click(tag: String) {
     waitForNode(tag)

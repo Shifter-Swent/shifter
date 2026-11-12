@@ -17,6 +17,7 @@ import java.time.Instant
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,9 +31,22 @@ class StartScreenTest {
 
   private var entered: UserMode? = null
 
+  private var askedForMode = false
+
   private fun showStartScreen(users: UserRepository) {
     val viewModel = StartViewModel(session, users)
-    composeTestRule.setContent { StartScreen(viewModel, onModeRead = { entered = it }) }
+    composeTestRule.setContent {
+      StartScreen(viewModel, onModeRead = { entered = it }, onNoProfile = { askedForMode = true })
+    }
+  }
+
+  @Test
+  fun noProfile_asksForTheMode() {
+    showStartScreen(FakeUserRepository())
+
+    composeTestRule.waitForIdle()
+    assertTrue(askedForMode)
+    assertNull(entered)
   }
 
   @Test

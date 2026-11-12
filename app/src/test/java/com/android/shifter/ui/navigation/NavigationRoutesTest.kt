@@ -15,8 +15,8 @@ class NavigationRoutesTest {
   private val screensOutsideEventMode =
       listOf(
           SignedOut.SignIn,
-          SignedOut.OrganizerSignIn,
           Starting.Loading,
+          ChoosingMode.Choice,
           Volunteer.Events,
           Volunteer.ProfileSettings,
           Volunteer.QrApply,
@@ -37,6 +37,7 @@ class NavigationRoutesTest {
   fun apps_startOnTheirFirstScreen() {
     assertEquals(SignedOut.SignIn, SignedOut.start)
     assertEquals(Starting.Loading, Starting.start)
+    assertEquals(ChoosingMode.Choice, ChoosingMode.start)
     assertEquals(Volunteer.Events, Volunteer.start)
     assertEquals(Organizer.Events, Organizer.start)
   }

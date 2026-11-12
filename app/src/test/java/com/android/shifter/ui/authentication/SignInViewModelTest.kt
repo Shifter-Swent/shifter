@@ -263,13 +263,13 @@ class SignInViewModelTest {
   }
 
   @Test
-  fun factory_createsViewModelOnTheGivenRepositoryAndMode() {
+  fun factory_createsViewModelOnTheGivenRepositories() {
     val credential = mockk<Credential>()
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
     repository.signInResult = Result.success(user)
     stubCredentialManager(credential)
     val built =
-        SignInViewModel.factory(repository, userRepository, UserMode.ORGANIZER)
+        SignInViewModel.factory(repository, userRepository)
             .create(SignInViewModel::class.java, CreationExtras.Empty)
 
     built.signIn(context, credentialManager)
@@ -277,57 +277,37 @@ class SignInViewModelTest {
 
     assertEquals(credential, repository.receivedCredential)
     assertEquals(user, built.uiState.value.user)
-    assertEquals(UserMode.ORGANIZER, built.mode)
   }
 
   @Test
-  fun signIn_success_createsProfileOnFirstSignIn() {
-    val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
-    repository.signInResult = Result.success(user)
-    stubCredentialManager(mockk<Credential>())
+  fun signIn_newAccount_asksForTheModeWithoutCreatingAProfile() {
+    signInAda(viewModel)
 
-    viewModel.signIn(context, credentialManager)
-    shadowOf(android.os.Looper.getMainLooper()).idle()
-
-    val profile = userRepository.users.getValue("uid-1")
-    assertEquals("Ada", profile.displayName)
-    assertEquals("ada@example.com", profile.email)
-  }
-
-  @Test
-  fun signIn_newAccount_savesTheModeOfTheScreenAndEntersIt() {
-    val organizerSignIn = SignInViewModel(repository, userRepository, UserMode.ORGANIZER)
-
-    signInAda(organizerSignIn)
-
-    assertEquals(UserMode.ORGANIZER, userRepository.users.getValue("uid-1").mode)
-    assertEquals(UserMode.ORGANIZER, organizerSignIn.uiState.value.signedInAs)
+    // The profile is created with the mode chosen, on the next screen.
+    assertTrue(viewModel.uiState.value.needsMode)
+    assertNull(viewModel.uiState.value.signedInAs)
+    assertFalse("uid-1" in userRepository.users)
   }
 
   @Test
   fun signIn_accountWithAMode_entersItWithoutChangingIt() {
-    userRepository.users["uid-1"] = ada(mode = UserMode.VOLUNTEER)
-    val organizerSignIn = SignInViewModel(repository, userRepository, UserMode.ORGANIZER)
+    userRepository.users["uid-1"] = ada(mode = UserMode.ORGANIZER)
 
-    signInAda(organizerSignIn)
+    signInAda(viewModel)
 
-    assertEquals(UserMode.VOLUNTEER, userRepository.users.getValue("uid-1").mode)
-    assertEquals(UserMode.VOLUNTEER, organizerSignIn.uiState.value.signedInAs)
+    assertEquals(UserMode.ORGANIZER, userRepository.users.getValue("uid-1").mode)
+    assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.signedInAs)
+    assertFalse(viewModel.uiState.value.needsMode)
   }
 
   @Test
-  fun signIn_accountWithoutNameOrEmail_createsProfileWithEmptyFields() {
-    repository.signInResult =
-        Result.success(AuthUser(uid = "uid-1", email = null, displayName = null))
-    stubCredentialManager(mockk<Credential>())
+  fun signIn_accountWithoutAMode_entersVolunteerWithoutAsking() {
+    userRepository.users["uid-1"] = ada(mode = null)
 
-    viewModel.signIn(context, credentialManager)
-    shadowOf(android.os.Looper.getMainLooper()).idle()
+    signInAda(viewModel)
 
-    val profile = userRepository.users.getValue("uid-1")
-    assertEquals("", profile.displayName)
-    assertEquals("", profile.email)
-    assertTrue(viewModel.uiState.value.signedIn)
+    assertEquals(UserMode.VOLUNTEER, viewModel.uiState.value.signedInAs)
+    assertFalse(viewModel.uiState.value.needsMode)
   }
 
   @Test
