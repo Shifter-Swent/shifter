@@ -1128,7 +1128,7 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun volunteerDiscussions_withASingleTeam_opensItsChannelAndBackShowsTheList() {
+  fun volunteerDiscussions_withASingleTeam_listsItsChannelAndOpensItOnTap() {
     val event = acceptedEvent(asManager = false)
     showApp()
     openEvent(event)
@@ -1136,7 +1136,13 @@ class ShifterNavHostTest {
 
     composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
 
-    // Their only team's channel opens at once, under the team's name.
+    // Their only team's channel is listed, not opened by itself.
+    val team = ChatChannelsTestTags.channel(teamIds.getValue(event.id))
+    waitForNode(team)
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
+
+    composeTestRule.onNodeWithTag(team).performClick()
+
     waitForNode(TeamChatTestTags.INPUT)
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
@@ -1144,8 +1150,7 @@ class ShifterNavHostTest {
 
     pressBack()
 
-    // Back on the list, which shows the channel rather than opening it again.
-    waitForNode(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
+    waitForNode(team)
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
     composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
   }

@@ -21,7 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -33,8 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.withResumed
 import com.swent.shifter.R
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.theme.shifter_divider
@@ -57,10 +54,7 @@ enum class ChannelKind {
   ADMIN,
 }
 
-/**
- * The channels of an event listed by [viewModel]; [onOpenChannel] opens one. The only channel the
- * user can open is opened at once, the first time it is listed while the screen is resumed.
- */
+/** The channels of an event listed by [viewModel], which [onOpenChannel] opens. */
 @Composable
 fun ChatChannelsScreen(
     viewModel: ChatChannelsViewModel,
@@ -68,16 +62,6 @@ fun ChatChannelsScreen(
     modifier: Modifier = Modifier,
 ) {
   val uiState by viewModel.uiState.collectAsState()
-  val lifecycle = LocalLifecycleOwner.current.lifecycle
-  uiState.channelToOpen?.let { channel ->
-    LaunchedEffect(channel) {
-      // Waits until the screen is shown, and gives up if the user leaves it first.
-      lifecycle.withResumed {
-        viewModel.onChannelOpened()
-        onOpenChannel(channel)
-      }
-    }
-  }
   ChatChannelsContent(uiState, onOpenChannel, viewModel::load, modifier)
 }
 
