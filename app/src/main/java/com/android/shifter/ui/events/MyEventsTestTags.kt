@@ -17,8 +17,6 @@ object MyEventsTestTags {
   const val ERROR = "myEventsError"
   const val WITHDRAW_ERROR = "myEventsWithdrawError"
 
-  const val ORGANIZER_VIEW_BUTTON = "organizerViewButton"
-  const val VOLUNTEER_VIEW_BUTTON = "volunteerViewButton"
   const val SCAN_QR_BUTTON = "scanQrButton"
   const val CREATE_EVENT_BUTTON = "createEventButton"
 

@@ -12,6 +12,7 @@ import com.swent.shifter.R
 import com.swent.shifter.e2e.EndToEndDriver.Companion.TIMEOUT_MILLIS
 import com.swent.shifter.e2e.EndToEndDriver.GoogleAccount
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.membership.MembershipRequestsTestTags
@@ -65,8 +66,7 @@ class RecruitmentEndToEndTest {
     app.launchApp()
 
     // ── 1. The organizer creates the event and its team, and gets the join code ──
-    val organizerId = app.signInAs(organizer)
-    app.click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
+    val organizerId = app.signInAs(organizer, from = UserMode.ORGANIZER)
     app.click(MyEventsTestTags.CREATE_EVENT_BUTTON)
     app.fillAndSubmitEventForm(
         "Paléo Festival",
@@ -114,8 +114,8 @@ class RecruitmentEndToEndTest {
     app.signOut()
 
     // ── 3. The organizer plans a mission for the team on the event's Overview ──
-    app.signInAs(organizer)
-    app.click(MyEventsTestTags.ORGANIZER_VIEW_BUTTON)
+    // From the Volunteer sign-in, the organizer still enters the mode saved on their profile.
+    app.signInAs(organizer, enters = UserMode.ORGANIZER)
     app.waitForNode(MyEventsTestTags.eventAction(event.id))
     app.click(MyEventsTestTags.eventAction(event.id))
     app.waitForNode(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS)

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- Sign-in screens, one per mode -->
+    <string name="sign_in_as_volunteer">Volunteer</string>
+    <string name="sign_in_as_organizer">Organizer</string>
+    <string name="sign_in_to_organizer">I am an Organizer</string>
+    <string name="sign_in_to_volunteer">I am a Volunteer</string>
+</resources>

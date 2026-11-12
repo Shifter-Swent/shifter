@@ -29,7 +29,6 @@ import com.swent.shifter.ui.events.StaffEventsViewModel
 import com.swent.shifter.ui.events.components.EventCardAction
 import com.swent.shifter.ui.events.components.EventCardActionType
 import com.swent.shifter.ui.events.components.MyEventsLayout
-import com.swent.shifter.ui.events.components.SwitchViewButton
 import com.swent.shifter.ui.theme.ShifterTheme
 
 /**
@@ -41,7 +40,6 @@ fun StaffEventsScreen(
     viewModel: StaffEventsViewModel,
     avatarInitial: String,
     onOpenEvent: (EventCardUi) -> Unit,
-    onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
@@ -52,7 +50,6 @@ fun StaffEventsScreen(
       onTabSelected = viewModel::selectTab,
       onWithdraw = viewModel::withdraw,
       onOpenEvent = onOpenEvent,
-      onOrganizerViewClick = onOrganizerViewClick,
       onScanQrClick = onScanQrClick,
       onAvatarClick = onAvatarClick,
   )
@@ -61,8 +58,8 @@ fun StaffEventsScreen(
 /**
  * The events the user takes part in as a volunteer (Figma "My-Events", VM-00).
  *
- * Stateless: the Organizer View button only reports the click, switching to the organizer screen is
- * left to the navigation.
+ * Stateless: the Scan QR button and the avatar only report the click, navigating is left to the
+ * caller.
  */
 @Composable
 fun StaffEventsContent(
@@ -71,7 +68,6 @@ fun StaffEventsContent(
     onTabSelected: (EventTab) -> Unit,
     onWithdraw: (eventId: String) -> Unit,
     onOpenEvent: (EventCardUi) -> Unit,
-    onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
 ) {
@@ -91,11 +87,6 @@ fun StaffEventsContent(
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
   ) {
-    SwitchViewButton(
-        label = stringResource(R.string.my_events_organizer_view),
-        testTag = MyEventsTestTags.ORGANIZER_VIEW_BUTTON,
-        onClick = onOrganizerViewClick,
-    )
     ScanQrButton(onScanQrClick)
   }
 }
@@ -132,7 +123,6 @@ private fun StaffEventsContentPreview() {
         onTabSelected = {},
         onWithdraw = {},
         onOpenEvent = {},
-        onOrganizerViewClick = {},
         onScanQrClick = {},
         onAvatarClick = {},
     )

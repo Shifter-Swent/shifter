@@ -20,7 +20,8 @@ import kotlinx.serialization.Serializable
 
 /*
  * SignedOut
- *   └── SignIn
+ *   └── SignIn → OrganizerSignIn
+ * Starting: reads the mode saved on the profile, then enters Volunteer or Organizer
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission), Map,
@@ -97,9 +98,30 @@ data object SignedOut : App {
   override val start
     get() = SignIn
 
+  /** The Volunteer sign-in, the one the app opens on. */
   @Serializable
   data object SignIn : Destination {
     override val title = "Sign in"
+  }
+
+  /** The Organizer sign-in, opened on top of the Volunteer one. */
+  @Serializable
+  data object OrganizerSignIn : Destination {
+    override val title = "Organizer sign in"
+  }
+}
+
+// ── Starting ────────────────────────────────────────────────────────────────
+
+/** Opened at launch with a session, while the mode saved on the profile is read. */
+@Serializable
+data object Starting : App {
+  override val start
+    get() = Loading
+
+  @Serializable
+  data object Loading : Destination {
+    override val title = "Loading"
   }
 }
 
@@ -396,13 +418,11 @@ sealed interface OrganizerEventScreen : Destination {
   }
 }
 
-/** Opens Organizer mode if the user was there last time, Volunteer mode otherwise. */
-fun startApp(isSignedIn: Boolean, wasOrganizer: Boolean): App =
-    when {
-      !isSignedIn -> SignedOut
-      wasOrganizer -> Organizer
-      else -> Volunteer
-    }
+/**
+ * Opens sign-in without a session. With one, [Starting] reads the mode saved on the profile before
+ * entering it.
+ */
+fun startApp(isSignedIn: Boolean): App = if (isSignedIn) Starting else SignedOut
 
 // ── Navigation actions ──────────────────────────────────────────────────────
 

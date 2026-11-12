@@ -35,7 +35,6 @@ class StaffEventsContentTest {
 
   private val withdrawn = mutableListOf<String>()
   private val opened = mutableListOf<EventCardUi>()
-  private var organizerViewClicks = 0
   private var scanQrClicks = 0
   private var avatarClicks = 0
 
@@ -49,7 +48,6 @@ class StaffEventsContentTest {
             onTabSelected = { state = state.copy(selectedTab = it) },
             onWithdraw = { withdrawn += it },
             onOpenEvent = { opened += it },
-            onOrganizerViewClick = { organizerViewClicks++ },
             onScanQrClick = { scanQrClicks++ },
             onAvatarClick = { avatarClicks++ },
         )
@@ -96,8 +94,7 @@ class StaffEventsContentTest {
         composeTestRule
             .onNodeWithTag(MyEventsTestTags.eventCard(upcoming.last().id))
             .getBoundsInRoot()
-    val button =
-        composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).getBoundsInRoot()
+    val button = composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).getBoundsInRoot()
     assertTrue(
         "the last card (bottom ${lastCard.bottom}) must end above the button (top ${button.top})",
         lastCard.bottom <= button.top,
@@ -156,11 +153,9 @@ class StaffEventsContentTest {
   fun floatingButtonsAndAvatar_reportClicks() {
     setContent(MyEventsUiState(upcoming = upcoming))
 
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
 
-    assertEquals(1, organizerViewClicks)
     assertEquals(1, scanQrClicks)
     assertEquals(1, avatarClicks)
   }

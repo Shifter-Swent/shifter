@@ -23,6 +23,7 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
 import com.swent.shifter.model.user.USERS_COLLECTION
+import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.UUID
@@ -51,13 +52,15 @@ class SignInScreenTest {
 
   private val userRepository = UserRepositoryFirestore(FirestoreEmulator.firestore)
 
-  private val viewModel =
-      SignInViewModel(
-          AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper()),
-          userRepository,
-      )
+  private val authRepository =
+      AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+
+  private val viewModel = SignInViewModel(authRepository, userRepository)
 
   private var signedInCalls = 0
+
+  /** The modes entered, one per sign-in. */
+  private val enteredModes = mutableListOf<UserMode>()
 
   @Before
   fun setUp() {
@@ -82,6 +85,30 @@ class SignInScreenTest {
     composeTestRule.onNodeWithTag(SignInScreenTestTags.APP_NAME).assertTextEquals("Shifter")
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_TITLE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
+  }
+
+  @Test
+  fun organizerScreen_firstSignIn_savesOrganizerAndEntersIt() {
+    val email = "organizer-${UUID.randomUUID()}@example.com"
+    val credential =
+        GoogleIdTokenCredential.Builder()
+            .setId(email)
+            .setIdToken(
+                AuthEmulator.fakeGoogleIdToken("google-${UUID.randomUUID()}", email, "Olga")
+            )
+            .build()
+    val organizerSignIn = SignInViewModel(authRepository, userRepository, UserMode.ORGANIZER)
+    composeTestRule.setContent {
+      SignInContent(FakeCredentialManager { GetCredentialResponse(credential) }, organizerSignIn)
+    }
+
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE).assertTextEquals("Organizer")
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { enteredModes.isNotEmpty() }
+
+    assertEquals(listOf(UserMode.ORGANIZER), enteredModes)
+    val uid = AuthEmulator.auth.currentUser!!.uid
+    assertEquals(UserMode.ORGANIZER, runBlocking { userRepository.getUser(uid) }?.mode)
   }
 
   @Test
@@ -146,12 +173,18 @@ class SignInScreenTest {
   }
 
   @Composable
-  private fun SignInContent(credentialManager: CredentialManager) {
+  private fun SignInContent(
+      credentialManager: CredentialManager,
+      signIn: SignInViewModel = viewModel,
+  ) {
     ShifterTheme {
       SignInScreen(
-          authViewModel = viewModel,
+          authViewModel = signIn,
           credentialManager = credentialManager,
-          onSignedIn = { signedInCalls++ },
+          onSignedIn = {
+            signedInCalls++
+            enteredModes += it
+          },
       )
     }
   }

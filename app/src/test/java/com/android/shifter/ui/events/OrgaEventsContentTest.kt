@@ -22,7 +22,6 @@ class OrgaEventsContentTest {
   private val managed = mutableListOf<EventCardUi>()
   private val selectedTabs = mutableListOf<EventTab>()
   private var createClicks = 0
-  private var volunteerViewClicks = 0
 
   private fun setContent(state: MyEventsUiState) {
     composeTestRule.setContent {
@@ -33,7 +32,6 @@ class OrgaEventsContentTest {
             onTabSelected = { selectedTabs += it },
             onManageEvent = { managed += it },
             onCreateEventClick = { createClicks++ },
-            onVolunteerViewClick = { volunteerViewClicks++ },
             onAvatarClick = {},
         )
       }
@@ -53,7 +51,6 @@ class OrgaEventsContentTest {
     composeTestRule
         .onNodeWithTag(MyEventsTestTags.statusPill("food-drive"))
         .assertTextEquals("● Ongoing")
-    composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_VIEW_BUTTON).assertDoesNotExist()
   }
 
   @Test
@@ -76,10 +73,8 @@ class OrgaEventsContentTest {
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.PAST_TAB).performClick()
     composeTestRule.onNodeWithTag(MyEventsTestTags.CREATE_EVENT_BUTTON).performClick()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.VOLUNTEER_VIEW_BUTTON).performClick()
 
     assertEquals(listOf(EventTab.PAST), selectedTabs)
     assertEquals(1, createClicks)
-    assertEquals(1, volunteerViewClicks)
   }
 }

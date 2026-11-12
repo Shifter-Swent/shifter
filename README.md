@@ -47,7 +47,7 @@ Volunteer
 
 Applies to missions, sees their assigned post and shift, is guided to the post, is checked in automatically, and receives reassignments and announcements.
 
-All users sign in with the same account. They start as volunteers, can be appointed manager for a given event, and can switch to Organizer mode from their profile to run their own events.°
+All users sign in with the same account. They choose Volunteer or Organizer mode on their first sign-in, enter that mode on every later launch, can change it in Settings, and can be appointed manager for a given event.°
 
 Authentication:
 - Users create and access their account using Google Sign-In.
