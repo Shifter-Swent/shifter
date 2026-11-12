@@ -757,14 +757,14 @@ class ManagerOverviewContentTest {
   }
 
   @Test
-  fun editMission_isNotOfferedToTheOrganizer() {
+  fun editMission_asTheOrganizer_isNotOffered() {
     show(loaded.copy(isOrganizer = true), onEditMission = {})
 
     compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertDoesNotExist()
   }
 
   @Test
-  fun editMission_isNotOfferedOnACompletedMission() {
+  fun editMission_onACompletedMission_isNotOffered() {
     val over = setUpRunning("over", Duration.ofHours(-3), Duration.ofHours(-1))
     val closed = setUp.copy(id = "closed", completed = true)
     show(loaded.copy(missions = listOf(drinks, over, closed)), onEditMission = {})
