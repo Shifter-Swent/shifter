@@ -87,7 +87,11 @@ class EventOverviewScreenTest {
   @After fun tearDown() = Dispatchers.resetMain()
 
   /** The screen for [userId], loaded, with a stand-in for the volunteer's planning of #204. */
-  private fun show(userId: String, onAddMission: () -> Unit = {}) {
+  private fun show(
+      userId: String,
+      onAddMission: () -> Unit = {},
+      onEditMission: ((String) -> Unit)? = null,
+  ) {
     // Unconfined, so the load the ViewModel starts has answered by the time the screen is read.
     Dispatchers.setMain(UnconfinedTestDispatcher())
     val viewModel = AttendanceViewModel("event-1", userId, events, missions, teams, users, checkIns)
@@ -97,6 +101,7 @@ class EventOverviewScreenTest {
             viewModel = viewModel,
             volunteerOverview = { Text("Volunteer planning") },
             onAddMission = onAddMission,
+            onEditMission = onEditMission,
         )
       }
     }
@@ -142,6 +147,26 @@ class EventOverviewScreenTest {
 
     compose.onNodeWithText("Volunteer planning").assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun editMission_asAManager_givesTheMissionId() {
+    val mission = upcomingMission()
+    val edited = mutableListOf<String>()
+    show("manager", onEditMission = { edited += it })
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit(mission.id)).performClick()
+
+    assertEquals(listOf(mission.id), edited)
+  }
+
+  @Test
+  fun editMission_withoutCallback_isNotOffered() {
+    val mission = upcomingMission()
+    show("manager")
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission(mission.id)).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.edit(mission.id)).assertDoesNotExist()
   }
 
   @Test
@@ -246,6 +271,26 @@ class EventOverviewScreenTest {
             startAt = Instant.now().minus(Duration.ofMinutes(10)),
             endAt = Instant.now().plus(Duration.ofHours(1)),
             assigneeIds = listOf("ann"),
+            createdAt = start,
+        )
+    )
+  }
+
+  /**
+   * A mission of the manager's team still to come, so it can be changed. Dated from now, as the
+   * screen reads the real clock: a fixed date would make it completed once that date has passed.
+   */
+  private fun upcomingMission() = runBlocking {
+    val startAt = Instant.now().plus(Duration.ofDays(1))
+    missions.createMission(
+        Mission(
+            eventId = "event-1",
+            title = "Set up",
+            description = "",
+            teamId = "logistics",
+            volunteersNeeded = 1,
+            startAt = startAt,
+            endAt = startAt.plus(Duration.ofHours(1)),
             createdAt = start,
         )
     )

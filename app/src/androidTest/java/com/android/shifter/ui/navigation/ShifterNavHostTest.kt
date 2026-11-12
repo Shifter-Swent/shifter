@@ -962,6 +962,50 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun volunteerEvent_asAManager_editMissionSavesTheChangeAndShowsItInTheOverview() {
+    val event = acceptedEvent(asManager = true)
+    // Created by the manager, signed in after the acceptance, for the team they lead.
+    val mission =
+        createMission(
+            event,
+            "Sort the litter",
+            teamId = teamIds.getValue(event.id),
+            description = "Separate glass and plastic.",
+        )
+    showApp()
+    openEvent(event)
+    waitForNode(ManagerOverviewTestTags.edit(mission.id))
+
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.edit(mission.id)).performClick()
+    // The form only appears once the mission is read, filled with it.
+    waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.TITLE_FIELD)
+        .assertTextContains("Sort the litter")
+        .performTextReplacement("Sort the bottles")
+    composeTestRule
+        .onNodeWithTag(AddMissionScreenTestTags.SUBMIT_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    // Back on the Overview, read again, whose card of the mission shows the new title: looked for
+    // in the card, since the form's field holds the same text until it is gone.
+    waitForNode(ManagerOverviewTestTags.SCREEN)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodes(
+              hasText("Sort the bottles") and
+                  hasAnyAncestor(hasTestTag(ManagerOverviewTestTags.mission(mission.id))),
+              useUnmergedTree = true,
+          )
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    val saved = runBlocking { repositories.missionRepository.getMission(event.id, mission.id) }
+    assertEquals(mission.copy(title = "Sort the bottles"), saved)
+  }
+
+  @Test
   fun volunteerEvent_asAVolunteer_opensTheOverviewWithoutTheAttendance() {
     val event = acceptedEvent(asManager = false)
     showApp()

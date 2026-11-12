@@ -42,6 +42,8 @@ import kotlinx.coroutines.delay
  * @param volunteerOverview what someone who manages no team of the event sees instead. It is the
  *   stand-in until #204 puts the volunteer's planning there, and the only place to change for it.
  * @param onAddMission opens the mission creation form, offered to a manager only.
+ * @param onEditMission opens the edit form of a mission, offered to a manager only, and none when
+ *   null.
  */
 @Composable
 fun EventOverviewScreen(
@@ -49,6 +51,7 @@ fun EventOverviewScreen(
     volunteerOverview: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     onAddMission: () -> Unit = {},
+    onEditMission: ((String) -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
   // A check-in still in its undo window is sent when the screen is left or the app goes to the
@@ -74,6 +77,7 @@ fun EventOverviewScreen(
             onMarkCompleted = viewModel::markCompleted,
             onCompletionFailureShown = viewModel::onCompletionFailureShown,
             onAddMission = onAddMission,
+            onEditMission = onEditMission,
         )
     false -> volunteerOverview()
     // Not known yet, which a first load that failed also leaves it at: neither screen is shown,

@@ -24,8 +24,8 @@ import kotlinx.serialization.Serializable
  * Starting: reads the mode saved on the profile, then enters Volunteer or Organizer
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
- *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission), Map,
- *       Discussions (+ Channel)
+ *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission, EditMission),
+ *       Map, Discussions (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
  *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
@@ -214,6 +214,16 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object AddMission : VolunteerEventScreen {
     override val title = "Add mission"
+    override val tab
+      get() = VolunteerTabs.Overview
+  }
+
+  /** The same form editing [missionId], a mission of a team the manager leads. */
+  @Serializable
+  data class EditMission(val missionId: String) : VolunteerEventScreen {
+    override val title
+      get() = "Edit mission"
+
     override val tab
       get() = VolunteerTabs.Overview
   }
