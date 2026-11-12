@@ -89,9 +89,12 @@ class EventSubcollectionRulesTest {
     SUBCOLLECTIONS.forEach { subcollection ->
       val document = newDocument(subcollection)
       document.set(content(subcollection, "created")).await()
-      document.update("name", "updated").await()
+      document.update(textField(subcollection), "updated").await()
 
-      assertEquals("updated", document.get(Source.SERVER).await().getString("name"))
+      assertEquals(
+          "updated",
+          document.get(Source.SERVER).await().getString(textField(subcollection)),
+      )
       assertTrue(document.id in ids(subcollection))
       document.delete().await()
     }
@@ -105,7 +108,7 @@ class EventSubcollectionRulesTest {
     documents.forEach { (subcollection, document) ->
       assertTrue(document.get(Source.SERVER).await().exists())
       assertTrue(document.id in ids(subcollection))
-      assertDenied { document.update("name", "changed").await() }
+      assertDenied { document.update(textField(subcollection), "changed").await() }
       assertDenied { document.delete().await() }
       assertDenied { newDocument(subcollection).set(content(subcollection, "mine")).await() }
     }
@@ -119,7 +122,7 @@ class EventSubcollectionRulesTest {
     documents.forEach { (subcollection, document) ->
       assertDenied { document.get(Source.SERVER).await() }
       assertDenied { collection(subcollection).get(Source.SERVER).await() }
-      assertDenied { document.update("name", "changed").await() }
+      assertDenied { document.update(textField(subcollection), "changed").await() }
       assertDenied { newDocument(subcollection).set(content(subcollection, "mine")).await() }
     }
   }
@@ -299,8 +302,16 @@ class EventSubcollectionRulesTest {
    * completed, so a denial in these tests comes from who writes, not from a missing field.
    */
   private fun content(subcollection: String, name: String): Map<String, Any> =
-      if (subcollection == "missions") mapOf("name" to name, "completed" to false)
-      else mapOf("name" to name)
+      if (subcollection == "missions") mapOf(textField(subcollection) to name, "completed" to false)
+      else mapOf(textField(subcollection) to name)
+
+  /** A string field of [subcollection]'s schema, which the rules let the organizer write. */
+  private fun textField(subcollection: String): String =
+      when (subcollection) {
+        "missions" -> "title"
+        "shifts" -> "teamId"
+        else -> "name"
+      }
 
   private fun collection(subcollection: String, eventId: String = this.eventId) =
       db.collection(EventSchema.COLLECTION).document(eventId).collection(subcollection)

@@ -447,7 +447,13 @@ class FirestoreMissionRepositoryTest {
     val eventId = newEvent()
     val document = missionsOf(eventId).document()
     createdDocuments += document
-    step("write") { document.set(body(richMission(eventId).toFirestoreMap())).await() }
+    // As an admin: the rules refuse the malformed documents these tests store.
+    step("write") {
+      FirestoreEmulatorAdmin.createDocument(
+          document.path,
+          body(richMission(eventId).toFirestoreMap()),
+      )
+    }
     return eventId to document.id
   }
 

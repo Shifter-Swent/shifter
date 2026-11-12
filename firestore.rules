@@ -104,6 +104,31 @@ service cloud.firestore {
         && data.get('announcement', false) is bool;
     }
 
+    // The fields of teams, shifts and missions are checked when the organizer or a manager writes
+    // them: no field outside the schema, and each field that is there with the type the app
+    // writes. A field may be absent, as the mappers already fail loudly on a missing required one.
+    // These helpers are shared by the three blocks.
+    function isAbsentOrString(data, field) {
+      return !(field in data) || data[field] is string;
+    }
+
+    function isAbsentNullOrString(data, field) {
+      return !(field in data) || data[field] == null || data[field] is string;
+    }
+
+    function isAbsentOrList(data, field) {
+      return !(field in data) || data[field] is list;
+    }
+
+    function isAbsentOrTimestamp(data, field) {
+      return !(field in data) || data[field] is timestamp;
+    }
+
+    // A time slot ends after it starts, when both bounds are there.
+    function endsAfterStart(data) {
+      return !('startAt' in data) || !('endAt' in data) || data.startAt < data.endAt;
+    }
+
     match /events/{eventId} {
       allow read: if signedIn();
       allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
@@ -217,10 +242,27 @@ service cloud.firestore {
           return managerId == null || !(memberIds is list) || !(managerId in memberIds);
         }
 
+        // The fields of TeamSchema. volunteersNeeded is null until the organizer sets a need.
+        // checkInZone is tolerated: teams written before #164 still hold it, and refusing it would
+        // keep the organizer from ever updating them.
+        function isValidTeam() {
+          let data = request.resource.data;
+          return data.keys().hasOnly(['name', 'description', 'icon', 'managerId', 'memberIds',
+                                      'volunteersNeeded', 'createdAt', 'checkInZone'])
+            && isAbsentOrString(data, 'name')
+            && isAbsentOrString(data, 'description')
+            && isAbsentOrString(data, 'icon')
+            && isAbsentNullOrString(data, 'managerId')
+            && isAbsentOrList(data, 'memberIds')
+            && (!('volunteersNeeded' in data) || data.volunteersNeeded == null
+                || data.volunteersNeeded is int)
+            && isAbsentOrTimestamp(data, 'createdAt');
+        }
+
         // A volunteer picks their team before applying, so before being a participant: any
         // signed-in user lists an event's teams. memberIds holds uids only (trade-off of #170).
         allow read: if signedIn();
-        allow create, update: if isOrganizer(eventId) && managerIsNotAMember();
+        allow create, update: if isOrganizer(eventId) && managerIsNotAMember() && isValidTeam();
         allow delete: if isOrganizer(eventId);
         allow update: if isWithdrawal();
 
@@ -463,8 +505,21 @@ service cloud.firestore {
       }
 
       match /shifts/{shiftId} {
+        // The fields of ShiftSchema.
+        function isValidShift() {
+          let data = request.resource.data;
+          return data.keys().hasOnly(['teamId', 'assigneeIds', 'startAt', 'endAt', 'createdAt'])
+            && isAbsentOrString(data, 'teamId')
+            && isAbsentOrList(data, 'assigneeIds')
+            && isAbsentOrTimestamp(data, 'startAt')
+            && isAbsentOrTimestamp(data, 'endAt')
+            && isAbsentOrTimestamp(data, 'createdAt')
+            && endsAfterStart(data);
+        }
+
         allow read: if canReadEventContent(eventId);
-        allow write: if isOrganizer(eventId);
+        allow create, update: if isOrganizer(eventId) && isValidShift();
+        allow delete: if isOrganizer(eventId);
       }
 
       // The organizer writes every mission; a team's manager writes the missions of their team.
@@ -500,6 +555,37 @@ service cloud.firestore {
           return request.resource.data.get('teamId', null);
         }
 
+        // A location is whole: an address and coordinates in range, as the mapper reads it.
+        function isValidLocation(location) {
+          return location is map
+            && location.keys().hasOnly(['address', 'latitude', 'longitude'])
+            && location.address is string
+            && location.latitude is number
+            && location.longitude is number
+            && location.latitude >= -90 && location.latitude <= 90
+            && location.longitude >= -180 && location.longitude <= 180;
+        }
+
+        // The fields of MissionSchema. A mission of no team has a null teamId, and one without a
+        // place a null location. completed is checked by the create and update rules themselves.
+        function isValidMission() {
+          let data = request.resource.data;
+          return data.keys().hasOnly(['title', 'description', 'teamId', 'volunteersNeeded',
+                                      'startAt', 'endAt', 'location', 'assigneeIds', 'createdAt',
+                                      'completed'])
+            && isAbsentOrString(data, 'title')
+            && isAbsentOrString(data, 'description')
+            && isAbsentNullOrString(data, 'teamId')
+            && (!('volunteersNeeded' in data)
+                || (data.volunteersNeeded is int && data.volunteersNeeded >= 1))
+            && isAbsentOrTimestamp(data, 'startAt')
+            && isAbsentOrTimestamp(data, 'endAt')
+            && (!('location' in data) || data.location == null || isValidLocation(data.location))
+            && isAbsentOrList(data, 'assigneeIds')
+            && isAbsentOrTimestamp(data, 'createdAt')
+            && endsAfterStart(data);
+        }
+
         // A mission closed by hand stays closed.
         function keepsCompletion() {
           return request.resource.data.completed is bool
@@ -508,11 +594,13 @@ service cloud.firestore {
 
         allow read: if canReadEventContent(eventId);
         allow create: if request.resource.data.completed is bool
+          && isValidMission()
           && (isOrganizer(eventId)
               || (managesTeam(teamAfter()) && validAssignees(teamAfter(), [])));
         // Checking the team before and after keeps a manager from moving a mission to a team they
         // do not manage.
         allow update: if keepsCompletion()
+          && isValidMission()
           && (isOrganizer(eventId)
               || (managesTeam(teamBefore())
                   && managesTeam(teamAfter())
