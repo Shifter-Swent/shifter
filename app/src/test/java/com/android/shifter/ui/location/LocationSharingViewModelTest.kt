@@ -11,12 +11,15 @@ import com.swent.shifter.model.location.LiveLocationSharingState
 import com.swent.shifter.model.location.LiveLocationTarget
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -28,10 +31,13 @@ class LocationSharingViewModelTest {
 
   private val events = FakeEventRepository().apply { events += event(EVENT, "City Marathon") }
   private var eventReads = 0
+  /** When set, every event read waits for it, so a test can act while a load is running. */
+  private var network: CompletableDeferred<Unit>? = null
   private val countingEvents =
       object : EventRepository by events {
         override suspend fun getEvent(eventId: String): Event? {
           eventReads++
+          network?.await()
           return events.getEvent(eventId)
         }
       }
@@ -88,7 +94,7 @@ class LocationSharingViewModelTest {
   }
 
   @Test
-  fun loadLabels_afterAFailedRead_readsAgainAtTheNextOpening() {
+  fun loadLabels_afterAFailedRead_readsAgainAtTheNextOpening() = runTest {
     viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
     events.failure = EventRepositoryException.Unavailable()
 
@@ -103,6 +109,54 @@ class LocationSharingViewModelTest {
         SharingTargetLabel("City Marathon", "Hydration", "Alex"),
         viewModel.labels.value[HYDRATION],
     )
+  }
+
+  @Test
+  fun loadLabels_afterAFailedTeamRead_readsAgainAtTheNextOpening() = runTest {
+    viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
+    teams.failure = TeamRepositoryException.Unavailable()
+
+    viewModel.loadLabels()
+    assertEquals(emptyMap<LiveLocationTarget, SharingTargetLabel>(), viewModel.labels.value)
+
+    teams.failure = null
+    viewModel.loadLabels()
+
+    assertEquals(
+        SharingTargetLabel("City Marathon", "Hydration", "Alex"),
+        viewModel.labels.value[HYDRATION],
+    )
+  }
+
+  @Test
+  fun loadLabels_whileALoadIsRunning_doesNotStartAnother() {
+    network = CompletableDeferred()
+    viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
+
+    viewModel.loadLabels()
+    // The sheet is opened again before the names arrive.
+    viewModel.loadLabels()
+    network?.complete(Unit)
+
+    assertEquals(1, eventReads)
+    assertEquals(
+        SharingTargetLabel("City Marathon", "Hydration", "Alex"),
+        viewModel.labels.value[HYDRATION],
+    )
+  }
+
+  @Test
+  fun loadLabels_whenThePublisherStopsDuringTheLoad_keepsNoName() {
+    network = CompletableDeferred()
+    viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
+    viewModel.loadLabels()
+
+    // The app goes to the background before the names arrive.
+    viewModel.onSharingStates(emptyMap())
+    network?.complete(Unit)
+
+    // Names read before the stop could be outdated: none is kept, so they are read again later.
+    assertEquals(emptyMap<LiveLocationTarget, SharingTargetLabel>(), viewModel.labels.value)
   }
 
   @Test
