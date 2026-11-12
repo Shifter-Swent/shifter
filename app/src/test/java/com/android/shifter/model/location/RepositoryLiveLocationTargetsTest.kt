@@ -54,7 +54,7 @@ class RepositoryLiveLocationTargetsTest {
     team(EVENT, TEAM, members = listOf(VOLUNTEER))
     accepted(EVENT, TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), targets.eligible())
+    assertEquals(listOf(target(EVENT, TEAM)), targets.eligible())
   }
 
   @Test
@@ -63,7 +63,10 @@ class RepositoryLiveLocationTargetsTest {
     team(EVENT, TEAM, members = listOf(VOLUNTEER))
     accepted(EVENT, TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), targets.eligible())
+    assertEquals(
+        listOf(target(EVENT, TEAM, startAt = NOW, endAt = NOW + Duration.ofHours(4))),
+        targets.eligible(),
+    )
   }
 
   @Test
@@ -72,7 +75,10 @@ class RepositoryLiveLocationTargetsTest {
     team(EVENT, TEAM, members = listOf(VOLUNTEER))
     accepted(EVENT, TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), targets.eligible())
+    assertEquals(
+        listOf(target(EVENT, TEAM, startAt = NOW - Duration.ofHours(4), endAt = NOW)),
+        targets.eligible(),
+    )
   }
 
   @Test
@@ -130,7 +136,7 @@ class RepositoryLiveLocationTargetsTest {
     team(EVENT, OTHER_TEAM, members = listOf(VOLUNTEER))
     accepted(EVENT, OTHER_TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, OTHER_TEAM)), targets.eligible())
+    assertEquals(listOf(target(EVENT, OTHER_TEAM)), targets.eligible())
   }
 
   @Test
@@ -158,7 +164,7 @@ class RepositoryLiveLocationTargetsTest {
     team(EVENT, TEAM, members = listOf(VOLUNTEER))
     accepted(EVENT, TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), targets.eligible())
+    assertEquals(listOf(target(EVENT, TEAM)), targets.eligible())
   }
 
   @Test
@@ -191,9 +197,9 @@ class RepositoryLiveLocationTargetsTest {
 
     assertEquals(
         setOf(
-            LiveLocationTarget(EVENT, TEAM),
-            LiveLocationTarget(EVENT, OTHER_TEAM),
-            LiveLocationTarget(OTHER_EVENT, TEAM),
+            target(EVENT, TEAM),
+            target(EVENT, OTHER_TEAM),
+            target(OTHER_EVENT, TEAM),
         ),
         eligible.toSet(),
     )
@@ -214,7 +220,7 @@ class RepositoryLiveLocationTargetsTest {
     val resolver =
         RepositoryLiveLocationTargets(events, requests, repeatingTeams, { VOLUNTEER }, { clock })
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), resolver.eligible())
+    assertEquals(listOf(target(EVENT, TEAM)), resolver.eligible())
   }
 
   @Test
@@ -226,7 +232,7 @@ class RepositoryLiveLocationTargetsTest {
     accepted(EVENT, TEAM)
     accepted(OTHER_EVENT, OTHER_TEAM)
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, TEAM)), targets.eligible())
+    assertEquals(listOf(target(EVENT, TEAM)), targets.eligible())
   }
 
   @Test
@@ -258,7 +264,7 @@ class RepositoryLiveLocationTargetsTest {
         ),
     )
 
-    assertEquals(listOf(LiveLocationTarget(EVENT, OTHER_TEAM)), targets.eligible())
+    assertEquals(listOf(target(EVENT, OTHER_TEAM)), targets.eligible())
   }
 
   @Test
@@ -277,7 +283,7 @@ class RepositoryLiveLocationTargetsTest {
     val failing =
         RepositoryLiveLocationTargets(unreadableEvent, requests, teams, { VOLUNTEER }, { clock })
 
-    assertEquals(listOf(LiveLocationTarget(OTHER_EVENT, OTHER_TEAM)), failing.eligible())
+    assertEquals(listOf(target(OTHER_EVENT, OTHER_TEAM)), failing.eligible())
   }
 
   @Test
@@ -297,7 +303,7 @@ class RepositoryLiveLocationTargetsTest {
     val failing =
         RepositoryLiveLocationTargets(events, requests, unreadableTeams, { VOLUNTEER }, { clock })
 
-    assertEquals(listOf(LiveLocationTarget(OTHER_EVENT, OTHER_TEAM)), failing.eligible())
+    assertEquals(listOf(target(OTHER_EVENT, OTHER_TEAM)), failing.eligible())
   }
 
   @Test
@@ -323,6 +329,14 @@ class RepositoryLiveLocationTargetsTest {
       runBlocking { targets.eligible() }
     }
   }
+
+  /** The expected target for [eventId]/[teamId], carrying the event's period like [eligible]. */
+  private fun target(
+      eventId: String,
+      teamId: String,
+      startAt: Instant = NOW - Duration.ofHours(1),
+      endAt: Instant = NOW + Duration.ofHours(3),
+  ) = LiveLocationTarget(eventId, teamId, startAt, endAt)
 
   /** Stores an event running at [NOW] unless another period is given. */
   private suspend fun event(

@@ -15,11 +15,22 @@ import kotlinx.coroutines.coroutineScope
 
 /**
  * A team of an event the signed-in volunteer may share their position with, as
- * [LiveLocationRepository] addresses it.
+ * [LiveLocationRepository] addresses it, together with the event's period.
  *
  * Whose position it is never appears: a volunteer can only ever write their own.
+ *
+ * [startAt] and [endAt] are the event's period. A session for this target publishes only within it
+ * and stops starting new work at [endAt], rather than waiting for the coordinator's next
+ * eligibility refresh; see [LiveLocationSessions.of], which also covers the one write Firestore may
+ * still send after the end. They are part of the target's identity, so an event whose period is
+ * edited makes a different target and the coordinator restarts its session on the new window.
  */
-data class LiveLocationTarget(val eventId: String, val teamId: String)
+data class LiveLocationTarget(
+    val eventId: String,
+    val teamId: String,
+    val startAt: Instant,
+    val endAt: Instant,
+)
 
 /**
  * Where the signed-in volunteer may share their position, which is half of the sharing: it reads
@@ -132,7 +143,7 @@ class RepositoryLiveLocationTargets(
             teamRepository
                 .getTeamsOfMember(eventId, userId)
                 .filter { it.managerId != userId }
-                .map { LiveLocationTarget(eventId, it.id) }
+                .map { LiveLocationTarget(eventId, it.id, event.startAt, event.endAt) }
       } catch (_: EventRepositoryException) {
         emptyList()
       } catch (_: TeamRepositoryException) {

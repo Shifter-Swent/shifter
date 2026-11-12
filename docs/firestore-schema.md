@@ -139,6 +139,36 @@ The last position a volunteer shared with their manager, while their `locationSh
 on and the event is running. The document id is their uid, so a volunteer shares one position per
 team, and overwriting it is the only way to update it.
 
+At `endAt` the client stops starting new work: it collects no more GPS and starts no new write,
+without waiting for the coordinator's next eligibility refresh; see `LiveLocationSessions.of`. The
+end of the event changes the publishing lifecycle only, and leaves the read and write margins of
+the rules as they are. What then becomes of a volunteer's position is five things, kept
+deliberately separate:
+
+- **The client stops initiating writes at `endAt`.** No GPS is collected and no new `shareLocation`
+  is started after it, independently for each concurrent event.
+- **A write already queued offline may still reach Firestore after `endAt`.** `shareLocation` hands
+  the write to Firestore, which offline keeps it in its local queue and sends it on reconnect even
+  once the publishing coroutine is cancelled. The hour the rules keep accepting writes for is the
+  backstop that lets that last queued write land: the session bounds what the client *starts*, not
+  what the server eventually receives.
+- **The stored position stays readable until `endAt` plus one hour, not at `endAt` itself.** The
+  end of the event deletes nothing, and the rules' read margin (`duringEvent`, an hour on each
+  side) lets the team's manager and the event's organizer still read it during the wind-down.
+  `MapViewModel.READABLE_AFTER_END` mirrors it: the map follows the positions for that same hour
+  after the end.
+- **After `endAt` plus one hour, nobody reads it.** The rules deny every `get` and `list` past that
+  point, and the map stops following the positions at `READABLE_AFTER_END`, without waiting for a
+  refusal that may never come. Only a `delete` (sharing turned off, leaving the team, the event
+  deleted) removes a position earlier.
+- **At any time, the manager's map hides a position older than an hour** by its `measuredAt`
+  (`MapViewModel.HIDDEN_AFTER`), having greyed it out once it was older than ten minutes
+  (`STALE_AFTER`); it shows again with the volunteer's next position. That is a reader-side
+  staleness bound, independent of the end of the event: a position measured just before `endAt`
+  is shown as usual for ten minutes, then greyed out, then hidden once it is an hour old, which
+  is also when the map stops following the positions; one measured an hour before the end is
+  hidden while the event is still running.
+
 | Field | Type | Notes |
 |---|---|---|
 | `position` | map | `latitude` (number, -90 to 90) and `longitude` (number, -180 to 180), both required and nothing else |
@@ -368,7 +398,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   by reading the event's `organizerId`, which a deleted event no longer has. Its
   `joinCodes/{code}` is in the same case: its delete is granted by reading the event, so the code
   has to be deleted before the event, or in the same batch, or it stays reserved for good.
-- **A shared position outlives the consent, until the event's period ends.** Listing
+- **A shared position outlives the consent, until an hour after the event ends.** Listing
   `liveLocations` is allowed by the path alone, because a condition on each document would make the
   manager's query of the collection fail as soon as one volunteer no longer satisfied it (rules are
   not query filters). Turning `locationSharingEnabled` off, or leaving the team, therefore stops
@@ -396,11 +426,11 @@ can only be deleted once its volunteer is no longer a participant, and never onc
       device that is online keeps publishing until the server receives the change.
     - **A team the device never loaded:** offline, the teams come from the cache, so a team never
       opened on this device is missed. The publisher removes its position at its next session in
-      that team, since it removes it whenever the consent is off (#377). Sessions only run while
-      the event is ongoing: if none comes before the end, the position stays stored but nobody can
-      read it once the event's period is over.
+      that team, since it removes it whenever the consent is off. Sessions run only within
+      the event's period and stop at `endAt`: if none comes before the end, the position stays
+      stored and readable until an hour after `endAt`, then nobody can read it.
     - **Uninstalled, or never reconnected:** the batch never leaves the device, and the position
-      stays readable until the event's period ends.
+      stays readable until an hour after `endAt`.
   - **Leaving the team:** done. Every path that takes a volunteer out of a team's `memberIds`
     deletes their position in the same commit, so the manager stops seeing it at once:
 
@@ -426,7 +456,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
     - **Not enforced, and not enforceable by rules:** an organizer writing `memberIds` directly,
       rather than through these repositories, removes a volunteer without deleting their position.
-      It then stays readable until the volunteer's app deletes it or the event's period ends,
+      It then stays readable until the volunteer's app deletes it or an hour after `endAt`,
       exactly as before. This is the one that matters, and only a backend mechanism closes it.
     - **Not enforced, but enforceable:** the permission lets the organizer delete the position of a
       volunteer who is still in the team, because it does not check `memberIds` after the commit.

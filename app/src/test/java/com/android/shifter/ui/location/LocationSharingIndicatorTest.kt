@@ -23,6 +23,7 @@ import com.swent.shifter.model.location.LiveLocationSharingState.WAITING
 import com.swent.shifter.model.location.LiveLocationTarget
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -189,7 +190,10 @@ class LocationSharingIndicatorTest {
   }
 
   private companion object {
-    val HYDRATION = LiveLocationTarget("marathon", "hydration")
-    val FINISH = LiveLocationTarget("marathon", "finish")
+    /** The event's period, which the targets carry and the indicator never reads. */
+    val START: Instant = Instant.parse("2026-06-14T09:00:00Z")
+    val END: Instant = START.plusSeconds(3600)
+    val HYDRATION = LiveLocationTarget("marathon", "hydration", START, END)
+    val FINISH = LiveLocationTarget("marathon", "finish", START, END)
   }
 }

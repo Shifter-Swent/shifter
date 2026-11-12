@@ -38,10 +38,53 @@ fun interface LiveLocationSessions {
   )
 
   companion object {
-    /** The sessions [publisher] runs, which is what production shares positions with. */
-    fun of(publisher: LiveLocationPublisher) =
+    /**
+     * The sessions [publisher] runs, which is what production shares positions with, each bounded
+     * to its target's event period.
+     *
+     * A session collects no GPS before [LiveLocationTarget.startAt], and at
+     * [LiveLocationTarget.endAt] it stops starting new work, even while the app stays open: no GPS
+     * is collected and no write is started after it. Cancelling the publish stops the GPS
+     * collection with it. This does not wait for the coordinator's next refresh. Each target
+     * carries its own period, so concurrent events stop independently, and a target already past
+     * its end starts nothing.
+     *
+     * **What it cannot stop is a write Firestore already holds.** `shareLocation` hands the write
+     * to Firestore, which offline keeps it in its local queue and sends it on reconnect even once
+     * the coroutine is cancelled (see [FirestoreLiveLocationRepository]). So a position measured
+     * before [LiveLocationTarget.endAt] may still reach the backend after it, and the hour
+     * `firestore.rules` keep accepting writes for is the backstop that lets that last queued write
+     * land. This bound keeps the client from *starting* anything past the end; it does not recall
+     * what Firestore already queued.
+     *
+     * Stopping publication is all this does: the position already stored stays, as after any
+     * cancellation, to be hidden by the manager's map once it is older than an hour and read by
+     * nobody once an hour has passed after [LiveLocationTarget.endAt], the read margin
+     * `firestore.rules` allow.
+     *
+     * The states the publisher reports go through `onState` unchanged, for the sharing indicator.
+     * Nothing is reported before the event starts, and a session ending at
+     * [LiveLocationTarget.endAt] reports nothing more: it returns, and the coordinator then drops
+     * the state it had reported, so the indicator shows nothing for an event that is over. The
+     * bounds are measured once, when the session starts, against [now] and then waited out on the
+     * coroutine clock, so a device clock set forwards or back meanwhile moves the end by as much.
+     *
+     * @param now the clock bounding the session, replaceable in tests.
+     */
+    fun of(publisher: LiveLocationPublisher, now: () -> Instant = Instant::now) =
         LiveLocationSessions { target, sharingEnabled, onState ->
-          publisher.publish(target.eventId, target.teamId, sharingEnabled, onState)
+          // Eligibility already keeps a session from starting before the event; one that starts
+          // early for any reason still waits out the time left until it begins.
+          val untilStart = Duration.between(now(), target.startAt)
+          if (untilStart > Duration.ZERO) delay(untilStart.toKotlinDuration())
+          // Run the publish for what is left of the event and cancel it at the end, which stops the
+          // GPS collection with it. Already over means nothing is published.
+          val untilEnd = Duration.between(now(), target.endAt)
+          if (untilEnd > Duration.ZERO) {
+            withTimeoutOrNull(untilEnd.toKotlinDuration()) {
+              publisher.publish(target.eventId, target.teamId, sharingEnabled, onState)
+            }
+          }
         }
   }
 }
@@ -55,12 +98,17 @@ fun interface LiveLocationSessions {
  *
  * **Eligibility is polled**, every [refreshInterval], because [LiveLocationTargets.eligible] is a
  * snapshot and no repository offers a reactive query for it. So a target that stops being eligible
- * - its event ended, the volunteer left the team or became its manager - keeps publishing until the
- *   next refresh notices, and `firestore.rules` accept those writes for an hour after the event
- *   ends rather than refusing them. A session is cancelled when a successful refresh no longer
- *   lists its target: normally up to about one [refreshInterval] after eligibility is lost, later
- *   when a refresh is slow, fails or times out (see [run]). Ending a session exactly with its event
- *   is a separate concern (#406).
+ * - the volunteer left the team or became its manager - keeps publishing until the next refresh
+ *   notices, and `firestore.rules` accept those writes for an hour after the event ends rather than
+ *   refusing them. A session is cancelled when a successful refresh no longer lists its target:
+ *   normally up to about one [refreshInterval] after eligibility is lost, later when a refresh is
+ *   slow, fails or times out (see [run]). **An event ending is the exception**: each session is
+ *   bounded to its target's period and stops at `endAt` without waiting for a refresh; see
+ *   [LiveLocationSessions.of]. A period *edited* mid-event is a change of eligibility like the
+ *   others, seen only at the next refresh: the new period makes a new target, so the session is
+ *   restarted on it, and until then the session holds the period it began with. Shortening an event
+ *   therefore keeps publishing until that refresh, and extending one may leave a gap of up to a
+ *   refresh between the old end and the restart.
  *
  * @param now the clock measuring staleness, replaceable in tests.
  */

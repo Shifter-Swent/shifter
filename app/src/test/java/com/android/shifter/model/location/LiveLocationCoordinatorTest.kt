@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
@@ -153,6 +154,21 @@ class LiveLocationCoordinatorTest {
 
     assertEquals(setOf(BAR, STAGE), sessions.active)
     assertEquals(listOf(BAR, STAGE, BAR), sessions.started)
+  }
+
+  @Test
+  fun run_whenATargetsEventPeriodChanges_restartsItsSessionOnTheNewPeriod() = runTest {
+    // The period is part of the target's identity, so an organizer shortening or extending
+    // the event is a new target: the session bounded to the old end is cancelled and one bounded to
+    // the new end starts, instead of the old bound standing. A refresh is how the change is seen.
+    eligible = listOf(BAR)
+    start()
+
+    eligible = listOf(BAR_SHORTENED)
+    elapse(INTERVAL)
+
+    assertEquals(setOf(BAR_SHORTENED), sessions.active)
+    assertEquals(listOf(BAR, BAR_SHORTENED), sessions.started)
   }
 
   @Test
@@ -553,6 +569,48 @@ class LiveLocationCoordinatorTest {
     assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
   }
 
+  /**
+   * Through the real sessions of [LiveLocationSessions.of]: a session ending with its event takes
+   * its state with it the moment the event ends, between two refreshes, so the indicator shows
+   * nothing for an event that is over. A session the next refresh starts for a target already past
+   * its end publishes nothing and reports nothing either.
+   */
+  @Test
+  fun sharingStates_whenASessionEndsWithItsEvent_forgetsItsStateWithoutARefresh() = runTest {
+    val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
+    val publisher = LiveLocationPublisher(FakeLocationProvider(), repository, now = { clock })
+    val bounded =
+        LiveLocationCoordinator(
+            targets,
+            LiveLocationSessions.of(publisher, now = { clock }),
+            INTERVAL,
+            STALENESS,
+            now = { clock },
+        )
+    eligible = listOf(BAR_ENDING_SOON)
+    backgroundScope.launch(CoroutineExceptionHandler { _, _ -> }) {
+      bounded.run(consent, refreshes)
+    }
+    runCurrent()
+    assertEquals(mapOf(BAR_ENDING_SOON to WAITING), bounded.sharingStates.first())
+
+    // Just past the end, which falls between the refresh before and the one after.
+    elapse(Duration.between(START, BAR_ENDING_SOON.endAt).plusMillis(1))
+
+    assertEquals(
+        emptyMap<LiveLocationTarget, LiveLocationSharingState>(),
+        bounded.sharingStates.first(),
+    )
+
+    // The resolver here still lists the target, so the next refresh starts a session for it: over
+    // already, it reports nothing.
+    elapse(INTERVAL)
+    assertEquals(
+        emptyMap<LiveLocationTarget, LiveLocationSharingState>(),
+        bounded.sharingStates.first(),
+    )
+  }
+
   @Test
   fun of_addressesTheSessionWithTheTargetsEventAndTeamAndPassesOnItsStates() =
       runTest(UnconfinedTestDispatcher()) {
@@ -561,7 +619,8 @@ class LiveLocationCoordinatorTest {
         val publisher = LiveLocationPublisher(provider, repository, now = { clock })
         val reported = mutableListOf<LiveLocationSharingState>()
         backgroundScope.launch {
-          LiveLocationSessions.of(publisher).publish(BAR, MutableStateFlow(true), reported::add)
+          LiveLocationSessions.of(publisher, now = { clock })
+              .publish(BAR, MutableStateFlow(true), reported::add)
         }
 
         provider.emit(GENEVA)
@@ -699,8 +758,20 @@ class LiveLocationCoordinatorTest {
     const val VOLUNTEER = "volunteer"
     val GENEVA = GeoPosition(46.2044, 6.1432)
 
-    val BAR = LiveLocationTarget("event", "team-bar")
-    val STAGE = LiveLocationTarget("event", "team-stage")
-    val OTHER_EVENT_BAR = LiveLocationTarget("other-event", "team-bar")
+    // The period is only carried; this coordinator does not read it (the session does), so a wide
+    // window around the test clock keeps every target running for the eligibility logic under test.
+    val START_AT: Instant = START - Duration.ofHours(1)
+    val END_AT: Instant = START + Duration.ofHours(4)
+    val BAR = LiveLocationTarget("event", "team-bar", START_AT, END_AT)
+    val STAGE = LiveLocationTarget("event", "team-stage", START_AT, END_AT)
+    val OTHER_EVENT_BAR = LiveLocationTarget("other-event", "team-bar", START_AT, END_AT)
+
+    /** [BAR]'s pair with the event's end brought forward, as an organizer shortening it would. */
+    val BAR_SHORTENED =
+        LiveLocationTarget("event", "team-bar", START_AT, START + Duration.ofHours(1))
+
+    /** [BAR] with its event ending halfway between the second and the third refresh. */
+    val BAR_ENDING_SOON =
+        LiveLocationTarget("event", "team-bar", START_AT, START + INTERVAL + INTERVAL.dividedBy(2))
   }
 }
