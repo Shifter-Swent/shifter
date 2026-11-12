@@ -7,20 +7,26 @@ import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset.UTC
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -58,10 +64,13 @@ class AutoCheckInViewModelTest {
     get() = viewModel.uiState.value
 
   /** Opens the screen: the ViewModel only works while its state is collected. */
-  private fun TestScope.open(repository: CheckInRepository = checkIns) {
+  private fun TestScope.open(
+      repository: CheckInRepository = checkIns,
+      missionRepository: MissionRepository = missions,
+  ) {
     viewModel =
         AutoCheckInViewModel(
-            missions,
+            missionRepository,
             repository,
             location,
             { userId },
@@ -90,6 +99,7 @@ class AutoCheckInViewModelTest {
       at: MissionLocation? = PLACE,
       endsIn: Duration = Duration.ofHours(1),
       startAt: Instant = NOW,
+      assignees: List<String> = listOf(USER),
   ): Mission =
       missions.createMission(
           Mission(
@@ -100,7 +110,7 @@ class AutoCheckInViewModelTest {
               startAt = startAt,
               endAt = startAt + endsIn,
               location = at,
-              assigneeIds = listOf(USER),
+              assigneeIds = assignees,
               createdAt = NOW,
           )
       )
@@ -202,6 +212,58 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
+  fun positions_stopWhenTheLastWindowEnds() = runTest {
+    val windowEnd = addMission(endsIn = Duration.ofMinutes(30)).checkInWindow().endInclusive
+    open()
+    assertEquals(1, location.activeCollectors)
+
+    // The screen stays open and the assignments do not change: only the time passes.
+    val untilTheEnd = Duration.between(clock, windowEnd).toMillis()
+    clock = windowEnd.plusSeconds(1)
+    advanceTimeBy(untilTheEnd + 2)
+
+    assertEquals(0, location.activeCollectors)
+  }
+
+  /**
+   * The position read for a mission whose window is over says nothing about where the volunteer is
+   * when the next one is assigned, maybe hours later: only a new position may check them in.
+   */
+  @Test
+  fun missionAssignedAfterThePositionsStopped_waitsForANewPosition() = runTest {
+    val windowEnd = addMission("Bar", endsIn = Duration.ofMinutes(30)).checkInWindow().endInclusive
+    // Bar is never eligible, so the position below checks in to nothing and stays the last one.
+    isEligible = { mission, _, at -> mission.title == "Stage" && at == NEAR }
+    open()
+    moveTo(NEAR)
+    clock = windowEnd.plusSeconds(1)
+    advanceTimeBy(Duration.between(NOW, clock).toMillis() + 1)
+    assertEquals(0, location.activeCollectors)
+
+    addMission("Stage", eventId = "other-event")
+    runCurrent()
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    moveTo(NEAR)
+    assertEquals("Stage", state.checkedIn?.missionTitle)
+  }
+
+  @Test
+  fun missionClosedByHand_stopsThePositionsAndIsNotTried() = runTest {
+    val mission = addMission()
+    isEligible = { _, _, _ -> true }
+    open()
+    assertEquals(1, location.activeCollectors)
+
+    missions.markCompleted(EVENT, mission.id)
+    runCurrent()
+    moveTo(NEAR)
+
+    assertEquals(0, location.activeCollectors)
+    assertTrue(checkIns.checkIns.isEmpty())
+  }
+
+  @Test
   fun notAllowed_showsTheErrorAndDoesNotRetry() = runTest {
     addMission()
     open()
@@ -259,6 +321,123 @@ class AutoCheckInViewModelTest {
     missions.failure = MissionRepositoryException.Unavailable()
 
     open()
+
+    assertEquals(AutoCheckInError.OFFLINE, state.error)
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun missionAssignedAfterOpening_isCheckedIn() = runTest {
+    open()
+
+    addMission()
+    runCurrent()
+    moveTo(NEAR)
+
+    assertEquals(1, checkIns.checkIns.size)
+    assertEquals(AutoCheckedIn("Bar", "18:02"), state.checkedIn)
+  }
+
+  @Test
+  fun noMissionAtOpening_readsNoPositionUntilOneIsAssigned() = runTest {
+    open()
+    assertEquals(0, location.activeCollectors)
+
+    addMission()
+    runCurrent()
+
+    assertEquals(1, location.activeCollectors)
+  }
+
+  @Test
+  fun missionOfANewEventAlreadyCheckedIn_isNotTriedAgain() = runTest {
+    addMission("Bar")
+    val stage = addMission("Stage", eventId = "other-event", assignees = emptyList())
+    checkIns.add(CheckIn("other-event", stage.id, USER, NOW, CheckInMethod.MANAGER, "manager"))
+    val counting = CountsCalls(checkIns)
+    open(counting)
+
+    missions.updateAssignees("other-event", stage.id, listOf(USER))
+    runCurrent()
+    moveTo(NEAR)
+
+    // Only Bar is tried: the check-ins of the new event were read before the position.
+    assertEquals(1, counting.calls)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
+  fun missionOfANewEvent_waitsForItsCheckIns() = runTest {
+    addMission("Bar")
+    val counting = CountsCalls(SilentEvent(checkIns, "other-event"))
+    open(counting)
+
+    addMission("Stage", eventId = "other-event")
+    runCurrent()
+    moveTo(NEAR)
+
+    // Stage could already be checked in to: it is not tried before its check-ins are known.
+    assertEquals(1, counting.calls)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
+  fun positionBeforeTheCheckInsAreKnown_checksInWhenTheyArrive() = runTest {
+    addMission()
+    val late = LateCheckIns(checkIns)
+    open(late)
+
+    moveTo(NEAR)
+    assertTrue(checkIns.checkIns.isEmpty())
+    late.arrive()
+    runCurrent()
+
+    // Checked in without waiting for the next position.
+    assertEquals(1, checkIns.checkIns.size)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
+  fun missionRefusedThenAssignedAgain_isTriedAgain() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+    moveTo(NEAR)
+    checkIns.failure = null
+
+    // Unassigned by mistake, then assigned again by the manager.
+    missions.updateAssignees(EVENT, mission.id, emptyList())
+    runCurrent()
+    missions.updateAssignees(EVENT, mission.id, listOf(USER))
+    runCurrent()
+    moveTo(NEAR)
+
+    assertEquals(1, checkIns.checkIns.size)
+    assertEquals("Bar", state.checkedIn?.missionTitle)
+  }
+
+  @Test
+  fun missionUnassignedWhileOpen_isNotTried() = runTest {
+    val mission = addMission()
+    open()
+
+    missions.updateAssignees(EVENT, mission.id, emptyList())
+    runCurrent()
+    moveTo(NEAR)
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun missionsUpdateFailure_showsTheError() = runTest {
+    addMission()
+    open()
+    assertEquals(1, location.activeCollectors)
+
+    // The listener closes while the screen is open, as Firestore does mid-session.
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
 
     assertEquals(AutoCheckInError.OFFLINE, state.error)
     assertEquals(0, location.activeCollectors)
@@ -328,6 +507,30 @@ class AutoCheckInViewModelTest {
     ) {
       calls++
       checkIns.checkIn(eventId, missionId, userId, method)
+    }
+  }
+
+  /** Delegates to [checkIns], except that the check-ins of [eventId] are never emitted. */
+  private class SilentEvent(checkIns: CheckInRepository, private val eventId: String) :
+      CheckInRepository by checkIns {
+    private val delegate = checkIns
+
+    override fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>> =
+        if (eventId == this.eventId) flow { awaitCancellation() }
+        else delegate.observeMyCheckIns(eventId, userId)
+  }
+
+  /** Delegates to [checkIns], except that no check-ins are emitted before [arrive] is called. */
+  private class LateCheckIns(checkIns: CheckInRepository) : CheckInRepository by checkIns {
+    private val delegate = checkIns
+    private val arrived = CompletableDeferred<Unit>()
+
+    /** Lets the check-ins through, as when Firestore answers. */
+    fun arrive() = arrived.complete(Unit)
+
+    override fun observeMyCheckIns(eventId: String, userId: String): Flow<List<CheckIn>> = flow {
+      arrived.await()
+      emitAll(delegate.observeMyCheckIns(eventId, userId))
     }
   }
 

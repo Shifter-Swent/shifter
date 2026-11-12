@@ -3,6 +3,11 @@ package com.swent.shifter.model.mission
 
 import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -11,10 +16,11 @@ import org.junit.Test
 
 /**
  * Covers the assignee rules of [FakeMissionRepository.createMission], and the contract of
- * [FakeMissionRepository.getMissionsAssignedTo], [FakeMissionRepository.updateAssignees] and
- * [FakeMissionRepository.updateMission], so the ViewModels tested with the fake behave as with the
- * Firestore repository.
+ * [FakeMissionRepository.getMissionsAssignedTo], [FakeMissionRepository.observeMissionsAssignedTo],
+ * [FakeMissionRepository.updateAssignees] and [FakeMissionRepository.updateMission], so the
+ * ViewModels tested with the fake behave as with the Firestore repository.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class FakeMissionRepositoryTest {
 
   private val repository = FakeMissionRepository()
@@ -73,6 +79,50 @@ class FakeMissionRepositoryTest {
         failure,
         runCatching { repository.getMissionsAssignedTo("user-1") }.exceptionOrNull(),
     )
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_emitsThenFollowsTheAssignments() = runTest {
+    val first = repository.createMission(mission("event-1", startHour = 9, "user-1"))
+    val emitted = mutableListOf<List<Mission>>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeMissionsAssignedTo("user-1").toList(emitted)
+    }
+
+    val second = repository.createMission(mission("event-2", startHour = 8, "user-1"))
+    // Someone else's mission changes nothing for user-1: no emission.
+    repository.createMission(mission("event-1", startHour = 12, "user-2"))
+    repository.updateAssignees("event-1", first.id, emptyList())
+
+    assertEquals(listOf(listOf(first), listOf(second, first), listOf(second)), emitted)
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_throwsTheConfiguredFailure() = runTest {
+    val failure = IllegalStateException("backend down")
+    repository.failure = failure
+
+    val thrown = runCatching {
+      repository.observeMissionsAssignedTo("user-1").first()
+    }
+        .exceptionOrNull()
+
+    assertSameFailure(failure, thrown)
+  }
+
+  @Test
+  fun observeMissionsAssignedTo_failureWhileObserved_endsTheFlow() = runTest {
+    val failure = IllegalStateException("listener closed")
+    var ended: Throwable? = null
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      ended =
+          runCatching { repository.observeMissionsAssignedTo("user-1").collect {} }
+              .exceptionOrNull()
+    }
+
+    repository.failure = failure
+
+    assertSameFailure(failure, ended)
   }
 
   @Test
@@ -367,5 +417,14 @@ class FakeMissionRepositoryTest {
 
   private companion object {
     val HALL = MissionLocation("Hall 1", GeoPosition(46.52, 6.57))
+  }
+
+  /**
+   * [actual] is [expected], or the copy coroutines make of it when it crosses a coroutine (its
+   * stack trace recovery, in debug mode): same type and message.
+   */
+  private fun assertSameFailure(expected: Throwable, actual: Throwable?) {
+    assertEquals(expected::class, actual?.let { it::class })
+    assertEquals(expected.message, actual?.message)
   }
 }
