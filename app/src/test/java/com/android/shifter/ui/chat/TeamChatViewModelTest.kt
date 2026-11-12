@@ -38,8 +38,14 @@ class TeamChatViewModelTest {
 
   private val teams = FakeTeamRepository(listOf(team(managerId = OTHER)))
 
-  private fun viewModel(channel: ChatChannelId = CHANNEL) =
-      TeamChatViewModel(channel, chat, profiles, teams) { ME }
+  private fun viewModel(channel: ChatChannelId = CHANNEL, asOrganizer: Boolean = false) =
+      TeamChatViewModel(channel, asOrganizer, chat, profiles, teams) { ME }
+
+  /** A view model of the event's [channel], opened by its organizer, who may announce there. */
+  private fun organizerViewModel(channel: ChatChannelId): TeamChatViewModel {
+    chat.announcingChannels = setOf(channel)
+    return viewModel(channel, asOrganizer = true)
+  }
 
   /** A view model of the team that [ME] manages, and may announce in. */
   private fun managerViewModel(): TeamChatViewModel {
@@ -80,6 +86,33 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun canAnnounce_asTheOrganizerInTheGeneralChannel_isTrue() = runTest {
+    assertTrue(organizerViewModel(ChatChannelId.General(EVENT)).uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun canAnnounce_asTheOrganizerInTheAdminChannel_isTrue() = runTest {
+    assertTrue(organizerViewModel(ChatChannelId.Admin(EVENT)).uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun canAnnounce_asTheOrganizerInATeamChannel_isFalse() = runTest {
+    // The rules leave a team's announcements to its manager, not to the organizer.
+    assertFalse(viewModel(CHANNEL, asOrganizer = true).uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun send_organizerAnnouncementInTheGeneralChannel_isSentAsAnAnnouncement() = runTest {
+    val general = ChatChannelId.General(EVENT)
+    val viewModel = organizerViewModel(general)
+
+    viewModel.announce("Gates open at 9:00")
+
+    assertTrue(viewModel.uiState.value.messages.single().isAnnouncement)
+    assertEquals(listOf(true), chat.messages(general).first().map { it.announcement })
+  }
+
+  @Test
   fun generalChannel_doesNotOfferToAnnounce_evenToTheTeamManager() = runTest {
     teams.teams[0] = team(managerId = ME)
     val viewModel = viewModel(ChatChannelId.General(EVENT))
@@ -91,6 +124,28 @@ class TeamChatViewModelTest {
         listOf(false),
         chat.messages(ChatChannelId.General(EVENT)).first().map { it.announcement },
     )
+  }
+
+  @Test
+  fun adminChannel_doesNotOfferToAnnounce_toAManager() = runTest {
+    teams.teams[0] = team(managerId = ME)
+
+    assertFalse(viewModel(ChatChannelId.Admin(EVENT)).uiState.value.canAnnounce)
+  }
+
+  @Test
+  fun send_organizerAnnouncementRefused_keepsTheOptionAndTheText() = runTest {
+    val general = ChatChannelId.General(EVENT)
+    val viewModel = organizerViewModel(general)
+    chat.announcingChannels = emptySet()
+
+    viewModel.announce("Gates open at 9:00")
+
+    val state = viewModel.uiState.value
+    assertTrue(state.announcementRefused)
+    assertTrue(state.canAnnounce)
+    assertTrue(state.asAnnouncement)
+    assertEquals("Gates open at 9:00", state.draft)
   }
 
   @Test
