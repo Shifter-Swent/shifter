@@ -62,6 +62,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = { destination = it },
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -124,6 +125,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -184,6 +186,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -305,6 +308,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -315,6 +319,173 @@ class PeopleScreenTest {
     participants = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann))))
 
     compose.onNodeWithTag(ManagerDialogTestTags.DIALOG).assertDoesNotExist()
+  }
+
+  /** The Participants tab in [state], recording what the screen reports. */
+  private fun setParticipantsState(
+      state: () -> ParticipantsUiState,
+      onAppointManager: (String, String) -> Unit = { _, _ -> },
+      onRemoveManager: (String) -> Unit = {},
+      onFailureShown: () -> Unit = {},
+  ) {
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = state(),
+            onReloadParticipants = {},
+            onAppointManager = onAppointManager,
+            onRemoveManager = onRemoveManager,
+            onMoveToTeam = { _, _ -> },
+            eventTitle = "City Marathon",
+            onBack = {},
+            onNavigate = {},
+            onManagerChangeFailureShown = onFailureShown,
+        )
+      }
+    }
+  }
+
+  private fun failed(managerId: String?, canRetry: Boolean) =
+      ParticipantsUiState(
+          groups = listOf(ParticipantGroup(bar, listOf(ann, bob))),
+          managerChangeFailure = ManagerChangeFailure("bar", managerId, canRetry),
+      )
+
+  @Test
+  fun failedAppointment_showsASnackbarWhoseRetryAppointsAgain() {
+    var appointed: Pair<String, String>? = null
+    var shown = 0
+    setParticipantsState(
+        state = { failed("bob", canRetry = true) },
+        onAppointManager = { teamId, userId -> appointed = teamId to userId },
+        onFailureShown = { shown++ },
+    )
+
+    compose.onNodeWithText("The manager could not be changed").assertIsDisplayed()
+    compose.onNodeWithText("Retry").performClick()
+
+    compose.runOnIdle {
+      assertEquals("bar" to "bob", appointed)
+      assertEquals(1, shown)
+    }
+  }
+
+  @Test
+  fun makeManagerFromTheCard_thatFails_showsTheSnackbarAndRetriesTheSameChange() {
+    val loaded = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann, bob))))
+    var participants by mutableStateOf(loaded)
+    val appointed = mutableListOf<Pair<String, String>>()
+    setParticipantsState(
+        state = { participants },
+        onAppointManager = { teamId, userId ->
+          appointed += teamId to userId
+          participants =
+              loaded.copy(managerChangeFailure = ManagerChangeFailure(teamId, userId, true))
+        },
+        onFailureShown = { participants = participants.copy(managerChangeFailure = null) },
+    )
+
+    unfoldAndAct("bob")
+    compose.onNodeWithTag(ManagerDialogTestTags.CONFIRM_BUTTON).performClick()
+    compose.onNodeWithText("The manager could not be changed").assertIsDisplayed()
+    compose.onNodeWithText("Retry").performClick()
+
+    compose.runOnIdle { assertEquals(listOf("bar" to "bob", "bar" to "bob"), appointed) }
+  }
+
+  @Test
+  fun failedRemoval_showsASnackbarWhoseRetryRemovesAgain() {
+    var removed: String? = null
+    setParticipantsState(
+        state = { failed(null, canRetry = true) },
+        onRemoveManager = { removed = it },
+    )
+
+    compose.onNodeWithText("Retry").performClick()
+
+    compose.runOnIdle { assertEquals("bar", removed) }
+  }
+
+  @Test
+  fun failedChange_withoutRetrying_endsAndIsReportedAsShown() {
+    var changes = 0
+    var shown = 0
+    setParticipantsState(
+        state = { failed("bob", canRetry = true) },
+        onAppointManager = { _, _ -> changes++ },
+        onFailureShown = { shown++ },
+    )
+    compose.onNodeWithText("Retry").assertIsDisplayed()
+
+    // The long duration of a Snackbar: with the default of an action, it would never end.
+    compose.mainClock.advanceTimeBy(11_000)
+
+    compose.runOnIdle {
+      assertEquals(1, shown)
+      assertEquals(0, changes)
+    }
+  }
+
+  @Test
+  fun failedChange_thatCannotBeRetried_saysSoWithoutARetry() {
+    var shown = 0
+    setParticipantsState(
+        state = { failed("bob", canRetry = false) },
+        onFailureShown = { shown++ },
+    )
+
+    compose.onNodeWithText("This change is no longer possible").assertIsDisplayed()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+
+    compose.mainClock.advanceTimeBy(5_000)
+    compose.runOnIdle { assertEquals(1, shown) }
+  }
+
+  @Test
+  fun failedChange_withTheListScrolled_showsTheSnackbar() {
+    val many = (1..40).map { ParticipantItem("user$it", "User $it", isManager = false) }
+    val loaded = ParticipantsUiState(groups = listOf(ParticipantGroup(bar, many)))
+    var participants by mutableStateOf(loaded)
+    setParticipantsState(state = { participants })
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(ParticipantsListTestTags.participantCard("user40")))
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("user1")).assertDoesNotExist()
+
+    participants = loaded.copy(managerChangeFailure = ManagerChangeFailure("bar", "user40", true))
+
+    compose.onNodeWithText("The manager could not be changed").assertIsDisplayed()
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("user40")).assertIsDisplayed()
+  }
+
+  @Test
+  fun updating_showsTheProgressOnTheParticipantsTabOnly() {
+    val updating =
+        ParticipantsUiState(
+            groups = listOf(ParticipantGroup(bar, listOf(ann, bob))),
+            isUpdating = true,
+        )
+    setParticipantsState(state = { updating })
+
+    compose
+        .onNodeWithTag(PeopleScreenTestTags.UPDATE_PROGRESS)
+        .assertIsDisplayed()
+        .assertContentDescriptionEquals("Updating participants")
+
+    compose.onNodeWithTag(PeopleScreenTestTags.REQUESTS_TAB).performClick()
+
+    compose.onNodeWithTag(PeopleScreenTestTags.UPDATE_PROGRESS).assertDoesNotExist()
+  }
+
+  @Test
+  fun notUpdating_showsNoProgress() {
+    setParticipants()
+
+    compose.onNodeWithTag(PeopleScreenTestTags.UPDATE_PROGRESS).assertDoesNotExist()
   }
 
   @Test
@@ -338,6 +509,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -380,6 +552,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }
@@ -421,6 +594,7 @@ class PeopleScreenTest {
             eventTitle = "City Marathon",
             onBack = { backs++ },
             onNavigate = {},
+            onManagerChangeFailureShown = {},
         )
       }
     }

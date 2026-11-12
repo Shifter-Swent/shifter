@@ -218,16 +218,16 @@ class ParticipantsListTest {
   }
 
   @Test
-  fun updateFailed_keepsTheListAndShowsTheFailureWithoutRetry() {
+  fun moveFailed_keepsTheListAndShowsTheFailureWithoutRetry() {
     setList(
         ParticipantsUiState(
             groups = listOf(ParticipantGroup(bar, listOf(alice, bob))),
-            error = ParticipantsError.UPDATE_FAILED,
+            error = ParticipantsError.MOVE_FAILED,
         )
     )
 
     node(ParticipantsListTestTags.ERROR)
-        .assertTextContains("The manager could not be changed, try again")
+        .assertTextContains("The volunteer could not be moved, try again")
     node(ParticipantsListTestTags.RETRY_BUTTON).assertDoesNotExist()
     node(ParticipantsListTestTags.participantCard("bob")).assertHasClickAction()
   }
