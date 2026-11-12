@@ -134,6 +134,31 @@ class FirestoreMissionRepositoryTest {
   }
 
   @Test
+  fun createMission_withAnInvalidSlotOrStaff_isRejectedBeforeAnyRead() = emulatorTest {
+    // Under an event that does not exist, the overlap check's read would be refused by the rules:
+    // an IllegalArgumentException rather than PermissionDenied shows nothing was read.
+    val missing = "missing-" + UUID.randomUUID()
+    val event = newEvent()
+    for (eventId in listOf(missing, event)) {
+      val valid = geoTimed(eventId, startHour = 9, endHour = 10)
+      val invalid =
+          listOf(
+              valid.copy(endAt = valid.startAt.minusSeconds(3600)),
+              valid.copy(endAt = valid.startAt),
+              valid.copy(volunteersNeeded = 0),
+          )
+      for (mission in invalid) {
+        val failure = runCatching { repository.createMission(mission) }.exceptionOrNull()
+        assertTrue(
+            "$mission must be rejected before any read, but was: $failure",
+            failure is IllegalArgumentException,
+        )
+      }
+    }
+    assertTrue(repository.getMissionsByEvent(event).isEmpty())
+  }
+
+  @Test
   fun getMission_returnsNullForAnUnknownId() = emulatorTest {
     assertNull(repository.getMission(newEvent(), "missing-" + UUID.randomUUID()))
   }
