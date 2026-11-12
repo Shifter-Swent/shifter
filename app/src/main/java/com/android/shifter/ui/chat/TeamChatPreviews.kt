@@ -23,6 +23,7 @@ private fun PreviewHost(state: TeamChatUiState) {
           onDraftChange = {},
           onSend = {},
           onRetry = {},
+          onAnnouncementChange = {},
           zone = ZoneOffset.UTC,
       )
     }
@@ -41,6 +42,14 @@ private val MESSAGES =
             false,
         ),
         ChatMessageItem("2", "On my way, 5 min.", "Liam", at("07:52"), isMine = true),
+        ChatMessageItem(
+            "5",
+            "Gates open at 9:00. Everyone at their station by 8:45.",
+            "Alice",
+            at("08:00"),
+            false,
+            isAnnouncement = true,
+        ),
         ChatMessageItem(
             "3",
             "Can someone bring extra cups to station A?",
@@ -93,4 +102,18 @@ private fun TeamChatOfflinePreview() {
 @Composable
 private fun TeamChatNotAllowedPreview() {
   PreviewHost(TeamChatUiState(isLoading = false, error = ChatError.NOT_ALLOWED))
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
+@Composable
+private fun TeamChatAnnouncingPreview() {
+  PreviewHost(
+      TeamChatUiState(
+          isLoading = false,
+          messages = MESSAGES,
+          draft = "Lunch break at noon",
+          canAnnounce = true,
+          asAnnouncement = true,
+      )
+  )
 }

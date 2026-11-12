@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,9 +22,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -43,7 +47,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.theme.shifter_announcement
+import com.swent.shifter.ui.theme.shifter_announcementContainer
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -59,10 +66,14 @@ object TeamChatTestTags {
   const val INPUT = "teamChatInput"
   const val SEND_BUTTON = "teamChatSendButton"
   const val SEND_FAILED = "teamChatSendFailed"
+  const val ANNOUNCEMENT_TOGGLE = "teamChatAnnouncementToggle"
+  const val ANNOUNCEMENT_REFUSED = "teamChatAnnouncementRefused"
 
   fun message(id: String) = "teamChatMessage_$id"
 
   fun pending(id: String) = "teamChatMessagePending_$id"
+
+  fun announcementTag(id: String) = "teamChatAnnouncementTag_$id"
 }
 
 /** The channel of a team, loaded and sent to by [viewModel]. */
@@ -74,6 +85,7 @@ fun TeamChatScreen(viewModel: TeamChatViewModel, modifier: Modifier = Modifier) 
       onDraftChange = viewModel::onDraftChange,
       onSend = viewModel::send,
       onRetry = viewModel::load,
+      onAnnouncementChange = viewModel::onAnnouncementChange,
       modifier = modifier,
   )
 }
@@ -83,6 +95,8 @@ fun TeamChatScreen(viewModel: TeamChatViewModel, modifier: Modifier = Modifier) 
  * above the keyboard, and the latest message stays in view when the keyboard opens or a message
  * arrives, unless the user has scrolled up to read older ones.
  *
+ * @param onAnnouncementChange called when the user chooses whether to send the draft as an
+ *   announcement, an option shown only to those who [may][TeamChatUiState.canAnnounce].
  * @param zone the time zone the times are shown in, replaceable in tests.
  * @param today the day whose messages show their time only, replaceable in tests.
  */
@@ -92,6 +106,7 @@ fun TeamChatContent(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onRetry: () -> Unit,
+    onAnnouncementChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
     today: LocalDate = LocalDate.now(zone),
@@ -115,15 +130,11 @@ fun TeamChatContent(
       }
     }
     if (keepsMessages && state.error != null) ErrorBanner(state.error, onRetry)
-    if (state.sendFailed) {
-      Text(
-          text = stringResource(R.string.chat_send_failed),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.padding(horizontal = 16.dp).testTag(TeamChatTestTags.SEND_FAILED),
-      )
+    if (state.sendFailed) SendError(R.string.chat_send_failed, TeamChatTestTags.SEND_FAILED)
+    if (state.announcementRefused) {
+      SendError(R.string.chat_announcement_refused, TeamChatTestTags.ANNOUNCEMENT_REFUSED)
     }
-    Input(state, onDraftChange, onSend)
+    Input(state, onDraftChange, onSend, onAnnouncementChange)
   }
 }
 
@@ -155,6 +166,7 @@ private fun Messages(messages: List<ChatMessageItem>, zone: ZoneId, today: Local
   }
 }
 
+/** A message, with the tag above it and an amber background when it is an announcement. */
 @Composable
 private fun Bubble(message: ChatMessageItem, zone: ZoneId, today: LocalDate) {
   val name =
@@ -162,59 +174,113 @@ private fun Bubble(message: ChatMessageItem, zone: ZoneId, today: LocalDate) {
       else message.senderName ?: stringResource(R.string.chat_unknown_sender)
   val colors = MaterialTheme.colorScheme
   // Set here, as a background alone, unlike a Surface, gives the text no color on the bubble.
-  val textColor = if (message.isMine) colors.onPrimaryContainer else colors.onSurface
+  val (background, textColor) =
+      when {
+        message.isAnnouncement -> shifter_announcementContainer to shifter_onAnnouncementContainer
+        message.isMine -> colors.primaryContainer to colors.onPrimaryContainer
+        else -> colors.surfaceVariant to colors.onSurface
+      }
   Box(modifier = Modifier.fillMaxWidth()) {
     Column(
         horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start,
         modifier =
             Modifier.align(if (message.isMine) Alignment.CenterEnd else Alignment.CenterStart)
                 .widthIn(max = 280.dp)
-                .background(
-                    if (message.isMine) colors.primaryContainer else colors.surfaceVariant,
-                    RoundedCornerShape(12.dp),
-                )
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                // Read as one message by TalkBack: the sender, the text and the time together.
+                // Read as one message by TalkBack: the tag, sender, text and time together.
                 .semantics(mergeDescendants = true) {}
                 .testTag(TeamChatTestTags.message(message.id)),
     ) {
-      Text(
-          name,
-          color = textColor,
-          style = MaterialTheme.typography.labelMedium,
-          fontWeight = FontWeight.SemiBold,
-      )
-      Text(message.text, color = textColor, style = MaterialTheme.typography.bodyMedium)
-      val status =
-          when {
-            message.isPending -> stringResource(R.string.chat_sending)
-            message.sentAt != null -> sentAtLabel(message.sentAt.atZone(zone), today)
-            else -> null
-          }
-      if (status != null) {
+      if (message.isAnnouncement) AnnouncementTag(message.id)
+      Column(
+          horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start,
+          modifier =
+              Modifier.background(background, RoundedCornerShape(12.dp))
+                  .padding(horizontal = 12.dp, vertical = 8.dp),
+      ) {
         Text(
-            text = status,
-            style = MaterialTheme.typography.labelSmall,
-            color = shifter_mutedText,
-            modifier =
-                if (message.isPending) Modifier.testTag(TeamChatTestTags.pending(message.id))
-                else Modifier,
+            name,
+            color = textColor,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
         )
+        Text(message.text, color = textColor, style = MaterialTheme.typography.bodyMedium)
+        val status =
+            when {
+              message.isPending -> stringResource(R.string.chat_sending)
+              message.sentAt != null -> sentAtLabel(message.sentAt.atZone(zone), today)
+              else -> null
+            }
+        if (status != null) {
+          Text(
+              text = status,
+              style = MaterialTheme.typography.labelSmall,
+              color = shifter_mutedText,
+              modifier =
+                  if (message.isPending) Modifier.testTag(TeamChatTestTags.pending(message.id))
+                  else Modifier,
+          )
+        }
       }
     }
   }
 }
 
+/** The megaphone and "Announcement", above the bubble of an announcement. */
 @Composable
-private fun Input(state: TeamChatUiState, onDraftChange: (String) -> Unit, onSend: () -> Unit) {
+private fun AnnouncementTag(messageId: String) {
+  Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(4.dp),
+      modifier =
+          Modifier.padding(bottom = 4.dp).testTag(TeamChatTestTags.announcementTag(messageId)),
+  ) {
+    Icon(
+        Icons.Filled.Campaign,
+        contentDescription = null,
+        tint = shifter_announcement,
+        modifier = Modifier.size(16.dp),
+    )
+    Text(
+        stringResource(R.string.chat_announcement_tag),
+        color = shifter_announcement,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+    )
+  }
+}
+
+@Composable
+private fun Input(
+    state: TeamChatUiState,
+    onDraftChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onAnnouncementChange: (Boolean) -> Unit,
+) {
   Row(
       modifier = Modifier.fillMaxWidth().padding(8.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
+    if (state.canAnnounce) {
+      IconToggleButton(
+          checked = state.asAnnouncement,
+          onCheckedChange = onAnnouncementChange,
+          colors =
+              IconButtonDefaults.iconToggleButtonColors(checkedContentColor = shifter_announcement),
+          modifier = Modifier.testTag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE),
+      ) {
+        Icon(
+            Icons.Filled.Campaign,
+            contentDescription = stringResource(R.string.chat_send_as_announcement),
+        )
+      }
+    }
+    val placeholder =
+        if (state.asAnnouncement) R.string.chat_announcement_placeholder
+        else R.string.chat_input_placeholder
     OutlinedTextField(
         value = state.draft,
         onValueChange = onDraftChange,
-        placeholder = { Text(stringResource(R.string.chat_input_placeholder)) },
+        placeholder = { Text(stringResource(placeholder)) },
         maxLines = 4,
         modifier = Modifier.weight(1f).testTag(TeamChatTestTags.INPUT),
     )
@@ -226,6 +292,17 @@ private fun Input(state: TeamChatUiState, onDraftChange: (String) -> Unit, onSen
       Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.chat_send))
     }
   }
+}
+
+/** Why the last message was not sent, above the field that has its text back. */
+@Composable
+private fun SendError(messageRes: Int, tag: String) {
+  Text(
+      text = stringResource(messageRes),
+      style = MaterialTheme.typography.bodySmall,
+      color = MaterialTheme.colorScheme.error,
+      modifier = Modifier.padding(horizontal = 16.dp).testTag(tag),
+  )
 }
 
 /** The error in place of the messages, when there are none to show. */
