@@ -233,12 +233,11 @@ class TeamChatViewModel(
    * that cannot be read leaves the option hidden.
    */
   private fun loadAnnounceRight() {
-    val team =
-        channel as? ChatChannelId.Team
-            ?: run {
-              showAnnounceRight(asOrganizer)
-              return
-            }
+    val team = channel as? ChatChannelId.Team
+    if (team == null) {
+      showAnnounceRight(asOrganizer)
+      return
+    }
     viewModelScope.launch {
       val manager =
           try {
