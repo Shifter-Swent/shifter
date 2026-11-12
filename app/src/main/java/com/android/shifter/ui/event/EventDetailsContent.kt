@@ -140,11 +140,14 @@ fun EventDetailsContent(
             onTeamSelected = onTeamSelected,
         )
       }
-      IconLabel(
-          Icons.Outlined.Info,
-          stringResource(R.string.event_details_approval_notice),
-          colors.onSurfaceVariant,
-      )
+      // An ended event takes no request, so nothing invites to send one.
+      if (!closed) {
+        IconLabel(
+            Icons.Outlined.Info,
+            stringResource(R.string.event_details_approval_notice),
+            colors.onSurfaceVariant,
+        )
+      }
     }
     ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply, closed)
   }
@@ -255,12 +258,14 @@ private fun ApplyBar(
               )
         }
       }
-      Text(
-          text = stringResource(R.string.event_details_apply_hint),
-          color = shifter_mutedText,
-          fontSize = 13.sp,
-          textAlign = TextAlign.Center,
-      )
+      if (!closed) {
+        Text(
+            text = stringResource(R.string.event_details_apply_hint),
+            color = shifter_mutedText,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+      }
     }
   }
 }
