@@ -225,6 +225,29 @@ class AutoCheckInViewModelTest {
     assertEquals(0, location.activeCollectors)
   }
 
+  /**
+   * The position read for a mission whose window is over says nothing about where the volunteer is
+   * when the next one is assigned, maybe hours later: only a new position may check them in.
+   */
+  @Test
+  fun missionAssignedAfterThePositionsStopped_waitsForANewPosition() = runTest {
+    val windowEnd = addMission("Bar", endsIn = Duration.ofMinutes(30)).checkInWindow().endInclusive
+    // Bar is never eligible, so the position below checks in to nothing and stays the last one.
+    isEligible = { mission, _, at -> mission.title == "Stage" && at == NEAR }
+    open()
+    moveTo(NEAR)
+    clock = windowEnd.plusSeconds(1)
+    advanceTimeBy(Duration.between(NOW, clock).toMillis() + 1)
+    assertEquals(0, location.activeCollectors)
+
+    addMission("Stage", eventId = "other-event")
+    runCurrent()
+
+    assertTrue(checkIns.checkIns.isEmpty())
+    moveTo(NEAR)
+    assertEquals("Stage", state.checkedIn?.missionTitle)
+  }
+
   @Test
   fun missionClosedByHand_stopsThePositionsAndIsNotTried() = runTest {
     val mission = addMission()

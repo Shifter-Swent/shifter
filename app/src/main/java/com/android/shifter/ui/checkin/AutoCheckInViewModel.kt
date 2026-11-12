@@ -33,7 +33,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -157,16 +156,18 @@ class AutoCheckInViewModel(
             .distinctUntilChanged()
             .flatMapLatest { events -> checkInsTo(events, userId) }
             .stateIn(this, SharingStarted.Eagerly, KnownCheckIns())
-    // Positions are only read while there is a mission to check in to.
-    val positions =
+    // Positions are only read while there is a mission to check in to. When they stop, null drops
+    // the last one, which says nothing about where the volunteer is when a mission comes next.
+    val positions: Flow<GeoPosition?> =
         missions
             .map { it.isNotEmpty() }
             .distinctUntilChanged()
-            .flatMapLatest { any -> if (any) locationProvider.positions() else emptyFlow() }
+            .flatMapLatest { any -> if (any) locationProvider.positions() else flowOf(null) }
     // The last position is checked again when the check-ins change, so a position that came before
     // they were known is not lost until the next one.
     combine(positions, known) { position, checkIns -> position to checkIns }
         .collect { (position, checkIns) ->
+          if (position == null) return@collect
           val time = now()
           missions.value
               // Before the check-ins of a mission's event are known, a position could check in to
