@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
 import androidx.lifecycle.ViewModel
@@ -17,7 +18,10 @@ import com.swent.shifter.model.mission.VolunteersBelowAssigneesException
 import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.ui.map.LocationPicking
+import com.swent.shifter.ui.map.LocationPickingForm
 import com.swent.shifter.ui.map.formatCoordinate
+import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -63,13 +67,6 @@ internal fun missionSlot(
   val endDay = if (end.isBefore(start)) day.plusDays(1) else day
   return day.atTime(start) to endDay.atTime(end)
 }
-
-/**
- * The coordinate typed in [text], or null when it is not a number within [range]. A decimal comma
- * is accepted as well as a point, as typed on many keyboards.
- */
-internal fun parseCoordinate(text: String, range: ClosedFloatingPointRange<Double>): Double? =
-    text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in range }
 
 /**
  * An existing mission of the same team whose slot overlaps the one being saved, as local date-times
@@ -163,11 +160,11 @@ data class AddMissionUiState(
     val startTime: LocalTime? = null,
     val endTime: LocalTime? = null,
     val address: String = "",
-    val latitude: String = "",
-    val longitude: String = "",
+    override val latitude: String = "",
+    override val longitude: String = "",
     val eventPosition: GeoPosition? = null,
-    val isPickingLocation: Boolean = false,
-    val locationDraft: GeoPosition? = null,
+    override val isPickingLocation: Boolean = false,
+    override val locationDraft: GeoPosition? = null,
     val errors: Set<MissionFormError> = emptySet(),
     val isSaving: Boolean = false,
     val saveFailed: Boolean = false,
@@ -181,7 +178,7 @@ data class AddMissionUiState(
     val missionCompleted: Boolean = false,
     val slotNotEditable: Boolean = false,
     val belowAssignees: Int? = null,
-) {
+) : LocationPickingForm<AddMissionUiState> {
   /** The error to show under [field], or null when it is valid. */
   fun errorFor(field: MissionFormField): MissionFormError? = errors.firstOrNull {
     it.field == field
@@ -214,13 +211,11 @@ data class AddMissionUiState(
   val hasLocation: Boolean
     get() = address.isNotBlank() || latitude.isNotBlank() || longitude.isNotBlank()
 
-  /** The point the typed coordinates give, or null while either of them is missing or invalid. */
-  val position: GeoPosition?
-    get() {
-      val lat = parseCoordinate(latitude, GeoPosition.LATITUDE_RANGE) ?: return null
-      val lng = parseCoordinate(longitude, GeoPosition.LONGITUDE_RANGE) ?: return null
-      return GeoPosition(lat, lng)
-    }
+  override fun withPicker(isPickingLocation: Boolean, locationDraft: GeoPosition?) =
+      copy(isPickingLocation = isPickingLocation, locationDraft = locationDraft)
+
+  override fun withCoordinates(latitude: String, longitude: String) =
+      copy(latitude = latitude, longitude = longitude)
 
   companion object {
     /** A mission records a need for at least one person. */
@@ -275,8 +270,8 @@ class AddMissionViewModel(
   /** Loads the candidates of the selected team; replaced when the team changes. */
   private var candidatesJob: Job? = null
 
-  /** The point of the form when the map was opened, so confirming it unmoved changes nothing. */
-  private var pickerStart: GeoPosition? = null
+  /** The map picker's lifecycle, shared with the event form (see [LocationPicking]). */
+  private val picking = LocationPicking(_uiState)
 
   init {
     loadEvent()
@@ -496,14 +491,11 @@ class AddMissionViewModel(
    */
   fun onPickLocation() {
     if (_uiState.value.event == null) return
-    pickerStart = _uiState.value.position
-    _uiState.update { it.copy(isPickingLocation = true, locationDraft = pickerStart) }
+    picking.open()
   }
 
   /** Moves the point picked on the open map, without touching the form yet. */
-  fun onLocationDraftChange(position: GeoPosition) {
-    _uiState.update { if (it.isPickingLocation) it.copy(locationDraft = position) else it }
-  }
+  fun onLocationDraftChange(position: GeoPosition) = picking.moveTo(position)
 
   /**
    * Closes the map and fills the coordinates with the point picked. A point left where the map
@@ -511,25 +503,12 @@ class AddMissionViewModel(
    * rounded to the decimals the map gives.
    */
   fun onConfirmLocation() {
-    val draft = _uiState.value.locationDraft
-    if (draft == null || draft == pickerStart) {
-      onCancelLocationPicker()
-      return
-    }
-    edit {
-      it.copy(
-          latitude = formatCoordinate(draft.latitude),
-          longitude = formatCoordinate(draft.longitude),
-          isPickingLocation = false,
-          locationDraft = null,
-      )
-    }
+    val confirm = picking.confirmed() ?: return picking.close()
+    edit(confirm)
   }
 
   /** Closes the map and leaves the coordinates as they were. */
-  fun onCancelLocationPicker() {
-    _uiState.update { it.copy(isPickingLocation = false, locationDraft = null) }
-  }
+  fun onCancelLocationPicker() = picking.close()
 
   /** Empties the address and the coordinates: the mission is then added with no location. */
   fun onClearLocation() = edit { it.copy(address = "", latitude = "", longitude = "") }

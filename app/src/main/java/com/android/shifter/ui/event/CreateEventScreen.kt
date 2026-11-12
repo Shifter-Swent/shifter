@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Celebration
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Park
 import androidx.compose.material.icons.outlined.Restaurant
@@ -42,6 +43,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -74,12 +76,14 @@ import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
+import com.swent.shifter.ui.map.LocationPickerDialog
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_warning
@@ -91,6 +95,14 @@ object CreateEventScreenTestTags {
   const val TITLE_FIELD = "CreateEventTitleField"
   const val DESCRIPTION_FIELD = "CreateEventDescriptionField"
   const val ADDRESS_FIELD = "CreateEventAddressField"
+  const val LATITUDE_FIELD = "CreateEventLatitudeField"
+  const val LONGITUDE_FIELD = "CreateEventLongitudeField"
+  const val COORDINATES_RULE = "CreateEventCoordinatesRule"
+  const val PICK_ON_MAP_BUTTON = "CreateEventPickOnMapButton"
+  const val CLEAR_LOCATION_BUTTON = "CreateEventClearLocationButton"
+  const val LOCATION_PICKER_DIALOG = "CreateEventLocationPickerDialog"
+  const val LOCATION_PICKER_CLOSE = "CreateEventLocationPickerClose"
+  const val LOCATION_PICKER_CONFIRM = "CreateEventLocationPickerConfirm"
   const val START_FIELD = "CreateEventStartField"
   const val END_FIELD = "CreateEventEndField"
   const val SUBMIT_BUTTON = "CreateEventSubmitButton"
@@ -137,35 +149,57 @@ fun CreateEventScreen(
 
   CreateEventContent(
       state = uiState,
-      onTitleChange = viewModel::onTitleChange,
-      onDescriptionChange = viewModel::onDescriptionChange,
-      onTypeChange = viewModel::onTypeChange,
-      onAddressChange = viewModel::onAddressChange,
-      onStartAtChange = viewModel::onStartAtChange,
-      onEndAtChange = viewModel::onEndAtChange,
-      onSubmit = viewModel::createEvent,
-      onBack = onBack,
+      actions =
+          CreateEventActions(
+              onTitleChange = viewModel::onTitleChange,
+              onDescriptionChange = viewModel::onDescriptionChange,
+              onTypeChange = viewModel::onTypeChange,
+              onAddressChange = viewModel::onAddressChange,
+              onLatitudeChange = viewModel::onLatitudeChange,
+              onLongitudeChange = viewModel::onLongitudeChange,
+              onPickLocation = viewModel::onPickLocation,
+              onLocationDraftChange = viewModel::onLocationDraftChange,
+              onConfirmLocation = viewModel::onConfirmLocation,
+              onCancelLocationPicker = viewModel::onCancelLocationPicker,
+              onClearLocation = viewModel::onClearLocation,
+              onStartAtChange = viewModel::onStartAtChange,
+              onEndAtChange = viewModel::onEndAtChange,
+              onSubmit = viewModel::createEvent,
+              onBack = onBack,
+          ),
   )
 }
+
+/** Every interaction of the event creation form, grouped so the form takes a single parameter. */
+data class CreateEventActions(
+    val onTitleChange: (String) -> Unit = {},
+    val onDescriptionChange: (String) -> Unit = {},
+    val onTypeChange: (EventType) -> Unit = {},
+    val onAddressChange: (String) -> Unit = {},
+    val onLatitudeChange: (String) -> Unit = {},
+    val onLongitudeChange: (String) -> Unit = {},
+    val onPickLocation: () -> Unit = {},
+    val onLocationDraftChange: (GeoPosition) -> Unit = {},
+    val onConfirmLocation: () -> Unit = {},
+    val onCancelLocationPicker: () -> Unit = {},
+    val onClearLocation: () -> Unit = {},
+    val onStartAtChange: (String) -> Unit = {},
+    val onEndAtChange: (String) -> Unit = {},
+    val onSubmit: () -> Unit = {},
+    val onBack: () -> Unit = {},
+)
 
 /** Stateless form of [CreateEventScreen]: renders [state] and reports every interaction. */
 @Composable
 fun CreateEventContent(
     state: CreateEventUiState,
-    onTitleChange: (String) -> Unit,
-    onDescriptionChange: (String) -> Unit,
-    onTypeChange: (EventType) -> Unit,
-    onAddressChange: (String) -> Unit,
-    onStartAtChange: (String) -> Unit,
-    onEndAtChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-    onBack: () -> Unit,
+    actions: CreateEventActions,
 ) {
   Scaffold(
       topBar = {
         ShifterTopBar(
             title = stringResource(R.string.create_event_title),
-            onBack = onBack,
+            onBack = actions.onBack,
         )
       }
   ) { padding ->
@@ -188,16 +222,20 @@ fun CreateEventContent(
       )
       EventTextField(
           value = state.title,
-          onValueChange = onTitleChange,
+          onValueChange = actions.onTitleChange,
           label = R.string.create_event_field_title,
           field = EventFormField.TITLE,
           state = state,
           testTag = CreateEventScreenTestTags.TITLE_FIELD,
       )
-      TypeSelector(selected = state.type, error = state.errorFor(EventFormField.TYPE), onTypeChange)
+      TypeSelector(
+          selected = state.type,
+          error = state.errorFor(EventFormField.TYPE),
+          onTypeChange = actions.onTypeChange,
+      )
       EventTextField(
           value = state.description,
-          onValueChange = onDescriptionChange,
+          onValueChange = actions.onDescriptionChange,
           label = R.string.create_event_field_description,
           field = EventFormField.DESCRIPTION,
           state = state,
@@ -211,14 +249,15 @@ fun CreateEventContent(
       )
       EventTextField(
           value = state.address,
-          onValueChange = onAddressChange,
+          onValueChange = actions.onAddressChange,
           label = R.string.create_event_field_address,
           field = EventFormField.ADDRESS,
           state = state,
           testTag = CreateEventScreenTestTags.ADDRESS_FIELD,
       )
+      LocationSection(state, actions)
       HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-      ActivityPeriod(state, onStartAtChange, onEndAtChange)
+      ActivityPeriod(state, actions.onStartAtChange, actions.onEndAtChange)
 
       if (state.saveFailed) {
         Text(
@@ -262,13 +301,89 @@ fun CreateEventContent(
 
       FormPrimaryButton(
           text = stringResource(R.string.create_event_submit),
-          onClick = onSubmit,
+          onClick = actions.onSubmit,
           testTag = CreateEventScreenTestTags.SUBMIT_BUTTON,
           enabled = !state.isSaving,
           isLoading = state.isSaving,
           loadingIndicatorTestTag = CreateEventScreenTestTags.SAVING_INDICATOR,
       )
     }
+  }
+  if (state.isPickingLocation) {
+    LocationPickerDialog(
+        draft = state.locationDraft,
+        onDraftChange = actions.onLocationDraftChange,
+        onConfirm = actions.onConfirmLocation,
+        onCancel = actions.onCancelLocationPicker,
+        dialogTestTag = CreateEventScreenTestTags.LOCATION_PICKER_DIALOG,
+        closeTestTag = CreateEventScreenTestTags.LOCATION_PICKER_CLOSE,
+        confirmTestTag = CreateEventScreenTestTags.LOCATION_PICKER_CONFIRM,
+    )
+  }
+}
+
+/**
+ * The optional point of the event: latitude and longitude, typed in or picked on a map. The address
+ * above stays mandatory, unlike a mission's; these coordinates are optional, but then both are
+ * required together, and clearing them keeps the address. The fields sit next to the map, which a
+ * screen reader cannot use and which is grey offline, so the coordinates stay the accessible way to
+ * enter a point. The map itself is the [LocationPickerDialog] the mission form uses.
+ */
+@Composable
+private fun LocationSection(state: CreateEventUiState, actions: CreateEventActions) {
+  val enabled = !state.isSaving
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Box(modifier = Modifier.weight(1f)) {
+        EventTextField(
+            value = state.latitude,
+            onValueChange = actions.onLatitudeChange,
+            label = R.string.field_latitude,
+            field = EventFormField.LATITUDE,
+            state = state,
+            testTag = CreateEventScreenTestTags.LATITUDE_FIELD,
+        )
+      }
+      Box(modifier = Modifier.weight(1f)) {
+        EventTextField(
+            value = state.longitude,
+            onValueChange = actions.onLongitudeChange,
+            label = R.string.field_longitude,
+            field = EventFormField.LONGITUDE,
+            state = state,
+            testTag = CreateEventScreenTestTags.LONGITUDE_FIELD,
+        )
+      }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      OutlinedButton(
+          onClick = actions.onPickLocation,
+          enabled = enabled,
+          shape = MaterialTheme.shapes.medium,
+          modifier = Modifier.testTag(CreateEventScreenTestTags.PICK_ON_MAP_BUTTON),
+      ) {
+        Icon(Icons.Outlined.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+        Text(
+            text = stringResource(R.string.pick_on_map),
+            modifier = Modifier.padding(start = 8.dp),
+        )
+      }
+      if (state.hasCoordinates) {
+        TextButton(
+            onClick = actions.onClearLocation,
+            enabled = enabled,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.CLEAR_LOCATION_BUTTON),
+        ) {
+          Text(stringResource(R.string.create_event_clear_location))
+        }
+      }
+    }
+    Text(
+        text = stringResource(R.string.create_event_coordinates_rule),
+        style = MaterialTheme.typography.labelSmall,
+        color = shifter_mutedText,
+        modifier = Modifier.testTag(CreateEventScreenTestTags.COORDINATES_RULE),
+    )
   }
 }
 
@@ -674,6 +789,8 @@ private val EventFormError.message: Int
         EventFormError.DESCRIPTION_TOO_LONG -> R.string.create_event_error_description_too_long
         EventFormError.TYPE_MISSING -> R.string.create_event_error_type_missing
         EventFormError.ADDRESS_EMPTY -> R.string.create_event_error_address_empty
+        EventFormError.LATITUDE_INVALID -> R.string.create_event_error_latitude_invalid
+        EventFormError.LONGITUDE_INVALID -> R.string.create_event_error_longitude_invalid
         EventFormError.START_INVALID,
         EventFormError.END_INVALID -> R.string.create_event_error_date_invalid
         EventFormError.START_IN_PAST -> R.string.create_event_error_start_in_past
@@ -716,14 +833,7 @@ private fun CreateEventContentPreview() {
                 type = EventType.MUSIC,
                 errors = setOf(EventFormError.START_INVALID),
             ),
-        onTitleChange = {},
-        onDescriptionChange = {},
-        onTypeChange = {},
-        onAddressChange = {},
-        onStartAtChange = {},
-        onEndAtChange = {},
-        onSubmit = {},
-        onBack = {},
+        actions = CreateEventActions(),
     )
   }
 }

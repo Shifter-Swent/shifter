@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.AlertDialog
@@ -41,7 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -66,8 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
@@ -77,7 +73,7 @@ import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
-import com.swent.shifter.ui.map.LocationPicker
+import com.swent.shifter.ui.map.LocationPickerDialog
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
@@ -352,8 +348,13 @@ fun AddMissionContent(state: AddMissionUiState, actions: AddMissionActions) {
   if (state.isPickingLocation) {
     LocationPickerDialog(
         draft = state.locationDraft,
-        eventPosition = state.eventPosition,
-        actions = actions,
+        onDraftChange = actions.onLocationDraftChange,
+        onConfirm = actions.onConfirmLocation,
+        onCancel = actions.onCancelLocationPicker,
+        dialogTestTag = AddMissionScreenTestTags.LOCATION_PICKER_DIALOG,
+        closeTestTag = AddMissionScreenTestTags.LOCATION_PICKER_CLOSE,
+        confirmTestTag = AddMissionScreenTestTags.LOCATION_PICKER_CONFIRM,
+        initialCenter = state.eventPosition,
     )
   }
 }
@@ -693,7 +694,7 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
         MissionTextField(
             value = state.latitude,
             onValueChange = actions.onLatitudeChange,
-            label = R.string.add_mission_field_latitude,
+            label = R.string.field_latitude,
             error = state.errorFor(MissionFormField.LATITUDE),
             enabled = enabled,
             testTag = AddMissionScreenTestTags.LATITUDE_FIELD,
@@ -703,7 +704,7 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
         MissionTextField(
             value = state.longitude,
             onValueChange = actions.onLongitudeChange,
-            label = R.string.add_mission_field_longitude,
+            label = R.string.field_longitude,
             error = state.errorFor(MissionFormField.LONGITUDE),
             enabled = enabled,
             testTag = AddMissionScreenTestTags.LONGITUDE_FIELD,
@@ -721,7 +722,7 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
       ) {
         Icon(Icons.Outlined.Map, contentDescription = null, modifier = Modifier.size(18.dp))
         Text(
-            text = stringResource(R.string.add_mission_pick_on_map),
+            text = stringResource(R.string.pick_on_map),
             modifier = Modifier.padding(start = 8.dp),
         )
       }
@@ -736,62 +737,6 @@ private fun Location(state: AddMissionUiState, enabled: Boolean, actions: AddMis
       }
     }
     Hint(R.string.add_mission_location_hint)
-  }
-}
-
-/**
- * The map to pick the place of the mission on, over the whole screen, since a map inside the
- * scrolling form would fight its gestures. The point picked is only used with "Use this place";
- * closing the dialog, or going back, leaves the coordinates as they were.
- */
-@Composable
-private fun LocationPickerDialog(
-    draft: GeoPosition?,
-    eventPosition: GeoPosition?,
-    actions: AddMissionActions,
-) {
-  Dialog(
-      onDismissRequest = actions.onCancelLocationPicker,
-      properties = DialogProperties(usePlatformDefaultWidth = false),
-  ) {
-    Surface(
-        modifier = Modifier.fillMaxSize().testTag(AddMissionScreenTestTags.LOCATION_PICKER_DIALOG)
-    ) {
-      Column {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-          IconButton(
-              onClick = actions.onCancelLocationPicker,
-              modifier = Modifier.testTag(AddMissionScreenTestTags.LOCATION_PICKER_CLOSE),
-          ) {
-            Icon(
-                Icons.Filled.Close,
-                contentDescription = stringResource(R.string.add_mission_picker_close),
-            )
-          }
-          Text(
-              text = stringResource(R.string.add_mission_picker_title),
-              style = MaterialTheme.typography.titleMedium,
-              modifier = Modifier.weight(1f),
-          )
-          TextButton(
-              onClick = actions.onConfirmLocation,
-              enabled = draft != null,
-              modifier = Modifier.testTag(AddMissionScreenTestTags.LOCATION_PICKER_CONFIRM),
-          ) {
-            Text(stringResource(R.string.add_mission_picker_confirm))
-          }
-        }
-        LocationPicker(
-            selected = draft,
-            onSelect = actions.onLocationDraftChange,
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            initialCenter = eventPosition,
-        )
-      }
-    }
   }
 }
 
