@@ -11,6 +11,7 @@ import com.swent.shifter.model.location.LiveLocationSharingState
 import com.swent.shifter.model.location.LiveLocationTarget
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
@@ -56,8 +57,16 @@ class LocationSharingViewModelTest {
               Team(EVENT_FINISH, EVENT, "Finish area", "", "icon", createdAt = NOW),
           )
       )
+  private var teamReads = 0
+  private val countingTeams =
+      object : TeamRepository by teams {
+        override suspend fun getTeam(eventId: String, teamId: String): Team? {
+          teamReads++
+          return teams.getTeam(eventId, teamId)
+        }
+      }
   private val users = FakeUserRepository(listOf(User(ALEX, "Alex", "alex@example.com")))
-  private val viewModel = LocationSharingViewModel(countingEvents, teams, users)
+  private val viewModel = LocationSharingViewModel(countingEvents, countingTeams, users)
 
   @Test
   fun sharingStates_followThePublisher() {
@@ -205,6 +214,25 @@ class LocationSharingViewModelTest {
         SharingTargetLabel("City Marathon", "Hydration", "Sam"),
         viewModel.labels.value[HYDRATION],
     )
+  }
+
+  @Test
+  fun loadLabels_readsEachEventOnceAndTheTeamsMeanwhile() {
+    network = CompletableDeferred()
+    viewModel.onSharingStates(
+        mapOf(
+            HYDRATION to LiveLocationSharingState.SHARED,
+            FINISH to LiveLocationSharingState.SHARED,
+        )
+    )
+
+    viewModel.loadLabels()
+
+    // Both teams belong to the marathon: it is read once, and the teams do not wait for it.
+    assertEquals(1, eventReads)
+    assertEquals(2, teamReads)
+    network?.complete(Unit)
+    assertEquals(setOf(HYDRATION, FINISH), viewModel.labels.value.keys)
   }
 
   @Test

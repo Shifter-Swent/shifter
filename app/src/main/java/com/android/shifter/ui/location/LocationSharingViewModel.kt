@@ -17,7 +17,6 @@ import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,17 +87,28 @@ class LocationSharingViewModel(
     val missing = _sharingStates.value.keys - _labels.value.keys
     if (missing.isEmpty()) return
     loadJob = viewModelScope.launch {
-      val read = missing.map { target -> async { target to readTeam(target) } }.awaitAll()
-      val found = read.mapNotNull { (target, pair) -> pair?.let { target to it } }
+      // Each event once, even for several teams of it, and the teams meanwhile.
+      val events =
+          missing
+              .map { it.eventId }
+              .toSet()
+              .associateWith { eventId -> async { orNull { eventRepository.getEvent(eventId) } } }
+      val teams = missing.associateWith { target ->
+        async { orNull { teamRepository.getTeam(target.eventId, target.teamId) } }
+      }
+      val found = missing.mapNotNull { target ->
+        val event = events.getValue(target.eventId).await()
+        val team = teams.getValue(target).await()
+        if (event != null && team != null) Triple(target, event, team) else null
+      }
       val managers =
-          userRepository.displayNames(found.mapNotNull { (_, pair) -> pair.second.managerId })
+          userRepository.displayNames(found.mapNotNull { (_, _, team) -> team.managerId })
       val followed = _sharingStates.value
       _labels.update { labels ->
         labels +
             found
-                .filter { (target, _) -> target in followed }
-                .associate { (target, pair) ->
-                  val (event, team) = pair
+                .filter { (target, _, _) -> target in followed }
+                .associate { (target, event, team) ->
                   val manager = team.managerId?.let { managers[it] }
                   target to SharingTargetLabel(event.title, team.name, manager)
                 }
@@ -106,12 +116,10 @@ class LocationSharingViewModel(
     }
   }
 
-  /** The event and the team of [target], or `null` when either is missing or cannot be read. */
-  private suspend fun readTeam(target: LiveLocationTarget) =
+  /** What [read] returns, or `null` when the event or the team cannot be read. */
+  private suspend fun <T> orNull(read: suspend () -> T?): T? =
       try {
-        val event = eventRepository.getEvent(target.eventId)
-        val team = teamRepository.getTeam(target.eventId, target.teamId)
-        if (event != null && team != null) event to team else null
+        read()
       } catch (_: EventRepositoryException) {
         null
       } catch (_: TeamRepositoryException) {
