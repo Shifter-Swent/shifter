@@ -164,7 +164,8 @@ fun PeopleScreen(
     ManagerDialog(
         participant = participant,
         team = team,
-        currentManager = group.participants.firstOrNull { it.isManager },
+        currentManager =
+            group.participants.firstOrNull { it.isManager }?.takeUnless { participant.isManager },
         onConfirm = {
           if (participant.isManager) onRemoveManager(teamId) else onAppointManager(teamId, userId)
           selection = null
