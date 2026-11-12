@@ -362,6 +362,28 @@ class CreateEventScreenTest {
   }
 
   @Test
+  fun offline_showsTheOfflineError() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        CreateEventContent(
+            state = CreateEventUiState(offline = true),
+            onTitleChange = {},
+            onDescriptionChange = {},
+            onTypeChange = {},
+            onAddressChange = {},
+            onStartAtChange = {},
+            onEndAtChange = {},
+            onSubmit = {},
+            onBack = {},
+        )
+      }
+    }
+
+    node(CreateEventScreenTestTags.OFFLINE_ERROR).performScrollTo().assertIsDisplayed()
+    node(CreateEventScreenTestTags.SAVE_ERROR).assertDoesNotExist()
+  }
+
+  @Test
   fun notSignedIn_isShown() {
     composeTestRule.setContent {
       ShifterTheme {

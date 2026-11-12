@@ -45,6 +45,7 @@ class FirestoreEventRepositoryTest {
 
   /** Ids of the documents this test created, deleted in [tearDown]. */
   private val createdEventIds = mutableListOf<String>()
+  private val createdJoinCodes = mutableListOf<String>()
   private val organizerCredentials = mutableMapOf<String, AuthCredential>()
 
   /** `firestore.rules` only lets signed-in users touch events. */
@@ -57,8 +58,12 @@ class FirestoreEventRepositoryTest {
       createdEventIds.forEach { id ->
         FirestoreEmulatorAdmin.deleteDocument("${EventSchema.COLLECTION}/$id")
       }
+      createdJoinCodes.forEach { code ->
+        FirestoreEmulatorAdmin.deleteDocument("${JoinCodeSchema.COLLECTION}/$code")
+      }
     }
     createdEventIds.clear()
+    createdJoinCodes.clear()
     auth.signOut()
   }
 
@@ -181,10 +186,13 @@ class FirestoreEventRepositoryTest {
     val organizerId = uniqueOrganizerId()
     val event = richEvent(organizerId).copy(id = "event-" + UUID.randomUUID())
 
-    create(event)
-    val retried = repository.createEvent(event.copy(title = "Retried title"))
+    val created = create(event)
+    val retried = track(repository.createEvent(event.copy(title = "Retried title")))
 
     assertEquals(event.id, retried.id)
+    // The code reserved by the first attempt is kept, and still opens the event.
+    assertEquals(created.joinCode, retried.joinCode)
+    assertEquals(event.id, repository.getEventByJoinCode(created.joinCode)?.id)
     assertEquals("Retried title", repository.getEvent(event.id)?.title)
     assertEquals(listOf(event.id), repository.getEventsByOrganizer(organizerId).map { it.id })
   }
@@ -304,9 +312,25 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun getEventByJoinCode_asAnotherUser_findsTheEventWithoutListingEvents() = emulatorTest {
+    val created = create(richEvent(uniqueOrganizerId()))
+    auth.signInForFirestore { auth.signInAnonymously().await() }
+
+    assertEquals(created.id, repository.getEventByJoinCode(created.joinCode)?.id)
+  }
+
+  @Test
   fun getEventByJoinCode_returnsNullForAnUnknownCode() = emulatorTest {
-    // Lower case and a dash, so the generator can never produce this code.
-    assertNull(repository.getEventByJoinCode("unknown-" + UUID.randomUUID()))
+    // Only twos, which the generator draws once in about a billion codes.
+    assertNull(repository.getEventByJoinCode("222222"))
+  }
+
+  @Test
+  fun getEventByJoinCode_withACodeNeverGenerated_returnsNull() = emulatorTest {
+    // Some are not even valid document ids, which Firestore would refuse.
+    for (code in listOf("", "AB/CDE", ".", "..", "__AB__", "abc234", "ABC1234")) {
+      assertNull(code, repository.getEventByJoinCode(code))
+    }
   }
 
   @Test
@@ -319,6 +343,10 @@ class FirestoreEventRepositoryTest {
             create(richEvent(organizerId).copy(title = "Closing weekend")),
         )
     val theirs = create(richEvent(otherOrganizerId))
+    // Only the organizer lists their events.
+    auth.signInForFirestore {
+      auth.signInWithCredential(organizerCredentials.getValue(organizerId)).await()
+    }
 
     val found = repository.getEventsByOrganizer(organizerId)
 
@@ -342,7 +370,10 @@ class FirestoreEventRepositoryTest {
     return step("create") { track(repository.createEvent(event)) }
   }
 
-  private fun track(event: Event): Event = event.also { createdEventIds += it.id }
+  private fun track(event: Event): Event = event.also {
+    createdEventIds += it.id
+    createdJoinCodes += it.joinCode
+  }
 
   /**
    * Writes an event document straight to Firestore, bypassing the repository, and returns its id.

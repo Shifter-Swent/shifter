@@ -97,6 +97,7 @@ object CreateEventScreenTestTags {
   const val SAVING_INDICATOR = "CreateEventSavingIndicator"
   const val SAVE_ERROR = "CreateEventSaveError"
   const val NOT_SIGNED_IN_ERROR = "CreateEventNotSignedInError"
+  const val OFFLINE_ERROR = "CreateEventOfflineError"
   const val SAVE_UNCONFIRMED = "CreateEventSaveUnconfirmed"
   const val SAVE_UNCONFIRMED_ICON = "CreateEventSaveUnconfirmedIcon"
 
@@ -238,9 +239,18 @@ fun CreateEventContent(
         )
       }
 
+      if (state.offline) {
+        Text(
+            text = stringResource(R.string.create_event_error_offline),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag(CreateEventScreenTestTags.OFFLINE_ERROR),
+        )
+      }
+
       if (state.saveUnconfirmed) {
-        // A warning rather than an error: the event is on its way, so it must not read as a
-        // failure, but a muted line was missed. The theme is dark only, which the warning colour
+        // A warning rather than an error: the event may have been created, so it must not read as
+        // a failure, but a muted line was missed. The theme is dark only, which the warning colour
         // is chosen for.
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
           Icon(
