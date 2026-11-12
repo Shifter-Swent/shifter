@@ -94,14 +94,6 @@ class LiveLocationCoordinator(
       sessionStates.map { states -> states.mapValues { it.value.second } }.distinctUntilChanged()
 
   /**
-   * The state of [sharingStates] as a whole, `null` when it is empty. The most urgent state wins
-   * (see [LiveLocationSharingState]), so a team whose position is refused is not hidden behind
-   * another whose position is shared.
-   */
-  val sharingState: Flow<LiveLocationSharingState?> =
-      sharingStates.map { it.values.maxOrNull() }.distinctUntilChanged()
-
-  /**
    * Runs the sessions of the eligible targets until cancelled, refreshing every [refreshInterval]
    * and whenever [refreshes] emits.
    *

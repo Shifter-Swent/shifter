@@ -4,6 +4,8 @@ package com.swent.shifter.ui.location
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
@@ -11,6 +13,8 @@ import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.location.LiveLocationCoordinator
 import com.swent.shifter.model.location.LiveLocationPublisher
 import com.swent.shifter.model.location.LiveLocationSessions
+import com.swent.shifter.model.location.LiveLocationSharingState
+import com.swent.shifter.model.location.LiveLocationTarget
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.RepositoryLiveLocationTargets
 import com.swent.shifter.model.location.runLiveLocationPublishing
@@ -37,14 +41,19 @@ private const val TAG = "LiveLocationPublishing"
  * @param repositories the repositories the targets, the sessions and the consent are read from.
  * @param locationProvider the device's position, the same provider the automatic check-in and the
  *   map collect; a session only collects it while sharing is on and the permission is granted.
+ * @param onSharingStates what the sharing is doing for each target, for the indicator of the top
+ *   bar (#405): every change, and an empty map whenever publishing stops.
  */
 @Composable
 fun LiveLocationPublishing(
     repositories: RepositoryProvider,
     locationProvider: LocationProvider,
+    onSharingStates: (Map<LiveLocationTarget, LiveLocationSharingState>) -> Unit,
 ) {
   val lifecycle = LocalLifecycleOwner.current.lifecycle
   val auth = repositories.authRepository
+  // The latest callback, without restarting the publishing when it changes.
+  val reportStates by rememberUpdatedState(onSharingStates)
   LaunchedEffect(lifecycle, repositories, locationProvider) {
     publishWhileForeground(
         lifecycle = lifecycle,
@@ -62,6 +71,7 @@ fun LiveLocationPublishing(
                       userId,
                   ),
               onSessionFault = { Log.e(TAG, "A live location session failed unexpectedly", it) },
+              onSharingStates = { reportStates(it) },
           )
         },
     )

@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -58,6 +59,7 @@ import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.location.LocationSharingTestTags
 import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
@@ -1413,23 +1415,9 @@ class ShifterNavHostTest {
    */
   @Test
   fun liveLocation_withAConsentingVolunteerInAnOngoingEvent_sharesTheirPosition() {
-    val event = acceptedEvent(asManager = false, running = true)
+    val event = consentingVolunteerInOngoingEvent()
     val volunteer = checkNotNull(repositories.authRepository.currentUser())
     val teamId = teamIds.getValue(event.id)
-    // The rules accept a position only while the volunteer's profile has sharing on, so the profile
-    // is created and the consent turned on, as the sign-in and Settings would.
-    runBlocking {
-      repositories.userRepository.getOrCreateUser(
-          volunteer.uid,
-          "Vera",
-          volunteer.email ?: "vera@example.com",
-      )
-      repositories.userRepository.setLocationSharing(volunteer.uid, true, emptyList())
-    }
-    // Children first, so tearDown deletes them before the event and the profile they belong to.
-    createdPaths.add(0, "events/${event.id}/teams/$teamId/liveLocations/${volunteer.uid}")
-    createdPaths.add(0, "users/${volunteer.uid}")
-    createdPaths.add(0, "publicProfiles/${volunteer.uid}")
 
     val locationProvider = FakeLocationProvider().apply { setPosition(GENEVA) }
     try {
@@ -1459,6 +1447,83 @@ class ShifterNavHostTest {
       AuthEmulator.auth.signOut()
       composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) { locationProvider.activeCollectors == 0 }
     }
+  }
+
+  /**
+   * The wiring of the location sharing indicator (#405): the states of the publisher at the root
+   * reach the top bar of every screen, and its sheet leads to Settings. Each piece is unit tested,
+   * but if ShifterNavHost stopped passing the states on, the icon would simply never show.
+   */
+  @Test
+  fun locationSharingIndicator_whileThePositionIsShared_showsOnEveryScreenAndLeadsToSettings() {
+    val event = consentingVolunteerInOngoingEvent()
+    val locationProvider = FakeLocationProvider().apply { setPosition(GENEVA) }
+    try {
+      composeTestRule.setContent {
+        ShifterTheme {
+          ShifterNavHost(
+              isSignedIn = true,
+              repositories = repositories,
+              locationProvider = locationProvider,
+          )
+        }
+      }
+      // On My Events, once the emulator confirmed the position.
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) {
+        composeTestRule
+            .onAllNodesWithContentDescription(SHARED_DESCRIPTION)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
+
+      // In the top bar of the event's tabs too.
+      openEvent(event)
+      waitForNode(NavigationTestTags.TOP_BAR_TITLE)
+      composeTestRule.onNodeWithContentDescription(SHARED_DESCRIPTION).assertIsDisplayed()
+
+      // The sheet names the event and the team the position goes to.
+      composeTestRule.onNodeWithTag(LocationSharingTestTags.INDICATOR).performClick()
+      composeTestRule.onNodeWithText("Your position is shared").assertIsDisplayed()
+      composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+        composeTestRule.onAllNodesWithText("Litter pickers").fetchSemanticsNodes().isNotEmpty()
+      }
+      composeTestRule
+          .onNode(
+              hasText("Beach cleanup") and hasAnyAncestor(hasTestTag(LocationSharingTestTags.SHEET))
+          )
+          .assertIsDisplayed()
+
+      composeTestRule.onNodeWithTag(LocationSharingTestTags.OPEN_SETTINGS).performClick()
+      waitForNode(SettingsScreenTestTags.SCREEN)
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.SCREEN).assertIsDisplayed()
+    } finally {
+      AuthEmulator.auth.signOut()
+      composeTestRule.waitUntil(PUBLISH_TIMEOUT_MILLIS) { locationProvider.activeCollectors == 0 }
+    }
+  }
+
+  /**
+   * A volunteer accepted into a team of an event in progress, with sharing turned on, signed in.
+   * The rules accept a position only while the volunteer's profile has sharing on, so the profile
+   * is created and the consent turned on, as the sign-in and Settings would.
+   */
+  private fun consentingVolunteerInOngoingEvent(): Event {
+    val event = acceptedEvent(asManager = false, running = true)
+    val volunteer = checkNotNull(repositories.authRepository.currentUser())
+    val teamId = teamIds.getValue(event.id)
+    runBlocking {
+      repositories.userRepository.getOrCreateUser(
+          volunteer.uid,
+          "Vera",
+          volunteer.email ?: "vera@example.com",
+      )
+      repositories.userRepository.setLocationSharing(volunteer.uid, true, emptyList())
+    }
+    // Children first, so tearDown deletes them before the event and the profile they belong to.
+    createdPaths.add(0, "events/${event.id}/teams/$teamId/liveLocations/${volunteer.uid}")
+    createdPaths.add(0, "users/${volunteer.uid}")
+    createdPaths.add(0, "publicProfiles/${volunteer.uid}")
+    return event
   }
 
   /**
@@ -1710,6 +1775,9 @@ class ShifterNavHostTest {
 
     /** Long enough for the coordinator to resolve the target and the publisher to write once. */
     const val PUBLISH_TIMEOUT_MILLIS = 30_000L
+
+    /** How the indicator describes a position the emulator confirmed. */
+    const val SHARED_DESCRIPTION = "Location shared with your manager"
 
     const val COORDINATE_TOLERANCE = 1e-9
 

@@ -74,15 +74,27 @@ fun UserRepository.sharingConsent(userId: String): Flow<Boolean> =
  * - **Lives as long as the caller.** It returns only when cancelled, so a lifecycle boundary around
  *   this call is what starts and stops the whole publishing. Cancelling stops the consent
  *   observation with it.
+ *
+ * It also reports [LiveLocationCoordinator.sharingStates] to [onSharingStates], for the indicator
+ * telling the volunteer about the sharing (#405), and **an empty map once cancelled**: in the
+ * background, signed out or on another account, no session runs, so the indicator must not keep the
+ * last state of one.
  */
 suspend fun runLiveLocationPublishing(
     coordinator: LiveLocationCoordinator,
     consent: Flow<Boolean>,
     onSessionFault: (Throwable) -> Unit,
-): Unit = coroutineScope {
-  val shared: StateFlow<Boolean?> = consent.stateIn(this, SharingStarted.Eagerly, null)
-  launch(CoroutineExceptionHandler { _, e -> onSessionFault(e) }) {
-        coordinator.run(shared.filterNotNull())
+    onSharingStates: (Map<LiveLocationTarget, LiveLocationSharingState>) -> Unit,
+): Unit =
+    try {
+      coroutineScope {
+        launch { coordinator.sharingStates.collect(onSharingStates) }
+        val shared: StateFlow<Boolean?> = consent.stateIn(this, SharingStarted.Eagerly, null)
+        launch(CoroutineExceptionHandler { _, e -> onSessionFault(e) }) {
+              coordinator.run(shared.filterNotNull())
+            }
+            .join()
       }
-      .join()
-}
+    } finally {
+      onSharingStates(emptyMap())
+    }

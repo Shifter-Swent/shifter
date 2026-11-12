@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -69,6 +70,9 @@ import com.swent.shifter.ui.events.avatarInitial
 import com.swent.shifter.ui.events.organizer.OrgaEventsScreen
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.location.LiveLocationPublishing
+import com.swent.shifter.ui.location.LocalLocationSharing
+import com.swent.shifter.ui.location.LocationSharingUi
+import com.swent.shifter.ui.location.LocationSharingViewModel
 import com.swent.shifter.ui.map.MapScreen
 import com.swent.shifter.ui.map.MapViewModel
 import com.swent.shifter.ui.map.WatchedTeams
@@ -90,7 +94,8 @@ import com.swent.shifter.ui.team.TeamSetupViewModel
 import kotlinx.coroutines.flow.filter
 
 /**
- * The app's navigation graph.
+ * The app's navigation graph, with what every screen shares: the volunteer's position published
+ * while the app is in the foreground, and its state shown in the top bars (#405).
  *
  * @param isSignedIn Whether a session was restored at launch; only read for the start destination,
  *   which then reads the mode saved on the profile.
@@ -115,10 +120,55 @@ fun ShifterNavHost(
           remember(context) { FusedLocationProvider(context) }
         },
 ) {
+  val nav = rememberNavigationActions(navController)
+  val locationSharing: LocationSharingViewModel =
+      viewModel(factory = LocationSharingViewModel.factory(repositories))
+
+  // Shares the signed-in volunteer's position while the app is in the foreground, whatever the
+  // screen below. Here at the root so it survives navigation, rather than on an event screen.
+  LiveLocationPublishing(
+      repositories = repositories,
+      locationProvider = locationProvider,
+      onSharingStates = locationSharing::onSharingStates,
+  )
+
+  val sharingStates by locationSharing.sharingStates.collectAsState()
+  val sharingLabels by locationSharing.labels.collectAsState()
+  val sharing =
+      LocationSharingUi(
+          states = sharingStates,
+          labels = sharingLabels,
+          onOpen = locationSharing::loadLabels,
+          onOpenSettings = nav::openSettings,
+      )
+  // Every top bar reads the sharing from here, rather than each screen passing it on.
+  CompositionLocalProvider(LocalLocationSharing provides sharing) {
+    ShifterNavGraph(
+        isSignedIn,
+        repositories,
+        modifier,
+        navController,
+        nav,
+        credentialManager,
+        locationProvider,
+    )
+  }
+}
+
+/** The destinations of [ShifterNavHost], whose parameters it takes. */
+@Composable
+private fun ShifterNavGraph(
+    isSignedIn: Boolean,
+    repositories: RepositoryProvider,
+    modifier: Modifier,
+    navController: NavHostController,
+    nav: NavigationActions,
+    credentialManager: CredentialManager,
+    locationProvider: LocationProvider,
+) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
   val currentUserId = { auth.currentUser()?.uid }
-  val nav = rememberNavigationActions(navController)
   val start = remember { startApp(isSignedIn) }
   // The sign-in of each mode; the user enters the mode saved on their profile.
   val signIn: @Composable (UserMode, () -> Unit) -> Unit = { mode, onSwitchSignIn ->
@@ -135,10 +185,6 @@ fun ShifterNavHost(
   // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
   // session already gone at launch. exitToSignIn does nothing when already on sign-in.
   LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
-
-  // Shares the signed-in volunteer's position while the app is in the foreground, whatever the
-  // screen below. Here at the root so it survives navigation, rather than on an event screen.
-  LiveLocationPublishing(repositories = repositories, locationProvider = locationProvider)
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {

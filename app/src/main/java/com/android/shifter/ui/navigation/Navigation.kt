@@ -479,6 +479,11 @@ open class NavigationActions(private val navController: NavHostController) {
     navController.navigate(destination) { launchSingleTop = true }
   }
 
+  /** Opens the Settings of the mode the current screen belongs to, so as not to leave that mode. */
+  open fun openSettings() {
+    navigateTo(if (isInApp(Organizer)) Organizer.ProfileSettings else Volunteer.ProfileSettings)
+  }
+
   /** Ignored during a transition, so a double tap doesn't pop two screens. */
   open fun goBack() {
     if (navController.currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
