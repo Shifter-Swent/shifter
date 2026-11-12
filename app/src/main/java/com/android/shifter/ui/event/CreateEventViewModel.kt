@@ -12,7 +12,8 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.location.GeoPosition
-import com.swent.shifter.ui.map.formatCoordinate
+import com.swent.shifter.ui.map.LocationPicking
+import com.swent.shifter.ui.map.LocationPickingForm
 import com.swent.shifter.ui.map.parseCoordinate
 import java.time.Clock
 import java.time.Instant
@@ -79,10 +80,10 @@ data class CreateEventUiState(
     val description: String = "",
     val type: EventType? = null,
     val address: String = "",
-    val latitude: String = "",
-    val longitude: String = "",
-    val isPickingLocation: Boolean = false,
-    val locationDraft: GeoPosition? = null,
+    override val latitude: String = "",
+    override val longitude: String = "",
+    override val isPickingLocation: Boolean = false,
+    override val locationDraft: GeoPosition? = null,
     val startAt: String = "",
     val endAt: String = "",
     val errors: Set<EventFormError> = emptySet(),
@@ -92,7 +93,7 @@ data class CreateEventUiState(
     val saveUnconfirmed: Boolean = false,
     val createdEvent: Event? = null,
     val createdEventHandled: Boolean = false,
-) {
+) : LocationPickingForm<CreateEventUiState> {
   /** The error to show under [field], or null when it is valid. */
   fun errorFor(field: EventFormField): EventFormError? = errors.firstOrNull { it.field == field }
 
@@ -100,13 +101,11 @@ data class CreateEventUiState(
   val hasCoordinates: Boolean
     get() = latitude.isNotBlank() || longitude.isNotBlank()
 
-  /** The point the typed coordinates give, or null while either of them is missing or invalid. */
-  val position: GeoPosition?
-    get() {
-      val lat = parseCoordinate(latitude, GeoPosition.LATITUDE_RANGE) ?: return null
-      val lng = parseCoordinate(longitude, GeoPosition.LONGITUDE_RANGE) ?: return null
-      return GeoPosition(lat, lng)
-    }
+  override fun withPicker(isPickingLocation: Boolean, locationDraft: GeoPosition?) =
+      copy(isPickingLocation = isPickingLocation, locationDraft = locationDraft)
+
+  override fun withCoordinates(latitude: String, longitude: String) =
+      copy(latitude = latitude, longitude = longitude)
 }
 
 /**
@@ -135,8 +134,8 @@ class CreateEventViewModel(
    */
   private val eventId = UUID.randomUUID().toString()
 
-  /** The point of the form when the map was opened, so confirming it unmoved changes nothing. */
-  private var pickerStart: GeoPosition? = null
+  /** The map picker's lifecycle, shared with the mission form (see [LocationPicking]). */
+  private val picking = LocationPicking(_uiState)
 
   fun onTitleChange(title: String) = edit { it.copy(title = title) }
 
@@ -155,15 +154,10 @@ class CreateEventViewModel(
    * and not the longitude yet, it opens on the app's default place, and the point picked replaces
    * both coordinates.
    */
-  fun onPickLocation() {
-    pickerStart = _uiState.value.position
-    _uiState.update { it.copy(isPickingLocation = true, locationDraft = pickerStart) }
-  }
+  fun onPickLocation() = picking.open()
 
   /** Moves the point picked on the open map, without touching the form yet. */
-  fun onLocationDraftChange(position: GeoPosition) {
-    _uiState.update { if (it.isPickingLocation) it.copy(locationDraft = position) else it }
-  }
+  fun onLocationDraftChange(position: GeoPosition) = picking.moveTo(position)
 
   /**
    * Closes the map and fills the coordinates with the point picked. A point left where the map
@@ -171,25 +165,12 @@ class CreateEventViewModel(
    * rounded to the decimals the map gives.
    */
   fun onConfirmLocation() {
-    val draft = _uiState.value.locationDraft
-    if (draft == null || draft == pickerStart) {
-      onCancelLocationPicker()
-      return
-    }
-    edit {
-      it.copy(
-          latitude = formatCoordinate(draft.latitude),
-          longitude = formatCoordinate(draft.longitude),
-          isPickingLocation = false,
-          locationDraft = null,
-      )
-    }
+    val confirm = picking.confirmed() ?: return picking.close()
+    edit(confirm)
   }
 
   /** Closes the map and leaves the coordinates as they were. */
-  fun onCancelLocationPicker() {
-    _uiState.update { it.copy(isPickingLocation = false, locationDraft = null) }
-  }
+  fun onCancelLocationPicker() = picking.close()
 
   /** Empties the coordinates, keeping the address: the event is then saved with no point. */
   fun onClearLocation() = edit { it.copy(latitude = "", longitude = "") }
