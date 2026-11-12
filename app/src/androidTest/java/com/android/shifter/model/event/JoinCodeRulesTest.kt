@@ -123,6 +123,19 @@ class JoinCodeRulesTest {
     assertDenied { joinCode(code).delete().await() }
   }
 
+  @Test
+  fun updateEvent_changingTheJoinCode_isDenied() = emulatorTest {
+    val taken = newCode()
+    eventWithCode(taken, reserve = true)
+    val event = eventWithCode(newCode(), reserve = true)
+
+    signIn(organizer)
+    // Neither another event's code, nor any other: the reserved code stays the event's.
+    assertDenied { event.update("joinCode", taken).await() }
+    assertDenied { event.update("joinCode", newCode()).await() }
+    event.update("title", "Renamed").await()
+  }
+
   /**
    * Creates an event of [organizer] using [code], and, when [reserve] is true, its `joinCodes`
    * document in the same commit, as [FirestoreEventRepository.createEvent] does.

@@ -111,8 +111,11 @@ service cloud.firestore {
       allow get: if signedIn();
       allow list: if signedIn() && resource.data.organizerId == request.auth.uid;
       allow create: if signedIn() && request.resource.data.organizerId == request.auth.uid;
+      // The join code never changes: joinCodes/{code} only trusts it because it stays the one
+      // reserved with the event, so another event's code cannot be taken over this way.
       allow update: if signedIn() && resource.data.organizerId == request.auth.uid
-        && request.resource.data.organizerId == resource.data.organizerId;
+        && request.resource.data.organizerId == resource.data.organizerId
+        && request.resource.data.get('joinCode', null) == resource.data.get('joinCode', null);
       allow delete: if signedIn() && resource.data.organizerId == request.auth.uid;
 
       match /membershipRequests/{uid} {

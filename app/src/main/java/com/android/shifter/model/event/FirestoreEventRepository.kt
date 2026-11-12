@@ -36,7 +36,11 @@ class FirestoreEventRepository(
    *
    * The code is reserved in `/joinCodes/{code}` in the same transaction as the event, so two events
    * never share a code: a code already taken is detected inside the transaction and another one is
-   * drawn. With a 31-character alphabet and 6 characters, a few attempts are enough.
+   * drawn. With a 31-character alphabet and 6 characters, a few attempts are enough. An event
+   * already stored under [Event.id], as when a create is retried, keeps its code.
+   *
+   * A transaction needs the server: offline, this fails with [EventRepositoryException.Unavailable]
+   * instead of being queued until the connection is back.
    *
    * [Event.createdAt] is persisted as the caller supplied it: the repository does not invent time,
    * which keeps writes deterministic and testable.
@@ -44,8 +48,8 @@ class FirestoreEventRepository(
   override suspend fun createEvent(event: Event): Event = translatingErrors {
     val document = if (event.id.isEmpty()) events.document() else events.document(event.id)
     repeat(JOIN_CODE_ATTEMPTS) {
-      val persisted = event.copy(id = document.id, joinCode = randomJoinCode())
-      if (reserve(persisted)) return@translatingErrors persisted
+      val persisted = reserve(event.copy(id = document.id, joinCode = randomJoinCode()))
+      if (persisted != null) return@translatingErrors persisted
     }
     throw IllegalStateException(
         "Could not find an unused join code after $JOIN_CODE_ATTEMPTS attempts"
@@ -74,18 +78,29 @@ class FirestoreEventRepository(
   /**
    * Writes [event] and reserves its join code in one transaction, unless the code is already taken.
    *
-   * @return whether the event was written; false means another event already uses its join code.
+   * An event already stored under [Event.id], such as a create retried after a timeout that went
+   * through, keeps the code it has: that code is reserved for it already, and the rules never let
+   * an event's code change.
+   *
+   * @return the event as written, or null when another event already uses its join code.
    */
-  private suspend fun reserve(event: Event): Boolean {
+  private suspend fun reserve(event: Event): Event? {
+    val document = events.document(event.id)
     val code = joinCodes.document(event.joinCode)
     return firestore
         .runTransaction { transaction ->
-          if (transaction.get(code).exists()) {
-            false
-          } else {
-            transaction.set(events.document(event.id), event.toFirestoreMap())
-            transaction.set(code, mapOf(JoinCodeSchema.EVENT_ID to event.id))
-            true
+          val stored = transaction.get(document).getString(EventSchema.JOIN_CODE)
+          when {
+            stored != null ->
+                event.copy(joinCode = stored).also {
+                  transaction.set(document, it.toFirestoreMap())
+                }
+            transaction.get(code).exists() -> null
+            else -> {
+              transaction.set(document, event.toFirestoreMap())
+              transaction.set(code, mapOf(JoinCodeSchema.EVENT_ID to event.id))
+              event
+            }
           }
         }
         .await()

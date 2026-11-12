@@ -98,7 +98,7 @@ stays in `users/{uid}`.
 | `startAt`, `endAt` | timestamp | |
 | `location` | map | `address` (string), `latitude` (-90 to 90) and `longitude` (-180 to 180) (number \| null, both set or both null) |
 | `emergencyContacts` | list of maps | `name`, `phoneNumber` (string), `role` (string \| null) |
-| `joinCode` | string | Unique, generated on creation and reserved in `joinCodes/{code}` |
+| `joinCode` | string | Unique, generated on creation and reserved in `joinCodes/{code}`. Never changes |
 | `status` | string | `PREPARATION`, `ONGOING`, `COMPLETED`, `ARCHIVED` |
 | `createdAt` | timestamp | |
 
@@ -307,7 +307,7 @@ every access to it is denied.
 |---|---|---|
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change; a new `displayName` must be written to the public profile in the same commit. No delete |
 | `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
-| `events/{eventId}` | `get`: any signed-in user, by id. `list`: the organizer, for their own events only, so nobody collects every event and its join code | Create with yourself as `organizerId`. Update and delete by the organizer only |
+| `events/{eventId}` | `get`: any signed-in user, by id. `list`: the organizer, for their own events only, so nobody collects every event and its join code | Create with yourself as `organizerId`. Update and delete by the organizer only, never changing `joinCode` |
 | `joinCodes/{code}` | Any signed-in user, one document at a time (`get`): listing is denied | Create only, by the organizer of `eventId`, with only `eventId`, when the event has this `joinCode` after the same commit. Never updated, so a code is never taken over. Delete by the event's organizer |
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it. Either only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
@@ -365,7 +365,9 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   every read and write under a deleted event is denied, since a team's manager would otherwise go
   on reading the positions orphaned under it. Only the volunteer's own delete still works, so the
   orphans can be cleaned up: the organizer's delete is not an exception here, because it is granted
-  by reading the event's `organizerId`, which a deleted event no longer has.
+  by reading the event's `organizerId`, which a deleted event no longer has. Its
+  `joinCodes/{code}` is in the same case: its delete is granted by reading the event, so the code
+  has to be deleted before the event, or in the same batch, or it stays reserved for good.
 - **A shared position outlives the consent, until the event's period ends.** Listing
   `liveLocations` is allowed by the path alone, because a condition on each document would make the
   manager's query of the collection fail as soon as one volunteer no longer satisfied it (rules are

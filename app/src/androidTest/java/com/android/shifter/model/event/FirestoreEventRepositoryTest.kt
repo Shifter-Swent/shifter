@@ -186,10 +186,13 @@ class FirestoreEventRepositoryTest {
     val organizerId = uniqueOrganizerId()
     val event = richEvent(organizerId).copy(id = "event-" + UUID.randomUUID())
 
-    create(event)
+    val created = create(event)
     val retried = track(repository.createEvent(event.copy(title = "Retried title")))
 
     assertEquals(event.id, retried.id)
+    // The code reserved by the first attempt is kept, and still opens the event.
+    assertEquals(created.joinCode, retried.joinCode)
+    assertEquals(event.id, repository.getEventByJoinCode(created.joinCode)?.id)
     assertEquals("Retried title", repository.getEvent(event.id)?.title)
     assertEquals(listOf(event.id), repository.getEventsByOrganizer(organizerId).map { it.id })
   }
