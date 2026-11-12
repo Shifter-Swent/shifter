@@ -33,3 +33,13 @@ sealed interface ChatChannelId {
    */
   data class Admin(override val eventId: String) : ChatChannelId
 }
+
+/**
+ * The kind of a [ChatChannelId], without its ids: what a screen or a route needs to name a channel
+ * of an event it is already in.
+ */
+enum class ChannelKind {
+  TEAM,
+  GENERAL,
+  ADMIN,
+}

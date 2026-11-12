@@ -84,8 +84,8 @@ data class TeamChatUiState(
 }
 
 /**
- * Shows the channel of the team [teamId] of the event [eventId] in real time, with the senders'
- * names, and sends the user's messages.
+ * Shows the chat [channel] in real time, a team's or one of the event's, with the senders' names,
+ * and sends the user's messages.
  *
  * A message sent stays pending until [ChatRepository.send] returns, i.e. until the server has
  * confirmed it. Offline, the repository already lists it: that message is the one shown as pending.
@@ -99,8 +99,7 @@ data class TeamChatUiState(
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
 class TeamChatViewModel(
-    private val eventId: String,
-    private val teamId: String,
+    private val channel: ChatChannelId,
     private val chatRepository: ChatRepository,
     private val userRepository: UserRepository,
     private val teamRepository: TeamRepository,
@@ -146,7 +145,7 @@ class TeamChatViewModel(
     _uiState.update { it.copy(isLoading = true, error = null) }
     loading = viewModelScope.launch {
       try {
-        chatRepository.messages(ChatChannelId.Team(eventId, teamId)).collect { messages ->
+        chatRepository.messages(channel).collect { messages ->
           received = messages
           show(isLoading = false)
           loadNames(messages)
@@ -197,7 +196,7 @@ class TeamChatViewModel(
     show()
     viewModelScope.launch {
       try {
-        chatRepository.send(ChatChannelId.Team(eventId, teamId), text, announcement)
+        chatRepository.send(channel, text, announcement)
       } catch (e: CancellationException) {
         throw e
       } catch (e: ChatRepositoryException.Unavailable) {
@@ -226,13 +225,15 @@ class TeamChatViewModel(
 
   /**
    * Reads whether the user manages the team, the only one who may announce in its channel. A team
-   * that cannot be read leaves the option hidden.
+   * that cannot be read leaves the option hidden. The event's channels never show it for now: only
+   * their organizer may announce there (#429).
    */
   private fun loadAnnounceRight() {
+    val team = channel as? ChatChannelId.Team ?: return
     viewModelScope.launch {
       val manager =
           try {
-            teamRepository.getTeam(eventId, teamId)?.managerId
+            teamRepository.getTeam(team.eventId, team.teamId)?.managerId
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
@@ -304,22 +305,14 @@ class TeamChatViewModel(
      * arguments.
      */
     fun factory(
-        eventId: String,
-        teamId: String,
+        channel: ChatChannelId,
         chatRepository: ChatRepository,
         userRepository: UserRepository,
         teamRepository: TeamRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
-        TeamChatViewModel(
-            eventId,
-            teamId,
-            chatRepository,
-            userRepository,
-            teamRepository,
-            currentUserId,
-        )
+        TeamChatViewModel(channel, chatRepository, userRepository, teamRepository, currentUserId)
       }
     }
   }

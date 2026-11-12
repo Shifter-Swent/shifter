@@ -36,6 +36,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import com.swent.shifter.model.RepositoryProvider
+import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.user.UserMode
@@ -43,7 +44,6 @@ import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
-import com.swent.shifter.ui.chat.ChatChannel
 import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
 import com.swent.shifter.ui.chat.TeamChatScreen
@@ -300,7 +300,7 @@ fun ShifterNavHost(
             navController,
             repositories,
             currentUserId,
-            channel = { VolunteerEventScreen.Channel(it.teamId, it.name) },
+            channel = VolunteerEventScreen::Channel,
         )
       }
     }
@@ -516,7 +516,7 @@ fun ShifterNavHost(
             navController,
             repositories,
             currentUserId,
-            channel = { OrganizerEventScreen.Channel(it.teamId, it.name) },
+            channel = OrganizerEventScreen::Channel,
         )
       }
     }
@@ -593,9 +593,10 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 }
 
 /**
- * Registers the Discussions [tab] of the event open in the graph [E]: the channels the user can
- * open, every team's for its organizer ([asOrganizer]), and on top of it the channel of a team, as
- * the destination [channel] makes of it, under a bar with the team's name.
+ * Registers the Discussions [tab] of the event open in the graph [E]: the event's channels and the
+ * team channels the user can open, every team's for its organizer ([asOrganizer]), and on top of it
+ * the channel picked, as the destination [channel] makes of its kind, team id (for a team's
+ * channel) and name, under a bar with that name.
  */
 private inline fun <
     reified T : Tab,
@@ -609,7 +610,7 @@ private inline fun <
     navController: NavHostController,
     repositories: RepositoryProvider,
     noinline currentUserId: () -> String?,
-    noinline channel: (ChatChannel) -> C,
+    noinline channel: (kind: ChannelKind, teamId: String?, name: String) -> C,
 ) {
   tab<T, S, E>(
       tab,
@@ -628,7 +629,7 @@ private inline fun <
                             currentUserId,
                         )
                 ),
-            onOpenChannel = { nav.navigateTo(channel(it)) },
+            onOpenChannel = { kind, teamId, name -> nav.navigateTo(channel(kind, teamId, name)) },
         )
       },
   ) {
@@ -641,8 +642,7 @@ private inline fun <
                 viewModel(
                     factory =
                         TeamChatViewModel.factory(
-                            eventId,
-                            route.teamId,
+                            route.channelId(eventId),
                             repositories.chatRepository,
                             repositories.userRepository,
                             repositories.teamRepository,

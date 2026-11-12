@@ -3,7 +3,7 @@
 <resources>
     <string name="chat_empty">No messages yet</string>
     <string name="chat_error_offline">You are offline. The messages will show once you are back online.</string>
-    <string name="chat_error_not_allowed">You no longer have access to this team\'s channel.</string>
+    <string name="chat_error_not_allowed">You no longer have access to this channel.</string>
     <string name="chat_error_unexpected">The messages could not be loaded.</string>
     <string name="chat_retry">Retry</string>
     <string name="chat_unknown_sender">Unnamed member</string>
@@ -12,6 +12,9 @@
     <string name="chat_send_failed">The message could not be sent. Try again.</string>
     <string name="chat_input_placeholder">Write a message</string>
     <string name="chat_send">Send</string>
+    <string name="chat_channel_general">General</string>
+    <string name="chat_channel_admin">Admin</string>
+    <string name="chat_channels_teams">Teams</string>
     <string name="chat_channels_empty_volunteer">You will see your team\'s channel once you are in a team.</string>
     <string name="chat_channels_empty_organizer">This event has no team yet. Each team you create gets its own channel.</string>
     <string name="chat_channels_error_offline">You are offline. The channels will show once you are back online.</string>

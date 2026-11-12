@@ -17,6 +17,7 @@ import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,7 +38,8 @@ class TeamChatViewModelTest {
 
   private val teams = FakeTeamRepository(listOf(team(managerId = OTHER)))
 
-  private fun viewModel() = TeamChatViewModel(EVENT, TEAM, chat, profiles, teams) { ME }
+  private fun viewModel(channel: ChatChannelId = CHANNEL) =
+      TeamChatViewModel(channel, chat, profiles, teams) { ME }
 
   /** A view model of the team that [ME] manages, and may announce in. */
   private fun managerViewModel(): TeamChatViewModel {
@@ -52,8 +54,44 @@ class TeamChatViewModelTest {
     send()
   }
 
-  private fun receive(id: String, from: String, text: String, announcement: Boolean = false) =
-      chat.add(CHANNEL, ChatMessage(id, from, text, SENT_AT, announcement = announcement))
+  private fun receive(
+      id: String,
+      from: String,
+      text: String,
+      announcement: Boolean = false,
+      channel: ChatChannelId = CHANNEL,
+  ) = chat.add(channel, ChatMessage(id, from, text, SENT_AT, announcement = announcement))
+
+  @Test
+  fun generalChannel_showsAndSendsItsOwnMessages() = runTest {
+    val general = ChatChannelId.General(EVENT)
+    receive("1", OTHER, "Welcome everyone", channel = general)
+    receive("2", OTHER, "Bar team only")
+    val viewModel = viewModel(general)
+
+    viewModel.onDraftChange("Hello all")
+    viewModel.send()
+
+    assertEquals(
+        listOf("Welcome everyone", "Hello all"),
+        viewModel.uiState.value.messages.map { it.text },
+    )
+    assertEquals(listOf("Bar team only"), chat.messages(CHANNEL).first().map { it.text })
+  }
+
+  @Test
+  fun generalChannel_doesNotOfferToAnnounce_evenToTheTeamManager() = runTest {
+    teams.teams[0] = team(managerId = ME)
+    val viewModel = viewModel(ChatChannelId.General(EVENT))
+
+    viewModel.announce("Gates open at 9:00")
+
+    assertFalse(viewModel.uiState.value.canAnnounce)
+    assertEquals(
+        listOf(false),
+        chat.messages(ChatChannelId.General(EVENT)).first().map { it.announcement },
+    )
+  }
 
   @Test
   fun load_showsTheMessagesWithTheirSenders() = runTest {

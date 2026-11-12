@@ -1,7 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
-import androidx.lifecycle.SavedStateHandle
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepositoryException
@@ -30,7 +29,7 @@ class ChatChannelsViewModelTest {
       )
 
   private fun viewModel(asOrganizer: Boolean = false, userId: String? = ME) =
-      ChatChannelsViewModel(EVENT, asOrganizer, teams, SavedStateHandle()) { userId }
+      ChatChannelsViewModel(EVENT, asOrganizer, teams) { userId }
 
   @Test
   fun load_asVolunteer_listsTheTeamsIBelongToOrManage() = runTest {
@@ -45,10 +44,7 @@ class ChatChannelsViewModelTest {
   @Test
   fun load_asMemberAndManagerOfATeam_listsItOnce() = runTest {
     val team = team("bar", "Bar", managerId = ME, memberIds = listOf(ME))
-    val viewModel =
-        ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team)), SavedStateHandle()) {
-          ME
-        }
+    val viewModel = ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team))) { ME }
 
     assertEquals(listOf("bar"), viewModel.uiState.value.channels.map { it.teamId })
   }
@@ -59,6 +55,7 @@ class ChatChannelsViewModelTest {
 
     assertTrue(state.asOrganizer)
     assertEquals(listOf("Bar", "kitchen", "Security"), state.channels.map { it.name })
+    assertTrue(state.showsAdmin)
   }
 
   @Test
@@ -88,42 +85,33 @@ class ChatChannelsViewModelTest {
   }
 
   @Test
-  fun load_withASingleChannel_offersToOpenIt() = runTest {
-    val viewModel = viewModel(userId = OTHER)
-
-    assertEquals(
-        ChatChannel("security", "Security", "truck"),
-        viewModel.uiState.value.channelToOpen,
-    )
+  fun load_asManager_showsTheAdminChannel() = runTest {
+    assertTrue(viewModel().uiState.value.showsAdmin)
   }
 
   @Test
-  fun load_withSeveralChannels_offersNoneToOpen() = runTest {
-    assertNull(viewModel().uiState.value.channelToOpen)
+  fun load_asMemberManagingNoTeam_hidesTheAdminChannel() = runTest {
+    val state = viewModel(userId = OTHER).uiState.value
+
+    // Their only team channel is listed, not opened: the list always shows the general channel.
+    assertEquals(listOf("security"), state.channels.map { it.teamId })
+    assertFalse(state.showsAdmin)
   }
 
   @Test
-  fun onChannelOpened_neverOffersItAgain() = runTest {
-    val viewModel = viewModel(userId = OTHER)
+  fun load_asManagerOfAnotherEventOnly_hidesTheAdminChannel() = runTest {
+    val team = team("bar", "Bar", eventId = "other-event", managerId = ME)
+    val viewModel = ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team))) { ME }
 
-    viewModel.onChannelOpened()
-    viewModel.load()
-
-    // Back on the list, the channel is listed rather than opened again.
-    assertNull(viewModel.uiState.value.channelToOpen)
-    assertEquals(listOf("security"), viewModel.uiState.value.channels.map { it.teamId })
+    assertFalse(viewModel.uiState.value.showsAdmin)
   }
 
   @Test
-  fun onChannelOpened_afterTheAppWasKilled_neverOffersItAgain() = runTest {
-    val savedState = SavedStateHandle()
-    ChatChannelsViewModel(EVENT, false, teams, savedState) { OTHER }.onChannelOpened()
+  fun load_asOrganizerOfAnEventWithoutTeam_showsTheAdminChannel() = runTest {
+    val viewModel = ChatChannelsViewModel(EVENT, true, FakeTeamRepository(emptyList())) { ME }
 
-    // Android restores the navigation and recreates the ViewModel with the state it saved.
-    val restored = ChatChannelsViewModel(EVENT, false, teams, savedState) { OTHER }
-
-    assertNull(restored.uiState.value.channelToOpen)
-    assertEquals(listOf("security"), restored.uiState.value.channels.map { it.teamId })
+    assertTrue(viewModel.uiState.value.channels.isEmpty())
+    assertTrue(viewModel.uiState.value.showsAdmin)
   }
 
   @Test
@@ -164,6 +152,7 @@ class ChatChannelsViewModelTest {
 
     assertEquals(ChatError.OFFLINE, viewModel.uiState.value.error)
     assertTrue(viewModel.uiState.value.channels.isEmpty())
+    assertFalse(viewModel.uiState.value.showsAdmin)
   }
 
   private fun team(
