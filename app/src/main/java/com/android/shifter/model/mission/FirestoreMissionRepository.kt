@@ -181,10 +181,14 @@ class FirestoreMissionRepository(
    * and completion, and its check-ins are left as they are.
    *
    * The overlap check reads the team's missions before the write, so like in [createMission] it is
-   * not atomic. The completion and the limit on [Mission.volunteersNeeded] depend on the stored
-   * mission, so they are checked again in a transaction, as in [updateAssignees]. Like every
-   * transaction, it needs a connection. `firestore.rules` refuses the change of a completed mission
-   * too, measured by the server's clock.
+   * not atomic. The limit on [Mission.volunteersNeeded] depends on the stored mission, so it is
+   * checked again in a transaction, as in [updateAssignees]. Like every transaction, it needs a
+   * connection.
+   *
+   * `firestore.rules` is what refuses the change of a completed mission, measured by the server's
+   * clock. The completion is checked here only to report it as a [MissionCompletedException] rather
+   * than a denied write: before the overlap check, and again in the transaction, for a mission
+   * completed in between.
    */
   override suspend fun updateMission(mission: Mission) {
     requireValidUpdate(mission)
