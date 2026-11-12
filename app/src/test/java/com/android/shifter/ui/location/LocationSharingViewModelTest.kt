@@ -151,12 +151,60 @@ class LocationSharingViewModelTest {
     viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
     viewModel.loadLabels()
 
-    // The app goes to the background before the names arrive.
+    // The app goes to the background before the names arrive, then comes back.
     viewModel.onSharingStates(emptyMap())
+    viewModel.onSharingStates(mapOf(HYDRATION to LiveLocationSharingState.SHARED))
     network?.complete(Unit)
 
     // Names read before the stop could be outdated: none is kept, so they are read again later.
     assertEquals(emptyMap<LiveLocationTarget, SharingTargetLabel>(), viewModel.labels.value)
+  }
+
+  @Test
+  fun loadLabels_forATargetDroppedDuringTheLoad_keepsNoName() {
+    network = CompletableDeferred()
+    viewModel.onSharingStates(
+        mapOf(
+            HYDRATION to LiveLocationSharingState.SHARED,
+            FINISH to LiveLocationSharingState.SHARED,
+        )
+    )
+    viewModel.loadLabels()
+
+    // The volunteer leaves Hydration before the names arrive.
+    viewModel.onSharingStates(mapOf(FINISH to LiveLocationSharingState.SHARED))
+    network?.complete(Unit)
+
+    assertEquals(setOf(FINISH), viewModel.labels.value.keys)
+  }
+
+  @Test
+  fun loadLabels_forATargetFollowedAgain_readsItsNamesAgain() {
+    viewModel.onSharingStates(
+        mapOf(
+            HYDRATION to LiveLocationSharingState.SHARED,
+            FINISH to LiveLocationSharingState.SHARED,
+        )
+    )
+    viewModel.loadLabels()
+
+    // The volunteer leaves Hydration, Sam replaces Alex, and the volunteer comes back, all while
+    // the app stays open: the publisher never stops.
+    viewModel.onSharingStates(mapOf(FINISH to LiveLocationSharingState.SHARED))
+    users.users[SAM] = User(SAM, "Sam", "sam@example.com")
+    runBlocking { teams.setManager(EVENT, EVENT_HYDRATION, SAM) }
+    viewModel.onSharingStates(
+        mapOf(
+            HYDRATION to LiveLocationSharingState.SHARED,
+            FINISH to LiveLocationSharingState.SHARED,
+        )
+    )
+    viewModel.loadLabels()
+
+    assertEquals(
+        SharingTargetLabel("City Marathon", "Hydration", "Sam"),
+        viewModel.labels.value[HYDRATION],
+    )
   }
 
   @Test

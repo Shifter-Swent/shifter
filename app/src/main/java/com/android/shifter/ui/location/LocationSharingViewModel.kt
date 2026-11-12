@@ -63,16 +63,15 @@ class LocationSharingViewModel(
   /**
    * Called by the publisher with every change, and with an empty map once it stops.
    *
-   * Its stop - background, sign-out, another account - also forgets the names, so they are read
-   * again the next time: a team renamed or given another manager meanwhile is never shown under its
-   * old one, nor a manager whose name could not be read left out for good.
+   * The names of the targets it no longer runs for are forgotten, and all of them once it stops -
+   * background, sign-out, another account - with the load in progress, so they are read again the
+   * next time: a team renamed or given another manager meanwhile is never shown under its old one,
+   * nor a manager whose name could not be read left out for good.
    */
   fun onSharingStates(states: Map<LiveLocationTarget, LiveLocationSharingState>) {
     _sharingStates.value = states
-    if (states.isEmpty()) {
-      loadJob?.cancel()
-      _labels.value = emptyMap()
-    }
+    if (states.isEmpty()) loadJob?.cancel()
+    _labels.update { labels -> labels.filterKeys(states::containsKey) }
   }
 
   /**
@@ -80,8 +79,9 @@ class LocationSharingViewModel(
    *
    * A target whose event or team cannot be read keeps no label, so it is shown without names and
    * read again the next time the sheet opens: a one-off read, so a failure never stops a later one.
-   * A load already running is not started twice. The names read are kept until the publisher stops
-   * (see [onSharingStates]), so within one stay in the foreground a change is not seen.
+   * A load already running is not started twice, and a target dropped while it runs gets no name.
+   * The names read are kept while the target is followed (see [onSharingStates]), so a change
+   * meanwhile is not seen.
    */
   fun loadLabels() {
     if (loadJob?.isActive == true) return
@@ -92,13 +92,16 @@ class LocationSharingViewModel(
       val found = read.mapNotNull { (target, pair) -> pair?.let { target to it } }
       val managers =
           userRepository.displayNames(found.mapNotNull { (_, pair) -> pair.second.managerId })
+      val followed = _sharingStates.value
       _labels.update { labels ->
         labels +
-            found.associate { (target, pair) ->
-              val (event, team) = pair
-              val manager = team.managerId?.let { managers[it] }
-              target to SharingTargetLabel(event.title, team.name, manager)
-            }
+            found
+                .filter { (target, _) -> target in followed }
+                .associate { (target, pair) ->
+                  val (event, team) = pair
+                  val manager = team.managerId?.let { managers[it] }
+                  target to SharingTargetLabel(event.title, team.name, manager)
+                }
       }
     }
   }
