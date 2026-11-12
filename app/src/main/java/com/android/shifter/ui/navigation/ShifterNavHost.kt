@@ -682,7 +682,8 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
  * Registers the Discussions [tab] of the event open in the graph [E]: the event's channels and the
  * team channels the user can open, every team's for its organizer ([asOrganizer]), and on top of it
  * the channel picked, as the destination [channel] makes of its kind, team id (for a team's
- * channel) and name, under a bar with that name.
+ * channel) and name, under a bar with that name, where the organizer may announce in the event's
+ * channels.
  */
 private inline fun <
     reified T : Tab,
@@ -729,6 +730,7 @@ private inline fun <
                     factory =
                         TeamChatViewModel.factory(
                             route.channelId(eventId),
+                            asOrganizer,
                             repositories.chatRepository,
                             repositories.userRepository,
                             repositories.teamRepository,

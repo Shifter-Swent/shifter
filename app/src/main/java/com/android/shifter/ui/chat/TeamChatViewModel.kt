@@ -55,8 +55,9 @@ data class ChatMessageItem(
  *
  * @property draft the text being typed, not yet sent.
  * @property sendFailed whether the last message could not be sent; its text is back in [draft].
- * @property canAnnounce whether the user may send announcements in the channel, i.e. manages the
- *   team. The backend still decides: this only shows the option.
+ * @property canAnnounce whether the user may send announcements in the channel: manages the team,
+ *   or organizes the event in its general and admin channels. The backend still decides: this only
+ *   shows the option.
  * @property asAnnouncement whether [draft] is to be sent as an announcement.
  * @property announcementRefused whether the last announcement was refused; its text is back in
  *   [draft], still as an announcement.
@@ -96,10 +97,13 @@ data class TeamChatUiState(
  * failure means it was not sent: its text goes back into the draft, as an announcement if it was
  * one, so a refused announcement is never posted as a normal message without the user seeing it.
  *
+ * @param asOrganizer whether the user opened the channel as the event's organizer, the only one who
+ *   may announce in its general and admin channels.
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
 class TeamChatViewModel(
     private val channel: ChatChannelId,
+    private val asOrganizer: Boolean,
     private val chatRepository: ChatRepository,
     private val userRepository: UserRepository,
     private val teamRepository: TeamRepository,
@@ -214,8 +218,8 @@ class TeamChatViewModel(
               announcementRefused = refused,
           )
         }
-        // The manager may have been replaced meanwhile: without the right any more, the option
-        // goes, so the same announcement is not refused again and again.
+        // In a team's channel, the manager may have been replaced meanwhile: without the right any
+        // more, the option goes, so the same announcement is not refused again and again.
         if (refused) loadAnnounceRight()
       }
       sending = sending - message
@@ -224,12 +228,17 @@ class TeamChatViewModel(
   }
 
   /**
-   * Reads whether the user manages the team, the only one who may announce in its channel. A team
-   * that cannot be read leaves the option hidden. The event's channels never show it for now: only
-   * their organizer may announce there (#429).
+   * Shows the option to the event's organizer in its general and admin channels, and in a team's
+   * channel reads whether the user manages the team, the only one who may announce there. A team
+   * that cannot be read leaves the option hidden.
    */
   private fun loadAnnounceRight() {
-    val team = channel as? ChatChannelId.Team ?: return
+    val team =
+        channel as? ChatChannelId.Team
+            ?: run {
+              showAnnounceRight(asOrganizer)
+              return
+            }
     viewModelScope.launch {
       val manager =
           try {
@@ -240,11 +249,14 @@ class TeamChatViewModel(
             null
           }
       val me = currentUserId()
-      val canAnnounce = me != null && manager == me
-      // Without the right, nothing may stay chosen as an announcement.
-      _uiState.update {
-        it.copy(canAnnounce = canAnnounce, asAnnouncement = canAnnounce && it.asAnnouncement)
-      }
+      showAnnounceRight(me != null && manager == me)
+    }
+  }
+
+  private fun showAnnounceRight(canAnnounce: Boolean) {
+    // Without the right, nothing may stay chosen as an announcement.
+    _uiState.update {
+      it.copy(canAnnounce = canAnnounce, asAnnouncement = canAnnounce && it.asAnnouncement)
     }
   }
 
@@ -306,13 +318,21 @@ class TeamChatViewModel(
      */
     fun factory(
         channel: ChatChannelId,
+        asOrganizer: Boolean,
         chatRepository: ChatRepository,
         userRepository: UserRepository,
         teamRepository: TeamRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
-        TeamChatViewModel(channel, chatRepository, userRepository, teamRepository, currentUserId)
+        TeamChatViewModel(
+            channel,
+            asOrganizer,
+            chatRepository,
+            userRepository,
+            teamRepository,
+            currentUserId,
+        )
       }
     }
   }
