@@ -52,6 +52,14 @@ internal fun WriteBatch.indexManager(team: DocumentReference, managerId: String)
   set(managerEntry(team, managerId), adding(team), SetOptions.merge())
 }
 
+/**
+ * Takes the deleted [team] out of the entry of [managerId], in the batch that deletes it, so they
+ * stop managing it the moment it is gone (#398).
+ */
+internal fun WriteBatch.unindexManager(team: DocumentReference, managerId: String) {
+  set(managerEntry(team, managerId), removing(team), SetOptions.merge())
+}
+
 /*
  * The writes of the index, merged rather than rewritten, so the other teams of the manager stay
  * listed: [adding] lists [team] in an entry, [removing] takes it out.

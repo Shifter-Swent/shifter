@@ -7,8 +7,14 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
+import com.swent.shifter.model.chat.ChatMessageSchema
+import com.swent.shifter.model.checkin.CheckInSchema
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.LiveLocationSchema
+import com.swent.shifter.model.membership.MembershipRequestSchema
+import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.mission.MissionSchema
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -26,11 +32,10 @@ import kotlinx.coroutines.tasks.await
  */
 class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRepository {
 
-  private fun teamsOf(eventId: String) =
-      firestore
-          .collection(EventSchema.COLLECTION)
-          .document(eventId)
-          .collection(TeamSchema.COLLECTION)
+  private fun eventDocument(eventId: String) =
+      firestore.collection(EventSchema.COLLECTION).document(eventId)
+
+  private fun teamsOf(eventId: String) = eventDocument(eventId).collection(TeamSchema.COLLECTION)
 
   private fun teamDocument(eventId: String, teamId: String) = teamsOf(eventId).document(teamId)
 
@@ -186,6 +191,84 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   }
 
   /**
+   * Several commits, since a batch holds at most [MAX_BATCH_WRITES] writes, ordered so that an
+   * interrupted deletion is completed by calling it again:
+   * 1. The team is marked [TeamSchema.DELETING], which the rules require to delete its messages,
+   *    and which stops new messages and new missions, so none arrives after they were read.
+   * 2. Its missions, each in one commit with its check-ins, which the rules only let go with it.
+   * 3. Its chat messages.
+   * 4. The team itself last, in one batch with its manager's index entry, the positions its members
+   *    shared with it and the pending applications to it, all taken from the team as it is then:
+   *    the rules read the team to let the organizer list its messages and to delete those
+   *    applications, so nothing under it could be found once it is gone.
+   *
+   * Everything is read from the server: offline, the cache could miss documents, which would be
+   * left behind once the team is gone.
+   *
+   * Pending applications sent after they were read, and check-ins recorded after a mission's were
+   * read, are left behind: the window lasts a few round trips and needs someone to act in it,
+   * unlike a member's app, which republishes its position on its own. The final batch holds one
+   * write per member and per pending application, plus two, so a team with more than 498 of them
+   * together cannot be deleted. The same for a position of a former member, who left the team
+   * outside these repositories without deleting it: positions are deleted by the uids of the
+   * members, since the rules only let the organizer list them during the event.
+   */
+  override suspend fun deleteTeam(eventId: String, teamId: String) {
+    val document = teamDocument(eventId, teamId)
+    translatingErrors {
+      if (!document.get(Source.SERVER).await().exists()) return
+      document.update(TeamSchema.DELETING, true).await()
+      deleteMissionsOf(eventId, teamId)
+      val messages = document.collection(ChatMessageSchema.COLLECTION).get(Source.SERVER).await()
+      deleteInBatches(messages.documents.map { it.reference })
+      val pendingApplications =
+          eventDocument(eventId)
+              .collection(MembershipRequestSchema.COLLECTION)
+              .whereEqualTo(MembershipRequestSchema.TEAM_ID, teamId)
+              .whereEqualTo(MembershipRequestSchema.STATUS, MembershipRequestStatus.PENDING.name)
+              .get(Source.SERVER)
+              .await()
+      // Read last, as the manager or the members may have changed since the start: what goes with
+      // the team is what it has when it goes. Gone meanwhile: another deletion finished it.
+      val current = document.get(Source.SERVER).await()
+      if (!current.exists()) return
+      val batch = firestore.batch().delete(document)
+      current.teamManagerId()?.let { batch.unindexManager(document, it) }
+      // In this commit rather than before it: a member's app republishes its position every few
+      // minutes, which the rules refuse only once the team is gone.
+      current.teamMemberIds().forEach { batch.delete(liveLocationOf(document, it)) }
+      pendingApplications.documents.forEach { batch.delete(it.reference) }
+      batch.commit().await()
+    }
+  }
+
+  /** Deletes the missions of the team [teamId], each in one commit with its check-ins. */
+  private suspend fun deleteMissionsOf(eventId: String, teamId: String) {
+    val missions =
+        eventDocument(eventId)
+            .collection(MissionSchema.COLLECTION)
+            .whereEqualTo(MissionSchema.TEAM_ID, teamId)
+            .get(Source.SERVER)
+            .await()
+    for (mission in missions.documents) {
+      val checkIns =
+          mission.reference.collection(CheckInSchema.COLLECTION).get(Source.SERVER).await()
+      val batch = firestore.batch()
+      checkIns.documents.forEach { batch.delete(it.reference) }
+      batch.delete(mission.reference).commit().await()
+    }
+  }
+
+  /** Deletes [documents] in as few batches as Firestore allows. */
+  private suspend fun deleteInBatches(documents: List<DocumentReference>) {
+    for (chunk in documents.chunked(MAX_BATCH_WRITES)) {
+      val batch = firestore.batch()
+      chunk.forEach { batch.delete(it) }
+      batch.commit().await()
+    }
+  }
+
+  /**
    * Where [userId] last shared their position with the manager of [team]. Only the path is taken
    * from [LiveLocationSchema], which names that collection once for the whole module: this
    * repository does not depend on the live location repository, and `docs/firestore-schema.md`
@@ -199,6 +282,9 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   }
 
   companion object {
+    /** The most writes Firestore accepts in one batch. */
+    private const val MAX_BATCH_WRITES = 500
+
     /** Translates a Firestore error into the [TeamRepositoryException] callers handle. */
     fun toRepositoryException(e: FirebaseFirestoreException): TeamRepositoryException =
         when (e.code) {

@@ -211,7 +211,7 @@ class CheckInRulesTest {
   }
 
   @Test
-  fun updateAndDelete_areDeniedToEveryone() = emulatorTest {
+  fun updateAndDelete_whileTheMissionExists_areDeniedToEveryone() = emulatorTest {
     signIn(volunteer)
     checkInRef(volunteer).set(checkIn(volunteer, SELF, by = volunteer)).await()
 
@@ -220,6 +220,33 @@ class CheckInRulesTest {
       assertDenied { checkInRef(volunteer).update("method", MANAGER).await() }
       assertDenied { checkInRef(volunteer).delete().await() }
     }
+  }
+
+  /** As when the organizer deletes the mission's team (#398). */
+  @Test
+  fun delete_withItsMission_byTheOrganizer_isAllowed() = emulatorTest {
+    signIn(volunteer)
+    checkInRef(volunteer).set(checkIn(volunteer, SELF, by = volunteer)).await()
+
+    signIn(organizer)
+    db.batch().delete(checkInRef(volunteer)).delete(missionRef(MISSION_ID)).commit().await()
+
+    assertFalse(checkInRef(volunteer).get(Source.SERVER).await().exists())
+    assertFalse(missionRef(MISSION_ID).get(Source.SERVER).await().exists())
+  }
+
+  /** The manager may delete their team's mission, but not the proof of presence with it. */
+  @Test
+  fun delete_withItsMission_byTheManager_isDenied() = emulatorTest {
+    signIn(volunteer)
+    checkInRef(volunteer).set(checkIn(volunteer, SELF, by = volunteer)).await()
+
+    signIn(manager)
+    assertDenied {
+      db.batch().delete(checkInRef(volunteer)).delete(missionRef(MISSION_ID)).commit().await()
+    }
+
+    assertTrue(checkInRef(volunteer).get(Source.SERVER).await().exists())
   }
 
   @Test
@@ -392,12 +419,11 @@ class CheckInRulesTest {
         .await()
   }
 
+  private fun missionRef(missionId: String, eventId: String = this.eventId) =
+      db.collection("events").document(eventId).collection("missions").document(missionId)
+
   private fun checkIns(missionId: String, eventId: String = this.eventId) =
-      db.collection("events")
-          .document(eventId)
-          .collection("missions")
-          .document(missionId)
-          .collection(CHECK_INS)
+      missionRef(missionId, eventId).collection(CHECK_INS)
 
   private fun checkInRef(
       user: Account,

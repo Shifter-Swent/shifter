@@ -86,4 +86,23 @@ interface TeamRepository {
    * Throws [TeamRepositoryException.NotFound] when the team does not exist.
    */
   suspend fun removeMember(eventId: String, teamId: String, userId: String)
+
+  /**
+   * Deletes the team with everything that belongs to it: its missions with their check-ins, its
+   * chat messages, the positions its members shared with it and the pending applications to it. Its
+   * members stay participants of the event, without a team, and its manager stops managing it.
+   * Deleting a team that no longer exists has no effect.
+   *
+   * The deletion takes several writes, the team going last, so one interrupted halfway (connection
+   * lost, app killed) is completed by calling it again. Until then, the team's chat accepts no
+   * message.
+   *
+   * It needs a connection. Offline from the start, it fails with
+   * [TeamRepositoryException.Unavailable] before deleting anything. If the connection drops
+   * halfway, it either fails the same way at its next read, or waits for the connection to come
+   * back while a write is queued: a caller that wants a time limit sets its own.
+   *
+   * Throws [TeamRepositoryException.PermissionDenied] when the user is not the event's organizer.
+   */
+  suspend fun deleteTeam(eventId: String, teamId: String)
 }

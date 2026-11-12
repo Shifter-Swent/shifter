@@ -188,6 +188,15 @@ service cloud.firestore {
           && (resource == null
               || (resource.data.status != 'REJECTED' && !isTeamMemberAfter()))
           && !isParticipantAfter();
+        // A pending request goes with the team it applies to, which the organizer deletes in the
+        // same commit (#398). An accepted or rejected one stays: the volunteer is still a
+        // participant, or still may not apply again. A request already withdrawn is no longer
+        // there to check, and deleting it again changes nothing.
+        allow delete: if isOrganizer(eventId)
+          && (resource == null
+              || (resource.data.status == 'PENDING'
+                  && !existsAfter(
+                       /databases/$(database)/documents/events/$(eventId)/teams/$(resource.data.teamId))));
       }
 
       // Rules do not cascade into subcollections, so teams, shifts and missions each need their
@@ -370,11 +379,19 @@ service cloud.firestore {
               || team().get('managerId', null) == request.auth.uid;
           }
 
+          // Set by the organizer before they delete the team and its channel (#398), so no message
+          // arrives after the channel was read and outlives the team.
+          function isBeingDeleted() {
+            return team().get('deleting', false) == true;
+          }
+
           allow read: if canChat();
-          allow create: if canChat() && isValidMessage() && mayAnnounce();
+          allow create: if canChat() && isValidMessage() && mayAnnounce() && !isBeingDeleted();
           // A message is final, so the channel stays a faithful record of what was said, and is
-          // never turned into an announcement or back.
-          allow update, delete: if false;
+          // never turned into an announcement or back. It is only deleted with its team, by the
+          // organizer.
+          allow update: if false;
+          allow delete: if isOrganizer(eventId) && isBeingDeleted();
         }
       }
 
@@ -445,9 +462,9 @@ service cloud.firestore {
       // managers of its teams coordinate. A manager is someone the managers index lists with at
       // least one team, which is written in the same commit as the team, so a replaced manager
       // loses access at once and a new one gets it. The index alone is not enough, as it can go
-      // stale (a deleted team, #398): the manager must still take part in the event, so someone
-      // who withdraws or is rejected loses access at once too. The check is on the path, not on
-      // the message, so the whole channel can be queried.
+      // stale (a team written outside the repositories): the manager must still take part in the
+      // event, so someone who withdraws or is rejected loses access at once too. The check is on
+      // the path, not on the message, so the whole channel can be queried.
       match /channels/admin/messages/{messageId} {
         function managesATeam() {
           let entry = /databases/$(database)/documents/events/$(eventId)/managers/$(request.auth.uid);
@@ -507,6 +524,16 @@ service cloud.firestore {
           return request.resource.data.get('teamId', null);
         }
 
+        // Whether the organizer is deleting teamId (#398): no mission is added to it meanwhile, as
+        // one written after its missions were read would outlive the team. A team that does not
+        // exist is left to the checks above. teamId is checked first, so no path is built from null.
+        function isBeingDeleted(teamId) {
+          return teamId is string
+            && exists(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+            && get(/databases/$(database)/documents/events/$(eventId)/teams/$(teamId))
+                 .data.get('deleting', false) == true;
+        }
+
         // A mission closed by hand stays closed.
         function keepsCompletion() {
           return request.resource.data.completed is bool
@@ -515,11 +542,13 @@ service cloud.firestore {
 
         allow read: if canReadEventContent(eventId);
         allow create: if request.resource.data.completed is bool
+          && !isBeingDeleted(teamAfter())
           && (isOrganizer(eventId)
               || (managesTeam(teamAfter()) && validAssignees(teamAfter(), [])));
         // Checking the team before and after keeps a manager from moving a mission to a team they
-        // do not manage.
+        // do not manage. Nor is a mission moved to a team being deleted.
         allow update: if keepsCompletion()
+          && (teamAfter() == teamBefore() || !isBeingDeleted(teamAfter()))
           && (isOrganizer(eventId)
               || (managesTeam(teamBefore())
                   && managesTeam(teamAfter())
@@ -560,7 +589,11 @@ service cloud.firestore {
             && hasJoined(eventId, uid)
             && ((request.resource.data.method == 'SELF' && request.auth.uid == uid)
                 || (request.resource.data.method == 'MANAGER' && canManage()));
-          allow update, delete: if false;
+          allow update: if false;
+          // Only with its mission, deleted by the organizer in the same commit, as when they delete
+          // its team (#398): while the mission exists, a check-in stays.
+          allow delete: if isOrganizer(eventId)
+            && !existsAfter(/databases/$(database)/documents/events/$(eventId)/missions/$(missionId));
         }
       }
     }

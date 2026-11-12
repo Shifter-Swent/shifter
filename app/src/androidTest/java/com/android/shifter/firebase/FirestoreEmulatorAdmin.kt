@@ -23,6 +23,17 @@ object FirestoreEmulatorAdmin {
       }
 
   /**
+   * Whether the document at [path] exists, whatever `firestore.rules` say, so a test can check that
+   * a document nobody may read any more is really gone.
+   */
+  suspend fun documentExists(path: String): Boolean {
+    var status = 0
+    request("GET", path) { status = it }
+    check(status == 200 || status == 404) { "Emulator read failed for $path: $status" }
+    return status == 200
+  }
+
+  /**
    * Creates the document at [path] with [fields], whatever `firestore.rules` say, so a test can
    * store a document no client may write, such as a malformed one. Each value is a [String], a
    * [Boolean], a [Double], an [Instant], a nested [Map] or a [List] of them, stored as a string, a

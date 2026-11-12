@@ -17,6 +17,7 @@ import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -210,12 +211,47 @@ class TeamChatRulesTest {
   }
 
   @Test
-  fun delete_bySenderOrOrganizer_isDenied() = emulatorTest {
+  fun delete_outsideATeamDeletion_isDenied() = emulatorTest {
     val sent = sentByMember()
 
     for (user in listOf(member, organizer)) {
       signIn(user)
       assertDenied { sent.delete().await() }
+    }
+  }
+
+  @Test
+  fun delete_whileTheTeamIsBeingDeleted_isAllowedToTheOrganizerOnly() = emulatorTest {
+    val sent = sentByMember()
+    markBeingDeleted()
+
+    for (user in listOf(member, manager)) {
+      signIn(user)
+      assertDenied { sent.delete().await() }
+    }
+    signIn(organizer)
+    sent.delete().await()
+
+    assertFalse(sent.get(Source.SERVER).await().exists())
+  }
+
+  /** The deletion lists the channel to delete it, so the mark must not lock the organizer out. */
+  @Test
+  fun read_whileTheTeamIsBeingDeleted_stillListsTheChannelForTheOrganizer() = emulatorTest {
+    val sent = sentByMember()
+    markBeingDeleted()
+
+    assertEquals(listOf(sent.id), channelQuery().get(Source.SERVER).await().documents.map { it.id })
+  }
+
+  /** Nothing can arrive after the organizer read the channel to delete it. */
+  @Test
+  fun send_whileTheTeamIsBeingDeleted_isDenied() = emulatorTest {
+    markBeingDeleted()
+
+    for (user in listOf(member, manager, organizer)) {
+      signIn(user)
+      assertDenied { newMessage().set(message(user, "Still there?")).await() }
     }
   }
 
@@ -286,6 +322,12 @@ class TeamChatRulesTest {
   private suspend fun sentByMember(): DocumentReference {
     signIn(member)
     return newMessage().also { it.set(message(member, "Hello team")).await() }
+  }
+
+  /** Marks [TEAM_ID] as being deleted, as the organizer does first when they delete it. */
+  private suspend fun markBeingDeleted() {
+    signIn(organizer)
+    teamRef(eventId, TEAM_ID).update("deleting", true).await()
   }
 
   /** [user] can neither read [sent], list its channel nor send to it. */
