@@ -681,4 +681,7 @@ private class EventTeams(private val teams: List<Team>) : TeamRepository {
 
   override suspend fun removeMember(eventId: String, teamId: String, userId: String) =
       throw UnsupportedOperationException()
+
+  override suspend fun deleteTeam(eventId: String, teamId: String) =
+      throw UnsupportedOperationException()
 }

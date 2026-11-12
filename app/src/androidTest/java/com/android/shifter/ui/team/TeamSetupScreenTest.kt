@@ -110,6 +110,8 @@ class TeamSetupScreenTest {
     override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
 
     override suspend fun removeMember(eventId: String, teamId: String, userId: String) = Unit
+
+    override suspend fun deleteTeam(eventId: String, teamId: String) = Unit
   }
 
   private val eventId = "event-1"
