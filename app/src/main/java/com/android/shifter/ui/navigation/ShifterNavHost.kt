@@ -43,6 +43,7 @@ import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
+import com.swent.shifter.ui.chat.ChannelKind
 import com.swent.shifter.ui.chat.ChatChannel
 import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
@@ -300,7 +301,7 @@ fun ShifterNavHost(
             navController,
             repositories,
             currentUserId,
-            channel = { VolunteerEventScreen.Channel(it.teamId, it.name) },
+            channel = { VolunteerEventScreen.Channel(ChannelKind.TEAM, it.teamId, it.name) },
         )
       }
     }
@@ -516,7 +517,7 @@ fun ShifterNavHost(
             navController,
             repositories,
             currentUserId,
-            channel = { OrganizerEventScreen.Channel(it.teamId, it.name) },
+            channel = { OrganizerEventScreen.Channel(ChannelKind.TEAM, it.teamId, it.name) },
         )
       }
     }
@@ -594,8 +595,8 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 
 /**
  * Registers the Discussions [tab] of the event open in the graph [E]: the channels the user can
- * open, every team's for its organizer ([asOrganizer]), and on top of it the channel of a team, as
- * the destination [channel] makes of it, under a bar with the team's name.
+ * open, every team's for its organizer ([asOrganizer]), and on top of it the channel picked, as the
+ * destination [channel] makes of it, under a bar with its name.
  */
 private inline fun <
     reified T : Tab,
@@ -641,8 +642,7 @@ private inline fun <
                 viewModel(
                     factory =
                         TeamChatViewModel.factory(
-                            eventId,
-                            route.teamId,
+                            route.channelId(eventId),
                             repositories.chatRepository,
                             repositories.userRepository,
                             repositories.teamRepository,

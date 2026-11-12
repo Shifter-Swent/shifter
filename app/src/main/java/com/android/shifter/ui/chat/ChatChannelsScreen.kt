@@ -50,6 +50,13 @@ object ChatChannelsTestTags {
   fun channel(teamId: String) = "chatChannel_$teamId"
 }
 
+/** Which chat channel of an event is opened: a team's, or one of the whole event. */
+enum class ChannelKind {
+  TEAM,
+  GENERAL,
+  ADMIN,
+}
+
 /**
  * The channels of an event listed by [viewModel]; [onOpenChannel] opens one. The only channel the
  * user can open is opened at once, the first time it is listed while the screen is resumed.

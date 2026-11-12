@@ -14,6 +14,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
+import com.swent.shifter.model.chat.ChatChannelId
+import com.swent.shifter.ui.chat.ChannelKind
 import kotlinx.serialization.Serializable
 
 /*
@@ -56,14 +58,24 @@ sealed interface TabSet {
 }
 
 /**
- * The channel of the team [teamId], opened on top of the Discussions tab of either mode. The team's
- * name is in the route, so the bar shows it without loading the team.
+ * A chat channel opened on top of the Discussions tab of either mode: the channel of the team
+ * [teamId] for [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its
+ * [name] is in the route, so the bar shows it without loading the team.
  */
 sealed interface ChannelScreen : Destination {
-  val teamId: String
-  val teamName: String
+  val kind: ChannelKind
+  val teamId: String?
+  val name: String
   override val title: String
-    get() = teamName
+    get() = name
+
+  /** The channel this screen shows, in the event [eventId]. */
+  fun channelId(eventId: String): ChatChannelId =
+      when (kind) {
+        ChannelKind.TEAM -> ChatChannelId.Team(eventId, checkNotNull(teamId))
+        ChannelKind.GENERAL -> ChatChannelId.General(eventId)
+        ChannelKind.ADMIN -> ChatChannelId.Admin(eventId)
+      }
 }
 
 /**
@@ -198,10 +210,13 @@ sealed interface VolunteerEventScreen : Destination {
       get() = VolunteerTabs.Discussions
   }
 
-  /** A team's channel, opened from Discussions. */
+  /** A chat channel, opened from Discussions. */
   @Serializable
-  data class Channel(override val teamId: String, override val teamName: String) :
-      VolunteerEventScreen, ChannelScreen {
+  data class Channel(
+      override val kind: ChannelKind,
+      override val teamId: String?,
+      override val name: String,
+  ) : VolunteerEventScreen, ChannelScreen {
     override val tab
       get() = VolunteerTabs.Discussions
   }
@@ -369,10 +384,13 @@ sealed interface OrganizerEventScreen : Destination {
       get() = OrganizerTabs.Discussions
   }
 
-  /** A team's channel, opened from Discussions. */
+  /** A chat channel, opened from Discussions. */
   @Serializable
-  data class Channel(override val teamId: String, override val teamName: String) :
-      OrganizerEventScreen, ChannelScreen {
+  data class Channel(
+      override val kind: ChannelKind,
+      override val teamId: String?,
+      override val name: String,
+  ) : OrganizerEventScreen, ChannelScreen {
     override val tab
       get() = OrganizerTabs.Discussions
   }
