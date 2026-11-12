@@ -21,15 +21,18 @@ class ChatChannelsContentTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
-  private val opened = mutableListOf<String>()
+  /** The channels opened, as their kind, team id (for a team's channel) and name. */
+  private val opened = mutableListOf<Triple<ChannelKind, String?, String>>()
   private var retries = 0
+
+  private val open: OpenChannel = { kind, teamId, name -> opened += Triple(kind, teamId, name) }
 
   private fun setContent(state: ChatChannelsUiState) {
     composeTestRule.setContent {
       ShifterTheme {
         ChatChannelsContent(
             state = state,
-            onOpenChannel = { opened += it.teamId },
+            onOpenChannel = open,
             onRetry = { retries++ },
         )
       }
@@ -52,13 +55,31 @@ class ChatChannelsContentTest {
     composeTestRule.onNodeWithText("Bar").assertIsDisplayed()
     tag(ChatChannelsTestTags.channel("kitchen")).assertIsDisplayed().performClick()
 
-    assertEquals(listOf("kitchen"), opened)
+    assertEquals(listOf(Triple(ChannelKind.TEAM, "kitchen", "Kitchen")), opened)
   }
 
   @Test
-  fun noChannel_asVolunteer_explainsWhy() {
+  fun general_isListedAboveTheTeams_andOpensTheGeneralChannel() {
+    setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
+
+    val general = tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
+    val header = tag(ChatChannelsTestTags.TEAMS_HEADER).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Teams").assertIsDisplayed()
+    val generalTop = general.fetchSemanticsNode().boundsInRoot.top
+    val headerTop = header.fetchSemanticsNode().boundsInRoot.top
+    val barTop = tag(ChatChannelsTestTags.channel("bar")).fetchSemanticsNode().boundsInRoot.top
+    assert(generalTop < headerTop && headerTop < barTop)
+
+    general.performClick()
+
+    assertEquals(listOf(Triple(ChannelKind.GENERAL, null, "General")), opened)
+  }
+
+  @Test
+  fun noTeamChannel_asVolunteer_showsTheGeneralChannelAndExplainsWhy() {
     setContent(ChatChannelsUiState(isLoading = false))
 
+    tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
     tag(ChatChannelsTestTags.EMPTY).assertIsDisplayed()
     composeTestRule
         .onNodeWithText("You will see your team's channel once you are in a team.")
@@ -66,9 +87,10 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun noChannel_asOrganizer_saysTheEventHasNoTeam() {
+  fun noTeamChannel_asOrganizer_saysTheEventHasNoTeam() {
     setContent(ChatChannelsUiState(asOrganizer = true, isLoading = false))
 
+    tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
     composeTestRule
         .onNodeWithText("This event has no team yet. Each team you create gets its own channel.")
         .assertIsDisplayed()
@@ -92,20 +114,20 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun screen_withASingleChannel_listsItWithoutOpeningIt() {
+  fun screen_withASingleTeamChannel_listsItWithoutOpeningIt() {
     val viewModel =
         ChatChannelsViewModel(EVENT, asOrganizer = false, FakeTeamRepository(listOf(BAR))) { ME }
     composeTestRule.setContent {
-      ShifterTheme { ChatChannelsScreen(viewModel, onOpenChannel = { opened += it.teamId }) }
+      ShifterTheme { ChatChannelsScreen(viewModel, onOpenChannel = open) }
     }
 
-    tag(ChatChannelsTestTags.channel("bar")).assertIsDisplayed()
+    tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
     composeTestRule.waitForIdle()
-    assertEquals(emptyList<String>(), opened)
+    assertEquals(emptyList<Triple<ChannelKind, String?, String>>(), opened)
 
     tag(ChatChannelsTestTags.channel("bar")).performClick()
 
-    assertEquals(listOf("bar"), opened)
+    assertEquals(listOf(Triple(ChannelKind.TEAM, "bar", "Bar")), opened)
   }
 
   private companion object {

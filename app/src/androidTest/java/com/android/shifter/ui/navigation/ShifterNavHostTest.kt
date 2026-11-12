@@ -34,6 +34,7 @@ import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
@@ -74,6 +75,7 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -1117,18 +1119,19 @@ class ShifterNavHostTest {
 
     composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
 
-    // Every team of the event is listed, so none opens by itself.
+    // Every team of the event is listed, under the general channel.
     waitForNode(ChatChannelsTestTags.channel(bar.id))
     composeTestRule
         .onNodeWithTag(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
         .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.channel(bar.id)).performClick()
     waitForNode(TeamChatTestTags.INPUT)
     composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Bar")
   }
 
   @Test
-  fun volunteerDiscussions_withASingleTeam_listsItsChannelAndOpensItOnTap() {
+  fun volunteerDiscussions_withASingleTeam_listsItAndTheGeneralChannel() {
     val event = acceptedEvent(asManager = false)
     showApp()
     openEvent(event)
@@ -1136,23 +1139,42 @@ class ShifterNavHostTest {
 
     composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
 
-    // Their only team's channel is listed, not opened by itself.
+    // The list is shown even with a single team, with the general channel above it.
+    waitForNode(ChatChannelsTestTags.GENERAL)
     val team = ChatChannelsTestTags.channel(teamIds.getValue(event.id))
-    waitForNode(team)
+    composeTestRule.onNodeWithTag(team).assertIsDisplayed()
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
 
     composeTestRule.onNodeWithTag(team).performClick()
-
     waitForNode(TeamChatTestTags.INPUT)
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals("Litter pickers")
-
     pressBack()
+    waitForNode(ChatChannelsTestTags.GENERAL)
 
-    waitForNode(team)
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
     composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
+
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).performClick()
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("General")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).performTextInput("Hello everyone")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.SEND_BUTTON).performClick()
+
+    // The message reaches the event's general channel, not the team's.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      texts(ChatChannelId.General(event.id)) == listOf("Hello everyone")
+    }
+    assertEquals(
+        emptyList<String>(),
+        texts(ChatChannelId.Team(event.id, teamIds.getValue(event.id))),
+    )
+  }
+
+  /** The texts of the messages of [channel] as the signed-in user reads them now. */
+  private fun texts(channel: ChatChannelId): List<String> = runBlocking {
+    repositories.chatRepository.messages(channel).first().map { it.text }
   }
 
   /** Shows the app opened on the Overview of [event], whose organizer must be signed in. */

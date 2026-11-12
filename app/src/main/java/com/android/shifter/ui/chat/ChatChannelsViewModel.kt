@@ -21,9 +21,12 @@ import kotlinx.coroutines.launch
 data class ChatChannel(val teamId: String, val name: String, val icon: String)
 
 /**
- * The channels of an event the user can open.
+ * The channels of an event the user can open. The event's general channel is open to everyone in
+ * it, so it is not listed here: the screen always shows it, above [channels].
  *
- * @property asOrganizer whether the user organizes the event, which tells why there is no channel.
+ * @property asOrganizer whether the user organizes the event, which tells why there is no team
+ *   channel.
+ * @property channels the team channels the user can open.
  * @property error why the channels could not be listed; only [ChatError.OFFLINE] and
  *   [ChatError.UNEXPECTED] are used here.
  */
@@ -35,7 +38,7 @@ data class ChatChannelsUiState(
 )
 
 /**
- * Lists the channels of the event [eventId] the user can open: every team of the event for its
+ * Lists the team channels of the event [eventId] the user can open: every team of the event for its
  * organizer, [asOrganizer], and otherwise the teams the user belongs to or manages, by name.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.

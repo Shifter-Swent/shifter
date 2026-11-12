@@ -18,7 +18,7 @@ private fun PreviewHost(state: ChatChannelsUiState) {
     Box(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
       ChatChannelsContent(
           state = state,
-          onOpenChannel = {},
+          onOpenChannel = { _, _, _ -> },
           onRetry = {},
       )
     }
