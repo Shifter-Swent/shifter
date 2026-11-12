@@ -16,6 +16,7 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.membership.MembershipRequestItemUIState
 import com.swent.shifter.ui.membership.MembershipRequestUIState
 import com.swent.shifter.ui.membership.MembershipRequestsScreen
+import com.swent.shifter.ui.membership.MembershipRequestsTestTags
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.navigation.OrganizerTabs
 import com.swent.shifter.ui.navigation.Tab
@@ -77,6 +78,28 @@ class PeopleScreenTest {
     compose.runOnIdle { assertEquals(OrganizerTabs.Overview, destination) }
     compose.onNodeWithText("Participants").performClick()
     compose.onNodeWithText("Alice Martin").assertDoesNotExist()
+  }
+
+  @Test
+  fun requests_ofAnEndedEvent_hideAcceptButKeepTheRequest() {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            uiState =
+                MembershipRequestUIState(
+                    requests = listOf(item),
+                    isLoading = false,
+                    hasEnded = true,
+                ),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+        )
+      }
+    }
+
+    compose.onNodeWithTag(MembershipRequestsTestTags.status("alice")).assertIsDisplayed()
+    compose.onNodeWithTag(MembershipRequestsTestTags.acceptButton("alice")).assertDoesNotExist()
   }
 
   @Test

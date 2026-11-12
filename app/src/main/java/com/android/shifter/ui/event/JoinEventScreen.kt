@@ -70,6 +70,7 @@ object JoinEventScreenTestTags {
   const val FIND_BUTTON = "JoinEventFindButton"
   const val EVENT_TITLE = "JoinEventTitle"
   const val APPLY_BUTTON = "JoinEventApplyButton"
+  const val ENDED = "JoinEventEnded"
   const val APPLIED_MESSAGE = "JoinEventAppliedMessage"
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
   const val CODE_HINT = "JoinEventCodeHint"
@@ -131,6 +132,7 @@ fun JoinEventContent(
           isLoading = uiState.isLoading,
           requestStatus = uiState.requestStatus,
           error = uiState.error,
+          hasEnded = uiState.hasEnded,
           onBack = onBack,
           onTeamSelected = onTeamSelected,
           onApply = onApply,

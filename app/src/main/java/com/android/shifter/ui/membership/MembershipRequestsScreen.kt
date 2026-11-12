@@ -109,6 +109,7 @@ fun MembershipRequestsScreen(
           onAccept = { onAccept(item.request.userId) },
           onReject = { onReject(item.request.userId) },
           enabled = !uiState.isLoading,
+          canAccept = !uiState.hasEnded,
       )
     }
   }
@@ -123,6 +124,7 @@ fun MembershipRequestCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    canAccept: Boolean,
 ) {
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(16.dp)
@@ -158,21 +160,24 @@ fun MembershipRequestCard(
     if (item.request.status == MembershipRequestStatus.PENDING) {
       val buttonShape = RoundedCornerShape(14.dp)
       Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            onClick = onAccept,
-            enabled = enabled && !isProcessing,
-            shape = buttonShape,
-            colors =
-                ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = colors.onPrimary,
-                ),
-            modifier =
-                Modifier.weight(1f)
-                    .height(40.dp)
-                    .testTag(MembershipRequestsTestTags.acceptButton(item.request.userId)),
-        ) {
-          ActionLabel(R.string.membership_requests_accept)
+        // Once the event has ended, a request can only be rejected (#409).
+        if (canAccept) {
+          Button(
+              onClick = onAccept,
+              enabled = enabled && !isProcessing,
+              shape = buttonShape,
+              colors =
+                  ButtonDefaults.buttonColors(
+                      containerColor = colors.primary,
+                      contentColor = colors.onPrimary,
+                  ),
+              modifier =
+                  Modifier.weight(1f)
+                      .height(40.dp)
+                      .testTag(MembershipRequestsTestTags.acceptButton(item.request.userId)),
+          ) {
+            ActionLabel(R.string.membership_requests_accept)
+          }
         }
         OutlinedButton(
             onClick = onReject,

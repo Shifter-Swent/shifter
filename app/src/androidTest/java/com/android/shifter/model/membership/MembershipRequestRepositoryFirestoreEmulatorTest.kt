@@ -492,8 +492,8 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
                 title = "Lakeside",
                 description = "A festival by the lake.",
                 type = EventType.MUSIC,
-                startAt = Instant.ofEpochSecond(1_000),
-                endAt = Instant.ofEpochSecond(2_000),
+                startAt = Instant.parse("2100-01-01T09:00:00Z"),
+                endAt = Instant.parse("2100-01-01T18:00:00Z"),
                 location = EventLocation("Lausanne"),
                 createdAt = Instant.ofEpochSecond(500),
             )
@@ -690,6 +690,53 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
           it.update(team(eventId, OTHER_TEAM_ID), "memberIds", FieldValue.arrayUnion(volunteer.uid))
         }
         .await()
+  }
+
+  // ── An event that has ended (#409) ──
+
+  /** Sets the end of [eventId], as its organizer, who must be signed in. */
+  private suspend fun endAt(eventId: String, end: Instant) {
+    step("set endAt") {
+      db.collection("events")
+          .document(eventId)
+          .update("endAt", com.google.firebase.Timestamp(end.epochSecond, 0))
+          .await()
+    }
+  }
+
+  @Test
+  fun apply_toAnEventThatHasEnded_isDenied() = emulatorTest {
+    val running = event()
+    endAt(running, Instant.now().plusSeconds(86_400))
+    val ended = event()
+    endAt(ended, Instant.now().minusSeconds(3_600))
+
+    // The same request is taken while the event runs, and refused once it has ended.
+    apply(running, volunteer)
+    signIn(volunteer)
+    paths += requestRef(ended, volunteer).path
+    assertDenied { repository.apply(ended, request(volunteer)) }
+  }
+
+  @Test
+  fun accept_onceTheEventHasEnded_isDeniedButRejectStillWorks() = emulatorTest {
+    val eventId = event()
+    endAt(eventId, Instant.now().plusSeconds(86_400))
+    apply(eventId, volunteer)
+    val other = account()
+    apply(eventId, other)
+    signIn(organizer)
+    // Accepting works while the event runs.
+    repository.accept(eventId, other.uid)
+    endAt(eventId, Instant.now().minusSeconds(3_600))
+
+    assertDenied { repository.accept(eventId, volunteer.uid) }
+    repository.reject(eventId, volunteer.uid)
+
+    assertEquals(
+        MembershipRequestStatus.REJECTED,
+        repository.getMembershipRequestsByEId(eventId).first { it.userId == volunteer.uid }.status,
+    )
   }
 
   private suspend fun event(): String {

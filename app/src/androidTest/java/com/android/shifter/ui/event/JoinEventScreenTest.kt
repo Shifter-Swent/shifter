@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performKeyInput
@@ -31,6 +32,8 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
@@ -221,6 +224,25 @@ class JoinEventScreenTest {
   }
 
   @Test
+  fun endedEvent_saysItHasEndedWithoutApply() {
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, hasEnded = true))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ENDED).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertDoesNotExist()
+    // Nothing below the ended text asks to send a request.
+    composeTestRule.onNodeWithText(string(R.string.event_details_apply_hint)).assertDoesNotExist()
+    composeTestRule
+        .onNodeWithText(string(R.string.event_details_approval_notice))
+        .assertDoesNotExist()
+  }
+
+  private fun string(id: Int) =
+      InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+  @Test
   fun eventWithoutTeam_tellsItHasNoTeam() {
     composeTestRule.setContent { content(uiState = JoinEventUiState(event = EVENT)) }
 
@@ -256,6 +278,23 @@ class JoinEventScreenTest {
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun endedEvent_withARequestSent_stillShowsTheRequest() {
+    composeTestRule.setContent {
+      content(
+          uiState =
+              JoinEventUiState(
+                  event = EVENT,
+                  requestStatus = MembershipRequestStatus.PENDING,
+                  hasEnded = true,
+              )
+      )
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLIED_MESSAGE).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ENDED).assertDoesNotExist()
   }
 
   @Test

@@ -531,6 +531,7 @@ private fun ShifterNavGraph(
                             eventId,
                             repositories.membershipRequestRepository,
                             repositories.userRepository,
+                            repositories.eventRepository,
                         )
                 )
             val participants: ParticipantsViewModel =

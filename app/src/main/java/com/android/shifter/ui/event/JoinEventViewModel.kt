@@ -53,6 +53,7 @@ data class JoinEventUiState(
     val isLoading: Boolean = false,
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
+    val hasEnded: Boolean = false,
 ) {
   /** Whether [joinCode] is complete and could exist, so the volunteer can look it up. */
   val canFind: Boolean
@@ -110,6 +111,7 @@ class JoinEventViewModel(
             selectedTeamId = request?.teamId,
             requestStatus = request?.status,
             error = if (event == null) JoinEventError.UNKNOWN_CODE else null,
+            hasEnded = event != null && !now().isBefore(event.endAt),
         )
       }
     }
@@ -128,6 +130,7 @@ class JoinEventViewModel(
           selectedTeamId = null,
           requestStatus = null,
           error = null,
+          hasEnded = false,
       )
     }
   }
@@ -140,7 +143,7 @@ class JoinEventViewModel(
    */
   fun onTeamSelected(teamId: String) {
     val state = _uiState.value
-    if (state.isLoading || state.requestStatus != null) return
+    if (state.isLoading || state.requestStatus != null || state.hasEnded) return
     if (state.teams.none { it.id == teamId }) return
     _uiState.update { it.copy(selectedTeamId = teamId) }
   }
@@ -155,6 +158,9 @@ class JoinEventViewModel(
     val event = state.event ?: return
     val teamId = state.selectedTeamId ?: return
     if (state.isLoading || state.requestStatus != null) return
+    // The event may end while the screen is open: it no longer recruits, which the rules enforce
+    // too.
+    if (!now().isBefore(event.endAt)) return _uiState.update { it.copy(hasEnded = true) }
     val userId = currentUserId() ?: return showError(JoinEventError.NOT_SIGNED_IN)
     launchLoading {
       val request =

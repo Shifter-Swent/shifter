@@ -6,12 +6,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
+import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,18 +34,22 @@ data class MembershipRequestItemUIState(
  * @property isLoading whether there is no list to show yet because it is being read, which shows
  *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
  *   it.
+ * @property hasEnded whether the event has ended: a request can then only be rejected (#409).
  */
 data class MembershipRequestUIState(
     val requests: List<MembershipRequestItemUIState> = emptyList(),
     val isLoading: Boolean = true,
     val processingRequestIds: Set<String> = emptySet(),
     val errorMsg: String? = null,
+    val hasEnded: Boolean = false,
 )
 
 class MembershipRequestVM(
     private val eventId: String,
     private val membershipRequestRepository: MembershipRequestRepository,
     private val userRepository: UserRepository,
+    private val eventRepository: EventRepository,
+    private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(MembershipRequestUIState(isLoading = false))
   val uiState: StateFlow<MembershipRequestUIState> = _uiState.asStateFlow()
@@ -80,7 +87,9 @@ class MembershipRequestVM(
             if (requests.any { it.userId !in names })
                 "Some applicant names could not be loaded. Please try again."
             else null
-        _uiState.update { it.copy(requests = items, errorMsg = profileError) }
+        _uiState.update {
+          it.copy(requests = items, errorMsg = profileError, hasEnded = hasEnded())
+        }
         loaded = true
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
@@ -90,7 +99,27 @@ class MembershipRequestVM(
     }
   }
 
-  fun accept(userId: String) = decide(userId, MembershipRequestStatus.ACCEPTED)
+  /**
+   * Whether the event has ended, read with the requests. An event that cannot be read is taken as
+   * running: the rules still refuse an acceptance after its end.
+   */
+  private suspend fun hasEnded(): Boolean {
+    val event =
+        try {
+          eventRepository.getEvent(eventId)
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          null
+        }
+    return event != null && !now().isBefore(event.endAt)
+  }
+
+  /** Accepts the request of [userId]. Ignored once the event has ended, which only rejects. */
+  fun accept(userId: String) {
+    if (_uiState.value.hasEnded) return
+    decide(userId, MembershipRequestStatus.ACCEPTED)
+  }
 
   fun reject(userId: String) = decide(userId, MembershipRequestStatus.REJECTED)
 
@@ -156,8 +185,11 @@ class MembershipRequestVM(
         eventId: String,
         membershipRequestRepository: MembershipRequestRepository,
         userRepository: UserRepository,
+        eventRepository: EventRepository,
     ): ViewModelProvider.Factory = viewModelFactory {
-      initializer { MembershipRequestVM(eventId, membershipRequestRepository, userRepository) }
+      initializer {
+        MembershipRequestVM(eventId, membershipRequestRepository, userRepository, eventRepository)
+      }
     }
   }
 }

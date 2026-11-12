@@ -62,6 +62,7 @@ class BackButtonPlacementTest {
             onBack = {},
             onTeamSelected = {},
             onApply = {},
+            hasEnded = false,
         )
       }
     }
