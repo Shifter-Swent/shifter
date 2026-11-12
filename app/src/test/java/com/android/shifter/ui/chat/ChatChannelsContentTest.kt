@@ -12,6 +12,7 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,7 +69,10 @@ class ChatChannelsContentTest {
     val generalTop = general.fetchSemanticsNode().boundsInRoot.top
     val headerTop = header.fetchSemanticsNode().boundsInRoot.top
     val barTop = tag(ChatChannelsTestTags.channel("bar")).fetchSemanticsNode().boundsInRoot.top
-    assert(generalTop < headerTop && headerTop < barTop)
+    assertTrue(
+        "General $generalTop, header $headerTop, Bar $barTop",
+        generalTop < headerTop && headerTop < barTop,
+    )
 
     general.performClick()
 
@@ -83,7 +87,10 @@ class ChatChannelsContentTest {
     val admin = tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
     val adminTop = admin.fetchSemanticsNode().boundsInRoot.top
     val headerTop = tag(ChatChannelsTestTags.TEAMS_HEADER).fetchSemanticsNode().boundsInRoot.top
-    assert(generalTop < adminTop && adminTop < headerTop)
+    assertTrue(
+        "General $generalTop, Admin $adminTop, header $headerTop",
+        generalTop < adminTop && adminTop < headerTop,
+    )
 
     admin.performClick()
 

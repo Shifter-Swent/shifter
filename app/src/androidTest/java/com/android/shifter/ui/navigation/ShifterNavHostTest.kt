@@ -1146,12 +1146,18 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(team).assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.ADMIN).assertDoesNotExist()
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
+    val teamChannel = ChatChannelId.Team(event.id, teamIds.getValue(event.id))
 
     composeTestRule.onNodeWithTag(team).performClick()
     waitForNode(TeamChatTestTags.INPUT)
     composeTestRule
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals("Litter pickers")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).performTextInput("Hello team")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.SEND_BUTTON).performClick()
+
+    // The title comes from the route, so only the message tells the team's channel was opened.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { texts(teamChannel) == listOf("Hello team") }
     pressBack()
     waitForNode(ChatChannelsTestTags.GENERAL)
 
@@ -1168,10 +1174,7 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       texts(ChatChannelId.General(event.id)) == listOf("Hello everyone")
     }
-    assertEquals(
-        emptyList<String>(),
-        texts(ChatChannelId.Team(event.id, teamIds.getValue(event.id))),
-    )
+    assertEquals(listOf("Hello team"), texts(teamChannel))
   }
 
   @Test
