@@ -61,8 +61,9 @@ class FirestoreEventRepository(
   }
 
   override suspend fun getEventByJoinCode(joinCode: String): Event? = translatingErrors {
-    // Not a valid document id, so no event can use it.
-    if (joinCode.isEmpty() || '/' in joinCode) return@translatingErrors null
+    // Never drawn by the generator, so no event uses it; some, such as "..", are not even a valid
+    // document id.
+    if (!JoinCode.isValid(joinCode)) return@translatingErrors null
     val eventId =
         joinCodes.document(joinCode).get().await().getString(JoinCodeSchema.EVENT_ID)
             ?: return@translatingErrors null

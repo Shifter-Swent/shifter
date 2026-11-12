@@ -321,8 +321,16 @@ class FirestoreEventRepositoryTest {
 
   @Test
   fun getEventByJoinCode_returnsNullForAnUnknownCode() = emulatorTest {
-    // Lower case and a dash, so the generator can never produce this code.
-    assertNull(repository.getEventByJoinCode("unknown-" + UUID.randomUUID()))
+    // Only twos, which the generator draws once in about a billion codes.
+    assertNull(repository.getEventByJoinCode("222222"))
+  }
+
+  @Test
+  fun getEventByJoinCode_withACodeNeverGenerated_returnsNull() = emulatorTest {
+    // Some are not even valid document ids, which Firestore would refuse.
+    for (code in listOf("", "AB/CDE", ".", "..", "__AB__", "abc234", "ABC1234")) {
+      assertNull(code, repository.getEventByJoinCode(code))
+    }
   }
 
   @Test
