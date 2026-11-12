@@ -106,7 +106,7 @@ fun TeamChatContent(
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
     onRetry: () -> Unit,
-    onAnnouncementChange: (Boolean) -> Unit = {},
+    onAnnouncementChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
     today: LocalDate = LocalDate.now(zone),

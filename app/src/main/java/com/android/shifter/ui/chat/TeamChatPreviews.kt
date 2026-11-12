@@ -23,6 +23,7 @@ private fun PreviewHost(state: TeamChatUiState) {
           onDraftChange = {},
           onSend = {},
           onRetry = {},
+          onAnnouncementChange = {},
           zone = ZoneOffset.UTC,
       )
     }
