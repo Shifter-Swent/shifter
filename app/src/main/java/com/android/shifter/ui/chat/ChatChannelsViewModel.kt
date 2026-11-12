@@ -27,12 +27,15 @@ data class ChatChannel(val teamId: String, val name: String, val icon: String)
  * @property asOrganizer whether the user organizes the event, which tells why there is no team
  *   channel.
  * @property channels the team channels the user can open.
+ * @property showsAdmin whether the user may open the event's admin channel: its organizer, and the
+ *   managers of its teams.
  * @property error why the channels could not be listed; only [ChatError.OFFLINE] and
  *   [ChatError.UNEXPECTED] are used here.
  */
 data class ChatChannelsUiState(
     val asOrganizer: Boolean = false,
     val channels: List<ChatChannel> = emptyList(),
+    val showsAdmin: Boolean = false,
     val isLoading: Boolean = true,
     val error: ChatError? = null,
 )
@@ -40,6 +43,11 @@ data class ChatChannelsUiState(
 /**
  * Lists the team channels of the event [eventId] the user can open: every team of the event for its
  * organizer, [asOrganizer], and otherwise the teams the user belongs to or manages, by name.
+ *
+ * The admin channel is shown to the organizer and to whoever manages a team of the event. The rules
+ * of `channels/admin` check the index of the event's managers instead, which a rule can read, but
+ * it is written in the same commit as each team's manager, so both give the same answer. A manager
+ * replaced while the list is open finds the channel closed when they open it.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
@@ -66,10 +74,10 @@ class ChatChannelsViewModel(
     loading = viewModelScope.launch {
       try {
         val userId = currentUserId()
-        val teams =
+        val (teams, showsAdmin) =
             when {
               // Every team of the event, which needs no user id.
-              asOrganizer -> teamRepository.getTeamsByEvent(eventId)
+              asOrganizer -> teamRepository.getTeamsByEvent(eventId) to true
               // An empty list would say the user is in no team: the error lets them retry.
               userId == null -> error("No signed-in user to list the teams of")
               // Independent queries, run together so a volunteer waits for one round trip.
@@ -77,7 +85,8 @@ class ChatChannelsViewModel(
                   coroutineScope {
                     val member = async { teamRepository.getTeamsOfMember(eventId, userId) }
                     val managed = async { teamRepository.getTeamsManagedBy(eventId, userId) }
-                    member.await() + managed.await()
+                    val managedTeams = managed.await()
+                    member.await() + managedTeams to managedTeams.isNotEmpty()
                   }
             }
         val channels =
@@ -85,7 +94,7 @@ class ChatChannelsViewModel(
                 .distinctBy { it.id }
                 .map { ChatChannel(it.id, it.name, it.icon) }
                 .sortedBy { it.name.lowercase() }
-        _uiState.value = ChatChannelsUiState(asOrganizer, channels, isLoading = false)
+        _uiState.value = ChatChannelsUiState(asOrganizer, channels, showsAdmin, isLoading = false)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {

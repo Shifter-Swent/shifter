@@ -1119,19 +1119,20 @@ class ShifterNavHostTest {
 
     composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
 
-    // Every team of the event is listed, under the general channel.
+    // Every team of the event is listed, under the general and admin channels.
     waitForNode(ChatChannelsTestTags.channel(bar.id))
     composeTestRule
         .onNodeWithTag(ChatChannelsTestTags.channel(teamIds.getValue(event.id)))
         .assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.channel(bar.id)).performClick()
     waitForNode(TeamChatTestTags.INPUT)
     composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Bar")
   }
 
   @Test
-  fun volunteerDiscussions_withASingleTeam_listsItAndTheGeneralChannel() {
+  fun volunteerDiscussions_withASingleTeam_listsItAndTheGeneralChannelButNotTheAdminOne() {
     val event = acceptedEvent(asManager = false)
     showApp()
     openEvent(event)
@@ -1143,6 +1144,7 @@ class ShifterNavHostTest {
     waitForNode(ChatChannelsTestTags.GENERAL)
     val team = ChatChannelsTestTags.channel(teamIds.getValue(event.id))
     composeTestRule.onNodeWithTag(team).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.ADMIN).assertDoesNotExist()
     composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
 
     composeTestRule.onNodeWithTag(team).performClick()
@@ -1170,6 +1172,29 @@ class ShifterNavHostTest {
         emptyList<String>(),
         texts(ChatChannelId.Team(event.id, teamIds.getValue(event.id))),
     )
+  }
+
+  @Test
+  fun managerDiscussions_opensTheAdminChannel() {
+    val event = acceptedEvent(asManager = true)
+    showApp()
+    openEvent(event)
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+
+    waitForNode(ChatChannelsTestTags.ADMIN)
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.ADMIN).performClick()
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("Admin")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).performTextInput("Two more at the bar")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.SEND_BUTTON).performClick()
+
+    // The message reaches the event's admin channel, which the rules open to the manager.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      texts(ChatChannelId.Admin(event.id)) == listOf("Two more at the bar")
+    }
+    assertEquals(emptyList<String>(), texts(ChatChannelId.General(event.id)))
   }
 
   /** The texts of the messages of [channel] as the signed-in user reads them now. */

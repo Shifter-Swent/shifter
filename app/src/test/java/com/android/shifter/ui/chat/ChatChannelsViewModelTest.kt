@@ -55,6 +55,7 @@ class ChatChannelsViewModelTest {
 
     assertTrue(state.asOrganizer)
     assertEquals(listOf("Bar", "kitchen", "Security"), state.channels.map { it.name })
+    assertTrue(state.showsAdmin)
   }
 
   @Test
@@ -84,12 +85,33 @@ class ChatChannelsViewModelTest {
   }
 
   @Test
-  fun load_withASingleChannel_listsIt() = runTest {
-    // Their only channel is listed like any other: the screen never opens it by itself.
-    assertEquals(
-        listOf("security"),
-        viewModel(userId = OTHER).uiState.value.channels.map { it.teamId },
-    )
+  fun load_asManager_showsTheAdminChannel() = runTest {
+    assertTrue(viewModel().uiState.value.showsAdmin)
+  }
+
+  @Test
+  fun load_asMemberManagingNoTeam_hidesTheAdminChannel() = runTest {
+    val state = viewModel(userId = OTHER).uiState.value
+
+    // Their only team channel is listed, not opened: the list always shows the general channel.
+    assertEquals(listOf("security"), state.channels.map { it.teamId })
+    assertFalse(state.showsAdmin)
+  }
+
+  @Test
+  fun load_asManagerOfAnotherEventOnly_hidesTheAdminChannel() = runTest {
+    val team = team("bar", "Bar", eventId = "other-event", managerId = ME)
+    val viewModel = ChatChannelsViewModel(EVENT, false, FakeTeamRepository(listOf(team))) { ME }
+
+    assertFalse(viewModel.uiState.value.showsAdmin)
+  }
+
+  @Test
+  fun load_asOrganizerOfAnEventWithoutTeam_showsTheAdminChannel() = runTest {
+    val viewModel = ChatChannelsViewModel(EVENT, true, FakeTeamRepository(emptyList())) { ME }
+
+    assertTrue(viewModel.uiState.value.channels.isEmpty())
+    assertTrue(viewModel.uiState.value.showsAdmin)
   }
 
   @Test
@@ -130,6 +152,7 @@ class ChatChannelsViewModelTest {
 
     assertEquals(ChatError.OFFLINE, viewModel.uiState.value.error)
     assertTrue(viewModel.uiState.value.channels.isEmpty())
+    assertFalse(viewModel.uiState.value.showsAdmin)
   }
 
   private fun team(

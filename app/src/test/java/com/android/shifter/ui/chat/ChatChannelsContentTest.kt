@@ -76,6 +76,29 @@ class ChatChannelsContentTest {
   }
 
   @Test
+  fun admin_whenShown_isListedBetweenTheGeneralChannelAndTheTeams_andOpensIt() {
+    setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
+
+    val generalTop = tag(ChatChannelsTestTags.GENERAL).fetchSemanticsNode().boundsInRoot.top
+    val admin = tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
+    val adminTop = admin.fetchSemanticsNode().boundsInRoot.top
+    val headerTop = tag(ChatChannelsTestTags.TEAMS_HEADER).fetchSemanticsNode().boundsInRoot.top
+    assert(generalTop < adminTop && adminTop < headerTop)
+
+    admin.performClick()
+
+    assertEquals(listOf(Triple(ChannelKind.ADMIN, null, "Admin")), opened)
+  }
+
+  @Test
+  fun admin_whenNotShown_isNotListed() {
+    setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
+
+    tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
+    tag(ChatChannelsTestTags.ADMIN).assertDoesNotExist()
+  }
+
+  @Test
   fun noTeamChannel_asVolunteer_showsTheGeneralChannelAndExplainsWhy() {
     setContent(ChatChannelsUiState(isLoading = false))
 

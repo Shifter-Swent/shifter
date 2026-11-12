@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ object ChatChannelsTestTags {
   const val EMPTY = "chatChannelsEmpty"
   const val LIST = "chatChannelsList"
   const val GENERAL = "chatChannelGeneral"
+  const val ADMIN = "chatChannelAdmin"
   const val TEAMS_HEADER = "chatChannelsTeamsHeader"
 
   fun channel(teamId: String) = "chatChannel_$teamId"
@@ -78,10 +80,10 @@ fun ChatChannelsScreen(
 }
 
 /**
- * The event's general channel, then the team channels the user can open. With no team channel, it
- * says why under the team header: a volunteer is in no team yet, or the organizer has not created
- * any. The list is always shown, even with a single team channel, as the general channel is always
- * there too.
+ * The event's general channel, its admin channel for those who may open it, then the team channels
+ * the user can open. With no team channel, it says why under the team header: a volunteer is in no
+ * team yet, or the organizer has not created any. The list is always shown, even with a single team
+ * channel, as the general channel is always there too.
  */
 @Composable
 fun ChatChannelsContent(
@@ -110,6 +112,7 @@ fun ChatChannelsContent(
           }
       else -> {
         val general = stringResource(R.string.chat_channel_general)
+        val admin = stringResource(R.string.chat_channel_admin)
         LazyColumn(modifier = Modifier.fillMaxSize().testTag(ChatChannelsTestTags.LIST)) {
           item(key = ChatChannelsTestTags.GENERAL) {
             ChannelRow(
@@ -120,6 +123,18 @@ fun ChatChannelsContent(
               onOpenChannel(ChannelKind.GENERAL, null, general)
             }
             HorizontalDivider(color = shifter_divider)
+          }
+          if (state.showsAdmin) {
+            item(key = ChatChannelsTestTags.ADMIN) {
+              ChannelRow(
+                  admin,
+                  rememberVectorPainter(Icons.Outlined.Lock),
+                  ChatChannelsTestTags.ADMIN,
+              ) {
+                onOpenChannel(ChannelKind.ADMIN, null, admin)
+              }
+              HorizontalDivider(color = shifter_divider)
+            }
           }
           item(key = ChatChannelsTestTags.TEAMS_HEADER) { TeamsHeader() }
           if (state.channels.isEmpty()) {

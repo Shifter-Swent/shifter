@@ -13,6 +13,7 @@
     <string name="chat_input_placeholder">Write a message</string>
     <string name="chat_send">Send</string>
     <string name="chat_channel_general">General</string>
+    <string name="chat_channel_admin">Admin</string>
     <string name="chat_channels_teams">Teams</string>
     <string name="chat_channels_empty_volunteer">You will see your team\'s channel once you are in a team.</string>
     <string name="chat_channels_empty_organizer">This event has no team yet. Each team you create gets its own channel.</string>

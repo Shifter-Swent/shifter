@@ -36,7 +36,7 @@ private val CHANNELS =
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
 @Composable
 private fun ChatChannelsPreview() {
-  PreviewHost(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
+  PreviewHost(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
@@ -54,7 +54,7 @@ private fun ChatChannelsEmptyVolunteerPreview() {
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
 @Composable
 private fun ChatChannelsEmptyOrganizerPreview() {
-  PreviewHost(ChatChannelsUiState(asOrganizer = true, isLoading = false))
+  PreviewHost(ChatChannelsUiState(asOrganizer = true, showsAdmin = true, isLoading = false))
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
