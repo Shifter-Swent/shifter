@@ -371,6 +371,18 @@ class MissionManagerRulesTest {
   }
 
   @Test
+  fun update_ofAMissionPastItsEnd_markingItCompleted_isAllowed() = emulatorTest {
+    // Over but not closed by hand yet: closing it is the one change markCompleted relies on.
+    val mission = missionByOrganizer(TEAM_ID, endAt = Timestamp(Date(0)))
+
+    signIn(manager)
+    mission.update("completed", true).await()
+
+    signIn(organizer)
+    assertEquals(true, mission.get(Source.SERVER).await().getBoolean("completed"))
+  }
+
+  @Test
   fun update_ofACompletedMission_changingItsTeam_isDenied() = emulatorTest {
     val mission = missionByOrganizer(TEAM_ID, endAt = Timestamp(Date(0)))
 
