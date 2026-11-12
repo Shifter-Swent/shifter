@@ -126,16 +126,16 @@ fun PeopleScreen(
     )
   }
   // Gone from a list that loaded fine, e.g. after they withdrew: there is no one left to move. A
-  // list still loading or failed keeps the dialog for when it comes back.
+  // list still loading or failed keeps the dialog for when it comes back. Made a manager meanwhile,
+  // e.g. after a reload: a manager is never moved, so the move would always be refused.
   LaunchedEffect(moving, participants) {
     val userId = moving ?: return@LaunchedEffect
-    if (
-        !participants.isLoading &&
-            participants.error == null &&
-            participants.groups.none { group -> group.participants.any { it.userId == userId } }
-    ) {
-      moving = null
-    }
+    val participant =
+        participants.groups.firstNotNullOfOrNull { group ->
+          group.participants.firstOrNull { it.userId == userId }
+        }
+    val gone = participant == null && !participants.isLoading && participants.error == null
+    if (gone || participant?.isManager == true) moving = null
   }
   moving?.let { userId ->
     val group =

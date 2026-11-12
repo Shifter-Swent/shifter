@@ -333,6 +333,54 @@ class PeopleScreenTest {
   }
 
   @Test
+  fun participantMadeManager_closesTheMoveDialog() {
+    val kitchenGroup = ParticipantGroup(kitchen, emptyList())
+    var participants by
+        mutableStateOf(
+            ParticipantsUiState(
+                groups = listOf(ParticipantGroup(bar, listOf(ann, bob)), kitchenGroup)
+            )
+        )
+    var moves = 0
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = participants,
+            onReloadParticipants = {},
+            onAppointManager = { _, _ -> },
+            onRemoveManager = {},
+            onMoveToTeam = { _, _ -> moves++ },
+            eventTitle = "City Marathon",
+            onBack = {},
+            onNavigate = {},
+        )
+      }
+    }
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertIsDisplayed()
+
+    // A reload shows Bob as the manager of Bar now: a manager is never moved.
+    participants =
+        ParticipantsUiState(
+            groups =
+                listOf(
+                    ParticipantGroup(
+                        bar,
+                        listOf(bob.copy(isManager = true), ann.copy(isManager = false)),
+                    ),
+                    kitchenGroup,
+                )
+        )
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, moves) }
+  }
+
+  @Test
   fun topBar_showsTheEventNameAndBackCallsOnBack() {
     var backs = 0
     compose.setContent {
