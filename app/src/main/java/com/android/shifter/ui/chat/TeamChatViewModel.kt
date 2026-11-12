@@ -215,6 +215,9 @@ class TeamChatViewModel(
               announcementRefused = refused,
           )
         }
+        // The manager may have been replaced meanwhile: without the right any more, the option
+        // goes, so the same announcement is not refused again and again.
+        if (refused) loadAnnounceRight()
       }
       sending = sending - message
       show()
@@ -236,7 +239,11 @@ class TeamChatViewModel(
             null
           }
       val me = currentUserId()
-      _uiState.update { it.copy(canAnnounce = me != null && manager == me) }
+      val canAnnounce = me != null && manager == me
+      // Without the right, nothing may stay chosen as an announcement.
+      _uiState.update {
+        it.copy(canAnnounce = canAnnounce, asAnnouncement = canAnnounce && it.asAnnouncement)
+      }
     }
   }
 

@@ -469,6 +469,22 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun send_announcementRefusedToAReplacedManager_hidesTheOption() = runTest {
+    val viewModel = managerViewModel()
+    // Another manager takes the team over while the channel is open.
+    teams.teams[0] = team(managerId = OTHER)
+    chat.announcingChannels = emptySet()
+
+    viewModel.announce("Gates open at 9:00")
+
+    val state = viewModel.uiState.value
+    assertEquals("Gates open at 9:00", state.draft)
+    assertTrue(state.announcementRefused)
+    assertFalse(state.canAnnounce)
+    assertFalse(state.asAnnouncement)
+  }
+
+  @Test
   fun onDraftChange_clearsTheAnnouncementRefusal() = runTest {
     val viewModel = managerViewModel()
     chat.announcingChannels = emptySet()
