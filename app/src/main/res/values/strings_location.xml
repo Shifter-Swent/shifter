@@ -10,8 +10,8 @@
     <string name="location_open_location_settings">Turn on location</string>
     <!-- Location sharing indicator (#405) -->
     <string name="location_sharing_shared_description">Location shared with your manager</string>
-    <string name="location_sharing_waiting_description">Waiting to share your location</string>
-    <string name="location_sharing_refused_description">Location not accepted</string>
+    <string name="location_sharing_waiting_description">Waiting to share your position</string>
+    <string name="location_sharing_refused_description">Position not accepted</string>
     <string name="location_sharing_no_access_description">Location access is off</string>
     <string name="location_sharing_off_description">Location sharing is off</string>
     <string name="location_sharing_show_details">Show details</string>

@@ -83,8 +83,8 @@ class LocationSharingIndicatorTest {
     }
     mapOf(
             SHARED to "Location shared with your manager",
-            WAITING to "Waiting to share your location",
-            REFUSED to "Location not accepted",
+            WAITING to "Waiting to share your position",
+            REFUSED to "Position not accepted",
             NO_LOCATION_ACCESS to "Location access is off",
             OFF to "Location sharing is off",
         )
@@ -112,7 +112,7 @@ class LocationSharingIndicatorTest {
     // One team refused is not hidden behind another whose position is shared.
     show(mapOf(HYDRATION to SHARED, FINISH to REFUSED))
 
-    compose.onNodeWithContentDescription("Location not accepted").assertIsDisplayed()
+    compose.onNodeWithContentDescription("Position not accepted").assertIsDisplayed()
   }
 
   @Test
