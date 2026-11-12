@@ -81,3 +81,4 @@ Check-ins and location updates are queued on the device and synchronized with Fi
 
 ## Figma
 Shifter Figma's model : https://www.figma.com/design/mO0rO29TWFRdEhGfm0NPDT/Shifter-Design?node-id=0-1&p=f&t=4mvO2RjgYud93Dya-0
+
