@@ -1,17 +1,27 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.overview
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.swent.shifter.R
+import com.swent.shifter.ui.event.FakeClipboard
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -42,7 +52,96 @@ class OrganizerOverviewScreenTest {
       state: OrganizerOverviewUiState,
       actions: OrganizerOverviewActions = OrganizerOverviewActions(),
   ) {
-    compose.setContent { ShifterTheme { OrganizerOverviewContent(state, actions) } }
+    compose.setContent {
+      ShifterTheme {
+        CompositionLocalProvider(LocalClipboard provides clipboard) {
+          OrganizerOverviewContent(state, actions)
+        }
+      }
+    }
+  }
+
+  private val clipboard = FakeClipboard()
+
+  private fun string(id: Int) =
+      InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
+  @Test
+  fun loaded_showsTheInvitationCodeFirst() {
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertIsDisplayed()
+        .assertTextEquals("ABC234")
+    compose.onNodeWithText(string(R.string.event_join_code_label_short)).assertIsDisplayed()
+  }
+
+  @Test
+  fun joinCodeLoading_keepsTheCardWithNothingToCopy() {
+    show(loaded.copy(joinCode = JoinCodeState.Loading))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE).assertIsDisplayed()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
+        .assertIsNotEnabled()
+  }
+
+  @Test
+  fun joinCodeLoading_isReadAsLoadingRatherThanAsDots() {
+    show(loaded.copy(joinCode = JoinCodeState.Loading))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertContentDescriptionEquals(string(R.string.event_join_code_loading))
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
+  }
+
+  @Test
+  fun joinCodeUnavailable_saysSoAndRetries() {
+    var retries = 0
+    show(
+        loaded.copy(joinCode = JoinCodeState.Unavailable),
+        OrganizerOverviewActions(onRetryJoinCode = { retries++ }),
+    )
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE_UNAVAILABLE)
+        .assertTextEquals(string(R.string.event_join_code_unavailable))
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
+        .assertDoesNotExist()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.RETRY_JOIN_CODE_BUTTON).performClick()
+
+    assertEquals(1, retries)
+  }
+
+  @Test
+  fun copy_putsTheCodeInTheClipboardAndConfirmsIt() {
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
+
+    compose.waitUntil { clipboard.text != null }
+    assertEquals("ABC234", clipboard.text)
+    compose.onNodeWithText(string(R.string.event_join_code_copied)).assertIsDisplayed()
+  }
+
+  @Test
+  fun copy_whenTheClipboardRefuses_saysTheCopyFailed() {
+    clipboard.failure = SecurityException("Clipboard access denied")
+    show(loaded.copy(joinCode = JoinCodeState.Ready("ABC234")))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON).performClick()
+
+    compose.waitUntil {
+      compose
+          .onAllNodesWithText(string(R.string.event_join_code_copy_failed))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.onNodeWithText(string(R.string.event_join_code_copied)).assertDoesNotExist()
+    assertEquals(null, clipboard.text)
   }
 
   @Test

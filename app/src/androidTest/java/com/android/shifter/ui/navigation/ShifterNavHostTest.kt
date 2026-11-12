@@ -472,6 +472,17 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun organizerEvent_overviewShowsTheEventsInvitationCode() {
+    val event = createEvent(signIn())
+    openOrganizerEvent(event)
+
+    waitForNode(OrganizerOverviewScreenTestTags.JOIN_CODE)
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertTextEquals(event.joinCode)
+  }
+
+  @Test
   fun organizerEvent_teamManagementListsTheTeamsTheEventAlreadyHas() {
     val event = createEvent(signIn())
     val bar = createTeam(event, "Bar")

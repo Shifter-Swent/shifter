@@ -2,8 +2,6 @@
 package com.swent.shifter.ui.event
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,21 +15,20 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.ShifterTopBar
@@ -43,13 +40,16 @@ object EventCreatedScreenTestTags {
   const val LOAD_ERROR = "EventCreatedLoadError"
   const val RETRY_BUTTON = "EventCreatedRetryButton"
   const val EVENT_TITLE = "EventCreatedTitle"
-  const val JOIN_CODE = "EventCreatedJoinCode"
+  const val JOIN_CODE = JoinCodeCardTestTags.CODE
+  const val COPY_BUTTON = JoinCodeCardTestTags.COPY_BUTTON
   const val DONE_BUTTON = "EventCreatedDoneButton"
+  const val SNACKBAR = "EventCreatedSnackbar"
 }
 
 /**
- * Shown once an organizer has created an event: displays its unique join code in large type, so the
- * organizer can share it with volunteers. Styled like [CreateEventScreen], which leads here.
+ * Shown once an organizer has created an event: displays its unique join code in large type, with a
+ * button to copy it, so the organizer can share it with volunteers. Styled like
+ * [CreateEventScreen], which leads here.
  *
  * @param onDone called when the organizer leaves this screen, e.g. to open their events.
  */
@@ -62,13 +62,21 @@ fun EventCreatedScreen(viewModel: EventCreatedViewModel, onDone: () -> Unit) {
 /** Stateless content of [EventCreatedScreen]: renders [state] and reports every interaction. */
 @Composable
 fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone: () -> Unit) {
+  val snackbarHostState = remember { SnackbarHostState() }
+  val copyJoinCode = rememberCopyJoinCode(snackbarHostState)
   Scaffold(
       topBar = {
         ShifterTopBar(
             title = stringResource(R.string.event_created_title),
             onBack = onDone,
         )
-      }
+      },
+      snackbarHost = {
+        SnackbarHost(
+            snackbarHostState,
+            modifier = Modifier.testTag(EventCreatedScreenTestTags.SNACKBAR),
+        )
+      },
   ) { padding ->
     Column(
         modifier =
@@ -117,7 +125,7 @@ fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone:
               color = shifter_mutedText,
               modifier = Modifier.testTag(EventCreatedScreenTestTags.EVENT_TITLE),
           )
-          JoinCodeCard(state.joinCode)
+          JoinCodeCard(state.joinCode, onCopy = { copyJoinCode(state.joinCode) })
           Text(
               text = stringResource(R.string.event_created_code_hint),
               style = MaterialTheme.typography.labelSmall,
@@ -131,39 +139,6 @@ fun EventCreatedContent(state: EventCreatedUiState, onRetry: () -> Unit, onDone:
           testTag = EventCreatedScreenTestTags.DONE_BUTTON,
       )
     }
-  }
-}
-
-/** The join code in large type, in a highlighted card like the date cards of the form. */
-@Composable
-private fun JoinCodeCard(joinCode: String) {
-  val colorScheme = MaterialTheme.colorScheme
-  val shape = MaterialTheme.shapes.medium
-  Column(
-      modifier =
-          Modifier.fillMaxWidth()
-              .clip(shape)
-              .background(colorScheme.primaryContainer)
-              .border(1.dp, colorScheme.primary, shape)
-              .padding(horizontal = 12.dp, vertical = 24.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Text(
-        text = stringResource(R.string.event_created_code_label),
-        style = MaterialTheme.typography.labelSmall,
-        color = colorScheme.onSurfaceVariant,
-    )
-    Text(
-        text = joinCode,
-        style = MaterialTheme.typography.displayMedium,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 6.sp,
-        color = colorScheme.onSurface,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.testTag(EventCreatedScreenTestTags.JOIN_CODE),
-    )
   }
 }
 

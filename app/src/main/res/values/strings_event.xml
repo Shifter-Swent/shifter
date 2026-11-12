@@ -47,4 +47,13 @@
     <string name="event_created_error_not_found">This event has no join code. Try creating it again.</string>
     <string name="event_created_error_unexpected">Could not load the event code.</string>
     <string name="event_created_retry">Try again</string>
+
+    <!-- Join code card -->
+    <string name="event_join_code_label_short">Join code</string>
+    <string name="event_join_code_copy">Copy code</string>
+    <string name="event_join_code_copied">Code copied</string>
+    <string name="event_join_code_copy_failed">Could not copy the code</string>
+    <string name="event_join_code_loading">Loading the code</string>
+    <string name="event_join_code_unavailable">Code unavailable</string>
+    <string name="event_join_code_retry">Retry</string>
 </resources>
