@@ -58,7 +58,7 @@ class MoveDialogTest {
 
     composeTestRule.onNodeWithText("Move Bob Rossi").assertIsDisplayed()
     composeTestRule
-        .onNodeWithText("Bob Rossi leaves Bar and its missions that are not over yet.")
+        .onNodeWithText("Bob Rossi leaves Bar and its next missions.")
         .assertIsDisplayed()
     node(MoveDialogTestTags.teamOption("logistics")).assertIsDisplayed()
     node(MoveDialogTestTags.teamOption("kitchen")).assertIsDisplayed()

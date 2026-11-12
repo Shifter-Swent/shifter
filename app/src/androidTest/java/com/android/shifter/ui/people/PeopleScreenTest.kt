@@ -180,9 +180,7 @@ class PeopleScreenTest {
     compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
     compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
     compose.onNodeWithText("Move Bob Rossi").assertIsDisplayed()
-    compose
-        .onNodeWithText("Bob Rossi leaves Bar and its missions that are not over yet.")
-        .assertIsDisplayed()
+    compose.onNodeWithText("Bob Rossi leaves Bar and its next missions.").assertIsDisplayed()
     // Bar is the team he is in, so only Kitchen is offered.
     compose.onNodeWithTag(MoveDialogTestTags.teamOption("bar")).assertDoesNotExist()
     compose.onNodeWithTag(MoveDialogTestTags.CONFIRM_BUTTON).assertIsNotEnabled()

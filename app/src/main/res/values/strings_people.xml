@@ -35,7 +35,7 @@
     <string name="participants_card_collapsed">Collapsed</string>
     <!-- The dialog that picks the team a participant moves to. -->
     <string name="participants_move_title">Move %1$s</string>
-    <string name="participants_move_message">%1$s leaves %2$s and its missions that are not over yet.</string>
+    <string name="participants_move_message">%1$s leaves %2$s and its next missions.</string>
     <string name="participants_move_confirm">Move</string>
     <string name="participants_add_title">Add %1$s to a team</string>
     <string name="participants_move_no_other_team">There is no other team to choose.</string>
