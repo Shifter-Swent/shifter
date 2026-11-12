@@ -2,9 +2,9 @@
 package com.swent.shifter.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,11 +26,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.swent.shifter.ui.location.LocationSharingIndicator
 import com.swent.shifter.ui.navigation.NavigationTestTags
 
 /**
- * The header of every screen with a way back: the [BackButton] calling [onBack] and the [title],
- * centered on one line, ellipsized when too long.
+ * The header of every screen with a way back: the [BackButton] calling [onBack], the [title],
+ * centered on one line, ellipsized when too long, and the [LocationSharingIndicator] on the right.
  */
 @Composable
 fun ShifterTopBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
@@ -60,8 +61,8 @@ fun ShifterTopBar(title: String, onBack: () -> Unit, modifier: Modifier = Modifi
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
       )
-      // Keeps the title centered against the back button.
-      Spacer(modifier = Modifier.size(48.dp))
+      // As wide as the back button, so the title stays centered with or without the indicator.
+      Box(modifier = Modifier.size(48.dp)) { LocationSharingIndicator() }
     }
     HorizontalDivider(color = colors.outlineVariant)
   }

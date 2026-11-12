@@ -141,7 +141,7 @@ class LiveLocationPublishingTest {
     val consent = flow<Boolean> { emitAll(MutableStateFlow(true)) }.onStart { subscriptions++ }
 
     val job = backgroundScope.launch {
-      runLiveLocationPublishing(coordinator, consent, faults::add)
+      runLiveLocationPublishing(coordinator, consent, faults::add) {}
     }
     runCurrent()
     job.cancel()
@@ -160,7 +160,7 @@ class LiveLocationPublishingTest {
     val consent = flow<Boolean> { awaitCancellation() }
 
     val job = backgroundScope.launch {
-      runLiveLocationPublishing(coordinator, consent, faults::add)
+      runLiveLocationPublishing(coordinator, consent, faults::add) {}
     }
     runCurrent()
     job.cancel()
@@ -177,7 +177,7 @@ class LiveLocationPublishingTest {
     val consent = MutableStateFlow(true)
 
     val job = backgroundScope.launch {
-      runLiveLocationPublishing(coordinator, consent, faults::add)
+      runLiveLocationPublishing(coordinator, consent, faults::add) {}
     }
     runCurrent()
     consent.value = false
@@ -193,7 +193,7 @@ class LiveLocationPublishingTest {
     val coordinator = LiveLocationCoordinator(targetsOf(BAR, STAGE), sessions)
 
     val job = backgroundScope.launch {
-      runLiveLocationPublishing(coordinator, MutableStateFlow(true), faults::add)
+      runLiveLocationPublishing(coordinator, MutableStateFlow(true), faults::add) {}
     }
     runCurrent()
     job.cancel()
@@ -203,18 +203,50 @@ class LiveLocationPublishingTest {
     assertTrue(sessions.active.contains(STAGE))
   }
 
+  @Test
+  fun run_reportsTheSharingStates_thenNoneOnceCancelled() = runTest {
+    val sessions =
+        RecordingSessions().apply {
+          reports[BAR] = LiveLocationSharingState.SHARED
+          reports[STAGE] = LiveLocationSharingState.REFUSED
+        }
+    val coordinator = LiveLocationCoordinator(targetsOf(BAR, STAGE), sessions)
+    val seen = mutableListOf<Map<LiveLocationTarget, LiveLocationSharingState>>()
+
+    val job = backgroundScope.launch {
+      runLiveLocationPublishing(coordinator, MutableStateFlow(true), faults::add) { seen += it }
+    }
+    runCurrent()
+
+    assertEquals(
+        mapOf(BAR to LiveLocationSharingState.SHARED, STAGE to LiveLocationSharingState.REFUSED),
+        seen.last(),
+    )
+
+    // Backgrounded or signed out: no session runs, so the indicator must not keep the last state.
+    job.cancel()
+    runCurrent()
+
+    assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), seen.last())
+  }
+
   private val faults = mutableListOf<Throwable>()
 
   private fun targetsOf(vararg targets: LiveLocationTarget) = LiveLocationTargets {
     targets.toList()
   }
 
-  /** A [LiveLocationSessions] double recording the sessions started, running, and consent seen. */
+  /**
+   * A [LiveLocationSessions] double recording the sessions started, running, and consent seen, and
+   * reporting the state [reports] gives its target.
+   */
   private class RecordingSessions : LiveLocationSessions {
     val started = mutableListOf<LiveLocationTarget>()
     val active = mutableSetOf<LiveLocationTarget>()
     val consentSeen = mutableMapOf<LiveLocationTarget, MutableList<Boolean>>()
     val failing = mutableSetOf<LiveLocationTarget>()
+    /** The state each target's session reports once started, none for a target not listed. */
+    val reports = mutableMapOf<LiveLocationTarget, LiveLocationSharingState>()
 
     override suspend fun publish(
         target: LiveLocationTarget,
@@ -224,6 +256,7 @@ class LiveLocationPublishingTest {
       started += target
       if (target in failing) throw IllegalStateException("The session of $target failed")
       active += target
+      reports[target]?.let(onState)
       try {
         sharingEnabled.collect { consentSeen.getOrPut(target) { mutableListOf() } += it }
         awaitCancellation()

@@ -28,10 +28,14 @@ import com.swent.shifter.ui.components.UnderlinedTab
 import com.swent.shifter.ui.components.UnderlinedTabRow
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.location.LocationSharingIndicator
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_avatarBackground
 
-/** "My Events" title, an optional [subtitle] such as "Organizer View", and the user's avatar. */
+/**
+ * "My Events" title, an optional [subtitle] such as "Organizer View", and the user's avatar, with
+ * the [LocationSharingIndicator] on its left.
+ */
 @Composable
 fun MyEventsTopBar(
     avatarInitial: String,
@@ -63,24 +67,27 @@ fun MyEventsTopBar(
         )
       }
     }
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier =
-            Modifier.size(36.dp)
-                .clip(CircleShape)
-                .background(shifter_avatarBackground)
-                .clickable(
-                    onClickLabel = stringResource(R.string.my_events_open_profile),
-                    onClick = onAvatarClick,
-                )
-                .testTag(MyEventsTestTags.AVATAR),
-    ) {
-      Text(
-          text = avatarInitial,
-          color = colors.onBackground,
-          fontSize = 14.sp,
-          fontWeight = FontWeight.SemiBold,
-      )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      LocationSharingIndicator()
+      Box(
+          contentAlignment = Alignment.Center,
+          modifier =
+              Modifier.size(36.dp)
+                  .clip(CircleShape)
+                  .background(shifter_avatarBackground)
+                  .clickable(
+                      onClickLabel = stringResource(R.string.my_events_open_profile),
+                      onClick = onAvatarClick,
+                  )
+                  .testTag(MyEventsTestTags.AVATAR),
+      ) {
+        Text(
+            text = avatarInitial,
+            color = colors.onBackground,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+      }
     }
   }
 }

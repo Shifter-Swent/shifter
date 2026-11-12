@@ -236,6 +236,24 @@ class NavigationActionsTest {
     verify { navController.navigate(SignedOut, any<NavOptionsBuilder.() -> Unit>()) }
   }
 
+  @Test
+  fun openSettings_inOrganizerMode_opensTheOrganizerSettings() {
+    stubCurrentDestinationIn(Organizer, inside = true)
+
+    nav.openSettings()
+
+    assertTrue(optionsOf(Organizer.ProfileSettings).shouldLaunchSingleTop())
+  }
+
+  @Test
+  fun openSettings_inVolunteerMode_opensTheVolunteerSettings() {
+    stubCurrentDestinationIn(Organizer, inside = false)
+
+    nav.openSettings()
+
+    assertTrue(optionsOf(Volunteer.ProfileSettings).shouldLaunchSingleTop())
+  }
+
   private fun stubCurrentDestinationIn(route: Any, inside: Boolean) {
     val destination = mockk<NavDestination>(relaxed = true)
     every { destination.parent } returns null

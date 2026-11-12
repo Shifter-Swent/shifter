@@ -8,4 +8,31 @@
     <string name="location_allow">Allow location</string>
     <string name="location_open_app_settings">Open settings</string>
     <string name="location_open_location_settings">Turn on location</string>
+    <!-- Location sharing indicator (#405) -->
+    <string name="location_sharing_shared_description">Location shared with your manager</string>
+    <string name="location_sharing_waiting_description">Waiting to share your location</string>
+    <string name="location_sharing_refused_description">Location not accepted</string>
+    <string name="location_sharing_no_access_description">Location access is off</string>
+    <string name="location_sharing_off_description">Location sharing is off</string>
+    <string name="location_sharing_show_details">Show details</string>
+    <string name="location_sharing_shared_title">Your position is shared</string>
+    <string name="location_sharing_shared_body">Your team\'s manager can see where you are while the event runs. It is updated as you move.</string>
+    <string name="location_sharing_waiting_title">Waiting to share your position</string>
+    <string name="location_sharing_waiting_body">Your manager does not see your position yet. It will be sent as soon as your phone has both a location and a connection.</string>
+    <string name="location_sharing_refused_title">Position not accepted</string>
+    <string name="location_sharing_refused_body">The server refused your position, so your manager does not see it. This happens when the event is over or you are no longer in its team.</string>
+    <string name="location_sharing_no_access_title">Location access is off</string>
+    <string name="location_sharing_no_access_body">Sharing is on, but Shifter cannot read your position. Allow location access for Shifter in your phone\'s settings.</string>
+    <string name="location_sharing_off_title">Location sharing is off</string>
+    <string name="location_sharing_off_body">Your team\'s manager cannot see where you are during this event.</string>
+    <string name="location_sharing_targets_header">Your teams right now</string>
+    <string name="location_sharing_target_team_and_manager">%1$s · Manager: %2$s</string>
+    <string name="location_sharing_target_unknown">Event and team not available</string>
+    <string name="location_sharing_target_shared">Shared</string>
+    <string name="location_sharing_target_waiting">Waiting</string>
+    <string name="location_sharing_target_refused">Refused</string>
+    <string name="location_sharing_target_not_shared">Not shared</string>
+    <string name="location_sharing_turn_off_hint">You can turn sharing off in Settings.</string>
+    <string name="location_sharing_turn_on_hint">You can turn sharing on in Settings.</string>
+    <string name="location_sharing_open_settings">Open Settings</string>
 </resources>
