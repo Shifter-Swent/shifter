@@ -1284,6 +1284,24 @@ class AddMissionViewModelTest {
   }
 
   @Test
+  fun edit_ofAMissionCompletedWhileOpen_saysItIsCompleted() = runTest {
+    val stored = storedMission()
+    openEdit(stored.id)
+    assertFalse(state.missionCompleted)
+    // Closed by its manager while the organizer is still editing it.
+    missions.markCompleted(event.id, stored.id)
+
+    viewModel.onTitleChange("Too late")
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertTrue(state.missionCompleted)
+    assertFalse(state.saveFailed)
+    assertFalse(state.canSubmit)
+    assertEquals("Sort the food donations", missions.created.single().title)
+  }
+
+  @Test
   fun edit_invalidValues_showTheFieldErrors() = runTest {
     val stored = storedMission()
     openEdit(stored.id)
