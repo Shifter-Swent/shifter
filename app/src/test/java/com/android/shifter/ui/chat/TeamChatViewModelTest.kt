@@ -96,6 +96,12 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun canAnnounce_asTheOrganizerInATeamChannel_isFalse() = runTest {
+    // The rules leave a team's announcements to its manager, not to the organizer.
+    assertFalse(viewModel(CHANNEL, asOrganizer = true).uiState.value.canAnnounce)
+  }
+
+  @Test
   fun send_organizerAnnouncementInTheGeneralChannel_isSentAsAnAnnouncement() = runTest {
     val general = ChatChannelId.General(EVENT)
     val viewModel = organizerViewModel(general)
