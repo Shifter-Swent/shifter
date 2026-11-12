@@ -102,14 +102,14 @@ object ParticipantsListTestTags {
  * The participants of the event, one card each, under a bar naming their team. Teams nobody has
  * joined yet are listed too, and the participants of no team come last.
  *
- * A tap on a card unfolds the actions its participant allows (#397), and folds it again; one card
- * is open at a time. No action is offered while a change runs.
+ * A tap on a card unfolds the actions its participant allows, and folds it again; one card is open
+ * at a time. No action is offered while a change runs.
  *
  * @param onManagerAction called with a member and their team to make them its manager, or with its
  *   manager to stop it.
  * @param onMoveAction called with a member to move them to another team, or with a participant of
- *   no team to put them into one. Null until #397 wires it, which leaves the move out of the cards;
- *   a card with no action left does not unfold.
+ *   no team to put them into one. Null leaves the move out of the cards; a card with no action left
+ *   does not unfold.
  */
 @Composable
 fun ParticipantsList(

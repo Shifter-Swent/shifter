@@ -491,6 +491,7 @@ fun ShifterNavHost(
                 onReloadParticipants = participants::load,
                 onAppointManager = participants::appointManager,
                 onRemoveManager = participants::removeManager,
+                onMoveToTeam = participants::moveToTeam,
                 eventTitle = event.eventTitle,
                 onBack = { nav.leaveEvent(OrganizerTabs) },
                 onNavigate = nav::switchTab,
