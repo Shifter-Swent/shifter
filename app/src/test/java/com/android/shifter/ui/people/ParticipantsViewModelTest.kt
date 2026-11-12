@@ -35,8 +35,8 @@ import org.junit.Test
 class ParticipantsViewModelTest {
 
   private val dispatcher = StandardTestDispatcher()
-  private val requests = FakeMembershipRequestRepository()
   private val teams = FakeTeamRepository()
+  private val requests = FakeMembershipRequestRepository(teams = teams)
   private val users = FakeUserRepository()
 
   @Before fun setUp() = Dispatchers.setMain(dispatcher)
@@ -388,6 +388,74 @@ class ParticipantsViewModelTest {
     assertFalse(viewModel.uiState.value.isUpdating)
   }
 
+  @Test
+  fun moveToTeam_movesTheVolunteerAndShowsThemInTheNewTeam() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    team("kitchen")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    viewModel.moveToTeam("ann", "kitchen")
+    advanceUntilIdle()
+
+    assertEquals(emptyList<String>(), teamOf("bar").memberIds)
+    assertEquals(listOf("ann"), teamOf("kitchen").memberIds)
+    assertEquals(emptyList<String>(), viewModel.userIdsOf("bar"))
+    assertEquals(listOf("ann"), viewModel.userIdsOf("kitchen"))
+    assertFalse(viewModel.uiState.value.isUpdating)
+  }
+
+  @Test
+  fun moveToTeam_ofAVolunteerWithoutTeam_putsThemIntoOne() = runTest {
+    // Ann's request names "bar", which was deleted after she was accepted.
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("kitchen")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    assertEquals(listOf("ann"), viewModel.uiState.value.groups.single { it.team == null }.userIds())
+
+    viewModel.moveToTeam("ann", "kitchen")
+    advanceUntilIdle()
+
+    assertEquals(listOf("ann"), viewModel.userIdsOf("kitchen"))
+    assertTrue(viewModel.uiState.value.groups.none { it.team == null })
+  }
+
+  @Test
+  fun moveToTeam_whenTheWriteFails_keepsTheListAndShowsTheFailure() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    team("kitchen")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    val before = viewModel.uiState.value.groups
+
+    requests.failure = MembershipRequestRepositoryException.Unavailable()
+    viewModel.moveToTeam("ann", "kitchen")
+    advanceUntilIdle()
+
+    assertEquals(ParticipantsError.MOVE_FAILED, viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isUpdating)
+    assertEquals(before, viewModel.uiState.value.groups)
+  }
+
+  @Test
+  fun moveToTeam_isIgnoredWhileAnotherChangeRuns() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    team("kitchen")
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    viewModel.appointManager("bar", "ann")
+    viewModel.moveToTeam("ann", "kitchen")
+    advanceUntilIdle()
+
+    assertEquals("ann", teamOf("bar").managerId)
+    assertEquals(emptyList<String>(), teamOf("kitchen").memberIds)
+  }
+
   private fun request(userId: String, status: MembershipRequestStatus) {
     users.users[userId] = User(uid = userId, displayName = "$userId Smith", email = "$userId@x.ch")
     requests.add(
@@ -421,6 +489,8 @@ class ParticipantsViewModelTest {
 
   private fun ParticipantsViewModel.userIdsOf(teamId: String): List<String> =
       uiState.value.groups.single { it.team?.id == teamId }.participants.map { it.userId }
+
+  private fun ParticipantGroup.userIds() = participants.map { it.userId }
 
   private fun ParticipantGroup.names() = participants.map { it.name }
 

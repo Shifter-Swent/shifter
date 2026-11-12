@@ -7,6 +7,7 @@ import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Test
 
 /**
@@ -24,7 +25,8 @@ class FakeMembershipRequestRepositoryTest {
           icon = "box",
           createdAt = Instant.EPOCH,
       )
-  private val teams = FakeTeamRepository(listOf(team))
+  private val other = team.copy(id = "team-2", name = "Bar")
+  private val teams = FakeTeamRepository(listOf(team, other))
   private val repository = FakeMembershipRequestRepository(teams = teams)
 
   @Test
@@ -86,6 +88,71 @@ class FakeMembershipRequestRepositoryTest {
     repository.withdraw(EVENT_ID, USER_ID)
 
     assertEquals(emptyList<String>(), members())
+  }
+
+  @Test
+  fun moveToTeam_movesTheVolunteerAndTheirRequest() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+
+    repository.moveToTeam(EVENT_ID, USER_ID, other.id)
+
+    assertEquals(emptyList<String>(), members())
+    assertEquals(listOf(USER_ID), teams.getTeam(EVENT_ID, other.id)?.memberIds)
+    assertEquals(other.id, repository.getMembershipRequest(EVENT_ID, USER_ID)?.teamId)
+  }
+
+  @Test
+  fun withdraw_afterAMove_leavesTheNewTeam() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    repository.moveToTeam(EVENT_ID, USER_ID, other.id)
+
+    repository.withdraw(EVENT_ID, USER_ID)
+
+    assertEquals(emptyList<String>(), teams.getTeam(EVENT_ID, other.id)?.memberIds)
+  }
+
+  @Test
+  fun moveToTeam_fromADeletedTeam_putsTheVolunteerIntoTheNewOne() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    teams.teams.removeAll { it.id == team.id }
+
+    repository.moveToTeam(EVENT_ID, USER_ID, other.id)
+
+    assertEquals(listOf(USER_ID), teams.getTeam(EVENT_ID, other.id)?.memberIds)
+  }
+
+  @Test
+  fun moveToTeam_ofAManagerAPendingVolunteerOrToAMissingTeam_isRefused() = runTest {
+    repository.apply(EVENT_ID, request())
+    assertRefused { repository.moveToTeam(EVENT_ID, USER_ID, other.id) }
+    repository.accept(EVENT_ID, USER_ID)
+    assertRefused { repository.moveToTeam(EVENT_ID, USER_ID, "missing") }
+    teams.setManager(EVENT_ID, team.id, USER_ID)
+    assertRefused { repository.moveToTeam(EVENT_ID, USER_ID, other.id) }
+  }
+
+  @Test
+  fun moveToTeam_intoTheTeamTheirRequestNames_putsThemBackAmongItsMembers() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    teams.removeMember(EVENT_ID, team.id, USER_ID)
+
+    repository.moveToTeam(EVENT_ID, USER_ID, team.id)
+
+    assertEquals(listOf(USER_ID), members())
+    assertEquals(team.id, repository.getMembershipRequest(EVENT_ID, USER_ID)?.teamId)
+  }
+
+  private suspend fun assertRefused(move: suspend () -> Unit) {
+    try {
+      move()
+      fail("The move was not refused")
+    } catch (e: MembershipRequestRepositoryException.Unknown) {
+      // Refused, as the backend does.
+    }
   }
 
   private suspend fun members(): List<String>? = teams.getTeam(EVENT_ID, team.id)?.memberIds

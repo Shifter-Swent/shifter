@@ -34,4 +34,5 @@
     <string name="participants_stop_managing">Stop managing</string>
     <string name="participants_card_expanded">Expanded</string>
     <string name="participants_card_collapsed">Collapsed</string>
+    <string name="participants_move_failed">The volunteer could not be moved, try again</string>
 </resources>

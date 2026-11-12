@@ -3,6 +3,7 @@
 package com.swent.shifter.model.membership
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.firestore.FieldValue
@@ -517,6 +518,180 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     assertEquals(first, second)
   }
 
+  @Test
+  fun moveToTeam_movesTheVolunteerAndTakesThemOffTheOldTeamsMissions() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    val oldMission = mission(eventId, TEAM_ID, volunteer)
+    val generalMission = mission(eventId, null, volunteer)
+
+    repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID)
+
+    assertEquals(emptyList<String>(), memberIds(eventId, TEAM_ID))
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, OTHER_TEAM_ID))
+    assertEquals(OTHER_TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
+    assertEquals(emptyList<String>(), assigneeIds(oldMission))
+    // A mission of no team is not the old team's, so the volunteer stays on it.
+    assertEquals(listOf(volunteer.uid), assigneeIds(generalMission))
+    assertEquals(listOf(volunteer.uid), participantIds(eventId))
+  }
+
+  @Test
+  fun withdraw_afterAMove_leavesTheNewTeam() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID)
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    signIn(organizer)
+    assertEquals(emptyList<String>(), memberIds(eventId, OTHER_TEAM_ID))
+    assertEquals(emptyList<String>(), participantIds(eventId))
+  }
+
+  @Test
+  fun moveToTeam_onceTheirTeamIsDeleted_putsTheVolunteerIntoTheNewOne() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    team(eventId, TEAM_ID).delete().await()
+
+    repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID)
+
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, OTHER_TEAM_ID))
+    assertFalse(team(eventId, TEAM_ID).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun moveToTeam_byAnyoneButTheOrganizer_isDenied() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    val other = account()
+    apply(eventId, other, OTHER_TEAM_ID)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    repository.accept(eventId, other.uid)
+    teamRepository.setManager(eventId, OTHER_TEAM_ID, other.uid)
+
+    // Neither the volunteer, nor a participant, even the manager of the team they would join:
+    // through the repository, nor by writing the team of the request directly.
+    for (user in listOf(volunteer, other)) {
+      signIn(user)
+      assertDenied { repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID) }
+      assertDenied { requestRef(eventId, volunteer).update("teamId", OTHER_TEAM_ID).await() }
+    }
+    signIn(organizer)
+    // The organizer cannot change the team of a request without moving the volunteer.
+    assertDenied { requestRef(eventId, volunteer).update("teamId", OTHER_TEAM_ID).await() }
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, TEAM_ID))
+    assertEquals(TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
+  }
+
+  @Test
+  fun moveToTeam_ofAManagerAPendingVolunteerOrToAMissingTeam_fails() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    assertUnknown { repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID) }
+    repository.accept(eventId, volunteer.uid)
+    assertUnknown { repository.moveToTeam(eventId, volunteer.uid, "team-missing") }
+    teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+    assertUnknown { repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID) }
+    assertEquals(emptyList<String>(), memberIds(eventId, OTHER_TEAM_ID))
+    assertEquals(TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
+  }
+
+  @Test
+  fun moveToTeam_keepsTheVolunteerOnTheMissionsTheyAlreadyWorked() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    val over =
+        mission(eventId, TEAM_ID, volunteer, endAt = Timestamp(Instant.now().epochSecond - 60, 0))
+    val closed = mission(eventId, TEAM_ID, volunteer, completed = true)
+    val open = mission(eventId, TEAM_ID, volunteer)
+
+    repository.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID)
+
+    // Their attendance is built from the assignees, so the missions they worked keep them.
+    assertEquals(listOf(volunteer.uid), assigneeIds(over))
+    assertEquals(listOf(volunteer.uid), assigneeIds(closed))
+    assertEquals(emptyList<String>(), assigneeIds(open))
+  }
+
+  @Test
+  fun moveToTeam_intoTheTeamTheirRequestNames_putsThemBackAmongItsMembers() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+
+    // Already a member: nothing changes.
+    repository.moveToTeam(eventId, volunteer.uid, TEAM_ID)
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, TEAM_ID))
+
+    // Taken out of the team behind the request's back, as by removeMember: the move puts them back.
+    team(eventId, TEAM_ID).update("memberIds", FieldValue.arrayRemove(volunteer.uid)).await()
+    repository.moveToTeam(eventId, volunteer.uid, TEAM_ID)
+
+    assertEquals(listOf(volunteer.uid), memberIds(eventId, TEAM_ID))
+    assertEquals(emptyList<String>(), memberIds(eventId, OTHER_TEAM_ID))
+    assertEquals(TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
+  }
+
+  @Test
+  fun moveRule_deniesAPendingRequestAStatusChangeOrAManagerKeptOnTheOldTeam() = emulatorTest {
+    val eventId = event()
+    apply(eventId, volunteer)
+    signIn(organizer)
+
+    // A pending request is not moved, even with the teams written as a move would.
+    assertDenied { directMove(eventId) }
+
+    repository.accept(eventId, volunteer.uid)
+    // The status and the team cannot change in the same write.
+    assertDenied {
+      db.runBatch {
+            it.update(
+                requestRef(eventId, volunteer),
+                mapOf("teamId" to OTHER_TEAM_ID, "status" to "REJECTED"),
+            )
+            it.update(team(eventId, TEAM_ID), "memberIds", FieldValue.arrayRemove(volunteer.uid))
+            it.update(
+                team(eventId, OTHER_TEAM_ID),
+                "memberIds",
+                FieldValue.arrayUnion(volunteer.uid),
+            )
+          }
+          .await()
+    }
+
+    // A manager is not among the members of the team they lead, but still leaves it when moved.
+    teamRepository.setManager(eventId, TEAM_ID, volunteer.uid)
+    assertDenied { directMove(eventId) }
+    assertEquals(TEAM_ID, repository.getMembershipRequest(eventId, volunteer.uid)?.teamId)
+  }
+
+  /**
+   * Writes a move of [volunteer] from [TEAM_ID] to [OTHER_TEAM_ID] directly, without the
+   * repository: the request and both teams, in one batch.
+   */
+  private suspend fun directMove(eventId: String) {
+    db.runBatch {
+          it.update(requestRef(eventId, volunteer), "teamId", OTHER_TEAM_ID)
+          it.update(team(eventId, TEAM_ID), "memberIds", FieldValue.arrayRemove(volunteer.uid))
+          it.update(team(eventId, OTHER_TEAM_ID), "memberIds", FieldValue.arrayUnion(volunteer.uid))
+        }
+        .await()
+  }
+
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
@@ -616,6 +791,46 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
   private companion object {
     const val TEAM_ID = "team-bar"
     const val OTHER_TEAM_ID = "team-logistics"
+  }
+
+  /**
+   * A mission of [teamId], or of no team, that [assignee] is on, written by the organizer. It ends
+   * in an hour unless [endAt] says otherwise.
+   */
+  private suspend fun mission(
+      eventId: String,
+      teamId: String?,
+      assignee: Account,
+      endAt: Timestamp = Timestamp(Instant.now().epochSecond + 3600, 0),
+      completed: Boolean = false,
+  ): String {
+    val ref = db.collection("events").document(eventId).collection("missions").document()
+    paths += ref.path
+    val mission =
+        mapOf(
+            "title" to "Serve",
+            "description" to "Serve drinks",
+            "teamId" to teamId,
+            "volunteersNeeded" to 2,
+            "assigneeIds" to listOf(assignee.uid),
+            "startAt" to Timestamp(endAt.seconds - 3600, 0),
+            "endAt" to endAt,
+            "completed" to completed,
+            "createdAt" to Timestamp.now(),
+        )
+    step("write mission") { ref.set(mission).await() }
+    return ref.path
+  }
+
+  private suspend fun assigneeIds(path: String) =
+      db.document(path).get(Source.SERVER).await().get("assigneeIds")
+
+  private suspend fun assertUnknown(block: suspend () -> Unit) {
+    val failure = runCatching { block() }.exceptionOrNull()
+    assertTrue(
+        "Expected an unknown failure, got $failure",
+        failure is MembershipRequestRepositoryException.Unknown,
+    )
   }
 
   private suspend fun assertDenied(block: suspend () -> Unit) {

@@ -63,6 +63,26 @@ interface MembershipRequestRepository {
   suspend fun withdraw(eventId: String, userId: String)
 
   /**
+   * Moves [userId], an accepted volunteer of [eventId], into the team [teamId], in one write: they
+   * leave the team their request names, when it still exists, and the missions of that team they
+   * are assigned to that are neither completed nor over, so the missions they already worked keep
+   * their attendance. Their request names [teamId] from then on, so a later withdrawal leaves the
+   * new team. When their request names [teamId] already, they are only put back among its members
+   * if they are missing from them, e.g. after a member was removed from the team directly.
+   *
+   * Only the organizer can move a volunteer: security rules deny anyone else with
+   * [MembershipRequestRepositoryException.PermissionDenied]. A request that is missing or not
+   * accepted, a volunteer who manages their team, a [teamId] that does not exist, or a request that
+   * changed team during the move are reported as [MembershipRequestRepositoryException.Unknown].
+   * Trying again does not help a manager: callers do not offer the move to one, whose management is
+   * taken away first. [teamId] must not be blank.
+   *
+   * A Firestore-backed implementation also deletes the position [userId] shared with the team they
+   * leave. The in-memory fakes do not model it, nor the missions.
+   */
+  suspend fun moveToTeam(eventId: String, userId: String, teamId: String)
+
+  /**
    * Returns the request from [userId] for [eventId], or null if they have not applied. Only the
    * volunteer themself and the event organizer can read it: security rules deny anyone else with
    * [MembershipRequestRepositoryException.PermissionDenied].

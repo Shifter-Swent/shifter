@@ -264,7 +264,7 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 | Field | Type | Notes |
 |---|---|---|
 | `userId` | string | Same as the document id |
-| `teamId` | string | The team of the same event the volunteer applies to. Cannot change once sent |
+| `teamId` | string | The team of the same event the volunteer applies to. Changes only when the organizer moves an accepted volunteer to another team |
 | `availability` | list of maps | `startAt`, `endAt` (timestamp); at least one slot |
 | `status` | string | `PENDING`, then `ACCEPTED` or `REJECTED` |
 | `createdAt` | timestamp | |
@@ -278,7 +278,9 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 Accepting or rejecting a request updates the request, this document and the `memberIds` of the
 requested team in the same batch. The rules check that they agree (see below). A volunteer who
 withdraws deletes their request and leaves this document and their team in the same transaction, so
-they can apply again later.
+they can apply again later. The organizer moves an accepted volunteer to another team in one
+transaction too: their request names the new team, they join its `memberIds`, and they leave the old
+team, the position they shared with it, and its missions that are neither completed nor over.
 
 ## Security rules
 
@@ -292,7 +294,7 @@ every access to it is denied.
 | `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change; a new `displayName` must be written to the public profile in the same commit. No delete |
 | `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
 | `events/{eventId}` | Any signed-in user | Create with yourself as `organizerId`. Update and delete by the organizer only |
-| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it, and only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. No delete |
+| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event. Only the organizer updates it. Either only `status`: `ACCEPTED` needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. No delete |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist |
 | `shifts` | The organizer and the event's participants | The organizer only. Nothing is allowed under an event that does not exist |
@@ -327,6 +329,11 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 
 ## Known gaps
 
+- **A mission assigned during a move keeps the volunteer.** The missions to leave are found by a
+  query, which a transaction cannot run, so they are read before it: a mission of the old team
+  assigned to the volunteer between that query and the commit keeps them, as it would if it were
+  assigned right after the move. The missions that are completed or over keep them on purpose,
+  since their attendance is built from their assignees.
 - **The rules do not validate the fields of `teams`, `shifts` and `missions`**, only who may
   write them, and which assignees a manager adds; malformed documents are caught by the mappers.
 - **A volunteer who left can still read their missions and check-ins.** They stay in

@@ -64,6 +64,9 @@ class JoinEventFlowTest {
 
         override suspend fun withdraw(eventId: String, userId: String): Unit = error("unused")
 
+        override suspend fun moveToTeam(eventId: String, userId: String, teamId: String): Unit =
+            error("unused")
+
         override suspend fun getMembershipRequest(eventId: String, userId: String) =
             sentRequests
                 .singleOrNull { (sentTo, request) -> sentTo == eventId && request.userId == userId }
