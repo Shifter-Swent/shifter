@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
@@ -568,6 +569,48 @@ class LiveLocationCoordinatorTest {
     assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
   }
 
+  /**
+   * Through the real sessions of [LiveLocationSessions.of]: a session ending with its event (#406)
+   * takes its state with it the moment the event ends, between two refreshes, so the indicator
+   * shows nothing for an event that is over. A session the next refresh starts for a target already
+   * past its end publishes nothing and reports nothing either.
+   */
+  @Test
+  fun sharingStates_whenASessionEndsWithItsEvent_forgetsItsStateWithoutARefresh() = runTest {
+    val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
+    val publisher = LiveLocationPublisher(FakeLocationProvider(), repository, now = { clock })
+    val bounded =
+        LiveLocationCoordinator(
+            targets,
+            LiveLocationSessions.of(publisher, now = { clock }),
+            INTERVAL,
+            STALENESS,
+            now = { clock },
+        )
+    eligible = listOf(BAR_ENDING_SOON)
+    backgroundScope.launch(CoroutineExceptionHandler { _, _ -> }) {
+      bounded.run(consent, refreshes)
+    }
+    runCurrent()
+    assertEquals(mapOf(BAR_ENDING_SOON to WAITING), bounded.sharingStates.first())
+
+    // Just past the end, which falls between the refresh before and the one after.
+    elapse(Duration.between(START, BAR_ENDING_SOON.endAt).plusMillis(1))
+
+    assertEquals(
+        emptyMap<LiveLocationTarget, LiveLocationSharingState>(),
+        bounded.sharingStates.first(),
+    )
+
+    // The resolver here still lists the target, so the next refresh starts a session for it: over
+    // already, it reports nothing.
+    elapse(INTERVAL)
+    assertEquals(
+        emptyMap<LiveLocationTarget, LiveLocationSharingState>(),
+        bounded.sharingStates.first(),
+    )
+  }
+
   @Test
   fun of_addressesTheSessionWithTheTargetsEventAndTeamAndPassesOnItsStates() =
       runTest(UnconfinedTestDispatcher()) {
@@ -726,5 +769,9 @@ class LiveLocationCoordinatorTest {
     /** [BAR]'s pair with the event's end brought forward, as an organizer shortening it would. */
     val BAR_SHORTENED =
         LiveLocationTarget("event", "team-bar", START_AT, START + Duration.ofHours(1))
+
+    /** [BAR] with its event ending halfway between the second and the third refresh. */
+    val BAR_ENDING_SOON =
+        LiveLocationTarget("event", "team-bar", START_AT, START + INTERVAL + INTERVAL.dividedBy(2))
   }
 }

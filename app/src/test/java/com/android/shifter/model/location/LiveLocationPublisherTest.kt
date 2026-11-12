@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
@@ -14,10 +15,7 @@ import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -364,7 +362,7 @@ class LiveLocationPublisherTest {
   @Test
   fun publish_whenAWriteNeverAnswers_stillFollowsTheConsentOff() =
       runTest(UnconfinedTestDispatcher()) {
-        val unanswering = UnansweringRepository()
+        val unanswering = UnansweringLiveLocationRepository()
         val publisher = LiveLocationPublisher(provider, unanswering, now = { clock })
         val sharing = MutableStateFlow(true)
         val session = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) {} }
@@ -643,37 +641,6 @@ class LiveLocationPublisherTest {
   /** Moves the clock the publisher reads, as the time between two positions would. */
   private fun elapse(seconds: Long) {
     clock = clock.plusSeconds(seconds)
-  }
-
-  /**
-   * A repository whose writes never answer, as Firestore's did offline before #343 bounded them.
-   * Only the counts matter here, so nothing is stored.
-   */
-  private class UnansweringRepository : LiveLocationRepository {
-    var writes = 0
-      private set
-
-    var removals = 0
-      private set
-
-    override suspend fun shareLocation(
-        eventId: String,
-        teamId: String,
-        position: GeoPosition,
-        measuredAt: Instant,
-    ) {
-      writes++
-      awaitCancellation()
-    }
-
-    override suspend fun removeLocation(eventId: String, teamId: String) {
-      removals++
-    }
-
-    override fun observeTeamLocations(
-        eventId: String,
-        teamId: String,
-    ): Flow<List<LiveLocation>> = emptyFlow()
   }
 
   private suspend fun shared(): List<LiveLocation> =

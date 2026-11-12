@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
@@ -6,6 +7,8 @@ import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
+import java.time.Duration
+import java.time.Instant
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -270,8 +273,11 @@ class LiveLocationPublishingTest {
     const val USER = "user-1"
     const val EVENT = "event"
     const val TEAM = "team-bar"
-    val BAR = LiveLocationTarget(EVENT, TEAM)
-    val STAGE = LiveLocationTarget("event", "team-stage")
+    /** The events' period, which the targets carry and the recording sessions never read. */
+    val PERIOD_START: Instant = Instant.parse("2026-11-02T09:00:00Z")
+    val PERIOD_END: Instant = PERIOD_START + Duration.ofHours(4)
+    val BAR = LiveLocationTarget(EVENT, TEAM, PERIOD_START, PERIOD_END)
+    val STAGE = LiveLocationTarget("event", "team-stage", PERIOD_START, PERIOD_END)
     val GENEVA = GeoPosition(46.2044, 6.1432)
   }
 }

@@ -1,16 +1,17 @@
 // Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
+import com.swent.shifter.model.location.LiveLocationSharingState.OFF
+import com.swent.shifter.model.location.LiveLocationSharingState.SHARED
+import com.swent.shifter.model.location.LiveLocationSharingState.WAITING
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -18,6 +19,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -35,6 +37,9 @@ class LiveLocationSessionsTest {
   private val provider = FakeLocationProvider()
   private val repository = FakeLiveLocationRepository(currentUserId = VOLUNTEER)
 
+  /** Every state the session reported, in order, as the indicator of #405 reads it. */
+  private val states = mutableListOf<LiveLocationSharingState>()
+
   @Test
   fun publish_beforeTheEventStarts_collectsNoGpsAndSharesNothing() =
       runTest(UnconfinedTestDispatcher()) {
@@ -45,11 +50,14 @@ class LiveLocationSessionsTest {
         provider.emit(GENEVA)
         assertEquals(0, provider.activeCollectors)
         assertEquals(emptyList<LiveLocation>(), shared())
+        // Nor is any state reported: the indicator has nothing to show for an event not begun.
+        assertEquals(emptyList<LiveLocationSharingState>(), states)
 
-        // At the start it begins and shares.
+        // At the start it begins, shares, and reports as any session does.
         advanceTimeBy(Duration.ofHours(1).toKotlinDuration() + 1.milliseconds)
         provider.emit(GENEVA)
         assertEquals(GENEVA, shared().single().position)
+        assertEquals(listOf(WAITING, SHARED), states)
       }
 
   @Test
@@ -78,9 +86,12 @@ class LiveLocationSessionsTest {
         advanceTimeBy(2.milliseconds)
         assertEquals(0, provider.activeCollectors)
 
-        // A later position is shared no more; the one stored before the end stays.
+        // A later position is shared no more; the one stored before the end stays: the end is not
+        // the consent turning off, so no OFF is reported and nothing is taken out. Nothing is
+        // reported at all any more; dropping the state it had reported is the coordinator's.
         provider.emit(DOWN_THE_STREET)
         assertEquals(GENEVA, shared().single().position)
+        assertEquals(listOf(WAITING, SHARED), states)
       }
 
   @Test
@@ -92,6 +103,38 @@ class LiveLocationSessionsTest {
 
         assertEquals(0, provider.activeCollectors)
         assertEquals(emptyList<LiveLocation>(), shared())
+        assertEquals(emptyList<LiveLocationSharingState>(), states)
+      }
+
+  /**
+   * The consent turning off shortly before the end is still the consent turning off (#377): the
+   * position goes out at once. The end that follows ends the session as usual, and turning sharing
+   * back on afterwards starts nothing, the event being over.
+   */
+  @Test
+  fun publish_whenTheConsentTurnsOffBeforeTheEnd_takesThePositionOutThenEndsWithTheEvent() =
+      runTest(UnconfinedTestDispatcher()) {
+        val sharing = MutableStateFlow(true)
+        val session =
+            startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(1)), sharing)
+        provider.emit(GENEVA)
+        assertEquals(GENEVA, shared().single().position)
+
+        advanceTimeBy(Duration.ofMinutes(50).toKotlinDuration())
+        sharing.value = false
+
+        assertEquals(emptyList<LiveLocation>(), shared())
+        assertEquals(0, provider.activeCollectors)
+        assertEquals(listOf(WAITING, SHARED, OFF), states)
+
+        advanceTimeBy(Duration.ofMinutes(10).toKotlinDuration() + 1.milliseconds)
+        assertTrue(session.isCompleted)
+        sharing.value = true
+        provider.emit(GENEVA)
+
+        assertEquals(0, provider.activeCollectors)
+        assertEquals(emptyList<LiveLocation>(), shared())
+        assertEquals(listOf(WAITING, SHARED, OFF), states)
       }
 
   @Test
@@ -146,7 +189,7 @@ class LiveLocationSessionsTest {
   fun publish_whenAWriteNeverAnswers_isCancelledAtTheEndAndStartsNoMoreWrites() =
       runTest(UnconfinedTestDispatcher()) {
         // A write that never answers, as an offline one does not until the device reconnects.
-        val suspending = SuspendingRepository()
+        val suspending = UnansweringLiveLocationRepository()
         val now = { START + Duration.ofMillis(testScheduler.currentTime) }
         val publisher = LiveLocationPublisher(provider, suspending, now = now)
         val sessions = LiveLocationSessions.of(publisher, now = now)
@@ -154,12 +197,13 @@ class LiveLocationSessionsTest {
           sessions.publish(
               target(START - Duration.ofHours(1), START + Duration.ofHours(1)),
               MutableStateFlow(true),
+              states::add,
           )
         }
 
         // The write starts within the event and then hangs, with the GPS still collected.
         provider.emit(GENEVA)
-        assertEquals(1, suspending.started)
+        assertEquals(1, suspending.writes)
         assertEquals(1, provider.activeCollectors)
 
         // Reaching the end cancels the suspended write and stops the GPS collection with it.
@@ -169,46 +213,25 @@ class LiveLocationSessionsTest {
         // A later position starts no new write: the client initiates nothing past the end. What
         // Firestore may have already queued is its own to send; this does not recall it.
         provider.emit(DOWN_THE_STREET)
-        assertEquals(1, suspending.started)
+        assertEquals(1, suspending.writes)
       }
 
   /**
    * Starts a windowed session in the background and returns its job. The clock the publisher and
    * the session read tracks the scheduler, so the window and [advanceTimeBy] agree.
    */
-  private fun TestScope.startSession(target: LiveLocationTarget): Job {
+  private fun TestScope.startSession(
+      target: LiveLocationTarget,
+      sharing: MutableStateFlow<Boolean> = MutableStateFlow(true),
+  ): Job {
     val now = { START + Duration.ofMillis(testScheduler.currentTime) }
     val publisher = LiveLocationPublisher(provider, repository, now = now)
     val sessions = LiveLocationSessions.of(publisher, now = now)
-    return backgroundScope.launch { sessions.publish(target, MutableStateFlow(true)) }
+    return backgroundScope.launch { sessions.publish(target, sharing, states::add) }
   }
 
   private suspend fun shared(): List<LiveLocation> =
       repository.observeTeamLocations(EVENT, TEAM).first()
-
-  /**
-   * A repository whose [shareLocation] never answers, as an offline Firestore write does not until
-   * the device reconnects. Only [started] matters here: whether the client began another write.
-   */
-  private class SuspendingRepository : LiveLocationRepository {
-    var started = 0
-      private set
-
-    override suspend fun shareLocation(
-        eventId: String,
-        teamId: String,
-        position: GeoPosition,
-        measuredAt: Instant,
-    ) {
-      started++
-      awaitCancellation()
-    }
-
-    override suspend fun removeLocation(eventId: String, teamId: String) = Unit
-
-    override fun observeTeamLocations(eventId: String, teamId: String): Flow<List<LiveLocation>> =
-        emptyFlow()
-  }
 
   private companion object {
     const val EVENT = "event-1"
