@@ -31,7 +31,7 @@ import org.junit.runner.RunWith
  * Taking a volunteer out of a team deletes the position they shared with its manager, in the same
  * commit as the membership change (#305), against the emulators and the real `firestore.rules`.
  *
- * `LiveLocationRulesTest` covers who may delete a position; these tests cover the four paths that
+ * `LiveLocationRulesTest` covers who may delete a position; these tests cover the five paths that
  * remove a volunteer from `memberIds`, and that each one really takes the position with it. The
  * positions are written through the raw SDK rather than a live location repository, which this PR
  * does not depend on: only the documented path matters here.
@@ -104,6 +104,20 @@ class TeamLocationCleanupTest {
         requests.reject(eventId, volunteer.uid)
 
         assertEquals(listOf(teammate.uid), memberIds())
+        assertEquals(setOf(teammate.uid), positionsSeenBy(manager))
+      }
+
+  @Test
+  fun moveToTeam_byTheOrganizer_deletesThePositionSharedWithTheOldTeam() =
+      emulatorTest(TEST_TIMEOUT_MILLIS) {
+        shareBothPositions()
+        signIn(organizer)
+        createTeam(OTHER_TEAM_ID)
+
+        requests.moveToTeam(eventId, volunteer.uid, OTHER_TEAM_ID)
+
+        assertEquals(listOf(teammate.uid), memberIds())
+        assertEquals(listOf(volunteer.uid), memberIds(OTHER_TEAM_ID))
         assertEquals(setOf(teammate.uid), positionsSeenBy(manager))
       }
 

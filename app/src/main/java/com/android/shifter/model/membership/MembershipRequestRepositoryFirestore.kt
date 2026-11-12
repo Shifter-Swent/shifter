@@ -14,8 +14,10 @@ import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.mission.MissionSchema
+import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.TeamSchema
 import com.swent.shifter.model.team.indexManagerChange
+import java.time.Instant
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -134,16 +136,19 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   }
 
   /**
-   * The missions are found before the transaction, which cannot run a query: those of the old team
-   * that [userId] is assigned to. A mission assigned to them meanwhile keeps them, as it would if
-   * it were assigned right after the move. If their request changed team meanwhile, that list is
-   * outdated, so the move is refused rather than leaving them on the missions of their old team.
+   * The missions are found before the transaction, which cannot run a query: the open missions of
+   * the old team that [userId] is assigned to. A mission assigned to them meanwhile keeps them, as
+   * it would if it were assigned right after the move. If their request changed team meanwhile,
+   * that list is outdated, so the move is refused rather than leaving them on the missions of their
+   * old team.
    *
    * A refusal is returned by the transaction and thrown after it: thrown inside, a
    * [FirebaseFirestoreException] would make the SDK run the transaction again, up to five times.
    */
   override suspend fun moveToTeam(eventId: String, userId: String, teamId: String) {
+    require(teamId.isNotBlank()) { "The team to move '$userId' to is blank" }
     translatingErrors {
+      val now = Instant.now()
       val request = requests(eventId).document(userId)
       val previousTeamId = request.get().await().getString(MembershipRequestSchema.TEAM_ID)
       val missions =
@@ -154,7 +159,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
               .get()
               .await()
               .documents
-              .filter { it.getString(MissionSchema.TEAM_ID) == previousTeamId }
+              .filter { it.isOpenMissionOf(previousTeamId, now) }
               .map { it.reference }
       val refusal: String? =
           db.runTransaction { transaction ->
@@ -165,26 +170,27 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                 ) {
                   return@runTransaction "'$userId' is not an accepted volunteer of event '$eventId'"
                 }
+                val target = team(eventId, teamId)
+                val targetSnapshot = transaction.get(target)
+                if (!targetSnapshot.exists()) {
+                  return@runTransaction "Team '$teamId' of event '$eventId' does not exist"
+                }
                 val from = snapshot.getString(MembershipRequestSchema.TEAM_ID)
-                if (from == teamId) return@runTransaction null
+                if (from == teamId) {
+                  transaction.rejoin(target, targetSnapshot, userId)
+                  return@runTransaction null
+                }
                 if (from != previousTeamId) {
                   return@runTransaction "The team of '$userId' changed meanwhile, try again"
-                }
-                val target = team(eventId, teamId)
-                if (!transaction.get(target).exists()) {
-                  return@runTransaction "Team '$teamId' of event '$eventId' does not exist"
                 }
                 val previous = from?.let { team(eventId, it) }
                 val previousSnapshot = previous?.let { transaction.get(it) }
                 if (previousSnapshot?.getString(TeamSchema.MANAGER_ID) == userId) {
                   return@runTransaction "'$userId' manages their team and cannot be moved"
                 }
-                // Read again, so a mission deleted or given to another team meanwhile is left
-                // alone.
-                val assigned = missions.filter {
-                  val mission = transaction.get(it)
-                  mission.exists() && mission.getString(MissionSchema.TEAM_ID) == from
-                }
+                // Read again, so a mission deleted, given to another team or closed meanwhile is
+                // left alone.
+                val assigned = missions.filter { transaction.get(it).isOpenMissionOf(from, now) }
                 if (previous != null && previousSnapshot?.exists() == true) {
                   transaction.leaveTeam(previous, previousSnapshot, userId)
                 }
@@ -272,6 +278,21 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   }
 
   /**
+   * Puts [userId] back among the members of [team], read as [snapshot] earlier in this transaction,
+   * when their request names it but they are missing from its `memberIds`. Nothing is written when
+   * they are in it already, or when they manage it, since a manager is never one of its members.
+   */
+  private fun Transaction.rejoin(
+      team: DocumentReference,
+      snapshot: DocumentSnapshot,
+      userId: String,
+  ) {
+    val memberIds = snapshot.get(TeamSchema.MEMBER_IDS) as? List<*> ?: emptyList<Any>()
+    if (userId in memberIds || snapshot.getString(TeamSchema.MANAGER_ID) == userId) return
+    update(team, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
+  }
+
+  /**
    * The team [userId] applied to in [eventId], read from their request. Only an accepted request
    * changes team, when [moveToTeam] moves the volunteer, so it can be read before the batch that
    * decides the request.
@@ -317,6 +338,18 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
           Code.DEADLINE_EXCEEDED -> MembershipRequestRepositoryException.Unavailable(e)
           else -> MembershipRequestRepositoryException.Unknown(e)
         }
+
+    /**
+     * Whether this mission exists, belongs to [teamId] and is still open at [now]: neither closed
+     * by hand nor over. A move leaves the volunteer on the others, whose attendance is built from
+     * their assignees, so the missions they already worked keep showing their check-in. A mission
+     * without an end is kept open, as the mapper would reject it anyway.
+     */
+    private fun DocumentSnapshot.isOpenMissionOf(teamId: String?, now: Instant): Boolean {
+      if (!exists() || getString(MissionSchema.TEAM_ID) != teamId) return false
+      val endAt = getTimestamp(MissionSchema.END_AT)?.toInstant() ?: return true
+      return !isCompleted(getBoolean(MissionSchema.COMPLETED) == true, endAt, now)
+    }
 
     private inline fun <T> translatingErrors(block: () -> T): T =
         try {

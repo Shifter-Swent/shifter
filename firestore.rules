@@ -144,7 +144,8 @@ service cloud.firestore {
           && request.resource.data.createdAt is timestamp;
 
         // The organizer moves an accepted volunteer to another team of the event: in the
-        // same commit, the volunteer joins the new team and is no longer in the old one, if any.
+        // same commit, the volunteer joins the new team and is no longer in the old one, if any,
+        // neither as a member nor as its manager, who is never among the members.
         function isMove() {
           let next = /databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId);
           let previous = /databases/$(database)/documents/events/$(eventId)/teams/$(resource.data.teamId);
@@ -154,7 +155,9 @@ service cloud.firestore {
             && request.resource.data.teamId is string
             && existsAfter(next)
             && uid in getAfter(next).data.get('memberIds', [])
-            && (!existsAfter(previous) || !(uid in getAfter(previous).data.get('memberIds', [])));
+            && (!existsAfter(previous)
+                || (!(uid in getAfter(previous).data.get('memberIds', []))
+                    && getAfter(previous).data.get('managerId', null) != uid));
         }
 
         allow update: if isMove();

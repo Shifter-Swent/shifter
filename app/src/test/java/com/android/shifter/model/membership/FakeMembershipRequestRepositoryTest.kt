@@ -134,6 +134,18 @@ class FakeMembershipRequestRepositoryTest {
     assertRefused { repository.moveToTeam(EVENT_ID, USER_ID, other.id) }
   }
 
+  @Test
+  fun moveToTeam_intoTheTeamTheirRequestNames_putsThemBackAmongItsMembers() = runTest {
+    repository.apply(EVENT_ID, request())
+    repository.accept(EVENT_ID, USER_ID)
+    teams.removeMember(EVENT_ID, team.id, USER_ID)
+
+    repository.moveToTeam(EVENT_ID, USER_ID, team.id)
+
+    assertEquals(listOf(USER_ID), members())
+    assertEquals(team.id, repository.getMembershipRequest(EVENT_ID, USER_ID)?.teamId)
+  }
+
   private suspend fun assertRefused(move: suspend () -> Unit) {
     try {
       move()
