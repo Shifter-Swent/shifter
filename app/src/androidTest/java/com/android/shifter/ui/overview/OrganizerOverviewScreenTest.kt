@@ -3,6 +3,10 @@ package com.swent.shifter.ui.overview
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
@@ -18,7 +22,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
 import com.swent.shifter.ui.event.FakeClipboard
-import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -78,13 +81,20 @@ class OrganizerOverviewScreenTest {
   fun joinCodeLoading_keepsTheCardWithNothingToCopy() {
     show(loaded.copy(joinCode = JoinCodeState.Loading))
 
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
-        .assertIsDisplayed()
-        .assertTextEquals(JOIN_CODE_PLACEHOLDER)
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE).assertIsDisplayed()
     compose
         .onNodeWithTag(OrganizerOverviewScreenTestTags.COPY_JOIN_CODE_BUTTON)
         .assertIsNotEnabled()
+  }
+
+  @Test
+  fun joinCodeLoading_isReadAsLoadingRatherThanAsDots() {
+    show(loaded.copy(joinCode = JoinCodeState.Loading))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
+        .assertContentDescriptionEquals(string(R.string.event_join_code_loading))
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
   }
 
   @Test

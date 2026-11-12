@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -202,9 +203,13 @@ private fun Label(@StringRes text: Int) {
   )
 }
 
-/** The code in monospace, spaced out so each character reads on its own. */
+/**
+ * The code in monospace, spaced out so each character reads on its own. While it is
+ * [JOIN_CODE_PLACEHOLDER], screen readers say the code is loading instead of reading out the dots.
+ */
 @Composable
 private fun Code(joinCode: String, large: Boolean) {
+  val loading = stringResource(R.string.event_join_code_loading)
   Text(
       text = joinCode,
       style =
@@ -215,7 +220,13 @@ private fun Code(joinCode: String, large: Boolean) {
       letterSpacing = if (large) 6.sp else 4.sp,
       color = MaterialTheme.colorScheme.onSurface,
       textAlign = TextAlign.Center,
-      modifier = Modifier.testTag(JoinCodeCardTestTags.CODE),
+      modifier =
+          Modifier.testTag(JoinCodeCardTestTags.CODE)
+              .then(
+                  if (joinCode == JOIN_CODE_PLACEHOLDER)
+                      Modifier.clearAndSetSemantics { contentDescription = loading }
+                  else Modifier
+              ),
   )
 }
 
