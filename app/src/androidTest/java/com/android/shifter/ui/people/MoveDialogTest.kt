@@ -102,6 +102,17 @@ class MoveDialogTest {
     composeTestRule.onNodeWithText("leaves", substring = true).assertDoesNotExist()
   }
 
+  /** A blank name is as unknown as a missing one, like on the participant's card. */
+  @Test
+  fun blankName_showsUnknownVolunteer() {
+    show(participant = ParticipantItem("dan", "   ", isManager = false))
+
+    composeTestRule.onNodeWithText("Move Unknown volunteer").assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText("Unknown volunteer leaves Bar and its next missions.")
+        .assertIsDisplayed()
+  }
+
   /** A reload that takes the picked team away leaves nothing to confirm. */
   @Test
   fun pickedTeamGone_cannotBeConfirmed() {

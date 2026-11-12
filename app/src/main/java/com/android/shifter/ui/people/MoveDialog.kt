@@ -57,7 +57,9 @@ fun MoveDialog(
     onConfirm: (teamId: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-  val name = participant.name ?: stringResource(R.string.participants_unknown_volunteer)
+  val name =
+      participant.name?.takeIf { it.isNotBlank() }
+          ?: stringResource(R.string.participants_unknown_volunteer)
   val options = teams.filter { it.id != from?.id }
   var picked by rememberSaveable(participant.userId) { mutableStateOf<String?>(null) }
   val selected = picked?.takeIf { id -> options.any { it.id == id } }
