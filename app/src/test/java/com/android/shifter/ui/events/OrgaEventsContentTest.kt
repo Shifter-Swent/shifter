@@ -19,7 +19,7 @@ class OrgaEventsContentTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
-  private val managed = mutableListOf<String>()
+  private val managed = mutableListOf<EventCardUi>()
   private val selectedTabs = mutableListOf<EventTab>()
   private var createClicks = 0
   private var volunteerViewClicks = 0
@@ -57,7 +57,7 @@ class OrgaEventsContentTest {
   }
 
   @Test
-  fun manageEvent_reportsTheEventIdEvenWhenEnded() {
+  fun manageEvent_reportsTheEventEvenWhenEnded() {
     val past = SampleMyEvents.organizer.filter { it.badge == EventBadge.ENDED }
     setContent(MyEventsUiState(selectedTab = EventTab.PAST, past = past))
 
@@ -66,7 +66,8 @@ class OrgaEventsContentTest {
         .assertTextEquals("Manage event")
         .performClick()
 
-    assertEquals(listOf("volunteer-fair"), managed)
+    // The card passes its event, name included, for the top bar of its tabs.
+    assertEquals(past.filter { it.id == "volunteer-fair" }, managed)
   }
 
   @Test

@@ -34,7 +34,7 @@ class StaffEventsContentTest {
   private val past = SampleMyEvents.staff.filter { it.badge == EventBadge.ENDED }
 
   private val withdrawn = mutableListOf<String>()
-  private val opened = mutableListOf<String>()
+  private val opened = mutableListOf<EventCardUi>()
   private var organizerViewClicks = 0
   private var scanQrClicks = 0
   private var avatarClicks = 0
@@ -114,7 +114,7 @@ class StaffEventsContentTest {
         .performClick()
 
     assertEquals(listOf("city-marathon"), withdrawn)
-    assertEquals(emptyList<String>(), opened)
+    assertEquals(emptyList<EventCardUi>(), opened)
   }
 
   @Test
@@ -126,7 +126,8 @@ class StaffEventsContentTest {
     // An event that is over stays readable once it is listed.
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard(past.first().id)).performClick()
 
-    assertEquals(listOf("city-marathon", past.first().id), opened)
+    // Each card passes its event, name included, for the top bar of its tabs.
+    assertEquals(listOf(upcoming.first { it.id == "city-marathon" }, past.first()), opened)
     assertEquals(emptyList<String>(), withdrawn)
   }
 
@@ -136,7 +137,7 @@ class StaffEventsContentTest {
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard("beach-cleanup")).performClick()
 
-    assertEquals(emptyList<String>(), opened)
+    assertEquals(emptyList<EventCardUi>(), opened)
   }
 
   @Test

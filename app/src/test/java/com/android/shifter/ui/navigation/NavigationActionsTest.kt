@@ -64,9 +64,9 @@ class NavigationActionsTest {
 
   @Test
   fun enterEvent_opensTheEventOnTopOfItsList() {
-    nav.enterEvent(VolunteerEvent("a"))
+    nav.enterEvent(VolunteerEvent("a", "Festival"))
 
-    val options = optionsOf(VolunteerEvent("a"))
+    val options = optionsOf(VolunteerEvent("a", "Festival"))
     assertEquals(Volunteer.Events, options.popUpToRouteObject)
     assertFalse(options.isPopUpToInclusive())
     assertTrue(options.shouldLaunchSingleTop())
@@ -74,14 +74,14 @@ class NavigationActionsTest {
 
   @Test
   fun enterEvent_organizer_usesTheOrganizerList() {
-    nav.enterEvent(OrganizerEvent("a"))
+    nav.enterEvent(OrganizerEvent("a", "Festival"))
 
-    assertEquals(Organizer.Events, optionsOf(OrganizerEvent("a")).popUpToRouteObject)
+    assertEquals(Organizer.Events, optionsOf(OrganizerEvent("a", "Festival")).popUpToRouteObject)
   }
 
   @Test
   fun exitEvent_returnsToTheEventsList() {
-    nav.exitEvent(VolunteerEvent("a"))
+    nav.exitEvent(VolunteerEvent("a", "Festival"))
 
     verify { navController.popBackStack(Volunteer.Events, false) }
   }
@@ -150,14 +150,14 @@ class NavigationActionsTest {
 
   @Test
   fun enterEvent_clearsSavedTabStatesFromPreviousEvents() {
-    nav.enterEvent(VolunteerEvent("b"))
+    nav.enterEvent(VolunteerEvent("b", "Festival"))
 
     VolunteerTabs.all.forEach { tab -> verify { navController.clearBackStack(tab::class) } }
   }
 
   @Test
   fun enterEvent_withUnavailableTabStates_stillOpensTheEvent() {
-    listOf(VolunteerEvent("b"), OrganizerEvent("b")).forEach { event ->
+    listOf(VolunteerEvent("b", "Festival"), OrganizerEvent("b", "Festival")).forEach { event ->
       event.tabs.all.forEach { tab ->
         every { navController.clearBackStack(tab::class) } returns false
         every { navController.clearBackStack(tab) } throws

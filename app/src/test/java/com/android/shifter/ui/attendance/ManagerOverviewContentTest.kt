@@ -98,7 +98,6 @@ class ManagerOverviewContentTest {
       ShifterTheme {
         ManagerOverviewContent(
             state = state,
-            eventTitle = "City Marathon",
             now = now,
             onRetry = onRetry,
             zone = utc,
@@ -124,7 +123,6 @@ class ManagerOverviewContentTest {
   fun collapsedCard_showsTheMissionItsTeamScheduleAndLiveCount() {
     show(loaded)
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.TITLE).assertTextEquals("City Marathon")
     compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertTextEquals("Manager Overview")
     compose.onNodeWithText("My Missions").assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
@@ -358,7 +356,6 @@ class ManagerOverviewContentTest {
       ShifterTheme {
         ManagerOverviewContent(
             state = loaded.copy(checkInErrors = failures),
-            eventTitle = "City Marathon",
             now = now,
             onRetry = {},
             zone = utc,
@@ -389,7 +386,6 @@ class ManagerOverviewContentTest {
       ShifterTheme {
         ManagerOverviewContent(
             state = loaded.copy(undoableCheckIn = undoable),
-            eventTitle = "City Marathon",
             now = now,
             onRetry = {},
             zone = utc,
@@ -460,7 +456,6 @@ class ManagerOverviewContentTest {
       ShifterTheme {
         ManagerOverviewContent(
             state = loaded,
-            eventTitle = "City Marathon",
             now = now,
             onRetry = {},
             zone = utc,

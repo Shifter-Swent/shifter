@@ -142,7 +142,6 @@ data class AttendanceMission(
  * @property loadFailed whether the missions could not be loaded, which drops them. A mission whose
  *   check-ins could not be observed is a failure of that mission alone,
  *   [AttendanceMission.attendanceFailed], and leaves the others as they are.
- * @property eventTitle title of the event watched, empty until it has been read.
  * @property canViewAttendance whether the user may watch the attendance of this event: they manage
  *   one of its teams, or they organize it, so it is wider than being a manager. It is null while
  *   that is not known, which is what a first load that failed leaves it at, so the attendance is
@@ -159,7 +158,6 @@ data class AttendanceUiState(
     val isLoading: Boolean = true,
     val loadFailed: Boolean = false,
     val isOrganizer: Boolean = false,
-    val eventTitle: String = "",
     val canViewAttendance: Boolean? = null,
     val missions: List<AttendanceMission> = emptyList(),
     val undoableCheckIn: UndoableCheckIn? = null,
@@ -265,7 +263,6 @@ class AttendanceViewModel(
           it.copy(
               isLoading = false,
               isOrganizer = isOrganizer,
-              eventTitle = event.title,
               // The teams already read say whether they manage any, so no role is asked for twice.
               canViewAttendance = isOrganizer || teams.isNotEmpty(),
               missions =

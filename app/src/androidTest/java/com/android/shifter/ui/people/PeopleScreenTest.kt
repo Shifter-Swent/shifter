@@ -57,6 +57,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = { destination = it },
         )
@@ -95,6 +96,7 @@ class PeopleScreenTest {
             onReloadParticipants = { reloads++ },
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -142,6 +144,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = onAppointManager,
             onRemoveManager = onRemoveManager,
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -224,6 +227,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
         )
@@ -239,7 +243,7 @@ class PeopleScreenTest {
   }
 
   @Test
-  fun backButton_callsOnBack() {
+  fun topBar_showsTheEventNameAndBackCallsOnBack() {
     var backs = 0
     compose.setContent {
       MaterialTheme {
@@ -252,12 +256,14 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            eventTitle = "City Marathon",
             onBack = { backs++ },
             onNavigate = {},
         )
       }
     }
 
+    compose.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("City Marathon")
     compose.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, backs)

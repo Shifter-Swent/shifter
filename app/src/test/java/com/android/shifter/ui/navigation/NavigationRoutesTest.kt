@@ -87,12 +87,13 @@ class NavigationRoutesTest {
 
   @Test
   fun events_knowTheirTabsAndList() {
-    val volunteerEvent = VolunteerEvent("e1")
+    val volunteerEvent = VolunteerEvent("e1", "Festival")
     assertEquals("e1", volunteerEvent.eventId)
+    assertEquals("Festival", volunteerEvent.eventTitle)
     assertSame(VolunteerTabs, volunteerEvent.tabs)
     assertEquals(Volunteer.Events, volunteerEvent.list)
 
-    val organizerEvent = OrganizerEvent("e2")
+    val organizerEvent = OrganizerEvent("e2", "Festival")
     assertEquals("e2", organizerEvent.eventId)
     assertSame(OrganizerTabs, organizerEvent.tabs)
     assertEquals(Organizer.Events, organizerEvent.list)

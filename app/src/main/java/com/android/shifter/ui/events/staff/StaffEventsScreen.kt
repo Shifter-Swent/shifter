@@ -20,6 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.events.EventBadge
+import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.events.MyEventsUiState
@@ -39,7 +40,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 fun StaffEventsScreen(
     viewModel: StaffEventsViewModel,
     avatarInitial: String,
-    onOpenEvent: (eventId: String) -> Unit,
+    onOpenEvent: (EventCardUi) -> Unit,
     onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -69,7 +70,7 @@ fun StaffEventsContent(
     avatarInitial: String,
     onTabSelected: (EventTab) -> Unit,
     onWithdraw: (eventId: String) -> Unit,
-    onOpenEvent: (eventId: String) -> Unit,
+    onOpenEvent: (EventCardUi) -> Unit,
     onOrganizerViewClick: () -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -86,7 +87,7 @@ fun StaffEventsContent(
       },
       // An event opens once the application to it has been accepted, past ones included.
       cardOpen = { card ->
-        if (card.badge == EventBadge.PENDING_APPROVAL) null else ({ onOpenEvent(card.id) })
+        if (card.badge == EventBadge.PENDING_APPROVAL) null else ({ onOpenEvent(card) })
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
   ) {

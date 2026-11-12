@@ -55,7 +55,6 @@ private fun PreviewHost(state: AttendanceUiState) {
   ShifterTheme {
     ManagerOverviewContent(
         state = state,
-        eventTitle = "City Marathon",
         now = START + Duration.ofMinutes(5),
         onRetry = {},
         zone = ZoneId.of("UTC"),

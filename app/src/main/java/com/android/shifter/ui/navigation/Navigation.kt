@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.navigation
 
 import androidx.compose.material.icons.Icons
@@ -20,10 +21,11 @@ import kotlinx.serialization.Serializable
  *   └── SignIn
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
- *   └── VolunteerEvent(eventId): Overview (VM-01) (+ AddMission), Map, Discussions (+ Channel)
+ *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission), Map,
+ *       Discussions (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
- *   └── OrganizerEvent(eventId): Overview (+ AddMission, ManageTeams), People, Map,
+ *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
  *       Discussions (+ Channel)
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
@@ -69,6 +71,8 @@ sealed interface ChannelScreen : Destination {
  */
 sealed interface EventMode {
   val eventId: String
+  /** The event's name, shown in the top bar of its tabs; passed when the event is opened. */
+  val eventTitle: String
   val tabs: TabSet
   /** The events list this event is opened from. */
   val list: Destination
@@ -111,7 +115,8 @@ data object Volunteer : App {
 }
 
 @Serializable
-data class VolunteerEvent(override val eventId: String) : EventMode {
+data class VolunteerEvent(override val eventId: String, override val eventTitle: String) :
+    EventMode {
   override val tabs
     get() = VolunteerTabs
 
@@ -244,7 +249,8 @@ data object Organizer : App {
 }
 
 @Serializable
-data class OrganizerEvent(override val eventId: String) : EventMode {
+data class OrganizerEvent(override val eventId: String, override val eventTitle: String) :
+    EventMode {
   override val tabs
     get() = OrganizerTabs
 

@@ -64,7 +64,6 @@ fun EventOverviewScreen(
     true ->
         ManagerOverviewContent(
             state = state,
-            eventTitle = state.eventTitle,
             now = rememberNow(),
             onRetry = viewModel::refresh,
             modifier = modifier,
