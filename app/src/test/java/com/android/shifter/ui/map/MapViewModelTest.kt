@@ -20,7 +20,9 @@ import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
@@ -194,7 +196,10 @@ class MapViewModelTest {
   private var clock: Instant = NOON
 
   /** The map of [USER], who manages the bar and the stage. */
-  private fun volunteerMap(repository: LiveLocationRepository = liveLocations) =
+  private fun volunteerMap(
+      repository: LiveLocationRepository = liveLocations,
+      userRepository: UserRepository = users,
+  ) =
       MapViewModel(
           EVENT.id,
           events,
@@ -204,7 +209,7 @@ class MapViewModelTest {
           UTC,
           liveLocations = repository,
           watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
-          userRepository = users,
+          userRepository = userRepository,
       )
 
   /**
@@ -450,6 +455,30 @@ class MapViewModelTest {
         listOf(VolunteerPin("alice", "Alice", STAND.position, minutesAgo = 0, isStale = false)),
         viewModel.volunteers.value,
     )
+  }
+
+  @Test
+  fun volunteers_inTwoTeamsWithAnOldAndARecentPosition_areShownAtTheRecentOne() = runTest {
+    teams.addMember(EVENT.id, "stage", "alice")
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    share("alice", "stage", STAND.position, minutesAgo = 1)
+
+    val alice = open(volunteerMap()).volunteers.value.single()
+
+    // Only the newest position counts: the old one in the bar does not hide her.
+    assertEquals(STAND.position, alice.position)
+    assertEquals(1, alice.minutesAgo)
+  }
+
+  @Test
+  fun volunteers_olderThanAnHour_haveTheirNameNeverRead() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    share("carol", "stage", STAND.position)
+    val counting = CountsProfiles(users)
+
+    open(volunteerMap(userRepository = counting))
+
+    assertEquals(listOf("carol"), counting.asked)
   }
 
   @Test
@@ -731,6 +760,17 @@ class MapViewModelTest {
             active--
           }
         }
+  }
+
+  /** Delegates to [repository], recording the users whose profile is read, in order. */
+  private class CountsProfiles(private val repository: UserRepository) :
+      UserRepository by repository {
+    val asked = mutableListOf<String>()
+
+    override suspend fun getPublicProfile(uid: String): PublicProfile? {
+      asked += uid
+      return repository.getPublicProfile(uid)
+    }
   }
 
   /**
