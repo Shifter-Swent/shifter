@@ -124,7 +124,7 @@ fun MembershipRequestCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    canAccept: Boolean = true,
+    canAccept: Boolean,
 ) {
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(16.dp)

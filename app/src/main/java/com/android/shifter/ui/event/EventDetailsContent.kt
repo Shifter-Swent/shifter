@@ -81,7 +81,7 @@ fun EventDetailsContent(
     onBack: () -> Unit,
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
-    hasEnded: Boolean = false,
+    hasEnded: Boolean,
 ) {
   val closed = hasEnded && requestStatus == null
   val colors = MaterialTheme.colorScheme
@@ -226,7 +226,7 @@ private fun ApplyBar(
     error: JoinEventError?,
     canApply: Boolean,
     onApply: () -> Unit,
-    closed: Boolean = false,
+    closed: Boolean,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(modifier = Modifier.fillMaxWidth()) {

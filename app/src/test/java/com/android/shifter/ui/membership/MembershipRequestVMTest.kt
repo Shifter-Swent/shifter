@@ -38,6 +38,8 @@ class MembershipRequestVMTest {
   private val dispatcher = StandardTestDispatcher()
   private val repository = mockk<MembershipRequestRepository>()
   private val userRepository = mockk<UserRepository>()
+  /** An event that cannot be found, so it is taken as running. */
+  private val eventRepository = mockk<EventRepository>()
   private val requests = listOf(request("alice"), request("bob"))
 
   @Before
@@ -49,6 +51,7 @@ class MembershipRequestVMTest {
           PublicProfile(uid = uid, displayName = "$uid Smith")
         }
     coEvery { repository.getMembershipRequestsByEId("event") } returns requests
+    coEvery { eventRepository.getEvent("event") } returns null
     coEvery { repository.accept("event", any()) } returns Unit
     coEvery { repository.reject("event", any()) } returns Unit
   }
@@ -61,7 +64,7 @@ class MembershipRequestVMTest {
   @Test
   fun loadRequests_initiallyLoadsAndPreventsOverlappingLoads() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         assertTrue(vm.uiState.value.isLoading)
         vm.loadRequests()
         advanceUntilIdle()
@@ -75,7 +78,7 @@ class MembershipRequestVMTest {
   @Test
   fun loadRequests_onFailure_keepsDataAndCanBeClearedAndRetried() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         coEvery { repository.getMembershipRequestsByEId("event") } throws
             MembershipRequestRepositoryException.Unavailable()
@@ -96,7 +99,7 @@ class MembershipRequestVMTest {
   @Test
   fun acceptAndReject_doNotRemoveRequests() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         vm.accept("alice")
         assertEquals(setOf("alice"), vm.uiState.value.processingRequestIds)
@@ -124,7 +127,7 @@ class MembershipRequestVMTest {
         val bob = CompletableDeferred<Unit>()
         coEvery { repository.accept("event", "alice") } coAnswers { alice.await() }
         coEvery { repository.reject("event", "bob") } coAnswers { bob.await() }
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         vm.accept("alice")
         vm.accept("alice")
@@ -155,7 +158,7 @@ class MembershipRequestVMTest {
   @Test
   fun decisions_forUnknownUsers_areIgnored() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         vm.accept("unknown")
         advanceUntilIdle()
@@ -165,7 +168,7 @@ class MembershipRequestVMTest {
   @Test
   fun decision_duringAReload_isAppliedThenReloadsOnceWritten() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         val stale = CompletableDeferred<List<MembershipRequest>>()
         coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { stale.await() }
@@ -195,7 +198,7 @@ class MembershipRequestVMTest {
   @Test
   fun decisions_duringAReload_reloadOnceAfterTheLastOneEvenIfItDidNotCancelIt() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         coEvery { repository.getMembershipRequestsByEId("event") } coAnswers
             {
@@ -224,7 +227,7 @@ class MembershipRequestVMTest {
   @Test
   fun failedDecision_keepsItsErrorAndLeavesTheReloadForTheNextCall() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         val stale = CompletableDeferred<List<MembershipRequest>>()
         coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { stale.await() }
@@ -248,7 +251,7 @@ class MembershipRequestVMTest {
   @Test
   fun loadRequests_afterASuccess_keepsTheListWithoutSpinnerThenShowsTheChanges() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         val answer = CompletableDeferred<List<MembershipRequest>>()
         coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { answer.await() }
@@ -268,7 +271,7 @@ class MembershipRequestVMTest {
   fun loadRequests_afterAnEmptyList_doesNotShowTheSpinnerAgain() =
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } returns emptyList()
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
 
         vm.loadRequests()
@@ -281,7 +284,7 @@ class MembershipRequestVMTest {
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } throws
             MembershipRequestRepositoryException.Unavailable()
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         coEvery { repository.getMembershipRequestsByEId("event") } returns requests
 
@@ -295,7 +298,7 @@ class MembershipRequestVMTest {
   @Test
   fun decisions_onError_keepStatusReleaseButtonsAndAllowRetry() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         coEvery { repository.accept("event", "alice") } throws
             MembershipRequestRepositoryException.PermissionDenied()
@@ -322,7 +325,7 @@ class MembershipRequestVMTest {
   fun cancellation_doesNotBecomeAnErrorAndReleasesBusyState() =
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } throws CancellationException()
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         assertFalse(vm.uiState.value.isLoading)
         assertNull(vm.uiState.value.errorMsg)
@@ -342,7 +345,7 @@ class MembershipRequestVMTest {
       runTest(dispatcher) {
         coEvery { userRepository.getPublicProfile("alice") } returns null
         coEvery { userRepository.getPublicProfile("bob") } returns PublicProfile("bob", "  ")
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         assertEquals(requests, vm.uiState.value.requests.map { it.request })
         assertEquals(
@@ -358,7 +361,7 @@ class MembershipRequestVMTest {
       runTest(dispatcher) {
         coEvery { userRepository.getPublicProfile("alice") } throws
             UserRepositoryException.PermissionDenied()
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         assertEquals(requests, vm.uiState.value.requests.map { it.request })
         assertEquals(
@@ -381,7 +384,7 @@ class MembershipRequestVMTest {
   @Test
   fun loadRequests_onProfileCancellation_keepsPreviousDataAndReleasesLoading() =
       runTest(dispatcher) {
-        val vm = MembershipRequestVM("event", repository, userRepository)
+        val vm = vm()
         advanceUntilIdle()
         coEvery { userRepository.getPublicProfile("bob") } throws CancellationException()
         vm.loadRequests()
@@ -466,6 +469,9 @@ class MembershipRequestVMTest {
 
         assertFalse(vm.uiState.value.hasEnded)
       }
+
+  /** A view model over an event still running, as the ended one is tested on its own. */
+  private fun vm() = MembershipRequestVM("event", repository, userRepository, eventRepository)
 
   private fun items(requests: List<MembershipRequest>) = requests.map {
     MembershipRequestItemUIState(it, "${it.userId} Smith")

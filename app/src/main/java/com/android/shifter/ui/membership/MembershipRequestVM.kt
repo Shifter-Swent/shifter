@@ -48,7 +48,7 @@ class MembershipRequestVM(
     private val eventId: String,
     private val membershipRequestRepository: MembershipRequestRepository,
     private val userRepository: UserRepository,
-    private val eventRepository: EventRepository? = null,
+    private val eventRepository: EventRepository,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(MembershipRequestUIState(isLoading = false))
@@ -106,7 +106,7 @@ class MembershipRequestVM(
   private suspend fun hasEnded(): Boolean {
     val event =
         try {
-          eventRepository?.getEvent(eventId)
+          eventRepository.getEvent(eventId)
         } catch (e: CancellationException) {
           throw e
         } catch (_: Exception) {
