@@ -144,9 +144,7 @@ class FirestoreMissionRepository(
       missionId: String,
       assigneeIds: List<String>,
   ) {
-    require(assigneeIds.size == assigneeIds.toSet().size) {
-      "A mission cannot list the same assignee twice"
-    }
+    requireDistinctAssignees(assigneeIds)
     val document = missionsOf(eventId).document(missionId)
     translatingErrors {
       firestore

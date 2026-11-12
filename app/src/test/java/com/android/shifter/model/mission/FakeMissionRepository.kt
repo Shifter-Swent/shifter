@@ -80,9 +80,7 @@ class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : Miss
       assigneeIds: List<String>,
   ) {
     failure?.let { throw it }
-    require(assigneeIds.size == assigneeIds.toSet().size) {
-      "A mission cannot list the same assignee twice"
-    }
+    requireDistinctAssignees(assigneeIds)
     val index = missions.indexOfFirst { it.eventId == eventId && it.id == missionId }
     if (index < 0) throw MissionRepositoryException.NotFound()
     val mission = missions[index]

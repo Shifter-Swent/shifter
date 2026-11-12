@@ -101,12 +101,20 @@ internal fun requireNotCompleted(stored: Mission, now: Instant) {
  */
 internal fun requireValidCreation(mission: Mission) {
   requireValidMission(mission)
-  require(mission.assigneeIds.size == mission.assigneeIds.toSet().size) {
-    "A mission cannot list the same assignee twice"
-  }
+  requireDistinctAssignees(mission.assigneeIds)
   require(mission.assigneeIds.size <= mission.volunteersNeeded) {
     "A mission needing ${mission.volunteersNeeded} volunteers cannot have " +
         "${mission.assigneeIds.size} assignees"
+  }
+}
+
+/**
+ * Checks [assigneeIds] lists each person once, for every write of a mission's assignees, created or
+ * changed, with an [IllegalArgumentException].
+ */
+internal fun requireDistinctAssignees(assigneeIds: List<String>) {
+  require(assigneeIds.size == assigneeIds.toSet().size) {
+    "A mission cannot list the same assignee twice"
   }
 }
 
