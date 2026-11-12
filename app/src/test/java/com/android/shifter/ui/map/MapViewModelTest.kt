@@ -20,7 +20,9 @@ import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.UserRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
@@ -194,7 +196,10 @@ class MapViewModelTest {
   private var clock: Instant = NOON
 
   /** The map of [USER], who manages the bar and the stage. */
-  private fun volunteerMap(repository: LiveLocationRepository = liveLocations) =
+  private fun volunteerMap(
+      repository: LiveLocationRepository = liveLocations,
+      userRepository: UserRepository = users,
+  ) =
       MapViewModel(
           EVENT.id,
           events,
@@ -204,7 +209,7 @@ class MapViewModelTest {
           UTC,
           liveLocations = repository,
           watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
-          userRepository = users,
+          userRepository = userRepository,
       )
 
   /**
@@ -407,6 +412,73 @@ class MapViewModelTest {
     val alice = viewModel.volunteers.value.single()
     assertEquals(11, alice.minutesAgo)
     assertTrue(alice.isStale)
+  }
+
+  @Test
+  fun volunteers_olderThanAnHour_areLeftOut() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 60)
+    share("carol", "stage", STAND.position, minutesAgo = 61)
+
+    val volunteers = open(volunteerMap()).volunteers.value
+
+    // An hour old is still shown, greyed out; a minute more and the position is left out.
+    assertEquals(
+        listOf(VolunteerPin("alice", "Alice", TENT.position, minutesAgo = 60, isStale = true)),
+        volunteers,
+    )
+  }
+
+  @Test
+  fun volunteers_reachingAnHourWithoutANewPosition_disappear() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 59)
+    val viewModel = open(volunteerMap())
+    assertEquals(59, viewModel.volunteers.value.single().minutesAgo)
+
+    // Without reopening the map: the next refresh of the ages leaves it out.
+    clock = clock.plus(Duration.ofMinutes(2))
+    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    runCurrent()
+
+    assertTrue(viewModel.volunteers.value.isEmpty())
+  }
+
+  @Test
+  fun volunteers_sharingAgainAfterBeingHidden_showUpAgain() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    val viewModel = open(volunteerMap())
+    assertTrue(viewModel.volunteers.value.isEmpty())
+
+    share("alice", "bar", STAND.position)
+    runCurrent()
+
+    assertEquals(
+        listOf(VolunteerPin("alice", "Alice", STAND.position, minutesAgo = 0, isStale = false)),
+        viewModel.volunteers.value,
+    )
+  }
+
+  @Test
+  fun volunteers_inTwoTeamsWithAnOldAndARecentPosition_areShownAtTheRecentOne() = runTest {
+    teams.addMember(EVENT.id, "stage", "alice")
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    share("alice", "stage", STAND.position, minutesAgo = 1)
+
+    val alice = open(volunteerMap()).volunteers.value.single()
+
+    // Only the newest position counts: the old one in the bar does not hide her.
+    assertEquals(STAND.position, alice.position)
+    assertEquals(1, alice.minutesAgo)
+  }
+
+  @Test
+  fun volunteers_olderThanAnHour_haveTheirNameNeverRead() = runTest {
+    share("alice", "bar", TENT.position, minutesAgo = 90)
+    share("carol", "stage", STAND.position)
+    val counting = CountsProfiles(users)
+
+    open(volunteerMap(userRepository = counting))
+
+    assertEquals(listOf("carol"), counting.asked)
   }
 
   @Test
@@ -636,8 +708,10 @@ class MapViewModelTest {
     val counting = CountsObservations(liveLocations)
     val viewModel = open(volunteerMap(counting))
 
-    // Still readable until an hour after the end, as the rules allow.
+    // Still readable until an hour after the end, as the rules allow. Shared again then, so the
+    // position is recent and only the end of reading can take it off the map.
     clock = EVENT.endAt + MapViewModel.READABLE_AFTER_END
+    share("alice", "bar", TENT.position)
     advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
     runCurrent()
     assertEquals("alice", viewModel.volunteers.value.single().userId)
@@ -686,6 +760,17 @@ class MapViewModelTest {
             active--
           }
         }
+  }
+
+  /** Delegates to [repository], recording the users whose profile is read, in order. */
+  private class CountsProfiles(private val repository: UserRepository) :
+      UserRepository by repository {
+    val asked = mutableListOf<String>()
+
+    override suspend fun getPublicProfile(uid: String): PublicProfile? {
+      asked += uid
+      return repository.getPublicProfile(uid)
+    }
   }
 
   /**
