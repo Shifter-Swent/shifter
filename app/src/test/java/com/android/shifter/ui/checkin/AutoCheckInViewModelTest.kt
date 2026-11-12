@@ -510,10 +510,6 @@ class AutoCheckInViewModelTest {
     }
   }
 
-  /**
-   * Delegates to [missions], except that the assigned missions are emitted once, then the flow
-   * fails with [failure] when it is completed, like a listener that breaks.
-   */
   /** Delegates to [checkIns], except that the check-ins of [eventId] are never emitted. */
   private class SilentEvent(checkIns: CheckInRepository, private val eventId: String) :
       CheckInRepository by checkIns {
