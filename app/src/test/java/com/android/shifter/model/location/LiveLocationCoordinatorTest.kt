@@ -33,7 +33,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -402,32 +401,24 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
-  fun sharingState_withNoEligibleTarget_isNull() = runTest {
+  fun sharingStates_withNoEligibleTarget_isEmpty() = runTest {
     start()
 
-    assertNull(state())
+    assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
   }
 
   @Test
-  fun sharingState_withSeveralSessions_isTheMostUrgentOfTheirs() = runTest {
-    eligible = listOf(BAR, STAGE)
-    start()
-
-    // Every pair of neighbours, each way round, so the order is checked whichever team is worse.
-    val leastToMostUrgent = listOf(OFF, SHARED, WAITING, NO_LOCATION_ACCESS, REFUSED)
-    leastToMostUrgent.zipWithNext().forEach { (lower, higher) ->
-      sessions.report(BAR, lower)
-      sessions.report(STAGE, higher)
-      assertEquals(higher, state())
-
-      sessions.report(BAR, higher)
-      sessions.report(STAGE, lower)
-      assertEquals(higher, state())
-    }
+  fun states_areDeclaredFromTheLeastToTheMostUrgent() {
+    // The indicator shows the greatest state of the teams, so this order is what keeps a problem in
+    // one team from being hidden behind a success in another.
+    assertEquals(
+        listOf(OFF, SHARED, WAITING, NO_LOCATION_ACCESS, REFUSED),
+        LiveLocationSharingState.entries,
+    )
   }
 
   @Test
-  fun sharingState_whenATargetDropsOut_forgetsItsSessionsState() = runTest {
+  fun sharingStates_whenATargetDropsOut_forgetsItsSessionsState() = runTest {
     eligible = listOf(BAR, STAGE)
     start()
     sessions.report(BAR, SHARED)
@@ -437,7 +428,6 @@ class LiveLocationCoordinatorTest {
     elapse(INTERVAL)
 
     // The refusal belonged to a session that no longer runs: showing it would be wrong.
-    assertEquals(SHARED, state())
     assertEquals(mapOf(BAR to SHARED), states())
   }
 
@@ -553,27 +543,14 @@ class LiveLocationCoordinatorTest {
   }
 
   @Test
-  fun sharingState_whenTheSessionsGoStale_isNull() = runTest {
-    eligible = listOf(BAR)
-    start()
-    sessions.report(BAR, SHARED)
-
-    failure = unavailable()
-    repeat(STALENESS_REFRESHES) { elapse(INTERVAL) }
-
-    assertEquals(emptySet<LiveLocationTarget>(), sessions.active)
-    assertNull(state())
-  }
-
-  @Test
-  fun sharingState_whenRunIsCancelled_isNull() = runTest {
+  fun sharingStates_whenRunIsCancelled_isEmpty() = runTest {
     eligible = listOf(BAR)
     val running = start()
     sessions.report(BAR, SHARED)
 
     running.cancelAndJoin()
 
-    assertNull(state())
+    assertEquals(emptyMap<LiveLocationTarget, LiveLocationSharingState>(), states())
   }
 
   @Test
@@ -602,9 +579,6 @@ class LiveLocationCoordinatorTest {
             repository.observeTeamLocations(BAR.teamId, BAR.eventId).first(),
         )
       }
-
-  /** What the coordinator reports right now. */
-  private suspend fun state(): LiveLocationSharingState? = coordinator.sharingState.first()
 
   /** What the coordinator reports for each target right now. */
   private suspend fun states(): Map<LiveLocationTarget, LiveLocationSharingState> =

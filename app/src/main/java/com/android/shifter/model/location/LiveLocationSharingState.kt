@@ -9,9 +9,9 @@ package com.swent.shifter.model.location
  * queued offline, is [WAITING], never [SHARED].
  *
  * The states are declared from the least to the most urgent for the volunteer, so the state of
- * several sessions together - one per team of each running event - is the greatest of theirs (see
- * [LiveLocationCoordinator.sharingState]): a problem in one team is never hidden behind a success
- * in another. Which of [REFUSED] and [NO_LOCATION_ACCESS] comes first hardly matters: the access is
+ * several sessions together - one per team of each running event - is the greatest of theirs, the
+ * one the indicator of the top bar shows: a problem in one team is never hidden behind a success in
+ * another. Which of [REFUSED] and [NO_LOCATION_ACCESS] comes first hardly matters: the access is
  * the device's, so every session reports its loss at once, and the two only meet for the moment a
  * session has not read it yet.
  */
