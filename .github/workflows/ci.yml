@@ -15,7 +15,8 @@ on:
 
 # The build and unit tests run alongside the instrumented tests, which are split across several
 # emulators. Sonar then merges the coverage of all of them, and the "CI" job, the check required
-# to merge, reports whether everything passed.
+# to merge, reports whether everything passed. A PR that changes only documentation skips the
+# instrumented tests, as detected by the changes job.
 env:
   # How many emulators share the instrumented tests, read only by the sonar job to check it got the
   # coverage of each: keep it equal to the length of the shard list of the instrumented job. The
@@ -24,6 +25,52 @@ env:
   SHARDS: 4
 
 jobs:
+  # Tells whether a PR changes only documentation, so the instrumented tests, the slowest part,
+  # can be skipped. The list is strict: Markdown at the root, docs/, and the Markdown GitHub reads
+  # under .github/. Any other file, Markdown elsewhere included (it could be bundled in the app),
+  # runs everything. Pushes on main always run everything, so Sonar's coverage of main stays
+  # complete.
+  changes:
+    name: Detect documentation-only changes
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
+
+    steps:
+      # On a PR, HEAD is the merge of the PR into main, so HEAD^1 is main and the diff is what the
+      # PR changes; a depth of 2 fetches that parent.
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      # --no-renames lists both names of a renamed file, so code renamed to Markdown still counts.
+      # An empty diff runs everything.
+      - name: Detect
+        id: detect
+        run: |
+          docs_only=false
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(git diff --name-only --no-renames HEAD^1 HEAD)
+            if [ -n "$files" ]; then
+              docs_only=true
+              while IFS= read -r file; do
+                case "$file" in
+                  docs/* | .github/ISSUE_TEMPLATE/* | .github/pull_request_template.md) ;;
+                  .github/skills/*.md) ;;
+                  */*) docs_only=false ;;
+                  *.md) ;;
+                  *) docs_only=false ;;
+                esac
+              done <<< "$files"
+            fi
+            echo "Changed files:"
+            echo "$files"
+          fi
+          echo "Documentation only: $docs_only"
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+
   unit:
     name: Build and unit tests
     runs-on: ubuntu-latest
@@ -62,10 +109,12 @@ jobs:
         run: |
           ./gradlew ktfmtCheck
 
+      # Builds and lints the debug variant only: the release APK is not tested, and the installable
+      # APK comes from apk.yml
       - name: Assemble
         run: |
           # To run the CI with debug information, add --info
-          ./gradlew assemble lint --parallel --build-cache
+          ./gradlew assembleDebug lintDebug --parallel --build-cache
 
       - name: Run tests
         run: |
@@ -89,6 +138,8 @@ jobs:
 
   instrumented:
     name: Instrumented tests (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
 
     strategy:
@@ -206,9 +257,15 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
 
+  # On a documentation-only PR, the instrumented tests are skipped, so Sonar gets the unit tests'
+  # coverage only. It never runs after a failed or cancelled job.
   sonar:
     name: Coverage and Sonar
-    needs: [unit, instrumented]
+    needs: [changes, unit, instrumented]
+    if: >-
+      always() && needs.unit.result == 'success' &&
+      (needs.instrumented.result == 'success' ||
+      (needs.instrumented.result == 'skipped' && needs.changes.outputs.docs_only == 'true'))
     runs-on: ubuntu-latest
 
     steps:
@@ -244,6 +301,7 @@ jobs:
           path: app/build
 
       - name: Download the coverage of the shards
+        if: needs.changes.outputs.docs_only != 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: coverage-shard-*
@@ -254,6 +312,7 @@ jobs:
       # connected/coverage-shard-N/. Fails when a shard's coverage is missing, which would
       # otherwise only show as a drop in Sonar.
       - name: Place the coverage of each shard
+        if: needs.changes.outputs.docs_only != 'true'
         run: |
           connected=app/build/outputs/code_coverage/debugAndroidTest/connected
           for shard in shard-coverage/coverage-shard-*; do
@@ -279,9 +338,11 @@ jobs:
 
   # The check required to merge. It always runs and fails unless every job passed: a required
   # check that is skipped counts as passed, which would let a PR with a failing test be merged.
+  # The instrumented tests may be skipped only on a documentation-only PR; skipped or cancelled for
+  # any other reason, they fail it.
   ci:
     name: CI
-    needs: [unit, instrumented, sonar]
+    needs: [changes, unit, instrumented, sonar]
     if: always()
     runs-on: ubuntu-latest
 
@@ -289,6 +350,10 @@ jobs:
       - name: Require every job to pass
         env:
           RESULTS: ${{ toJSON(needs) }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
         run: |
           echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+          echo "Documentation only: $DOCS_ONLY"
+          echo "$RESULTS" | jq -e --arg docs_only "$DOCS_ONLY" 'all(to_entries[];
+            .value.result == "success"
+            or (.key == "instrumented" and .value.result == "skipped" and $docs_only == "true"))' > /dev/null
