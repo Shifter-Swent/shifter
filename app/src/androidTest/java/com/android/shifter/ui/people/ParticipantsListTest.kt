@@ -323,7 +323,7 @@ class ParticipantsListTest {
     moveButton("alice").assertDoesNotExist()
   }
 
-  /** Until #397 wires the move, a participant of no team has nothing to act on. */
+  /** Without the move, a participant of no team has nothing to act on. */
   @Test
   fun withoutTheMove_cardsOfNoTeamDoNotUnfold() {
     setList(

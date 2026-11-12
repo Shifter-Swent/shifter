@@ -45,6 +45,8 @@ object PeopleScreenTestTags {
  *   its manager, after tapping their card.
  * @param onRemoveManager called with the id of a team whose manager the organizer confirmed to
  *   remove, after tapping their card.
+ * @param onMoveToTeam called with a participant and the team the organizer moves them to, after
+ *   picking it from their card.
  * @param eventTitle the event's name, shown in the top bar.
  * @param onBack called to leave the event, from the back button of the top bar.
  */
@@ -58,6 +60,7 @@ fun PeopleScreen(
     onReloadParticipants: () -> Unit,
     onAppointManager: (teamId: String, userId: String) -> Unit,
     onRemoveManager: (teamId: String) -> Unit,
+    onMoveToTeam: (userId: String, teamId: String) -> Unit,
     eventTitle: String,
     onBack: () -> Unit,
     onNavigate: (Tab) -> Unit,
@@ -67,6 +70,8 @@ fun PeopleScreen(
   var selectedTab by rememberSaveable { mutableIntStateOf(0) }
   // The card tapped, as ids so it survives a configuration change and a reload of the list.
   var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
+  // The participant being moved, by id for the same reasons.
+  var moving by rememberSaveable { mutableStateOf<String?>(null) }
   Scaffold(
       modifier = modifier,
       containerColor = colors.background,
@@ -90,8 +95,9 @@ fun PeopleScreen(
         ParticipantsList(
             participants,
             onReloadParticipants,
-            { participant, team -> selection = participant.userId to team.id },
-            Modifier.weight(1f),
+            onManagerAction = { participant, team -> selection = participant.userId to team.id },
+            onMoveAction = { moving = it.userId },
+            modifier = Modifier.weight(1f),
         )
       } else {
         MembershipRequestsScreen(uiState, onAccept, onReject, onRetry, Modifier.weight(1f))
@@ -117,6 +123,33 @@ fun PeopleScreen(
           selection = null
         },
         onDismiss = { selection = null },
+    )
+  }
+  // Gone from a list that loaded fine, e.g. after they withdrew: there is no one left to move. A
+  // list still loading or failed keeps the dialog for when it comes back. Made a manager meanwhile,
+  // e.g. after a reload: a manager is never moved, so the move would always be refused.
+  LaunchedEffect(moving, participants) {
+    val userId = moving ?: return@LaunchedEffect
+    val participant =
+        participants.groups.firstNotNullOfOrNull { group ->
+          group.participants.firstOrNull { it.userId == userId }
+        }
+    val gone = participant == null && !participants.isLoading && participants.error == null
+    if (gone || participant?.isManager == true) moving = null
+  }
+  moving?.let { userId ->
+    val group =
+        participants.groups.firstOrNull { group -> group.participants.any { it.userId == userId } }
+    val participant = group?.participants?.firstOrNull { it.userId == userId } ?: return@let
+    MoveDialog(
+        participant = participant,
+        from = group.team,
+        teams = participants.groups.mapNotNull { it.team },
+        onConfirm = { teamId ->
+          onMoveToTeam(userId, teamId)
+          moving = null
+        },
+        onDismiss = { moving = null },
     )
   }
 }
@@ -153,6 +186,7 @@ private fun PeopleScreenPreview() {
         onReloadParticipants = {},
         onAppointManager = { _, _ -> },
         onRemoveManager = {},
+        onMoveToTeam = { _, _ -> },
         eventTitle = "City Marathon",
         onBack = {},
         onNavigate = {},

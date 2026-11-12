@@ -57,6 +57,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = { destination = it },
@@ -96,6 +97,7 @@ class PeopleScreenTest {
             onReloadParticipants = { reloads++ },
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
@@ -124,6 +126,9 @@ class PeopleScreenTest {
           memberIds = listOf("bob"),
           createdAt = Instant.EPOCH,
       )
+  private val kitchen =
+      bar.copy(id = "kitchen", name = "Kitchen", managerId = null, memberIds = emptyList())
+  private val cat = ParticipantItem("cat", "Cat Diaz", isManager = false)
   private val ann = ParticipantItem("ann", "Ann Lee", isManager = true)
   private val bob = ParticipantItem("bob", "Bob Rossi", isManager = false)
 
@@ -131,6 +136,7 @@ class PeopleScreenTest {
   private fun setParticipants(
       onAppointManager: (String, String) -> Unit = { _, _ -> },
       onRemoveManager: (String) -> Unit = {},
+      onMoveToTeam: (String, String) -> Unit = { _, _ -> },
   ) {
     compose.setContent {
       MaterialTheme {
@@ -140,10 +146,18 @@ class PeopleScreenTest {
             onReject = {},
             onRetry = {},
             participants =
-                ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann, bob)))),
+                ParticipantsUiState(
+                    groups =
+                        listOf(
+                            ParticipantGroup(bar, listOf(ann, bob)),
+                            ParticipantGroup(kitchen, emptyList()),
+                            ParticipantGroup(null, listOf(cat)),
+                        )
+                ),
             onReloadParticipants = {},
             onAppointManager = onAppointManager,
             onRemoveManager = onRemoveManager,
+            onMoveToTeam = onMoveToTeam,
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
@@ -158,15 +172,52 @@ class PeopleScreenTest {
     compose.onNodeWithTag(ParticipantsListTestTags.managerButton(userId)).performClick()
   }
 
-  /** The move comes with #397: until then, People offers no way to move anyone. */
   @Test
-  fun participantsCard_offersNoMoveYet() {
-    setParticipants()
+  fun changeTeam_thenPickATeam_movesTheVolunteerThere() {
+    var moved: Pair<String, String>? = null
+    setParticipants(onMoveToTeam = { userId, teamId -> moved = userId to teamId })
 
     compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
+    compose.onNodeWithText("Move Bob Rossi").assertIsDisplayed()
+    compose.onNodeWithText("Bob Rossi leaves Bar and its next missions.").assertIsDisplayed()
+    // Bar is the team he is in, so only Kitchen is offered.
+    compose.onNodeWithTag(MoveDialogTestTags.teamOption("bar")).assertDoesNotExist()
+    compose.onNodeWithTag(MoveDialogTestTags.CONFIRM_BUTTON).assertIsNotEnabled()
+    compose.onNodeWithTag(MoveDialogTestTags.teamOption("kitchen")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.CONFIRM_BUTTON).performClick()
 
-    compose.onNodeWithTag(ParticipantsListTestTags.managerButton("bob")).assertIsDisplayed()
-    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).assertDoesNotExist()
+    compose.runOnIdle { assertEquals("bob" to "kitchen", moved) }
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+  }
+
+  @Test
+  fun addToATeam_ofAVolunteerWithoutTeam_offersEveryTeam() {
+    var moved: Pair<String, String>? = null
+    setParticipants(onMoveToTeam = { userId, teamId -> moved = userId to teamId })
+
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("cat")).performScrollTo()
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("cat")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("cat")).performClick()
+    compose.onNodeWithText("Add Cat Diaz to a team").assertIsDisplayed()
+    compose.onNodeWithTag(MoveDialogTestTags.teamOption("kitchen")).assertIsDisplayed()
+    compose.onNodeWithTag(MoveDialogTestTags.teamOption("bar")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.CONFIRM_BUTTON).performClick()
+
+    compose.runOnIdle { assertEquals("cat" to "bar", moved) }
+  }
+
+  @Test
+  fun changeTeam_thenCancel_movesNobody() {
+    var moves = 0
+    setParticipants(onMoveToTeam = { _, _ -> moves++ })
+
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.CANCEL_BUTTON).performClick()
+
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, moves) }
   }
 
   @Test
@@ -227,6 +278,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
             eventTitle = "City Marathon",
             onBack = {},
             onNavigate = {},
@@ -243,6 +295,92 @@ class PeopleScreenTest {
   }
 
   @Test
+  fun participantGoneFromTheList_closesTheMoveDialogForGood() {
+    val kitchenGroup = ParticipantGroup(kitchen, emptyList())
+    val withBob =
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann, bob)), kitchenGroup))
+    var participants by mutableStateOf(withBob)
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = participants,
+            onReloadParticipants = {},
+            onAppointManager = { _, _ -> },
+            onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
+            eventTitle = "City Marathon",
+            onBack = {},
+            onNavigate = {},
+        )
+      }
+    }
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertIsDisplayed()
+
+    // A reload no longer lists Bob, e.g. because he withdrew meanwhile.
+    participants =
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(ann)), kitchenGroup))
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+
+    // Listed again later, he does not bring the dialog back on his own.
+    participants = withBob
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+  }
+
+  @Test
+  fun participantMadeManager_closesTheMoveDialog() {
+    val kitchenGroup = ParticipantGroup(kitchen, emptyList())
+    var participants by
+        mutableStateOf(
+            ParticipantsUiState(
+                groups = listOf(ParticipantGroup(bar, listOf(ann, bob)), kitchenGroup)
+            )
+        )
+    var moves = 0
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = participants,
+            onReloadParticipants = {},
+            onAppointManager = { _, _ -> },
+            onRemoveManager = {},
+            onMoveToTeam = { _, _ -> moves++ },
+            eventTitle = "City Marathon",
+            onBack = {},
+            onNavigate = {},
+        )
+      }
+    }
+    compose.onNodeWithTag(ParticipantsListTestTags.participantCard("bob")).performClick()
+    compose.onNodeWithTag(ParticipantsListTestTags.moveButton("bob")).performClick()
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertIsDisplayed()
+
+    // A reload shows Bob as the manager of Bar now: a manager is never moved.
+    participants =
+        ParticipantsUiState(
+            groups =
+                listOf(
+                    ParticipantGroup(
+                        bar,
+                        listOf(bob.copy(isManager = true), ann.copy(isManager = false)),
+                    ),
+                    kitchenGroup,
+                )
+        )
+    compose.onNodeWithTag(MoveDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, moves) }
+  }
+
+  @Test
   fun topBar_showsTheEventNameAndBackCallsOnBack() {
     var backs = 0
     compose.setContent {
@@ -256,6 +394,7 @@ class PeopleScreenTest {
             onReloadParticipants = {},
             onAppointManager = { _, _ -> },
             onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
             eventTitle = "City Marathon",
             onBack = { backs++ },
             onNavigate = {},

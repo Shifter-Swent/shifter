@@ -24,7 +24,7 @@
     <string name="participants_manager_confirm">Confirm</string>
     <string name="participants_manager_cancel">Cancel</string>
     <string name="participants_manager_update_failed">The manager could not be changed, try again</string>
-    <!-- The actions of an open participant card (#397). -->
+    <!-- The actions of an open participant card. -->
     <string name="participants_show_actions">Show the actions</string>
     <string name="participants_hide_actions">Hide the actions</string>
     <string name="participants_change_team">Change team</string>
@@ -33,5 +33,11 @@
     <string name="participants_stop_managing">Stop managing</string>
     <string name="participants_card_expanded">Expanded</string>
     <string name="participants_card_collapsed">Collapsed</string>
+    <!-- The dialog that picks the team a participant moves to. -->
+    <string name="participants_move_title">Move %1$s</string>
+    <string name="participants_move_message">%1$s leaves %2$s and its next missions.</string>
+    <string name="participants_move_confirm">Move</string>
+    <string name="participants_add_title">Add %1$s to a team</string>
+    <string name="participants_move_no_other_team">There is no other team to choose.</string>
     <string name="participants_move_failed">The volunteer could not be moved, try again</string>
 </resources>
