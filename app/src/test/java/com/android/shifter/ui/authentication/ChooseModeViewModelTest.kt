@@ -40,7 +40,8 @@ class ChooseModeViewModelTest {
     assertEquals("Ada", profile.displayName)
     assertEquals("ada@example.com", profile.email)
     assertEquals(UserMode.ORGANIZER, viewModel.uiState.value.entered)
-    assertFalse(viewModel.uiState.value.saving)
+    // Still saving while the screen leaves, so the choices do not show again.
+    assertTrue(viewModel.uiState.value.saving)
   }
 
   @Test
@@ -129,6 +130,19 @@ class ChooseModeViewModelTest {
     viewModel.onEnteredHandled()
 
     assertNull(viewModel.uiState.value.entered)
+  }
+
+  @Test
+  fun choose_whileTheScreenLeaves_isIgnored() {
+    choose(UserMode.VOLUNTEER)
+    viewModel.onEnteredHandled()
+
+    // A second tap during the transition must not navigate again.
+    choose(UserMode.ORGANIZER)
+
+    assertTrue(viewModel.uiState.value.saving)
+    assertNull(viewModel.uiState.value.entered)
+    assertEquals(UserMode.VOLUNTEER, users.users.getValue(UID).mode)
   }
 
   @Test

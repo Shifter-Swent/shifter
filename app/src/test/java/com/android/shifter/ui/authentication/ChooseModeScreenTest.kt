@@ -58,6 +58,19 @@ class ChooseModeScreenTest {
   }
 
   @Test
+  fun chosen_keepsTheSpinnerWhileLeaving() {
+    showChoice()
+
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.ORGANIZER).performClick()
+    composeTestRule.waitForIdle()
+
+    // The mode is entered, but the choices do not come back during the transition.
+    assertEquals(UserMode.ORGANIZER, entered)
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.SAVING).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.VOLUNTEER).assertDoesNotExist()
+  }
+
+  @Test
   fun volunteer_entersVolunteer() {
     showChoice()
 

@@ -20,7 +20,8 @@ import kotlinx.coroutines.launch
 /**
  * The state of the mode choice.
  *
- * @property saving whether the profile is being created with the mode chosen.
+ * @property saving whether the profile is being created with the mode chosen; it stays true once
+ *   created, until the screen has left, so the choices are not offered again.
  * @property entered one-shot event: the mode to enter once the profile exists, reset once the
  *   screen has navigated.
  * @property errorMsg why the profile could not be created; the user is signed out once it is shown.
@@ -61,7 +62,8 @@ class ChooseModeViewModel(
                 user.email.orEmpty(),
                 mode,
             )
-        _uiState.value = ChooseModeUiState(entered = profile.mode ?: mode)
+        // Still saving until the screen has left, so the choices do not show again meanwhile.
+        _uiState.update { it.copy(entered = profile.mode ?: mode) }
       } catch (e: CancellationException) {
         _uiState.update { it.copy(saving = false) }
         throw e
