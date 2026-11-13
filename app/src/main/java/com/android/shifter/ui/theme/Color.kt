@@ -53,6 +53,10 @@ val shifter_avatarBackground = Color(0xFF2F3E55)
 val shifter_signoutOutline = Color(0xFF493044)
 val shifter_locationIconBackground = Color(0xFF203452)
 
+// A QR code stays dark on light whatever the theme, so every scanner reads it.
+val shifter_qrDark = Color(0xFF000000)
+val shifter_qrLight = Color(0xFFFFFFFF)
+
 // Announcements: the warning amber for the tag, and a bubble of it mixed into the surface, dark
 // enough for the usual text to stay readable on it.
 val shifter_announcement = shifter_warning
