@@ -118,10 +118,13 @@ class EndToEndDriver(
     }
   }
 
+  /** The accounts signed in once already, which have a profile and are not asked their mode. */
+  private val knownAccounts = mutableSetOf<GoogleAccount>()
+
   /**
    * Signs in, the picker answering with [account], and waits for the events of the mode it
-   * [enters]. A new account is asked its mode first and [chooses] it. Returns the user's id and
-   * registers their profile for cleanup.
+   * [enters]. A new account must be asked its mode first, and [chooses] it; an account signed in
+   * before must not be asked again. Returns the user's id and registers their profile for cleanup.
    */
   fun signInAs(
       account: GoogleAccount,
@@ -133,16 +136,16 @@ class EndToEndDriver(
     val events =
         if (enters == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
         else MyEventsTestTags.STAFF_SCREEN
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      exists(ChooseModeTestTags.SCREEN) || exists(events)
-    }
-    if (exists(ChooseModeTestTags.SCREEN)) {
+    if (knownAccounts.add(account)) {
       click(
           if (chooses == UserMode.ORGANIZER) ChooseModeTestTags.ORGANIZER
           else ChooseModeTestTags.VOLUNTEER
       )
+      waitForNode(events)
+    } else {
+      waitForNode(events)
+      composeTestRule.onNodeWithTag(ChooseModeTestTags.SCREEN).assertDoesNotExist()
     }
-    waitForNode(events)
     val uid = checkNotNull(repositories.authRepository.currentUser()).uid
     if ("users/$uid" !in createdPaths) {
       createdPaths += "users/$uid"
@@ -281,9 +284,6 @@ class EndToEndDriver(
     }
     waitForNode(tag)
   }
-
-  private fun exists(tag: String): Boolean =
-      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
 
   fun click(tag: String) {
     waitForNode(tag)

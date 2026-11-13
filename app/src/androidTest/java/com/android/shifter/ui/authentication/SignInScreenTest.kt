@@ -74,9 +74,13 @@ class SignInScreenTest {
 
   @After
   fun tearDown() {
-    // Delete the profile a sign-in created, so each run starts from an empty emulator.
+    // Delete the profile a sign-in created, and its public profile, so each run starts from an
+    // empty emulator.
     AuthEmulator.auth.currentUser?.uid?.let { uid ->
-      runBlocking { FirestoreEmulatorAdmin.deleteDocument("$USERS_COLLECTION/$uid") }
+      runBlocking {
+        FirestoreEmulatorAdmin.deleteDocument("$USERS_COLLECTION/$uid")
+        FirestoreEmulatorAdmin.deleteDocument("publicProfiles/$uid")
+      }
     }
     AuthEmulator.auth.signOut()
     AuthEmulator.clearAccounts()
