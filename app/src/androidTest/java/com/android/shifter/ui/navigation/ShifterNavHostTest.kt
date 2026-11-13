@@ -1777,8 +1777,13 @@ class ShifterNavHostTest {
     return event
   }
 
-  /** Shows the app on the volunteer's events, on [provider] when it is not the real one. */
+  /**
+   * Shows the app on the volunteer's events, on [provider] when it is not the real one. The
+   * signed-in user gets a Volunteer profile first, unless they have one: without it, the app would
+   * ask for the mode instead.
+   */
   private fun showApp(provider: RepositoryProvider = repositories) {
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, UserMode.VOLUNTEER)
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = provider) }
     }
