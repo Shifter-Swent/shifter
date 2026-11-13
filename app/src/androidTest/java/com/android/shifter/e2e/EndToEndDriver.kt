@@ -33,6 +33,7 @@ import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -117,24 +118,34 @@ class EndToEndDriver(
     }
   }
 
+  /** The accounts signed in once already, which have a profile and are not asked their mode. */
+  private val knownAccounts = mutableSetOf<GoogleAccount>()
+
   /**
-   * Signs in through the sign-in screen of [from], the picker answering with [account], and waits
-   * for the events of the mode it [enters]. Returns the user's id and registers their profile for
-   * cleanup.
+   * Signs in, the picker answering with [account], and waits for the events of the mode it
+   * [enters]. A new account must be asked its mode first, and [chooses] it; an account signed in
+   * before must not be asked again. Returns the user's id and registers their profile for cleanup.
    */
   fun signInAs(
       account: GoogleAccount,
-      from: UserMode = UserMode.VOLUNTEER,
-      enters: UserMode = from,
+      chooses: UserMode = UserMode.VOLUNTEER,
+      enters: UserMode = chooses,
   ): String {
     pickedAccount = account
-    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
-    if (from == UserMode.ORGANIZER) click(SignInScreenTestTags.SWITCH_SIGN_IN)
     click(SignInScreenTestTags.LOGIN_BUTTON)
-    waitForNode(
+    val events =
         if (enters == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
         else MyEventsTestTags.STAFF_SCREEN
-    )
+    if (knownAccounts.add(account)) {
+      click(
+          if (chooses == UserMode.ORGANIZER) ChooseModeTestTags.ORGANIZER
+          else ChooseModeTestTags.VOLUNTEER
+      )
+      waitForNode(events)
+    } else {
+      waitForNode(events)
+      composeTestRule.onNodeWithTag(ChooseModeTestTags.SCREEN).assertDoesNotExist()
+    }
     val uid = checkNotNull(repositories.authRepository.currentUser()).uid
     if ("users/$uid" !in createdPaths) {
       createdPaths += "users/$uid"

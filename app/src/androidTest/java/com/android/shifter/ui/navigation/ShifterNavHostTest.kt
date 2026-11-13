@@ -51,6 +51,7 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
+import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
@@ -135,22 +136,34 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun signIn_switchesBetweenTheVolunteerAndOrganizerScreens() {
+  fun signedIn_withoutProfile_asksForTheModeThenEntersIt() {
+    // As after a first sign-in left before choosing: the session is open, but no profile exists.
+    val user = signIn(googleCredential("Ada"))
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
     composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = false, repositories = repositories) }
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
     }
-    val mode = composeTestRule.onNodeWithTag(SignInScreenTestTags.MODE)
-    mode.assertTextEquals("Volunteer")
+    waitForNode(ChooseModeTestTags.SCREEN)
 
-    composeTestRule.onNodeWithTag(SignInScreenTestTags.SWITCH_SIGN_IN).performClick()
-    mode.assertTextEquals("Organizer")
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.ORGANIZER).performClick()
 
-    // Back to the Volunteer sign-in it was opened from, by the text or by Back.
-    composeTestRule.onNodeWithTag(SignInScreenTestTags.SWITCH_SIGN_IN).performClick()
-    mode.assertTextEquals("Volunteer")
-    composeTestRule.onNodeWithTag(SignInScreenTestTags.SWITCH_SIGN_IN).performClick()
-    pressBack()
-    mode.assertTextEquals("Volunteer")
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    val saved = runBlocking { repositories.userRepository.getUser(user.uid) }
+    assertEquals(UserMode.ORGANIZER, saved?.mode)
+  }
+
+  @Test
+  fun signedIn_volunteerChoice_entersVolunteerEvents() {
+    val user = signIn(googleCredential("Ada"))
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
+    }
+
+    waitForNode(ChooseModeTestTags.VOLUNTEER)
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.VOLUNTEER).performClick()
+
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
   }
 
   @Test
@@ -1644,11 +1657,12 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Launches the app with the session already open, its profile saved in [mode] when Organizer, and
-   * waits for the events of that mode; returns its controller.
+   * Launches the app with the session already open, its profile saved in [mode], and waits for the
+   * events of that mode; returns its controller.
    */
   private fun showSignedInApp(mode: UserMode = UserMode.VOLUNTEER): NavHostController {
-    if (mode == UserMode.ORGANIZER) saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
+    // Without a profile, the app would ask for the mode instead.
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
     lateinit var navController: NavHostController
     composeTestRule.setContent {
       navController = rememberNavController()
@@ -1667,9 +1681,13 @@ class ShifterNavHostTest {
     return navController
   }
 
-  /** Creates the profile of [uid] with [mode], as their first sign-in would. */
+  /**
+   * Creates the profile of [uid] with [mode], as their mode choice would, under the name of the
+   * signed-in account. A profile that exists keeps its mode.
+   */
   private fun saveMode(uid: String, mode: UserMode) {
-    runBlocking { repositories.userRepository.getOrCreateUser(uid, "Ada", "", mode) }
+    val name = AuthEmulator.auth.currentUser?.displayName ?: "Ada"
+    runBlocking { repositories.userRepository.getOrCreateUser(uid, name, "", mode) }
     createdPaths += listOf("users/$uid", "publicProfiles/$uid").filter { it !in createdPaths }
   }
 
@@ -1759,8 +1777,13 @@ class ShifterNavHostTest {
     return event
   }
 
-  /** Shows the app on the volunteer's events, on [provider] when it is not the real one. */
+  /**
+   * Shows the app on the volunteer's events, on [provider] when it is not the real one. The
+   * signed-in user gets a Volunteer profile first, unless they have one: without it, the app would
+   * ask for the mode instead.
+   */
   private fun showApp(provider: RepositoryProvider = repositories) {
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, UserMode.VOLUNTEER)
     composeTestRule.setContent {
       ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = provider) }
     }

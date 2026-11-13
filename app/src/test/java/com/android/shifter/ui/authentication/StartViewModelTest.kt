@@ -16,6 +16,7 @@ import java.time.Instant
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -26,26 +27,36 @@ class StartViewModelTest {
 
   private val session = FakeAuthRepository(AuthUser(uid = UID, email = null, displayName = null))
 
-  private fun modeRead(users: UserRepository, auth: FakeAuthRepository = session): UserMode? {
+  private fun stateRead(users: UserRepository, auth: FakeAuthRepository = session): StartState {
     val viewModel = StartViewModel(auth, users)
     shadowOf(Looper.getMainLooper()).idle()
-    return viewModel.mode.value
+    return viewModel.state.value
   }
 
   @Test
   fun mode_savedOnTheProfile_isTheOneEntered() {
-    assertEquals(UserMode.ORGANIZER, modeRead(FakeUserRepository(listOf(user(UserMode.ORGANIZER)))))
+    assertEquals(
+        StartState.Enter(UserMode.ORGANIZER),
+        stateRead(FakeUserRepository(listOf(user(UserMode.ORGANIZER)))),
+    )
   }
 
   @Test
-  fun mode_noModeOrNoProfileOrUnreadable_entersVolunteerWithoutWriting() {
+  fun mode_noModeOrUnreadable_entersVolunteerWithoutWriting() {
     val withoutMode = FakeUserRepository(listOf(user(mode = null)))
     val unreadable = FakeUserRepository().apply { failure = UserRepositoryException.Unavailable() }
 
-    assertEquals(UserMode.VOLUNTEER, modeRead(withoutMode))
+    assertEquals(StartState.Enter(UserMode.VOLUNTEER), stateRead(withoutMode))
     assertNull(withoutMode.users.getValue(UID).mode)
-    assertEquals(UserMode.VOLUNTEER, modeRead(FakeUserRepository()))
-    assertEquals(UserMode.VOLUNTEER, modeRead(unreadable))
+    assertEquals(StartState.Enter(UserMode.VOLUNTEER), stateRead(unreadable))
+  }
+
+  @Test
+  fun mode_noProfile_asksForTheModeWithoutWriting() {
+    val users = FakeUserRepository()
+
+    assertEquals(StartState.ChooseMode, stateRead(users))
+    assertTrue(users.users.isEmpty())
   }
 
   @Test
@@ -55,15 +66,18 @@ class StartViewModelTest {
     val viewModel = StartViewModel(session, users)
 
     shadowOf(Looper.getMainLooper()).idle()
-    assertNull(viewModel.mode.value)
+    assertEquals(StartState.Reading, viewModel.state.value)
     shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(StartViewModel.READ_TIMEOUT_MILLIS))
 
-    assertEquals(UserMode.VOLUNTEER, viewModel.mode.value)
+    assertEquals(StartState.Enter(UserMode.VOLUNTEER), viewModel.state.value)
   }
 
   @Test
   fun mode_withoutSession_isNeverRead() {
-    assertNull(modeRead(FakeUserRepository(listOf(user(UserMode.ORGANIZER))), FakeAuthRepository()))
+    assertEquals(
+        StartState.Reading,
+        stateRead(FakeUserRepository(listOf(user(UserMode.ORGANIZER))), FakeAuthRepository()),
+    )
   }
 
   private fun user(mode: UserMode?) =

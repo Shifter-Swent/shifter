@@ -9,8 +9,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
+import com.swent.shifter.model.user.USERS_COLLECTION
+import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import java.util.UUID
@@ -34,15 +38,25 @@ class MainActivitySignedInTest {
   val signedIn =
       object : ExternalResource() {
         override fun before() {
-          FirestoreEmulator.firestore
+          val firestore = FirestoreEmulator.firestore
           runBlocking {
-            AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
-                .signInWithGoogle(googleCredential())
-                .getOrThrow()
+            val user =
+                AuthRepositoryFirebase(AuthEmulator.auth, DefaultGoogleSignInHelper())
+                    .signInWithGoogle(googleCredential())
+                    .getOrThrow()
+            // An account that already chose Volunteer: without a profile, the app would ask.
+            UserRepositoryFirestore(firestore)
+                .getOrCreateUser(user.uid, "Ada", user.email.orEmpty(), UserMode.VOLUNTEER)
           }
         }
 
         override fun after() {
+          AuthEmulator.auth.currentUser?.uid?.let { uid ->
+            runBlocking {
+              FirestoreEmulatorAdmin.deleteDocument("$USERS_COLLECTION/$uid")
+              FirestoreEmulatorAdmin.deleteDocument("publicProfiles/$uid")
+            }
+          }
           AuthEmulator.auth.signOut()
           AuthEmulator.clearAccounts()
         }

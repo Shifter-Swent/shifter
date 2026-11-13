@@ -43,6 +43,8 @@ import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
+import com.swent.shifter.ui.authentication.ChooseModeScreen
+import com.swent.shifter.ui.authentication.ChooseModeViewModel
 import com.swent.shifter.ui.authentication.SignInScreen
 import com.swent.shifter.ui.authentication.SignInViewModel
 import com.swent.shifter.ui.authentication.StartScreen
@@ -170,17 +172,6 @@ private fun ShifterNavGraph(
   // Read on every load, so the lists follow the account signed in at that time.
   val currentUserId = { auth.currentUser()?.uid }
   val start = remember { startApp(isSignedIn) }
-  // The sign-in of each mode; the user enters the mode saved on their profile.
-  val signIn: @Composable (UserMode, () -> Unit) -> Unit = { mode, onSwitchSignIn ->
-    SignInScreen(
-        authViewModel =
-            viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository, mode)),
-        credentialManager = credentialManager,
-        onSignedIn = { saved -> nav.enterApp(appOfMode(saved)) },
-        onSwitchSignIn = onSwitchSignIn,
-    )
-  }
-
   // Returns to sign-in whenever the SDK reports no session: signed out, an account disabled or
   // deleted on the server (found at the next token refresh, see AuthRepository.authState), or a
   // session already gone at launch. exitToSignIn does nothing when already on sign-in.
@@ -188,11 +179,16 @@ private fun ShifterNavGraph(
 
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
+      // The user enters the mode saved on their profile, or chooses one without a profile.
       composable<SignedOut.SignIn> {
-        signIn(UserMode.VOLUNTEER) { nav.navigateTo(SignedOut.OrganizerSignIn) }
+        SignInScreen(
+            authViewModel =
+                viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
+            credentialManager = credentialManager,
+            onSignedIn = { saved -> nav.enterApp(appOfMode(saved)) },
+            onNewAccount = { nav.enterApp(ChoosingMode) },
+        )
       }
-      // Opened on top of the Volunteer sign-in, which it goes back to.
-      composable<SignedOut.OrganizerSignIn> { signIn(UserMode.ORGANIZER, nav::goBack) }
     }
 
     navigation<Starting>(startDestination = Starting.Loading) {
@@ -201,6 +197,17 @@ private fun ShifterNavGraph(
             viewModel =
                 viewModel(factory = StartViewModel.factory(auth, repositories.userRepository)),
             onModeRead = { mode -> nav.enterApp(appOfMode(mode)) },
+            onNoProfile = { nav.enterApp(ChoosingMode) },
+        )
+      }
+    }
+
+    navigation<ChoosingMode>(startDestination = ChoosingMode.Choice) {
+      composable<ChoosingMode.Choice> {
+        ChooseModeScreen(
+            viewModel =
+                viewModel(factory = ChooseModeViewModel.factory(auth, repositories.userRepository)),
+            onModeChosen = { mode -> nav.enterApp(appOfMode(mode)) },
         )
       }
     }

@@ -66,7 +66,7 @@ class RecruitmentEndToEndTest {
     app.launchApp()
 
     // ── 1. The organizer creates the event and its team, and gets the join code ──
-    val organizerId = app.signInAs(organizer, from = UserMode.ORGANIZER)
+    val organizerId = app.signInAs(organizer, chooses = UserMode.ORGANIZER)
     app.click(MyEventsTestTags.CREATE_EVENT_BUTTON)
     app.fillAndSubmitEventForm(
         "Paléo Festival",

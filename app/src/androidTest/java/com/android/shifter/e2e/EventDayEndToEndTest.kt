@@ -89,7 +89,7 @@ class EventDayEndToEndTest {
     // precision.
     val start =
         LocalDateTime.now(ZoneId.systemDefault()).plusMinutes(10).truncatedTo(ChronoUnit.MINUTES)
-    val organizerId = app.signInAs(organizer, from = UserMode.ORGANIZER)
+    val organizerId = app.signInAs(organizer, chooses = UserMode.ORGANIZER)
     app.click(MyEventsTestTags.CREATE_EVENT_BUTTON)
     app.fillAndSubmitEventForm("Paléo Festival", start = start, end = start.plusDays(1))
 

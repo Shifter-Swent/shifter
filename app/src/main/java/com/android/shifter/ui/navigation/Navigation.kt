@@ -20,8 +20,9 @@ import kotlinx.serialization.Serializable
 
 /*
  * SignedOut
- *   └── SignIn → OrganizerSignIn
+ *   └── SignIn
  * Starting: reads the mode saved on the profile, then enters Volunteer or Organizer
+ * ChoosingMode: asks a user without a profile Volunteer or Organizer, once
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply
  *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission, EditMission),
@@ -98,16 +99,12 @@ data object SignedOut : App {
   override val start
     get() = SignIn
 
-  /** The Volunteer sign-in, the one the app opens on. */
+  /**
+   * The only sign-in: the mode is the one saved on the profile, or chosen once in [ChoosingMode].
+   */
   @Serializable
   data object SignIn : Destination {
     override val title = "Sign in"
-  }
-
-  /** The Organizer sign-in, opened on top of the Volunteer one. */
-  @Serializable
-  data object OrganizerSignIn : Destination {
-    override val title = "Organizer sign in"
   }
 }
 
@@ -122,6 +119,23 @@ data object Starting : App {
   @Serializable
   data object Loading : Destination {
     override val title = "Loading"
+  }
+}
+
+// ── Choosing the mode ───────────────────────────────────────────────────────
+
+/**
+ * Opened for a signed-in user without a profile, after their first sign-in or at a launch that
+ * finds none: they choose Volunteer or Organizer once, and their profile is created with it.
+ */
+@Serializable
+data object ChoosingMode : App {
+  override val start
+    get() = Choice
+
+  @Serializable
+  data object Choice : Destination {
+    override val title = "Choose your mode"
   }
 }
 
