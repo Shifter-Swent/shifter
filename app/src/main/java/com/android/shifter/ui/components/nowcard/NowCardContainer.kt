@@ -68,10 +68,18 @@ enum class NowTone(
   ALERT(0.22f),
 }
 
+/**
+ * The tags of the now card and its parts. A card that names its own tags (the manager's) aliases
+ * these, e.g. `const val TIME_BAR = NowCardTestTags.TIME_BAR`, rather than tagging a node twice.
+ */
 object NowCardTestTags {
   const val CARD = "nowCard"
   const val STATUS = "nowCardStatus"
   const val HEADLINE = "nowCardHeadline"
+  /** Each [TimeBar] or [CountdownBar], the whole bar with its title and labels. */
+  const val TIME_BAR = "nowCardTimeBar"
+  /** The [ThenStrip]. */
+  const val NEXT = "nowCardNext"
 }
 
 /**
