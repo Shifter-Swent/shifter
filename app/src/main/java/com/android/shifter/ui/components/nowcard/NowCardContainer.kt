@@ -54,15 +54,18 @@ import com.swent.shifter.ui.theme.shifter_warning
  * How much the now card asks for attention, ordered by urgency: the card's content slides up when
  * the tone moves to a later entry, and down when it moves back.
  */
-enum class NowTone {
+enum class NowTone(
+    /** How much of the tone the card's field takes: more when it starts soon or needs the user. */
+    internal val tint: Float
+) {
   /** Nothing soon: grey. */
-  CALM,
+  CALM(0f),
   /** A mission is running: green. */
-  LIVE,
+  LIVE(0.08f),
   /** A mission starts soon: blue. */
-  SOON,
+  SOON(0.22f),
   /** Something needs the user: amber. */
-  ALERT,
+  ALERT(0.22f),
 }
 
 object NowCardTestTags {
@@ -83,13 +86,9 @@ val NowTone.accent: Color
         NowTone.CALM -> MaterialTheme.colorScheme.onSurfaceVariant
         NowTone.LIVE -> shifter_success
         NowTone.SOON -> MaterialTheme.colorScheme.primary
-        NowTone.ALERT -> shifter_warning
+        // ALERT: an else rather than the last tone, so the when has no branch no tone reaches.
+        else -> shifter_warning
       }
-
-// How much of the tone the card's field takes: a hint while a mission runs, more when it starts
-// soon or needs the user.
-private const val LIVE_TINT = 0.08f
-private const val STRONG_TINT = 0.22f
 
 private const val FLASH_ALPHA = 0.45f
 private const val FLASH_MILLIS = 900
@@ -97,15 +96,7 @@ private const val FLASH_MILLIS = 900
 private val NowTone.field: Color
   @Composable
   @ReadOnlyComposable
-  get() {
-    val surface = MaterialTheme.colorScheme.surfaceContainer
-    return when (this) {
-      NowTone.CALM -> surface
-      NowTone.LIVE -> lerp(surface, accent, LIVE_TINT)
-      NowTone.SOON,
-      NowTone.ALERT -> lerp(surface, accent, STRONG_TINT)
-    }
-  }
+  get() = lerp(MaterialTheme.colorScheme.surfaceContainer, accent, tint)
 
 private val NowTone.pill: PillColors
   @Composable
