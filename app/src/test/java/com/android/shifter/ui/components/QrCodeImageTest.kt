@@ -12,6 +12,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.qrcode.QRCodeReader
 import com.swent.shifter.model.qr.QrCodeGenerator
 import com.swent.shifter.model.qr.QrMatrix
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -66,6 +70,16 @@ class QrCodeImageTest {
     assertEquals(shifter_qrLight, pixels[0, 0])
     val centre = ((FINDER_CENTER + 0.5f) * pixels.width / FINDER_MATRIX_SIZE).toInt()
     assertEquals(shifter_qrDark, pixels[centre, centre])
+  }
+
+  @Test
+  fun qrCode_atAFractionalModuleSize_isReadByAScanner() {
+    // 240 dp is not a whole number of pixels per module: seams between modules would break it.
+    setImage(side = 240.dp)
+
+    val pixels = image.captureToImage().toPixelMap()
+    val source = RGBLuminanceSource(pixels.width, pixels.height, pixels.buffer)
+    assertEquals(CODE, QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source))).text)
   }
 
   @Test

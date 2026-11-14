@@ -16,6 +16,7 @@ import com.swent.shifter.model.qr.QrCodeGenerator
 import com.swent.shifter.model.qr.ZxingQrCodeGenerator
 import com.swent.shifter.ui.theme.shifter_qrDark
 import com.swent.shifter.ui.theme.shifter_qrLight
+import kotlin.math.floor
 
 /**
  * The QR code of the join [code], dark modules on a light square whatever the theme, so every
@@ -34,11 +35,17 @@ fun QrCodeImage(
   Canvas(modifier.aspectRatio(1f).semantics { contentDescription = description }) {
     drawRect(shifter_qrLight)
     val module = size.minDimension / matrix.size
-    val moduleSize = Size(module, module)
+    // Edges on whole pixels: with a fractional module, anti-aliasing would leave light seams
+    // between dark modules, which scanners misread.
+    fun edge(i: Int) = floor(i * module)
     for (y in 0 until matrix.size) {
       for (x in 0 until matrix.size) {
         if (matrix.isDark(x, y)) {
-          drawRect(shifter_qrDark, topLeft = Offset(x * module, y * module), size = moduleSize)
+          drawRect(
+              shifter_qrDark,
+              topLeft = Offset(edge(x), edge(y)),
+              size = Size(edge(x + 1) - edge(x), edge(y + 1) - edge(y)),
+          )
         }
       }
     }
