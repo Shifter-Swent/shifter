@@ -11,16 +11,16 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class FakeClockTest {
+class FakeMinuteClockTest {
 
   @Test
   fun now_withoutInitialTime_returnsEpoch() {
-    assertEquals(Instant.EPOCH, FakeClock().now())
+    assertEquals(Instant.EPOCH, FakeMinuteClock().now())
   }
 
   @Test
   fun ticks_onSubscription_emitsInitialTime() = runTest {
-    val clock = FakeClock(START)
+    val clock = FakeMinuteClock(START)
     val received = mutableListOf<Instant>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
       clock.ticks.collect { received += it }
@@ -32,7 +32,7 @@ class FakeClockTest {
 
   @Test
   fun set_withAnEarlierTime_updatesNowAndSubscribers() = runTest {
-    val clock = FakeClock(START)
+    val clock = FakeMinuteClock(START)
     val received = mutableListOf<Instant>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
       clock.ticks.collect { received += it }
@@ -47,7 +47,7 @@ class FakeClockTest {
 
   @Test
   fun advance_severalTimes_emitsEachNewTimeToAllSubscribers() = runTest {
-    val clock = FakeClock(START)
+    val clock = FakeMinuteClock(START)
     val first = mutableListOf<Instant>()
     val second = mutableListOf<Instant>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -68,7 +68,7 @@ class FakeClockTest {
 
   @Test
   fun ticks_afterTimeChangedWithoutSubscribers_emitsCurrentTime() = runTest {
-    val clock = FakeClock(START)
+    val clock = FakeMinuteClock(START)
     clock.advance(Duration.ofDays(1))
     val received = mutableListOf<Instant>()
 

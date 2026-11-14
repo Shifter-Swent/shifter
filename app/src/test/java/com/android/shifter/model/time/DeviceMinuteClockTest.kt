@@ -16,11 +16,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SystemClockTest {
+class DeviceMinuteClockTest {
 
   @Test
   fun now_withDefaultSource_readsDeviceTime() = runTest {
-    val clock = SystemClock(backgroundScope)
+    val clock = DeviceMinuteClock(backgroundScope)
     val before = Instant.now()
 
     val actual = clock.now()
@@ -41,7 +41,7 @@ class SystemClockTest {
   @Test
   fun ticks_withoutSubscribers_doesNotReadTime() = runTest {
     var reads = 0
-    SystemClock(backgroundScope) {
+    DeviceMinuteClock(backgroundScope) {
       reads++
       START
     }
@@ -109,7 +109,7 @@ class SystemClockTest {
   fun ticks_afterWallTimeJumps_readsActualTimeAndRealigns() = runTest {
     var offsetMillis = 0L
     val clock =
-        SystemClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
+        DeviceMinuteClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
     val received = mutableListOf<Instant>()
     collect(clock, received)
 
@@ -129,7 +129,7 @@ class SystemClockTest {
   fun ticks_afterWallTimeMovesBack_readsActualTimeAndRealigns() = runTest {
     var offsetMillis = 0L
     val clock =
-        SystemClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
+        DeviceMinuteClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
     val received = mutableListOf<Instant>()
     collect(clock, received)
 
@@ -148,7 +148,7 @@ class SystemClockTest {
   fun ticks_withTwoSubscribers_usesOneTimerUntilBothLeave() = runTest {
     var reads = 0
     val clock =
-        SystemClock(backgroundScope) {
+        DeviceMinuteClock(backgroundScope) {
           reads++
           START.plusMillis(testScheduler.currentTime)
         }
@@ -203,7 +203,7 @@ class SystemClockTest {
         )
     var reads = 0
     val clock =
-        SystemClock(owner) {
+        DeviceMinuteClock(owner) {
           reads++
           START.plusMillis(testScheduler.currentTime)
         }
@@ -218,10 +218,10 @@ class SystemClockTest {
     assertEquals(listOf(START), received)
   }
 
-  private fun TestScope.clock(start: Instant = START): SystemClock =
-      SystemClock(backgroundScope) { start.plusMillis(testScheduler.currentTime) }
+  private fun TestScope.clock(start: Instant = START): DeviceMinuteClock =
+      DeviceMinuteClock(backgroundScope) { start.plusMillis(testScheduler.currentTime) }
 
-  private fun TestScope.collect(clock: Clock, received: MutableList<Instant>): Job {
+  private fun TestScope.collect(clock: MinuteClock, received: MutableList<Instant>): Job {
     val job = backgroundScope.launch { clock.ticks.collect { received += it } }
     runCurrent()
     return job

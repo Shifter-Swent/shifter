@@ -19,10 +19,10 @@ import kotlinx.coroutines.flow.shareIn
  * timer; only collecting [ticks] does. Cancelling the scope stops the clock permanently.
  * [timeSource] allows tests to move wall time independently of the coroutine scheduler.
  */
-class SystemClock(
+class DeviceMinuteClock(
     scope: CoroutineScope,
     private val timeSource: () -> Instant = Instant::now,
-) : Clock {
+) : MinuteClock {
 
   override fun now(): Instant = timeSource()
 

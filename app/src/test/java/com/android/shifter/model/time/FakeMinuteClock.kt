@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** A manually controlled clock: no timer, and each changed instant is emitted to its collectors. */
-class FakeClock(initial: Instant = Instant.EPOCH) : Clock {
+class FakeMinuteClock(initial: Instant = Instant.EPOCH) : MinuteClock {
 
   private val time = MutableStateFlow(initial)
   override val ticks: StateFlow<Instant> = time.asStateFlow()

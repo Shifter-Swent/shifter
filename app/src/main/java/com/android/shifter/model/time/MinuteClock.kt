@@ -5,7 +5,7 @@ import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 
 /** Time for screens and their ViewModels, replaceable by a fake in tests. */
-interface Clock {
+interface MinuteClock {
 
   /** Reads the current time immediately, even when nobody collects [ticks]. */
   fun now(): Instant
