@@ -6,6 +6,11 @@ import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
@@ -28,10 +33,26 @@ class PlanningViewModelTest {
 
   private val missions = FakeMissionRepository()
   private val checkIns = FakeCheckInRepository(currentUserId = USER)
+  private val events = FakeEventRepository()
 
   private var userId: String? = USER
 
-  private fun viewModel() = PlanningViewModel(EVENT, missions, checkIns) { userId }
+  private fun viewModel() = PlanningViewModel(EVENT, missions, checkIns, events) { userId }
+
+  private suspend fun createEvent(startAt: Instant, endAt: Instant) =
+      events.createEvent(
+          Event(
+              id = EVENT,
+              organizerId = "organizer",
+              title = "City Marathon",
+              description = "",
+              type = EventType.MUSIC,
+              startAt = startAt,
+              endAt = endAt,
+              location = EventLocation("Lyon"),
+              createdAt = startAt,
+          )
+      )
 
   private suspend fun create(
       title: String,
@@ -188,7 +209,8 @@ class PlanningViewModelTest {
           }
         }
 
-    val state = PlanningViewModel(EVENT, missions, failingAfterAStatus) { userId }.uiState.value
+    val state =
+        PlanningViewModel(EVENT, missions, failingAfterAStatus, events) { userId }.uiState.value
 
     assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
     assertTrue(state.checkInsUnavailable)
@@ -206,10 +228,48 @@ class PlanningViewModelTest {
     assertFalse(viewModel.uiState.value.checkInsUnavailable)
   }
 
+  @Test
+  fun load_showsWhenTheEventStartsAndEnds() = runTest {
+    createEvent(EVENT_START, EVENT_END)
+
+    assertEquals(EVENT_START..EVENT_END, viewModel().uiState.value.eventPeriod)
+  }
+
+  @Test
+  fun load_whenTheEventFails_stillShowsTheMissions() = runTest {
+    val mission = create("Hand out water")
+    createEvent(EVENT_START, EVENT_END)
+    events.failure = EventRepositoryException.Unavailable()
+
+    val state = viewModel().uiState.value
+
+    assertEquals(listOf(mission.id), state.missions.map { it.id })
+    assertNull(state.eventPeriod)
+    assertNull(state.error)
+    assertFalse(state.isLoading)
+  }
+
+  @Test
+  fun retry_afterBothFailed_showsTheEventDates() = runTest {
+    create("Hand out water")
+    createEvent(EVENT_START, EVENT_END)
+    missions.failure = MissionRepositoryException.Unavailable()
+    events.failure = EventRepositoryException.Unavailable()
+    val viewModel = viewModel()
+
+    missions.failure = null
+    events.failure = null
+    viewModel.load()
+
+    assertEquals(EVENT_START..EVENT_END, viewModel.uiState.value.eventPeriod)
+  }
+
   private companion object {
     const val EVENT = "event-1"
     const val USER = "volunteer-1"
     val START: Instant = Instant.parse("2025-06-14T08:30:00Z")
+    val EVENT_START: Instant = Instant.parse("2025-06-13T08:00:00Z")
+    val EVENT_END: Instant = Instant.parse("2025-06-19T22:00:00Z")
     val CHECKED_IN_AT: Instant = Instant.parse("2025-06-14T08:31:00Z")
     val STATION = MissionLocation("Hydration station A", GeoPosition(45.75, 4.83))
   }
