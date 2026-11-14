@@ -28,6 +28,7 @@ import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInEligibility
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
@@ -96,7 +97,8 @@ class VolunteerOverviewTest {
   ) {
     // Unconfined, so the loads the ViewModels start have answered by the time the screen is read.
     Dispatchers.setMain(UnconfinedTestDispatcher())
-    val planning = PlanningViewModel(EVENT, missions, checkIns, clock) { ANN }
+    val planning =
+        PlanningViewModel(EVENT, missions, checkIns, FakeEventRepository(), clock) { ANN }
     val autoCheckIn =
         AutoCheckInViewModel(
             missions,

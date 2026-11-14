@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInRepository
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
@@ -23,6 +24,7 @@ import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +61,9 @@ enum class PlanningError {
  *   failure with the other fields: null with [isLoading] is still loading; null with [error], or
  *   with [checkInsUnavailable] once loaded, failed and stays null until the next
  *   [PlanningViewModel.load].
+ * @property eventPeriod when the event starts and ends, so the Planning can offer each of its days,
+ *   those without missions included. Null while unknown: the event could not be read, and the
+ *   Planning falls back on the days of the missions.
  */
 data class PlanningUiState(
     val missions: List<PlanningMission> = emptyList(),
@@ -66,14 +71,15 @@ data class PlanningUiState(
     val error: PlanningError? = null,
     val checkInsUnavailable: Boolean = false,
     val now: NowState? = null,
+    val eventPeriod: ClosedRange<Instant>? = null,
 )
 
 /**
  * Loads the missions the signed-in user is assigned to in the event [eventId], and keeps their
  * check-in status live: a check-in recorded while the Planning is open shows up without reloading.
  *
- * When the check-ins cannot be read, the missions stay shown without their status, so the volunteer
- * still knows where to be and when.
+ * When the check-ins or the event cannot be read, the missions stay shown without their status or
+ * the event's dates, so the volunteer still knows where to be and when.
  *
  * The [now][PlanningUiState.now] state comes from [nowStates], fed with today's missions among the
  * same missions, their check-ins and [clock]. The clock is only followed while [uiState] is
@@ -90,6 +96,7 @@ class PlanningViewModel(
     private val eventId: String,
     private val missionRepository: MissionRepository,
     private val checkInRepository: CheckInRepository,
+    private val eventRepository: EventRepository,
     private val clock: MinuteClock,
     private val zone: ZoneId = ZoneId.systemDefault(),
     private val currentUserId: () -> String?,
@@ -180,6 +187,8 @@ class PlanningViewModel(
       it.copy(isLoading = true, error = null, checkInsUnavailable = false, now = null)
     }
     loading = viewModelScope.launch {
+      // Read alongside the missions, which do not depend on it.
+      val eventPeriod = async { readEventPeriod() }
       val userId = currentUserId()
       val missions =
           try {
@@ -195,6 +204,7 @@ class PlanningViewModel(
             _uiState.update { it.copy(isLoading = false, error = error) }
             return@launch
           }
+      _uiState.update { it.copy(eventPeriod = eventPeriod.await()) }
       // The now state waits for the check-ins of this load, so it is never computed without them.
       val inputs = NowInputs(missions).also { nowInputs.value = it }
       try {
@@ -212,6 +222,16 @@ class PlanningViewModel(
       }
     }
   }
+
+  /** When the event starts and ends, or null when it cannot be read. */
+  private suspend fun readEventPeriod(): ClosedRange<Instant>? =
+      try {
+        eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        null
+      }
 
   private fun show(missions: List<Mission>, checkIns: List<CheckIn>) {
     val checkedInAt = checkIns.associate { it.missionId to it.checkedInAt }
@@ -243,6 +263,7 @@ class PlanningViewModel(
         eventId: String,
         missionRepository: MissionRepository,
         checkInRepository: CheckInRepository,
+        eventRepository: EventRepository,
         clock: MinuteClock,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
@@ -251,6 +272,7 @@ class PlanningViewModel(
             eventId,
             missionRepository,
             checkInRepository,
+            eventRepository,
             clock,
             currentUserId = currentUserId,
         )

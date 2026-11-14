@@ -355,6 +355,7 @@ private fun ShifterNavGraph(
                                           eventId,
                                           repositories.missionRepository,
                                           repositories.checkInRepository,
+                                          repositories.eventRepository,
                                           repositories.minuteClock,
                                           currentUserId,
                                       )
