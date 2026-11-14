@@ -78,7 +78,10 @@ class CheckInEligibilityTest {
 
   @Test
   fun checkInEligibility_justInsideTheRadius_isEligible() {
-    assertEquals(Eligible, checkInEligibility(mission, start, northOfPlace(199.0)))
+    assertEquals(
+        Eligible,
+        checkInEligibility(mission, start, northOfPlace(CheckInRules.RADIUS_METERS - 1)),
+    )
   }
 
   @Test
@@ -92,7 +95,14 @@ class CheckInEligibilityTest {
 
   @Test
   fun checkInEligibility_justOutsideTheRadius_isTooFar() {
-    val result = checkInEligibility(mission, start, northOfPlace(201.0))
+    val result = checkInEligibility(mission, start, northOfPlace(CheckInRules.RADIUS_METERS + 1))
+
+    assertEquals(Ineligible(Reason.TOO_FAR), result)
+  }
+
+  @Test
+  fun checkInEligibility_atTheFormer200Meters_isTooFar() {
+    val result = checkInEligibility(mission, start, northOfPlace(200.0))
 
     assertEquals(Ineligible(Reason.TOO_FAR), result)
   }

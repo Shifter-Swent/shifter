@@ -39,8 +39,11 @@ object CheckInRules {
   /** How long before the mission's start the check-in opens. It closes when the mission ends. */
   val OPENS_BEFORE_START: Duration = Duration.ofMinutes(15)
 
-  /** The radius of the zone around the mission's location, in meters. */
-  const val RADIUS_METERS = 200.0
+  /**
+   * The radius of the zone around the mission's location, in meters: about one place on a site (a
+   * stand, a gate), so a volunteer is not checked in from the next stand or the car park.
+   */
+  const val RADIUS_METERS = 50.0
 }
 
 /**
