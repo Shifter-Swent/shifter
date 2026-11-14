@@ -27,6 +27,7 @@ import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -46,11 +47,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PillColors
-import com.swent.shifter.ui.theme.md_theme_dark_onSurface
-import com.swent.shifter.ui.theme.md_theme_dark_onSurfaceVariant
-import com.swent.shifter.ui.theme.md_theme_dark_primary
-import com.swent.shifter.ui.theme.md_theme_dark_surface
-import com.swent.shifter.ui.theme.md_theme_dark_surfaceContainer
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
 
@@ -75,13 +71,18 @@ object NowCardTestTags {
   const val HEADLINE = "nowCardHeadline"
 }
 
-/** The tone's color, for the band, the flash and the parts the cards draw in it (a time bar). */
+/**
+ * The tone's color, for the band, the flash and the parts the cards draw in it (a time bar). Read
+ * from the theme, except the success and warning colors, which the color scheme does not have.
+ */
 val NowTone.accent: Color
+  @Composable
+  @ReadOnlyComposable
   get() =
       when (this) {
-        NowTone.CALM -> md_theme_dark_onSurfaceVariant
+        NowTone.CALM -> MaterialTheme.colorScheme.onSurfaceVariant
         NowTone.LIVE -> shifter_success
-        NowTone.SOON -> md_theme_dark_primary
+        NowTone.SOON -> MaterialTheme.colorScheme.primary
         NowTone.ALERT -> shifter_warning
       }
 
@@ -94,18 +95,26 @@ private const val FLASH_ALPHA = 0.45f
 private const val FLASH_MILLIS = 900
 
 private val NowTone.field: Color
-  get() =
-      when (this) {
-        NowTone.CALM -> md_theme_dark_surfaceContainer
-        NowTone.LIVE -> lerp(md_theme_dark_surfaceContainer, accent, LIVE_TINT)
-        NowTone.SOON,
-        NowTone.ALERT -> lerp(md_theme_dark_surfaceContainer, accent, STRONG_TINT)
-      }
+  @Composable
+  @ReadOnlyComposable
+  get() {
+    val surface = MaterialTheme.colorScheme.surfaceContainer
+    return when (this) {
+      NowTone.CALM -> surface
+      NowTone.LIVE -> lerp(surface, accent, LIVE_TINT)
+      NowTone.SOON,
+      NowTone.ALERT -> lerp(surface, accent, STRONG_TINT)
+    }
+  }
 
 private val NowTone.pill: PillColors
-  get() =
-      if (this == NowTone.CALM) PillColors(md_theme_dark_onSurface, md_theme_dark_surface)
-      else PillColors(md_theme_dark_surface, accent)
+  @Composable
+  @ReadOnlyComposable
+  get() {
+    val colors = MaterialTheme.colorScheme
+    return if (this == NowTone.CALM) PillColors(colors.onSurface, colors.surface)
+    else PillColors(colors.surface, accent)
+  }
 
 /** What the card shows for one tone, kept by the outgoing content while it slides away. */
 private data class NowFrame<T>(val tone: NowTone, val headline: String, val state: T)
@@ -144,7 +153,8 @@ fun <T> NowCardContainer(
     content: @Composable ColumnScope.(T) -> Unit = {},
 ) {
   val field by animateColorAsState(tone.field, label = "nowCardField")
-  val band by animateColorAsState(tone.accent, label = "nowCardBand")
+  val accent = tone.accent
+  val band by animateColorAsState(accent, label = "nowCardBand")
   val flash = rememberToneFlash(tone)
   val target = remember(tone, headline, state) { NowFrame(tone, headline, state) }
 
@@ -156,7 +166,7 @@ fun <T> NowCardContainer(
               .drawBehind { drawRect(field) }
               .drawWithContent {
                 drawContent()
-                drawRect(tone.accent, alpha = flash.value)
+                drawRect(accent, alpha = flash.value)
               }
               .testTag(NowCardTestTags.CARD)
   ) {
