@@ -94,22 +94,87 @@ class DeviceMinuteClockTest {
   }
 
   @Test
-  fun ticks_acrossMidnight_emitsTheNewDay() = runTest {
-    val start = Instant.parse("2026-11-14T23:59:59Z")
+  fun ticks_whenWallTimeLagsByThreeMillis_waitsForTheMinuteToChange() = runTest {
+    var offsetMillis = 0L
+    val clock =
+        DeviceMinuteClock(backgroundScope) {
+          NEXT_MINUTE.plusMillis(testScheduler.currentTime + offsetMillis)
+        }
     val received = mutableListOf<Instant>()
-    collect(clock(start), received)
+    collect(clock, received)
+
+    offsetMillis = -3
+    advanceTimeBy(60_000)
+    runCurrent()
+    assertEquals(listOf(NEXT_MINUTE), received)
+
+    advanceTimeBy(2)
+    runCurrent()
+    assertEquals(listOf(NEXT_MINUTE), received)
+
+    advanceTimeBy(1)
+    runCurrent()
+    assertEquals(listOf(NEXT_MINUTE, NEXT_MINUTE.plusSeconds(60)), received)
+
+    advanceTimeBy(60_000)
+    runCurrent()
+    assertEquals(
+        listOf(NEXT_MINUTE, NEXT_MINUTE.plusSeconds(60), NEXT_MINUTE.plusSeconds(120)),
+        received,
+    )
+  }
+
+  @Test
+  fun ticks_joiningAnActiveClock_replaysItsLatestTick() = runTest {
+    val clock = clock()
+    val first = mutableListOf<Instant>()
+    collect(clock, first)
+    advanceTimeBy(10_000)
+    runCurrent()
+    val joining = mutableListOf<Instant>()
+
+    collect(clock, joining)
+
+    assertEquals(START.plusSeconds(10), clock.now())
+    assertEquals(listOf(START), joining)
+
+    advanceTimeBy(37_655)
+    runCurrent()
+    assertEquals(listOf(START, NEXT_MINUTE), joining)
+    assertEquals(first, joining)
+  }
+
+  @Test
+  fun ticks_unsubscribingJustBeforeAMinute_stopsImmediately() = runTest {
+    var reads = 0
+    val clock =
+        DeviceMinuteClock(backgroundScope) {
+          reads++
+          START.plusMillis(testScheduler.currentTime)
+        }
+    val received = mutableListOf<Instant>()
+    val observer = collect(clock, received)
+    advanceTimeBy(46_655)
+    runCurrent()
+    assertEquals(1, reads)
+
+    observer.cancel()
+    runCurrent()
 
     advanceTimeBy(1_000)
     runCurrent()
 
-    assertEquals(listOf(start, Instant.parse("2026-11-15T00:00:00Z")), received)
+    assertEquals(1, reads)
+    assertEquals(listOf(START), received)
   }
 
   @Test
   fun ticks_afterWallTimeJumps_readsActualTimeAndRealigns() = runTest {
     var offsetMillis = 0L
     val clock =
-        DeviceMinuteClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
+        DeviceMinuteClock(backgroundScope) {
+          START.plusMillis(testScheduler.currentTime + offsetMillis)
+        }
     val received = mutableListOf<Instant>()
     collect(clock, received)
 
@@ -129,7 +194,9 @@ class DeviceMinuteClockTest {
   fun ticks_afterWallTimeMovesBack_readsActualTimeAndRealigns() = runTest {
     var offsetMillis = 0L
     val clock =
-        DeviceMinuteClock(backgroundScope) { START.plusMillis(testScheduler.currentTime + offsetMillis) }
+        DeviceMinuteClock(backgroundScope) {
+          START.plusMillis(testScheduler.currentTime + offsetMillis)
+        }
     val received = mutableListOf<Instant>()
     collect(clock, received)
 
@@ -196,7 +263,7 @@ class DeviceMinuteClockTest {
   }
 
   @Test
-  fun ticks_whenOwnerIsCancelled_stopsTheTimer() = runTest {
+  fun ticks_whenOwnerIsCancelled_stopsPermanentlyAndKeepsTheReplay() = runTest {
     val owner =
         CoroutineScope(
             backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job])
@@ -208,7 +275,7 @@ class DeviceMinuteClockTest {
           START.plusMillis(testScheduler.currentTime)
         }
     val received = mutableListOf<Instant>()
-    collect(clock, received)
+    val observer = collect(clock, received)
 
     owner.cancel()
     advanceTimeBy(180_000)
@@ -216,6 +283,14 @@ class DeviceMinuteClockTest {
 
     assertEquals(1, reads)
     assertEquals(listOf(START), received)
+    assertTrue(observer.isActive)
+
+    val joining = mutableListOf<Instant>()
+    val lateObserver = collect(clock, joining)
+    assertEquals(listOf(START), joining)
+    assertTrue(lateObserver.isActive)
+    assertEquals(1, reads)
+    assertEquals(START.plusSeconds(180), clock.now())
   }
 
   private fun TestScope.clock(start: Instant = START): DeviceMinuteClock =
