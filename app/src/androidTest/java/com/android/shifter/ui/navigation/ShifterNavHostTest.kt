@@ -677,6 +677,38 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
   }
 
+  /**
+   * The hand-off of the location provider in ShifterNavHost (#442): the volunteer's map follows the
+   * user's GPS. Each map is unit tested, but if the provider stopped being passed on, the dot would
+   * simply never show. The dot is drawn inside the native map, out of reach of Compose tests, so
+   * the GPS being followed is what is checked.
+   */
+  @Test
+  fun volunteerMap_followsTheUsersPosition() {
+    val location =
+        openMapWithAKnownPosition(
+            UserMode.VOLUNTEER,
+            VolunteerEvent("event-1", EVENT_TITLE),
+            VolunteerTabs.Map,
+        )
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
+  }
+
+  /** The organizer's map is given no location provider, so it never shows where they are. */
+  @Test
+  fun organizerMap_doesNotFollowTheUsersPosition() {
+    val location =
+        openMapWithAKnownPosition(
+            UserMode.ORGANIZER,
+            OrganizerEvent("event-1", EVENT_TITLE),
+            OrganizerTabs.Map,
+        )
+
+    composeTestRule.waitForIdle()
+    assertEquals(0, location.activeCollectors)
+  }
+
   @Test
   fun organizerSharing_showsTheCodeOfTheEventAndSharesIt() {
     val organizer = signIn()
@@ -1726,6 +1758,43 @@ class ShifterNavHostTest {
         else MyEventsTestTags.STAFF_SCREEN
     )
     return navController
+  }
+
+  /**
+   * Shows the app in [mode] to a fresh account, with a GPS that knows where the user is, and opens
+   * [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map opens, so
+   * whatever follows it afterwards is the map.
+   */
+  private fun openMapWithAKnownPosition(
+      mode: UserMode,
+      event: EventMode,
+      mapTab: Tab,
+  ): FakeLocationProvider {
+    signIn(googleCredential())
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
+    val location = FakeLocationProvider().apply { setPosition(GENEVA) }
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+            locationProvider = location,
+        )
+      }
+    }
+    waitForNode(
+        if (mode == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
+        else MyEventsTestTags.STAFF_SCREEN
+    )
+    composeTestRule.runOnUiThread { NavigationActions(navController).enterEvent(event) }
+    composeTestRule.waitForIdle()
+    assertEquals(0, location.activeCollectors)
+    composeTestRule.onNodeWithTag(mapTab.testTag).performClick()
+    waitForNode(MapScreenTestTags.SCREEN)
+    return location
   }
 
   /**
