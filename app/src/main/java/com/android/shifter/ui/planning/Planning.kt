@@ -26,11 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * A mission as the Planning shows it: one the signed-in user is personally assigned to.
@@ -127,8 +127,8 @@ private fun PlanningMissionRow(mission: PlanningMission, zone: ZoneId) {
           text =
               stringResource(
                   R.string.planning_hours,
-                  mission.startAt.hours(zone),
-                  mission.endAt.hours(zone),
+                  mission.startAt.formatTime(zone),
+                  mission.endAt.formatTime(zone),
               ),
           style = MaterialTheme.typography.labelSmall,
           color = shifter_mutedText,
@@ -172,7 +172,7 @@ private fun Details(mission: PlanningMission, zone: ZoneId) {
     }
     mission.checkedInAt?.let {
       Text(
-          text = stringResource(R.string.planning_checked_in_at, it.hours(zone)),
+          text = stringResource(R.string.planning_checked_in_at, it.formatTime(zone)),
           style = MaterialTheme.typography.labelSmall,
           color = shifter_success,
           maxLines = 1,
@@ -198,10 +198,6 @@ private fun CheckInMarker(checkedIn: Boolean) {
     }
   }
 }
-
-private fun Instant.hours(zone: ZoneId): String = HOURS.format(atZone(zone))
-
-private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * These missions earliest first. Missions starting together are ordered by the earliest end, then
