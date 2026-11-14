@@ -1,15 +1,18 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.nowcard
 
+import android.graphics.Color as AndroidColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -23,6 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.GraphicsMode
 
 /** What the card under test shows; changed to drive its transitions. */
 internal data class Shown(
@@ -51,8 +55,41 @@ internal fun ComposeContentTestRule.setCard(shown: () -> Shown) {
   }
 }
 
+/**
+ * How bright the card's field is right of its text, where only the field and the flash are drawn:
+ * the sum of the pixel's channels, from 0 to 765. Needs the native graphics to draw.
+ */
+internal fun ComposeContentTestRule.fieldBrightness(): Int {
+  val card = onNodeWithTag(NowCardTestTags.CARD).captureToImage().asAndroidBitmap()
+  val pixel = card.getPixel(card.width - 30, card.height / 2)
+  return AndroidColor.red(pixel) + AndroidColor.green(pixel) + AndroidColor.blue(pixel)
+}
+
+/** Changes the card to [next] and draws its first frames, the flash just started. */
+internal fun ComposeContentTestRule.changeTone(next: Shown, show: (Shown) -> Unit) {
+  mainClock.autoAdvance = false
+  show(next)
+  Snapshot.sendApplyNotifications()
+  mainClock.advanceTimeBy(32)
+}
+
 @RunWith(AndroidJUnit4::class)
 class NowCardContainerTest {
+
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun toneChange_flashesTheCardInTheNewTone() {
+    var shown by mutableStateOf(Shown(tone = NowTone.CALM))
+    composeTestRule.setCard { shown }
+
+    composeTestRule.changeTone(Shown(tone = NowTone.ALERT)) { shown = it }
+    val flashing = composeTestRule.fieldBrightness()
+    composeTestRule.mainClock.autoAdvance = true
+    composeTestRule.waitForIdle()
+    val settled = composeTestRule.fieldBrightness()
+
+    assertTrue("flashing $flashing, settled $settled", flashing > settled + 40)
+  }
 
   @get:Rule val composeTestRule = createComposeRule()
 
