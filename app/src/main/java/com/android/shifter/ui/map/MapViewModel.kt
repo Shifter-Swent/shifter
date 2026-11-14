@@ -32,7 +32,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
@@ -281,9 +280,12 @@ class MapViewModel(
   fun clearSelection() = _uiState.update { it.copy(selected = null) }
 
   /**
-   * The provider's positions, null once access is lost or if the GPS fails: the map still works.
+   * The provider's positions, null once access is lost or while the GPS fails: the map still works.
    * Merged rather than combined, so that getting access back waits for a new position instead of
    * showing the last one. A position is checked when it arrives, as access may be lost by then.
+   *
+   * A failure clears the position and the provider is followed again after [RETRY_DELAY_MILLIS]:
+   * `catch` would end the flow, and the position would not come back until the map is left.
    */
   private fun LocationProvider.positionWhileGranted(): Flow<GeoPosition?> =
       merge(
@@ -292,7 +294,14 @@ class MapViewModel(
               },
               status.filter { it != LocationStatus.GRANTED }.map { null },
           )
-          .catch { emit(null) }
+          .retryWhen { cause, _ ->
+            val retry = cause is Exception
+            if (retry) {
+              emit(null)
+              delay(RETRY_DELAY_MILLIS)
+            }
+            retry
+          }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   private fun volunteerPins(): Flow<List<VolunteerPin>> {
