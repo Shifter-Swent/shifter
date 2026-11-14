@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -878,7 +879,7 @@ private fun People(
         }
         volunteer.checkedInAt?.let {
           Text(
-              text = TIME.format(it.atZone(zone)),
+              text = it.formatTime(zone),
               style = MaterialTheme.typography.labelSmall,
               color = shifter_mutedText,
           )
@@ -901,20 +902,24 @@ private fun schedule(mission: AttendanceMission, now: Instant, zone: ZoneId): St
         stringResource(
             R.string.attendance_schedule_across_days,
             DAY.format(start),
-            TIME.format(start),
+            mission.startAt.formatTime(zone),
             DAY.format(end),
-            TIME.format(end),
+            mission.endAt.formatTime(zone),
         )
     start.toLocalDate() != now.atZone(zone).toLocalDate() ->
         stringResource(
             R.string.attendance_schedule_on_day,
             DAY.format(start),
-            TIME.format(start),
-            TIME.format(end),
+            mission.startAt.formatTime(zone),
+            mission.endAt.formatTime(zone),
         )
-    else -> stringResource(R.string.attendance_schedule, TIME.format(start), TIME.format(end))
+    else ->
+        stringResource(
+            R.string.attendance_schedule,
+            mission.startAt.formatTime(zone),
+            mission.endAt.formatTime(zone),
+        )
   }
 }
 
-private val TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 private val DAY = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
