@@ -22,6 +22,8 @@ import kotlin.math.floor
  * The QR code of the join [code], dark modules on a light square whatever the theme, so every
  * scanner reads it. It fills the width it is given, as a square; the caller chooses the size.
  *
+ * @param code the join code to draw; must not be empty, or the generator throws. An event's
+ *   `joinCode` is empty until the backend assigns one, so check it before drawing.
  * @param generator makes the modules of the code; tests may pass a fake.
  */
 @Composable
