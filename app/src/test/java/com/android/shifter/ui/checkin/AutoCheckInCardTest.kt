@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.model.checkin.CheckInEligibility
 import com.swent.shifter.model.checkin.FakeCheckInRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.LocationStatus
@@ -79,7 +80,7 @@ class AutoCheckInCardTest {
             FakeCheckInRepository(),
             location,
             { null },
-            { _, _, _ -> false },
+            { _, _, _ -> CheckInEligibility.Ineligible(CheckInEligibility.Reason.TOO_FAR) },
         )
 
     compose.setContent { ShifterTheme { AutoCheckInRoute(viewModel) } }
