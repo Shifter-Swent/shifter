@@ -674,6 +674,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
                             repositories.eventRepository,
                             repositories.missionRepository,
                             currentUserId,
+                            repositories.minuteClock,
                             locationProvider,
                             liveLocations = repositories.liveLocationRepository,
                             watchedTeams = watchedTeams,

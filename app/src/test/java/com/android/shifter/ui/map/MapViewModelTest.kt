@@ -19,6 +19,7 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.time.FakeMinuteClock
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -64,7 +65,7 @@ class MapViewModelTest {
           events,
           missions,
           { userId },
-          { DAY.plusSeconds(12 * 3600L) },
+          FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
           UTC,
           location,
       )
@@ -193,7 +194,7 @@ class MapViewModelTest {
   private val users = FakeUserRepository(listOf(User("alice", "Alice", "alice@example.com")))
 
   /** The clock of the volunteers' map, moved by the tests to age the positions. */
-  private var clock: Instant = NOON
+  private val clock = FakeMinuteClock(NOON)
 
   /** The map of [USER], who manages the bar and the stage. */
   private fun volunteerMap(
@@ -205,7 +206,7 @@ class MapViewModelTest {
           events,
           missions,
           { userId },
-          { clock },
+          clock,
           UTC,
           liveLocations = repository,
           watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
@@ -231,7 +232,12 @@ class MapViewModelTest {
       minutesAgo: Long = 0,
   ) {
     liveLocations.currentUserId = volunteer
-    liveLocations.shareLocation(EVENT.id, teamId, position, clock.minusSeconds(minutesAgo * 60))
+    liveLocations.shareLocation(
+        EVENT.id,
+        teamId,
+        position,
+        clock.now().minusSeconds(minutesAgo * 60),
+    )
   }
 
   @Test
@@ -361,7 +367,7 @@ class MapViewModelTest {
     share("alice", "bar", TENT.position)
     val viewModel = open(volunteerMap())
 
-    clock = clock.plusSeconds(30)
+    clock.advance(Duration.ofSeconds(30))
     share("alice", "bar", STAND.position)
     runCurrent()
 
@@ -405,8 +411,7 @@ class MapViewModelTest {
     val viewModel = open(volunteerMap())
     assertFalse(viewModel.volunteers.value.single().isStale)
 
-    clock = clock.plus(Duration.ofMinutes(2))
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(2))
     runCurrent()
 
     val alice = viewModel.volunteers.value.single()
@@ -435,8 +440,7 @@ class MapViewModelTest {
     assertEquals(59, viewModel.volunteers.value.single().minutesAgo)
 
     // Without reopening the map: the next refresh of the ages leaves it out.
-    clock = clock.plus(Duration.ofMinutes(2))
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(2))
     runCurrent()
 
     assertTrue(viewModel.volunteers.value.isEmpty())
@@ -523,11 +527,14 @@ class MapViewModelTest {
         }
     runCurrent()
     assertEquals(2, counting.active)
+    assertTrue(clock.subscriptionCount.value > 0)
 
     screen.cancel()
     advanceTimeBy(MapViewModel.STOP_TIMEOUT_MILLIS + 1)
 
     assertEquals(0, counting.active)
+    // The clock is let go of too, so its timer can stop while the map is not shown.
+    assertEquals(0, clock.subscriptionCount.value)
   }
 
   @Test
@@ -553,7 +560,7 @@ class MapViewModelTest {
     open(volunteerMap(counting))
     assertEquals(2, counting.observations)
 
-    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
+    advanceTimeBy(3 * MapViewModel.REFUSED_TEAM_RETRY_MILLIS)
     runCurrent()
 
     // The bar and the stage, tried at once and then after each of the three minutes: no fast loop.
@@ -569,7 +576,7 @@ class MapViewModelTest {
     assertTrue(viewModel.volunteers.value.isEmpty())
 
     liveLocations.failure = null
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    advanceTimeBy(MapViewModel.REFUSED_TEAM_RETRY_MILLIS)
     runCurrent()
 
     assertEquals("alice", viewModel.volunteers.value.single().userId)
@@ -583,8 +590,7 @@ class MapViewModelTest {
 
     // Offline: the teams can no longer be read, so no position comes.
     teams.failure = IllegalStateException("offline")
-    clock = clock.plus(Duration.ofMinutes(3))
-    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(3))
     runCurrent()
 
     val alice = viewModel.volunteers.value.single()
@@ -613,7 +619,7 @@ class MapViewModelTest {
     val viewModel = open(volunteerMap())
 
     teams.removeMember(EVENT.id, "bar", "alice")
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
 
     assertTrue(viewModel.volunteers.value.isEmpty())
@@ -626,7 +632,7 @@ class MapViewModelTest {
     assertTrue(viewModel.volunteers.value.isEmpty())
 
     teams.addMember(EVENT.id, "bar", "erin")
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
 
     assertEquals("erin", viewModel.volunteers.value.single().userId)
@@ -639,7 +645,7 @@ class MapViewModelTest {
     assertTrue(viewModel.volunteers.value.isEmpty())
 
     teams.setManager(EVENT.id, "parking", USER)
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
 
     assertEquals("dave", viewModel.volunteers.value.single().userId)
@@ -652,7 +658,7 @@ class MapViewModelTest {
     assertEquals("carol", viewModel.volunteers.value.single().userId)
 
     teams.setManager(EVENT.id, "stage", "someone-else")
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
 
     assertTrue(viewModel.volunteers.value.isEmpty())
@@ -664,8 +670,10 @@ class MapViewModelTest {
     open(volunteerMap(counting))
     assertEquals(2, counting.observations)
 
-    advanceTimeBy(3 * MapViewModel.AGE_REFRESH_MILLIS)
-    runCurrent()
+    repeat(3) {
+      clock.advance(Duration.ofMinutes(1))
+      runCurrent()
+    }
 
     assertEquals(2, counting.observations)
   }
@@ -696,7 +704,7 @@ class MapViewModelTest {
     assertNull(viewModel.volunteers.value.single().name)
 
     users.failure = null
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
 
     assertEquals("Alice", viewModel.volunteers.value.single().name)
@@ -710,15 +718,13 @@ class MapViewModelTest {
 
     // Still readable until an hour after the end, as the rules allow. Shared again then, so the
     // position is recent and only the end of reading can take it off the map.
-    clock = EVENT.endAt + MapViewModel.READABLE_AFTER_END
+    clock.set(EVENT.endAt + MapViewModel.READABLE_AFTER_END)
     share("alice", "bar", TENT.position)
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
     runCurrent()
     assertEquals("alice", viewModel.volunteers.value.single().userId)
 
     // Past it, no refusal comes, but the map stops following the positions on its own.
-    clock = clock.plusSeconds(60)
-    advanceTimeBy(MapViewModel.AGE_REFRESH_MILLIS)
+    clock.advance(Duration.ofMinutes(1))
     runCurrent()
     assertTrue(viewModel.volunteers.value.isEmpty())
     assertEquals(0, counting.active)
