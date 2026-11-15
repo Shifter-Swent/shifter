@@ -14,6 +14,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -21,7 +22,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.days.eventDay
 import com.swent.shifter.ui.theme.shifter_mutedText
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 object PlanningScreenTestTags {
   const val LOADING = "planningLoading"
@@ -34,7 +39,9 @@ object PlanningScreenTestTags {
 @Composable
 fun PlanningScreen(viewModel: PlanningViewModel, modifier: Modifier = Modifier) {
   val uiState by viewModel.uiState.collectAsState()
-  PlanningContent(state = uiState, onRetry = viewModel::load, modifier = modifier)
+  // Taken once: the day shown when the Planning opens.
+  val today = remember { Instant.now().eventDay(ZoneId.systemDefault()) }
+  PlanningContent(state = uiState, today = today, onRetry = viewModel::load, modifier = modifier)
 }
 
 /**
@@ -42,7 +49,12 @@ fun PlanningScreen(viewModel: PlanningViewModel, modifier: Modifier = Modifier) 
  * scroll: the Overview page that hosts it, with the automatic check-in card, does.
  */
 @Composable
-fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun PlanningContent(
+    state: PlanningUiState,
+    today: LocalDate,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
   Column(modifier = modifier.fillMaxWidth().padding(top = 16.dp)) {
     when {
       state.isLoading ->
@@ -63,7 +75,7 @@ fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modif
               modifier = Modifier.testTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE),
           )
         }
-        Planning(missions = state.missions)
+        Planning(missions = state.missions, eventPeriod = state.eventPeriod, today = today)
       }
     }
   }
