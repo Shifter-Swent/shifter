@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.nowcard
 
 import com.swent.shifter.model.checkin.checkInWindow
@@ -19,24 +20,21 @@ class NowStateTest {
 
   @Test
   fun nowState_withOnlyEndedOrClosedMissions_isDone() {
-    val ended = mission("ended", START.minusSeconds(7_200), START.minusSeconds(3_600))
+    val ended = mission("ended", START.minus(hours(2)), START.minus(hours(1)))
     val closed = mission("closed").copy(completed = true)
     assertEquals(NowState.DoneForToday, nowState(listOf(ended, closed), START, setOf(ended.id)))
   }
 
   @Test
-  fun nowState_moreThan45MinutesBeforeStart_isLater() {
+  fun nowState_moreThan30MinutesBeforeStart_isLater() {
     val next = mission()
-    assertEquals(
-        NowState.Later(next),
-        nowState(listOf(next), START.minusSeconds(2_760), emptySet()),
-    )
+    assertEquals(NowState.Later(next), nowState(listOf(next), START.minus(minutes(31)), emptySet()))
   }
 
   @Test
-  fun nowState_atThe45MinuteBoundary_becomesSoon() {
+  fun nowState_atThe30MinuteBoundary_becomesSoon() {
     val next = mission()
-    val boundary = START.minus(Duration.ofMinutes(45))
+    val boundary = START.minus(minutes(30))
     assertEquals(NowState.Later(next), nowState(listOf(next), boundary.minusNanos(1), emptySet()))
     assertEquals(NowState.Soon(next), nowState(listOf(next), boundary, emptySet()))
     assertEquals(NowState.Soon(next), nowState(listOf(next), boundary.plusNanos(1), emptySet()))
@@ -84,14 +82,11 @@ class NowStateTest {
   }
 
   @Test
-  fun nowState_whenTheCheckInWindowOpens_staysSoonUntilTheMissionStarts() {
+  fun nowState_withACheckInBeforeStart_staysSoonUntilStart() {
     val current = mission()
-    // Reuse the automatic/manual check-in window instead of restating its 15-minute rule.
-    val opening = current.checkInWindow().start
-    for (now in listOf(opening.minusNanos(1), opening, opening.plusNanos(1), START.minusNanos(1))) {
-      assertEquals(NowState.Soon(current), nowState(listOf(current), now, emptySet()))
-      assertEquals(NowState.Soon(current), nowState(listOf(current), now, setOf(current.id)))
-    }
+    // Inside the check-in window, which opens before the start, but not started yet.
+    val inWindow = current.checkInWindow().start.plus(minutes(1))
+    assertEquals(NowState.Soon(current), nowState(listOf(current), inWindow, setOf(current.id)))
     assertEquals(
         NowState.Ongoing(current, null),
         nowState(listOf(current), START, setOf(current.id)),
@@ -101,43 +96,50 @@ class NowStateTest {
   @Test
   fun nowState_withAClosedCurrentMission_selectsTheFollowingOne() {
     val closed = mission().copy(completed = true)
-    val next = mission("next", START.plusSeconds(600))
+    val next = mission("next", START.plus(minutes(10)))
     assertEquals(NowState.Soon(next), nowState(listOf(closed, next), START, setOf(closed.id)))
   }
 
   @Test
   fun nowState_withAClosedFutureMission_skipsIt() {
-    val closed = mission("closed", START.plusSeconds(600)).copy(completed = true)
-    val next = mission("next", START.plusSeconds(5_400))
+    val closed = mission("closed", START.plus(minutes(10))).copy(completed = true)
+    val next = mission("next", START.plus(minutes(90)))
     assertEquals(NowState.Later(next), nowState(listOf(closed, next), START, emptySet()))
   }
 
   @Test
-  fun nowState_withAStartedMission_showsTheNextOneWithin45Minutes() {
-    val current = mission("current", START.minusSeconds(600))
-    val next = mission("next", START.plusSeconds(1_800))
-    val after = mission("after", START.plusSeconds(2_400))
+  fun nowState_withAClosedMissionComingNext_leavesItOutOfTheNextStrip() {
+    val current = mission("current", START.minus(minutes(10)))
+    val closed = mission("closed", START.plus(minutes(10))).copy(completed = true)
+    val next = mission("next", START.plus(minutes(20)))
+    val missions = listOf(current, closed, next)
+    assertEquals(NowState.Late(current, next), nowState(missions, START, emptySet()))
+    assertEquals(NowState.Ongoing(current, next), nowState(missions, START, setOf(current.id)))
+  }
+
+  @Test
+  fun nowState_withAStartedMission_showsTheNextOneWithin30Minutes() {
+    val current = mission("current", START.minus(minutes(10)))
+    val next = mission("next", START.plus(minutes(20)))
+    val after = mission("after", START.plus(minutes(25)))
     val missions = listOf(after, next, current)
     assertEquals(NowState.Late(current, next), nowState(missions, START, emptySet()))
     assertEquals(NowState.Ongoing(current, next), nowState(missions, START, setOf(current.id)))
   }
 
   @Test
-  fun nowState_withTheNextMissionAtThe45MinuteBoundary_includesIt() {
-    val current = mission("current", START.minusSeconds(600))
-    val next = mission("next", START.plus(Duration.ofMinutes(45)))
-    for (checkedIn in listOf(emptySet(), setOf(current.id))) {
-      val expected =
-          if (current.id in checkedIn) NowState.Ongoing(current, next)
-          else NowState.Late(current, next)
-      assertEquals(expected, nowState(listOf(current, next), START, checkedIn))
-    }
+  fun nowState_withTheNextMissionAtThe30MinuteBoundary_includesIt() {
+    val current = mission("current", START.minus(minutes(10)))
+    val next = mission("next", START.plus(minutes(30)))
+    val missions = listOf(current, next)
+    assertEquals(NowState.Late(current, next), nowState(missions, START, emptySet()))
+    assertEquals(NowState.Ongoing(current, next), nowState(missions, START, setOf(current.id)))
   }
 
   @Test
-  fun nowState_withTheNextMissionBeyond45Minutes_omitsIt() {
-    val current = mission("current", START.minusSeconds(600))
-    val next = mission("next", START.plus(Duration.ofMinutes(45)).plusNanos(1))
+  fun nowState_withTheNextMissionBeyond30Minutes_omitsIt() {
+    val current = mission("current", START.minus(minutes(10)))
+    val next = mission("next", START.plus(minutes(30)).plusNanos(1))
     val missions = listOf(current, next)
     assertEquals(NowState.Late(current, null), nowState(missions, START, emptySet()))
     assertEquals(NowState.Ongoing(current, null), nowState(missions, START, setOf(current.id)))
@@ -145,7 +147,7 @@ class NowStateTest {
 
   @Test
   fun nowState_withBackToBackMissions_switchesAtTheSharedBoundary() {
-    val first = mission("first", START.minusSeconds(3_600), START)
+    val first = mission("first", START.minus(hours(1)), START)
     val second = mission("second")
     val missions = listOf(second, first)
     assertEquals(
@@ -160,19 +162,37 @@ class NowStateTest {
   }
 
   @Test
-  fun nowState_withOverlappingRunningMissions_keepsTheEarliestStart() {
-    val first = mission("first", START.minusSeconds(1_200), START.plusSeconds(3_600))
-    val second = mission("second", START.minusSeconds(600), START.plusSeconds(1_800))
-    val next = mission("next", START.plusSeconds(300))
+  fun nowState_lateForTheCurrentMissionAndCheckedInToTheNext_staysLateWithTheNextShown() {
+    val first = mission("first", START.minus(hours(1)), START)
+    val second = mission("second")
+    val earlyCheckIn = START.minus(minutes(10))
+    assertEquals(
+        NowState.Late(first, second),
+        nowState(listOf(first, second), earlyCheckIn, setOf(second.id)),
+    )
+  }
+
+  @Test
+  fun nowState_withOverlappingRunningMissions_prefersTheOneCheckedInTo() {
+    val first = mission("first", START.minus(minutes(20)), START.plus(hours(1)))
+    val second = mission("second", START.minus(minutes(10)), START.plus(minutes(30)))
+    val next = mission("next", START.plus(minutes(5)))
     for (missions in listOf(listOf(first, second, next), listOf(next, second, first))) {
-      assertEquals(NowState.Late(first, next), nowState(missions, START, setOf(second.id)))
+      assertEquals(NowState.Ongoing(second, next), nowState(missions, START, setOf(second.id)))
       assertEquals(NowState.Ongoing(first, next), nowState(missions, START, setOf(first.id)))
     }
   }
 
   @Test
+  fun nowState_withOverlappingRunningMissionsAndNoCheckIn_isLateForTheEarliest() {
+    val first = mission("first", START.minus(minutes(20)), START.plus(hours(1)))
+    val second = mission("second", START.minus(minutes(10)), START.plus(minutes(30)))
+    assertEquals(NowState.Late(first, null), nowState(listOf(second, first), START, emptySet()))
+  }
+
+  @Test
   fun nowState_withEqualStarts_selectsTheEarliestEnd() {
-    val shorter = mission("z-shorter", START, START.plusSeconds(1_800))
+    val shorter = mission("z-shorter", START, START.plus(minutes(30)))
     val longer = mission("a-longer")
     assertEquals(NowState.Late(shorter, null), nowState(listOf(longer, shorter), START, emptySet()))
   }
@@ -190,8 +210,8 @@ class NowStateTest {
 
   @Test
   fun nowState_withUnsortedFutureMissions_selectsTheEarliest() {
-    val first = mission("first", START.plusSeconds(600))
-    val later = mission("later", START.plusSeconds(1_200))
+    val first = mission("first", START.plus(minutes(10)))
+    val later = mission("later", START.plus(minutes(20)))
     assertEquals(NowState.Soon(first), nowState(listOf(later, first), START, emptySet()))
   }
 
@@ -200,7 +220,7 @@ class NowStateTest {
     val current = mission().copy(location = null)
     assertEquals(
         NowState.Soon(current),
-        nowState(listOf(current), START.minusSeconds(60), emptySet()),
+        nowState(listOf(current), START.minus(minutes(1)), emptySet()),
     )
     assertEquals(NowState.Late(current, null), nowState(listOf(current), START, emptySet()))
     assertEquals(
@@ -218,7 +238,7 @@ class NowStateTest {
   @Test
   fun nowState_withAMissionAcrossMidnight_keepsItUntilItsEnd() {
     val midnight = Instant.parse("2026-11-15T00:00:00Z")
-    val current = mission("night", midnight.minusSeconds(1_800), midnight.plusSeconds(1_800))
+    val current = mission("night", midnight.minus(minutes(30)), midnight.plus(minutes(30)))
     assertEquals(
         NowState.Ongoing(current, null),
         nowState(listOf(current), midnight, setOf(current.id)),
@@ -234,7 +254,7 @@ class NowStateTest {
   private fun mission(
       id: String = "mission",
       start: Instant = START,
-      end: Instant = start.plusSeconds(3_600),
+      end: Instant = start.plus(hours(1)),
   ) =
       Mission(
           id = id,
@@ -250,5 +270,9 @@ class NowStateTest {
 
   private companion object {
     val START: Instant = Instant.parse("2026-11-14T12:00:00Z")
+
+    fun minutes(count: Long): Duration = Duration.ofMinutes(count)
+
+    fun hours(count: Long): Duration = Duration.ofHours(count)
   }
 }
