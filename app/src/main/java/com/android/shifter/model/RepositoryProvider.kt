@@ -11,7 +11,12 @@ import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.model.time.DeviceMinuteClock
+import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.model.user.UserRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * The repositories the app is built from, held in one immutable container.
@@ -41,4 +46,11 @@ class RepositoryProvider(
      * backend, so it is held here with a default rather than built by [RepositoryProviderFactory].
      */
     val localSharingConsent: LocalSharingConsent = LocalSharingConsent(),
+    /**
+     * The one clock the screens follow, so they share a single minute timer (#518). It reads the
+     * device and starts ticking only while collected, so it is held here with a default, like
+     * [localSharingConsent]; a test passes a fake to move time by hand.
+     */
+    val minuteClock: MinuteClock =
+        DeviceMinuteClock(CoroutineScope(SupervisorJob() + Dispatchers.Default)),
 )
