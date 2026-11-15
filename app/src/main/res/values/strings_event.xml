@@ -56,4 +56,5 @@
     <string name="event_join_code_loading">Loading the code</string>
     <string name="event_join_code_unavailable">Code unavailable</string>
     <string name="event_join_code_retry">Retry</string>
+    <string name="event_join_code_qr_description">QR code of the join code %1$s</string>
 </resources>

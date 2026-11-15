@@ -149,6 +149,8 @@ dependencies {
   implementation(libs.maps.compose)
   implementation(libs.play.services.maps)
   implementation(libs.play.services.location)
+  // QR codes of the join codes, generated on the device
+  implementation(libs.zxing.core)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
