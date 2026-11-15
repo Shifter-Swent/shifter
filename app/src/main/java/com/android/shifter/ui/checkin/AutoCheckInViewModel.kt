@@ -23,6 +23,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.coroutineScope
@@ -222,28 +223,36 @@ class AutoCheckInViewModel(
               // Before the check-ins of a mission's event are known, a position could check in to
               // it twice: the mission waits for the next position.
               .filter { it.eventId in checkIns.events }
-              .forEach { mission ->
-                when {
-                  mission.key in checkIns.done -> report(mission, null)
-                  mission.key in tried -> Unit
-                  else -> {
-                    val result = eligibility(mission, time, position)
-                    if (result == CheckInEligibility.Eligible) {
-                      // A failure of the last try stays until this one answers.
-                      if (_uiState.value.whyNotCheckedIn(mission) == NotCheckedIn.OUTSIDE_ZONE) {
-                        report(mission, null)
-                      }
-                      tried += mission.key
-                      launch { checkIn(mission, userId, known) }
-                    } else {
-                      val outside =
-                          result.isTooFar && _uiState.value.locationStatus == LocationStatus.GRANTED
-                      report(mission, if (outside) NotCheckedIn.OUTSIDE_ZONE else null)
-                    }
-                  }
-                }
-              }
+              .forEach { mission -> evaluate(mission, time, position, checkIns, userId, known) }
         }
+  }
+
+  /**
+   * Checks [mission] against the volunteer's [position] at [time]: checks them in when eligible,
+   * otherwise records why not. A mission already checked in, or tried, is left alone.
+   */
+  private fun CoroutineScope.evaluate(
+      mission: Mission,
+      time: Instant,
+      position: GeoPosition,
+      checkIns: KnownCheckIns,
+      userId: String,
+      known: StateFlow<KnownCheckIns>,
+  ) {
+    if (mission.key in checkIns.done) return report(mission, null)
+    if (mission.key in tried) return
+    val result = eligibility(mission, time, position)
+    if (result == CheckInEligibility.Eligible) {
+      // A failure of the last try stays until this one answers.
+      if (_uiState.value.whyNotCheckedIn(mission) == NotCheckedIn.OUTSIDE_ZONE) {
+        report(mission, null)
+      }
+      tried += mission.key
+      launch { checkIn(mission, userId, known) }
+    } else {
+      val outside = result.isTooFar && _uiState.value.locationStatus == LocationStatus.GRANTED
+      report(mission, if (outside) NotCheckedIn.OUTSIDE_ZONE else null)
+    }
   }
 
   /**
