@@ -20,10 +20,10 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
+import com.swent.shifter.ui.components.time.formatTime
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -210,8 +210,8 @@ class MapViewModel(
                 ?.let {
                   NextMission(
                       markerId = it.id,
-                      startTime = HOURS.format(it.startAt.atZone(zone)),
-                      endTime = HOURS.format(it.endAt.atZone(zone)),
+                      startTime = it.startAt.formatTime(zone),
+                      endTime = it.endAt.formatTime(zone),
                       isOngoing = it.startAt <= now,
                   )
                 }
@@ -355,7 +355,7 @@ class MapViewModel(
   /** The marker of this mission, titled with its name and its hours, or null with no location. */
   private fun Mission.toMarker(): MapMarker? {
     val location = location ?: return null
-    val hours = "${HOURS.format(startAt.atZone(zone))}–${HOURS.format(endAt.atZone(zone))}"
+    val hours = "${startAt.formatTime(zone)}–${endAt.formatTime(zone)}"
     return MapMarker(
         id = id,
         position = location.position,
@@ -367,8 +367,6 @@ class MapViewModel(
   companion object {
     /** Keeps the positions coming across a configuration change, not in the background. */
     const val STOP_TIMEOUT_MILLIS = 5_000L
-
-    private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     /** How old a volunteer's position may be before the map greys it out. */
     val STALE_AFTER: Duration = Duration.ofMinutes(10)

@@ -3,6 +3,7 @@ package com.swent.shifter.ui.components.time
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
@@ -20,6 +21,27 @@ class TimeFormatTest {
   @Test
   fun formatTime_atMidnight_writesZeroHours() {
     assertEquals("00:00", Instant.parse("2026-11-14T00:00:00Z").formatTime(ZoneOffset.UTC))
+  }
+
+  @Test
+  fun formatTime_ofALocalTime_padsHoursAndMinutes() {
+    assertEquals("07:05", LocalTime.of(7, 5).formatTime())
+  }
+
+  @Test
+  fun formatTime_pastMidnightInTheZone_rollsOverTheDate() {
+    assertEquals("00:30", Instant.parse("2026-11-14T23:30:00Z").formatTime(ZURICH))
+  }
+
+  @Test
+  fun formatTime_atSpringForward_skipsTheMissingHour() {
+    assertEquals("03:30", Instant.parse("2026-03-29T01:30:00Z").formatTime(ZURICH))
+  }
+
+  @Test
+  fun formatTime_inTheRepeatedAutumnHour_readsTheSame() {
+    assertEquals("02:30", Instant.parse("2026-10-25T00:30:00Z").formatTime(ZURICH))
+    assertEquals("02:30", Instant.parse("2026-10-25T01:30:00Z").formatTime(ZURICH))
   }
 
   @Test
@@ -42,5 +64,6 @@ class TimeFormatTest {
 
   private companion object {
     val NOW: Instant = Instant.parse("2026-11-14T14:00:00Z")
+    val ZURICH: ZoneId = ZoneId.of("Europe/Zurich")
   }
 }

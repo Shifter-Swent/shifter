@@ -8,12 +8,16 @@ import androidx.compose.ui.platform.LocalResources
 import com.swent.shifter.R
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** The time of day of this instant in [zone], as the app writes it everywhere: "14:00". */
 fun Instant.formatTime(zone: ZoneId): String = TIME.format(atZone(zone))
+
+/** This local time as the app writes it everywhere, like [Instant.formatTime]: "14:00". */
+fun LocalTime.formatTime(): String = TIME.format(this)
 
 private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 

@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_announcement
 import com.swent.shifter.ui.theme.shifter_announcementContainer
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -357,11 +358,10 @@ private val ChatError.messageRes: Int
  */
 internal fun sentAtLabel(sentAt: ZonedDateTime, today: LocalDate): String =
     when {
-      sentAt.toLocalDate() == today -> TIME
-      sentAt.year == today.year -> DAY_AND_TIME
-      else -> DATE_AND_TIME
-    }.format(sentAt)
+      sentAt.toLocalDate() == today -> sentAt.toLocalTime().formatTime()
+      sentAt.year == today.year -> DAY_AND_TIME.format(sentAt)
+      else -> DATE_AND_TIME.format(sentAt)
+    }
 
-private val TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 private val DAY_AND_TIME = DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.ENGLISH)
 private val DATE_AND_TIME = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH)
