@@ -44,6 +44,9 @@ enum class JoinEventError {
  *   Once a request is sent, the team it was sent to.
  * @property requestStatus the status of the volunteer's request for the event, null while they have
  *   none. Finding an event they already applied to shows that request, possibly decided.
+ * @property requestSentTo the title of the event a request was just sent to, so the screen leaves
+ *   for My Events; null otherwise, including for a request found already sent. The screen calls
+ *   [JoinEventViewModel.onRequestSentHandled] once it has left.
  */
 data class JoinEventUiState(
     val joinCode: String = "",
@@ -54,6 +57,7 @@ data class JoinEventUiState(
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
     val hasEnded: Boolean = false,
+    val requestSentTo: String? = null,
 ) {
   /** Whether [joinCode] is complete and could exist, so the volunteer can look it up. */
   val canFind: Boolean
@@ -171,9 +175,12 @@ class JoinEventViewModel(
               createdAt = now(),
           )
       val sent = membershipRequestRepository.apply(event.id, request)
-      _uiState.update { it.copy(requestStatus = sent.status) }
+      _uiState.update { it.copy(requestStatus = sent.status, requestSentTo = event.title) }
     }
   }
+
+  /** Clears [JoinEventUiState.requestSentTo] once the screen has left for My Events. */
+  fun onRequestSentHandled() = _uiState.update { it.copy(requestSentTo = null) }
 
   /** Runs [block] with the loading flag set, turning failures into an error. */
   private fun launchLoading(block: suspend () -> Unit) {

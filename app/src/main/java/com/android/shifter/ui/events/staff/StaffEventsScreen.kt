@@ -8,9 +8,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -34,6 +37,8 @@ import com.swent.shifter.ui.theme.ShifterTheme
 /**
  * [StaffEventsContent] driven by [viewModel], which owns the cards and the selected tab and
  * withdraws from events. The other callbacks are navigation, left to the caller.
+ *
+ * @param snackbarHostState shows the messages the caller sends, such as a request just sent.
  */
 @Composable
 fun StaffEventsScreen(
@@ -42,6 +47,7 @@ fun StaffEventsScreen(
     onOpenEvent: (EventCardUi) -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
   val state by viewModel.uiState.collectAsState()
   StaffEventsContent(
@@ -53,6 +59,7 @@ fun StaffEventsScreen(
       onScanQrClick = onScanQrClick,
       onAvatarClick = onAvatarClick,
       onRefresh = viewModel::refresh,
+      snackbarHostState = snackbarHostState,
   )
 }
 
@@ -72,6 +79,7 @@ fun StaffEventsContent(
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onRefresh: () -> Unit = {},
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
   MyEventsLayout(
       state = state,
@@ -89,6 +97,7 @@ fun StaffEventsContent(
         if (card.badge == EventBadge.PENDING_APPROVAL) null else ({ onOpenEvent(card) })
       },
       modifier = Modifier.testTag(MyEventsTestTags.STAFF_SCREEN),
+      snackbarHost = { SnackbarHost(snackbarHostState) },
   ) {
     ScanQrButton(onScanQrClick)
   }

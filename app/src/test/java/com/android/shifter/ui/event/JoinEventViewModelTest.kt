@@ -94,6 +94,8 @@ class JoinEventViewModelTest {
 
     assertEquals(EVENT, viewModel.uiState.value.event)
     assertEquals(MembershipRequestStatus.REJECTED, viewModel.uiState.value.requestStatus)
+    // A request found already sent keeps the volunteer on the event: only a new one leaves it.
+    assertNull(viewModel.uiState.value.requestSentTo)
     viewModel.applyToEvent()
     coVerify(exactly = 0) { requests.apply(any(), any()) }
   }
@@ -287,6 +289,19 @@ class JoinEventViewModelTest {
   }
 
   @Test
+  fun apply_reportsTheEventTheRequestWasSentTo_untilHandled() {
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+
+    viewModel.applyToEvent()
+    assertEquals(EVENT.title, viewModel.uiState.value.requestSentTo)
+
+    viewModel.onRequestSentHandled()
+    assertNull(viewModel.uiState.value.requestSentTo)
+    assertEquals(MembershipRequestStatus.PENDING, viewModel.uiState.value.requestStatus)
+  }
+
+  @Test
   fun apply_showsTheStatusOfAnAlreadyDecidedRequest() {
     loadEvent()
     coEvery { requests.apply(any(), any()) } answers
@@ -352,6 +367,7 @@ class JoinEventViewModelTest {
     )
     assertEquals(JoinEventError.UNEXPECTED, failWith(IllegalStateException()))
     assertNull(viewModel.uiState.value.requestStatus)
+    assertNull(viewModel.uiState.value.requestSentTo)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 

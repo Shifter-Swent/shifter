@@ -44,6 +44,7 @@ import com.swent.shifter.ui.events.MyEventsUiState
  * @param cardAction the action link of each card, or null to hide it.
  * @param cardOpen what tapping each card does, or null for a card that cannot be opened.
  * @param onRefresh reloads the cards when the list, or its message, is pulled down.
+ * @param snackbarHost shown above the floating buttons, e.g. to confirm a request just sent.
  */
 @Composable
 fun MyEventsLayout(
@@ -56,6 +57,7 @@ fun MyEventsLayout(
     cardOpen: (EventCardUi) -> (() -> Unit)? = { null },
     subtitle: String? = null,
     onRefresh: () -> Unit = {},
+    snackbarHost: @Composable () -> Unit = {},
     floatingContent: @Composable BoxScope.() -> Unit = {},
 ) {
   Scaffold(
@@ -64,6 +66,7 @@ fun MyEventsLayout(
       // The insets are already handled by safeDrawingPadding.
       contentWindowInsets = WindowInsets(0),
       bottomBar = { Box(Modifier.fillMaxWidth()) { floatingContent() } },
+      snackbarHost = snackbarHost,
   ) { innerPadding ->
     Column(Modifier.fillMaxSize()) {
       MyEventsTopBar(

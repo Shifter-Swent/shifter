@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +64,8 @@ import com.swent.shifter.ui.event.EventCreatedScreen
 import com.swent.shifter.ui.event.EventCreatedViewModel
 import com.swent.shifter.ui.event.JoinEventScreen
 import com.swent.shifter.ui.event.JoinEventViewModel
+import com.swent.shifter.ui.event.RequestSentSnackbar
+import com.swent.shifter.ui.event.putRequestSent
 import com.swent.shifter.ui.events.MembershipEventWithdrawer
 import com.swent.shifter.ui.events.MyEventsViewModel
 import com.swent.shifter.ui.events.OrganizerEventsLoader
@@ -213,7 +216,7 @@ private fun ShifterNavGraph(
     }
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
-      composable<Volunteer.Events> {
+      composable<Volunteer.Events> { entry ->
         val viewModel: StaffEventsViewModel =
             viewModel(
                 factory =
@@ -233,12 +236,15 @@ private fun ShifterNavGraph(
                     )
             )
         RefreshOnReturn(viewModel)
+        val snackbarHostState = remember { SnackbarHostState() }
+        RequestSentSnackbar(entry.savedStateHandle, snackbarHostState)
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onOpenEvent = { card -> nav.enterEvent(VolunteerEvent(card.id, card.title)) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
+            snackbarHostState = snackbarHostState,
         )
       }
       composable<Volunteer.ProfileSettings> {
@@ -253,7 +259,7 @@ private fun ShifterNavGraph(
       }
       composable<Volunteer.QrApply> {
         // The screen's own Back returns from the event to the code; the device Back on the code
-        // leaves it, back to the events list.
+        // leaves it, back to the events list. Once a request is sent, the list confirms it.
         JoinEventScreen(
             viewModel =
                 viewModel(
@@ -264,7 +270,14 @@ private fun ShifterNavGraph(
                             repositories.teamRepository,
                             currentUserId,
                         )
-                )
+                ),
+            onRequestSent = { eventTitle ->
+              navController
+                  .getBackStackEntry<Volunteer.Events>()
+                  .savedStateHandle
+                  .putRequestSent(eventTitle)
+              nav.backTo(Volunteer.Events)
+            },
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
