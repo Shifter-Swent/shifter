@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -54,6 +55,8 @@ class PlanningMissionDetailsTest {
       ShifterTheme {
         Planning(
             missions = missions.toList(),
+            eventPeriod = null,
+            today = TODAY,
             zone = ZoneOffset.UTC,
             expandedMissionId = expanded,
             onMissionClick = { id -> expanded = if (expanded == id) null else id },
@@ -133,6 +136,8 @@ class PlanningMissionDetailsTest {
           if (visible()) {
             Planning(
                 missions = listOf(mission("a")),
+                eventPeriod = null,
+                today = TODAY,
                 zone = ZoneOffset.UTC,
                 expandedMissionId = expanded,
                 onMissionClick = { id -> expanded = if (expanded == id) null else id },
@@ -199,7 +204,14 @@ class PlanningMissionDetailsTest {
   @Test
   fun planning_withoutClickHandler_cannotBeTapped() {
     compose.setContent {
-      ShifterTheme { Planning(missions = listOf(mission("a")), zone = ZoneOffset.UTC) }
+      ShifterTheme {
+        Planning(
+            missions = listOf(mission("a")),
+            eventPeriod = null,
+            today = TODAY,
+            zone = ZoneOffset.UTC,
+        )
+      }
     }
 
     row("a").assertHasNoClickAction()
@@ -207,5 +219,7 @@ class PlanningMissionDetailsTest {
 
   private companion object {
     val START: Instant = Instant.parse("2025-06-14T08:00:00Z")
+    /** The day of [START], so its missions are the ones shown. */
+    val TODAY: LocalDate = LocalDate.of(2025, 6, 14)
   }
 }

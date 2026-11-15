@@ -1,14 +1,19 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.planning
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -20,7 +25,8 @@ class PlanningTest {
 
   @get:Rule val compose = createComposeRule()
 
-  private fun at(time: String): Instant = Instant.parse("2025-06-14T$time:00Z")
+  private fun at(time: String, date: LocalDate = SATURDAY): Instant =
+      Instant.parse("${date}T$time:00Z")
 
   private fun mission(
       id: String,
@@ -29,12 +35,38 @@ class PlanningTest {
       title: String = "Mission $id",
       address: String? = null,
       checkedInAt: Instant? = null,
-  ) = PlanningMission(id, title, at(start), at(end), address, checkedInAt)
+      date: LocalDate = SATURDAY,
+  ) = PlanningMission(id, title, at(start, date), at(end, date), address, checkedInAt)
 
-  // In UTC, so the hours shown do not depend on the time zone of the device running the tests.
-  private fun show(missions: List<PlanningMission>) {
-    compose.setContent { ShifterTheme { Planning(missions = missions, zone = ZoneOffset.UTC) } }
+  @Composable
+  private fun PlanningUnderTest(
+      missions: List<PlanningMission>,
+      eventPeriod: ClosedRange<Instant>?,
+      today: LocalDate,
+  ) {
+    // In UTC, so the days and hours do not depend on the time zone of the device running the tests.
+    ShifterTheme { Planning(missions, eventPeriod, today, zone = ZoneOffset.UTC) }
   }
+
+  private fun show(
+      missions: List<PlanningMission>,
+      eventPeriod: ClosedRange<Instant>? = null,
+      today: LocalDate = SATURDAY,
+  ) {
+    compose.setContent { PlanningUnderTest(missions, eventPeriod, today) }
+  }
+
+  private fun missionShown(id: String) =
+      compose.onNodeWithTag(PlanningTestTags.mission(id)).assertIsDisplayed()
+
+  private fun missionHidden(id: String) =
+      compose.onNodeWithTag(PlanningTestTags.mission(id)).assertDoesNotExist()
+
+  private fun pick(day: LocalDate) = compose.onNodeWithTag(DayStripTestTags.day(day)).performClick()
+
+  /** Friday 13 to Monday 16, with a mission on Saturday and one on Sunday. */
+  private val festival = at("08:00", FRIDAY)..at("22:00", MONDAY)
+  private val weekend = listOf(mission("sat", date = SATURDAY), mission("sun", date = SUNDAY))
 
   private fun topOf(missionId: String): Float =
       compose
@@ -100,5 +132,124 @@ class PlanningTest {
     show(listOf(mission("m1", address = "Station A")))
 
     compose.onNodeWithTag(PlanningTestTags.checkIn("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun severalDays_showsTheStripAndOnlyTodaysMissions() {
+    show(weekend, festival)
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertIsDisplayed()
+    missionShown("sat")
+    missionHidden("sun")
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun beforeTheEvent_opensItsFirstDay() {
+    show(weekend, festival, today = LocalDate.parse("2025-06-01"))
+
+    compose
+        .onNodeWithTag(PlanningTestTags.EMPTY_DAY)
+        .assertTextEquals("Nothing planned on Friday 13 June")
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun afterTheEvent_opensItsLastDay() {
+    show(weekend, eventPeriod = null, today = LocalDate.parse("2025-06-30"))
+
+    missionShown("sun")
+    missionHidden("sat")
+  }
+
+  @Test
+  fun pickingADay_showsItsMissionsAndBackToToday() {
+    show(weekend, festival)
+
+    pick(SUNDAY)
+
+    missionShown("sun")
+    missionHidden("sat")
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertIsDisplayed()
+  }
+
+  @Test
+  fun backToToday_showsTodayAgain() {
+    show(weekend, festival)
+    pick(SUNDAY)
+
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).performClick()
+
+    missionShown("sat")
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun aDayWithoutMissions_saysNothingIsPlanned() {
+    show(weekend, festival)
+
+    pick(MONDAY)
+
+    compose
+        .onNodeWithTag(PlanningTestTags.EMPTY_DAY)
+        .assertTextEquals("Nothing planned on Monday 16 June")
+  }
+
+  @Test
+  fun withoutTheEventDates_offersTheDaysBetweenTheMissions() {
+    show(listOf(mission("sat", date = SATURDAY), mission("mon", date = MONDAY)))
+
+    compose.onNodeWithTag(DayStripTestTags.day(SUNDAY)).assertIsDisplayed()
+    compose.onNodeWithTag(DayStripTestTags.day(FRIDAY)).assertDoesNotExist()
+  }
+
+  @Test
+  fun aNightShift_isShownWithTheEveningBefore_withItsDay() {
+    show(
+        listOf(
+            mission("night", start = "02:00", end = "04:00", date = SUNDAY),
+            mission("breakfast", start = "08:00", date = SUNDAY),
+        ),
+        festival,
+    )
+
+    missionShown("night")
+    missionHidden("breakfast")
+    compose.onNodeWithText("Sun 02:00–04:00").assertIsDisplayed()
+  }
+
+  @Test
+  fun aOneDayEvent_hasNoStrip() {
+    show(weekend.take(1), eventPeriod = at("08:00")..at("22:00"))
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    missionShown("sat")
+  }
+
+  @Test
+  fun withoutMissions_hasNoStrip() {
+    show(emptyList(), festival)
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    compose.onNodeWithTag(PlanningTestTags.EMPTY).assertIsDisplayed()
+  }
+
+  @Test
+  fun thePickedDay_survivesARecreation() {
+    val restoration = StateRestorationTester(compose)
+    restoration.setContent { PlanningUnderTest(weekend, festival, SATURDAY) }
+    pick(SUNDAY)
+
+    restoration.emulateSavedInstanceStateRestore()
+
+    missionShown("sun")
+    missionHidden("sat")
+  }
+
+  private companion object {
+    val FRIDAY: LocalDate = LocalDate.parse("2025-06-13")
+    val SATURDAY: LocalDate = LocalDate.parse("2025-06-14")
+    val SUNDAY: LocalDate = LocalDate.parse("2025-06-15")
+    val MONDAY: LocalDate = LocalDate.parse("2025-06-16")
   }
 }
