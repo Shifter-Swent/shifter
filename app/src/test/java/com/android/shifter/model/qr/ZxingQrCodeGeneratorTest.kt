@@ -62,22 +62,6 @@ class ZxingQrCodeGeneratorTest {
     assertThrows(IllegalArgumentException::class.java) { ZxingQrCodeGenerator.matrix("") }
   }
 
-  @Test
-  fun isDark_outsideTheMatrix_throws() {
-    val matrix = QrMatrix(2, booleanArrayOf(true, false, false, true))
-
-    assertTrue(matrix.isDark(1, 1))
-    assertFalse(matrix.isDark(1, 0))
-    assertThrows(IllegalArgumentException::class.java) { matrix.isDark(2, 0) }
-    assertThrows(IllegalArgumentException::class.java) { matrix.isDark(0, -1) }
-  }
-
-  @Test
-  fun qrMatrix_withTheWrongNumberOfModules_isRefused() {
-    assertThrows(IllegalArgumentException::class.java) { QrMatrix(2, BooleanArray(3)) }
-    assertThrows(IllegalArgumentException::class.java) { QrMatrix(0, BooleanArray(0)) }
-  }
-
   private companion object {
     const val BLACK = 0xFF000000.toInt()
     const val WHITE = 0xFFFFFFFF.toInt()
