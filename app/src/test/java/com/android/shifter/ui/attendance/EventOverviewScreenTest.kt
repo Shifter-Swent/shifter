@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.attendance
 
 import androidx.compose.material3.Text
@@ -268,6 +269,8 @@ class EventOverviewScreenTest {
 
     compose.onNodeWithTag(ManagerOverviewTestTags.mission(mission.id)).assertIsDisplayed()
     compose.onNodeWithText("Check-in not open yet").assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
+    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
   }
 
   private companion object {
