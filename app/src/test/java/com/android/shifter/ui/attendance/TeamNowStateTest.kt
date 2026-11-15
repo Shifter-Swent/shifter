@@ -26,7 +26,7 @@ class TeamNowStateTest {
   private val noah = absent("noah")
 
   private fun present(id: String) =
-      AttendanceVolunteer(id, id.replaceFirstChar { it.uppercase() }, now - Duration.ofMinutes(20))
+      AttendanceVolunteer(id, id.replaceFirstChar { it.uppercase() }, now - Duration.ofMinutes(1))
 
   private fun absent(id: String) = AttendanceVolunteer(id, id.replaceFirstChar { it.uppercase() })
 
@@ -62,7 +62,7 @@ class TeamNowStateTest {
   // The rules
 
   @Test
-  fun rules_holdTheAgreedDelays() {
+  fun TeamNowRules_holdTheAgreedDelays() {
     assertEquals(Duration.ofMinutes(30), window)
     assertEquals(Duration.ofMinutes(30), shortMission)
     assertEquals(Duration.ofMinutes(3), shortGrace)
@@ -105,7 +105,10 @@ class TeamNowStateTest {
   fun teamNowState_withAbsenteePastTheGracePeriod_isMissing() {
     val late = mission("late", ago(10), assignees = listOf(alice, emma))
 
-    assertEquals(Missing(listOf(late to emma), onDuty = 1), teamNowState(listOf(late), now))
+    assertEquals(
+        Missing(listOf(MissingAssignee(late, emma)), onDuty = 1),
+        teamNowState(listOf(late), now),
+    )
   }
 
   @Test
@@ -177,7 +180,10 @@ class TeamNowStateTest {
             assignees = listOf(emma),
         )
 
-    assertEquals(Missing(listOf(ending to emma), onDuty = 0), teamNowState(listOf(ending), now))
+    assertEquals(
+        Missing(listOf(MissingAssignee(ending, emma)), onDuty = 0),
+        teamNowState(listOf(ending), now),
+    )
   }
 
   @Test
@@ -216,7 +222,10 @@ class TeamNowStateTest {
     val short =
         mission("short", now - shortGrace - second, lasts = shortMission, assignees = listOf(emma))
 
-    assertEquals(Missing(listOf(short to emma), onDuty = 0), teamNowState(listOf(short), now))
+    assertEquals(
+        Missing(listOf(MissingAssignee(short, emma)), onDuty = 0),
+        teamNowState(listOf(short), now),
+    )
   }
 
   @Test
@@ -243,7 +252,10 @@ class TeamNowStateTest {
   fun teamNowState_longMissionJustAfterItsGrace_isMissing() {
     val long = mission("long", now - longGrace - second, assignees = listOf(emma))
 
-    assertEquals(Missing(listOf(long to emma), onDuty = 0), teamNowState(listOf(long), now))
+    assertEquals(
+        Missing(listOf(MissingAssignee(long, emma)), onDuty = 0),
+        teamNowState(listOf(long), now),
+    )
   }
 
   // Several missions
@@ -329,7 +341,7 @@ class TeamNowStateTest {
     val handover = mission("handover", ago(2), assignees = listOf(bob, noah))
 
     assertEquals(
-        Missing(listOf(late to emma), onDuty = 2),
+        Missing(listOf(MissingAssignee(late, emma)), onDuty = 2),
         teamNowState(listOf(late, handover), now),
     )
   }
@@ -350,7 +362,7 @@ class TeamNowStateTest {
     val unknown = mission("unknown", ago(60), assignees = listOf(emma), known = false)
 
     assertEquals(
-        Running(listOf(unknown), onDuty = 0, emptyList()),
+        Running(listOf(unknown), onDuty = 0, emptyList(), attendanceUnknown = listOf(unknown)),
         teamNowState(listOf(unknown), now),
     )
   }
@@ -360,7 +372,7 @@ class TeamNowStateTest {
     val failed = mission("failed", ago(60), assignees = listOf(emma), known = false, failed = true)
 
     assertEquals(
-        Running(listOf(failed), onDuty = 0, emptyList()),
+        Running(listOf(failed), onDuty = 0, emptyList(), attendanceUnknown = listOf(failed)),
         teamNowState(listOf(failed), now),
     )
   }
@@ -370,7 +382,7 @@ class TeamNowStateTest {
     val unknown = mission("unknown", ago(1), assignees = listOf(emma), known = false)
 
     assertEquals(
-        Running(listOf(unknown), onDuty = 0, emptyList()),
+        Running(listOf(unknown), onDuty = 0, emptyList(), attendanceUnknown = listOf(unknown)),
         teamNowState(listOf(unknown), now),
     )
   }
@@ -380,7 +392,13 @@ class TeamNowStateTest {
     val later = mission("later", ago(10), assignees = listOf(noah, alice, emma))
     val earlier = mission("earlier", ago(20), assignees = listOf(emma, noah))
 
-    val expected = listOf(earlier to emma, earlier to noah, later to noah, later to emma)
+    val expected =
+        listOf(
+            MissingAssignee(earlier, emma),
+            MissingAssignee(earlier, noah),
+            MissingAssignee(later, noah),
+            MissingAssignee(later, emma),
+        )
     assertEquals(Missing(expected, onDuty = 1), teamNowState(listOf(later, earlier), now))
   }
 
@@ -390,7 +408,7 @@ class TeamNowStateTest {
     val then = mission("then", ago(10), assignees = listOf(emma))
 
     assertEquals(
-        Missing(listOf(first to emma, then to emma), onDuty = 0),
+        Missing(listOf(MissingAssignee(first, emma), MissingAssignee(then, emma)), onDuty = 0),
         teamNowState(listOf(first, then), now),
     )
   }
@@ -418,7 +436,10 @@ class TeamNowStateTest {
     val staffed = mission("staffed", ago(10), assignees = listOf(alice, emma), needed = 1)
 
     assertEquals(AttendanceStatus.STAFFED, staffed.status(now))
-    assertEquals(Missing(listOf(staffed to emma), onDuty = 1), teamNowState(listOf(staffed), now))
+    assertEquals(
+        Missing(listOf(MissingAssignee(staffed, emma)), onDuty = 1),
+        teamNowState(listOf(staffed), now),
+    )
   }
 
   @Test
@@ -429,5 +450,110 @@ class TeamNowStateTest {
         Running(listOf(arrived), onDuty = 2, emptyList()),
         teamNowState(listOf(arrived), now),
     )
+  }
+
+  // Attendance that is not known, kept apart from nobody being there
+
+  @Test
+  fun teamNowState_withAnUnknownMissionBesideAStaffedOne_countsOnlyTheKnownOne() {
+    val staffed = mission("staffed", ago(60), assignees = listOf(alice))
+    val unknown = mission("unknown", ago(30), assignees = listOf(emma), known = false)
+
+    assertEquals(
+        Running(listOf(staffed, unknown), onDuty = 1, emptyList(), listOf(unknown)),
+        teamNowState(listOf(unknown, staffed), now),
+    )
+  }
+
+  @Test
+  fun teamNowState_withAFailedMissionBesideAStaffedOne_countsOnlyTheKnownOne() {
+    val staffed = mission("staffed", ago(60), assignees = listOf(alice))
+    val failed = mission("failed", ago(30), assignees = listOf(emma), known = false, failed = true)
+
+    assertEquals(
+        Running(listOf(staffed, failed), onDuty = 1, emptyList(), listOf(failed)),
+        teamNowState(listOf(failed, staffed), now),
+    )
+  }
+
+  @Test
+  fun teamNowState_withAnUnknownMissionBesideALateOne_isMissingAndListsItApart() {
+    val unknown = mission("unknown", ago(30), assignees = listOf(noah), known = false)
+    val late = mission("late", ago(10), assignees = listOf(alice, emma))
+
+    assertEquals(
+        Missing(
+            listOf(MissingAssignee(late, emma)),
+            onDuty = 1,
+            attendanceUnknown = listOf(unknown),
+        ),
+        teamNowState(listOf(late, unknown), now),
+    )
+  }
+
+  @Test
+  fun teamNowState_withAnUnknownMissionBesideAHandover_isArrivingAndListsItApart() {
+    val unknown = mission("unknown", ago(30), assignees = listOf(noah), known = false)
+    val handover = mission("handover", ago(2), assignees = listOf(alice, emma))
+
+    assertEquals(
+        Arriving(listOf(handover), emptyList(), attendanceUnknown = listOf(unknown)),
+        teamNowState(listOf(handover, unknown), now),
+    )
+  }
+
+  // Overlaps and handovers
+
+  @Test
+  fun teamNowState_onDuty_leavesOutAVolunteerMissingFromAnotherMission() {
+    val absentHere = mission("absentHere", ago(10), assignees = listOf(emma))
+    val presentThere =
+        mission("presentThere", ago(30), assignees = listOf(emma.copy(checkedInAt = ago(1)), bob))
+
+    // Emma is missing from one mission and checked in to the other: she is missing, not an "other".
+    assertEquals(
+        Missing(listOf(MissingAssignee(absentHere, emma)), onDuty = 1),
+        teamNowState(listOf(absentHere, presentThere), now),
+    )
+  }
+
+  @Test
+  fun teamNowState_withBackToBackMissions_isArrivingThenMissing() {
+    val handoverAt = now
+    val ending = mission("ending", ago(120), assignees = listOf(alice))
+    val starting =
+        mission("starting", handoverAt, assignees = listOf(alice.copy(checkedInAt = null)))
+    val both = listOf(ending, starting)
+
+    // Four minutes in, the mission that ended is gone and the one taking over is still arriving.
+    assertEquals(
+        Arriving(listOf(starting), emptyList()),
+        teamNowState(both, handoverAt + Duration.ofMinutes(4)),
+    )
+    // Two minutes later its grace period is over, and Alice is missing from it.
+    assertEquals(
+        Missing(listOf(MissingAssignee(starting, alice.copy(checkedInAt = null))), onDuty = 0),
+        teamNowState(both, handoverAt + Duration.ofMinutes(6)),
+    )
+  }
+
+  @Test
+  fun teamNowState_shortMission_isOverBeforeItsGraceEnds() {
+    val running = mission("brief", ago(2), lasts = shortGrace, assignees = listOf(emma))
+
+    assertEquals(Arriving(listOf(running), emptyList()), teamNowState(listOf(running), now))
+
+    // A minute later it has ended, so its absentee is never reported missing.
+    val ended = mission("brief", ago(3), lasts = shortGrace, assignees = listOf(emma))
+
+    assertEquals(Done, teamNowState(listOf(ended), now))
+  }
+
+  @Test
+  fun teamNowState_withAnUpcomingMissionClosedByHand_ignoresIt() {
+    val closed = mission("closed", inMinutes(20), assignees = listOf(emma), completed = true)
+    val later = mission("later", inMinutes(120), assignees = listOf(emma))
+
+    assertEquals(Quiet(listOf(later)), teamNowState(listOf(closed, later), now))
   }
 }
