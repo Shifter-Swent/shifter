@@ -3,6 +3,8 @@ package com.swent.shifter.ui.checkin
 
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.checkin.CheckIn
+import com.swent.shifter.model.checkin.CheckInEligibility
+import com.swent.shifter.model.checkin.CheckInEligibility.Reason
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
@@ -54,6 +56,9 @@ class AutoCheckInViewModelTest {
   /** Only [NEAR] is eligible, whatever the mission and the time. */
   private var isEligible: (Mission, Instant, GeoPosition) -> Boolean = { _, _, at -> at == NEAR }
 
+  /** Why a position [isEligible] rejects is not eligible. */
+  private var ineligibleReason = Reason.TOO_FAR
+
   /** The instants [isEligible] was asked about, in order. */
   private val eligibleAt = mutableListOf<Instant>()
 
@@ -76,7 +81,8 @@ class AutoCheckInViewModelTest {
             { userId },
             { mission, time, at ->
               eligibleAt += time
-              isEligible(mission, time, at)
+              if (isEligible(mission, time, at)) CheckInEligibility.Eligible
+              else CheckInEligibility.Ineligible(ineligibleReason)
             },
             { clock },
             UTC,
@@ -296,7 +302,7 @@ class AutoCheckInViewModelTest {
 
   @Test
   fun checkInThatNeverAnswers_showsOfflineAfterTheTimeout() = runTest {
-    addMission()
+    val mission = addMission()
     open(NeverAnswers(checkIns))
 
     moveTo(NEAR)
@@ -304,6 +310,206 @@ class AutoCheckInViewModelTest {
     advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS + 1)
 
     assertEquals(AutoCheckInError.OFFLINE, state.error)
+    assertEquals(NotCheckedIn.OFFLINE, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun positionOutsideTheZone_isWhyTheMissionIsNotCheckedIn() = runTest {
+    val mission = addMission()
+    open()
+
+    moveTo(FAR)
+
+    assertEquals(NotCheckedIn.OUTSIDE_ZONE, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun positionInTheZone_clearsWhyAndChecksIn() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    moveTo(NEAR)
+
+    assertNull(state.whyNotCheckedIn(mission))
+    assertEquals(1, checkIns.checkIns.size)
+  }
+
+  @Test
+  fun ineligibleForAnotherReason_isNotOutsideTheZone() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    ineligibleReason = Reason.TOO_EARLY
+    moveTo(FAR)
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun refusal_isWhyOnlyThatMissionIsNotCheckedIn() = runTest {
+    val refused = addMission(title = "Bar")
+    val other = addMission(title = "Stage")
+    open(RefusesMission(checkIns, refused.id))
+
+    moveTo(NEAR)
+
+    assertEquals(NotCheckedIn.REFUSED, state.whyNotCheckedIn(refused))
+    assertNull(state.whyNotCheckedIn(other))
+    assertEquals(listOf(other.id), checkIns.checkIns.map { it.missionId })
+  }
+
+  @Test
+  fun offline_isWhyUntilTheRetrySucceeds() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+    moveTo(NEAR)
+    assertEquals(NotCheckedIn.OFFLINE, state.whyNotCheckedIn(mission))
+
+    checkIns.failure = null
+    moveTo(NEAR)
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun unexpectedFailure_isWhyTheMissionIsNotCheckedIn() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = IllegalStateException("boom")
+
+    moveTo(NEAR)
+
+    assertEquals(NotCheckedIn.UNEXPECTED, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun checkedInByTheManager_clearsWhy() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    checkIns.add(CheckIn(EVENT, mission.id, USER, NOW, CheckInMethod.MANAGER, "manager"))
+    runCurrent()
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun missionNoLongerOpen_dropsWhy() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    missions.updateAssignees(EVENT, mission.id, emptyList())
+    runCurrent()
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun refusal_staysOnLaterPositions() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+    moveTo(NEAR)
+
+    moveTo(FAR)
+
+    assertEquals(NotCheckedIn.REFUSED, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun refusedThenCheckedInByTheManager_clearsWhy() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.NotAllowed()
+    moveTo(NEAR)
+    checkIns.failure = null
+
+    checkIns.add(CheckIn(EVENT, mission.id, USER, NOW, CheckInMethod.MANAGER, "manager"))
+    runCurrent()
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun offlineThenOutsideTheZone_isOutsideTheZone() = runTest {
+    val mission = addMission()
+    open()
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+    moveTo(NEAR)
+    checkIns.failure = null
+
+    moveTo(FAR)
+
+    assertEquals(NotCheckedIn.OUTSIDE_ZONE, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun retryInFlight_keepsOffline() = runTest {
+    val mission = addMission()
+    open(NeverAnswers(checkIns))
+    moveTo(NEAR)
+    advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS + 1)
+
+    moveTo(NEAR)
+    advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS / 2)
+
+    assertEquals(NotCheckedIn.OFFLINE, state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun failureAfterTheMissionLeft_isNotRecorded() = runTest {
+    val mission = addMission()
+    open(NeverAnswers(checkIns))
+    moveTo(NEAR)
+
+    missions.updateAssignees(EVENT, mission.id, emptyList())
+    runCurrent()
+    advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS + 1)
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun timeoutAfterBeingCheckedIn_isNotRecorded() = runTest {
+    val mission = addMission()
+    open(NeverAnswers(checkIns))
+    moveTo(NEAR)
+
+    // The pending write shows in the check-ins, as Firestore does offline.
+    checkIns.add(CheckIn(EVENT, mission.id, USER, NOW, CheckInMethod.SELF, USER))
+    runCurrent()
+    advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS + 1)
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun locationTurnedOff_dropsOutsideTheZone() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    location.setStatus(LocationStatus.LOCATION_OFF)
+    runCurrent()
+
+    assertNull(state.whyNotCheckedIn(mission))
+  }
+
+  @Test
+  fun missionsUpdateFailure_dropsTheReasons() = runTest {
+    val mission = addMission()
+    open()
+    moveTo(FAR)
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    assertNull(state.whyNotCheckedIn(mission))
   }
 
   @Test
@@ -509,6 +715,22 @@ class AutoCheckInViewModelTest {
     ) {
       calls++
       checkIns.checkIn(eventId, missionId, userId, method)
+    }
+  }
+
+  /** Delegates to [checkIns], except that the check-in to [missionId] is refused. */
+  private class RefusesMission(checkIns: CheckInRepository, private val missionId: String) :
+      CheckInRepository by checkIns {
+    private val delegate = checkIns
+
+    override suspend fun checkIn(
+        eventId: String,
+        missionId: String,
+        userId: String,
+        method: CheckInMethod,
+    ) {
+      if (missionId == this.missionId) throw CheckInRepositoryException.NotAllowed()
+      delegate.checkIn(eventId, missionId, userId, method)
     }
   }
 
