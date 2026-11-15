@@ -3,43 +3,67 @@ package com.swent.shifter.model.scan
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * In-memory [QrScanner] for tests: a test reads a code with [emit] and breaks the camera with
- * [fail]. Both are kept until collected, so a code given before the screen listens is not lost.
+ * [fail].
  *
- * Unlike the camera, it does not filter repeated codes: each [emit] is delivered.
+ * Like the camera, [codes] is hot: a code emitted while nobody collects is lost, so a test waits
+ * for [activeCollectors] before emitting. Unlike the camera, it does not filter repeated codes:
+ * each [emit] is delivered.
+ *
+ * @param hasTorch whether the fake camera has a torch.
  */
-class FakeQrScanner : QrScanner {
+class FakeQrScanner(hasTorch: Boolean = true) : QrScanner {
 
-  private val pendingCodes = Channel<String>(Channel.UNLIMITED)
-  private val pendingErrors = Channel<ScanError>(Channel.UNLIMITED)
+  private val seenCodes = MutableSharedFlow<String>(extraBufferCapacity = 64)
+  override val codes: SharedFlow<String> = seenCodes.asSharedFlow()
 
-  override val codes: Flow<String> = pendingCodes.receiveAsFlow()
-  override val errors: Flow<ScanError> = pendingErrors.receiveAsFlow()
+  private val mutableError = MutableStateFlow<ScanError?>(null)
+  override val error: StateFlow<ScanError?> = mutableError.asStateFlow()
 
-  /** The state the torch was last set to. */
-  var torchOn = false
-    private set
+  private val mutableHasTorch = MutableStateFlow(hasTorch)
+  override val hasTorch: StateFlow<Boolean> = mutableHasTorch.asStateFlow()
 
-  /** Reads [code], as if the camera saw it. */
+  private val mutableTorchOn = MutableStateFlow(false)
+  override val torchOn: StateFlow<Boolean> = mutableTorchOn.asStateFlow()
+
+  /** How many collectors are listening for codes right now, to wait for the screen. */
+  val activeCollectors: Int
+    get() = seenCodes.subscriptionCount.value
+
+  /** Reads [code], as if the camera saw it; lost if nobody is listening. */
   fun emit(code: String) {
-    pendingCodes.trySend(code)
+    seenCodes.tryEmit(code)
   }
 
-  /** Reports [error], as if the camera could not start or stopped. */
+  /** Reports [error], as if the camera could not start or stopped; the torch turns off. */
   fun fail(error: ScanError) {
-    pendingErrors.trySend(error)
+    mutableTorchOn.value = false
+    mutableError.value = error
   }
 
   override fun torch(on: Boolean) {
-    torchOn = on
+    if (mutableHasTorch.value) mutableTorchOn.value = on
   }
 
-  /** Draws nothing, so the screen's layout renders without a camera. */
-  @Composable override fun Preview(modifier: Modifier) = Box(modifier)
+  /**
+   * An empty box in place of the camera image. Like the camera, showing it again clears [error].
+   */
+  @Composable
+  override fun Preview(modifier: Modifier) {
+    DisposableEffect(Unit) {
+      mutableError.value = null
+      onDispose {}
+    }
+    Box(modifier)
+  }
 }
