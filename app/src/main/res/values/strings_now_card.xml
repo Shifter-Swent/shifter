@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A duration on the now card, rounded down to the minute: "25 min", "1 h", "1 h 05". -->
+    <string name="now_card_minutes">%1$d min</string>
+    <string name="now_card_hours">%1$d h</string>
+    <string name="now_card_hours_minutes">%1$d h %2$02d</string>
+    <!-- The time bar: its start before a mission, its end, and the time left in its last hour. -->
+    <string name="now_card_now">Now</string>
+    <string name="now_card_starts_at">Starts %1$s</string>
+    <string name="now_card_time_left">%1$s left · %2$s</string>
+    <!-- The strip of what comes next: when, then the mission and its place. -->
+    <string name="now_card_then_in">Then, in %1$s</string>
+    <string name="now_card_then_what">%1$s · %2$s</string>
+</resources>
