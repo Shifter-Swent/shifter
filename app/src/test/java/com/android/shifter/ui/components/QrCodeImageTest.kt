@@ -84,10 +84,7 @@ class QrCodeImageTest {
 
   @Test
   fun qrCode_drawsTheMatrixOfItsGenerator() {
-    val checkerboard =
-        object : QrCodeGenerator {
-          override fun matrix(text: String) = QrMatrix(2, booleanArrayOf(true, false, false, true))
-        }
+    val checkerboard = QrCodeGenerator { QrMatrix(2, booleanArrayOf(true, false, false, true)) }
     setImage(side = 100.dp, generator = checkerboard)
 
     val pixels = image.captureToImage().toPixelMap()

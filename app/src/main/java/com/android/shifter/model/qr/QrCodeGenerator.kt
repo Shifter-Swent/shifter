@@ -7,7 +7,7 @@ package com.swent.shifter.model.qr
  * The QR code of an event holds only its join code (see `JoinCode`), not a link: only Shifter's own
  * scanner reads it.
  */
-interface QrCodeGenerator {
+fun interface QrCodeGenerator {
 
   /**
    * The QR code of [text], with its quiet zone.
