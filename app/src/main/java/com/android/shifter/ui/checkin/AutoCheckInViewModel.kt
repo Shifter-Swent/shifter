@@ -75,6 +75,12 @@ enum class NotCheckedIn {
 /** A check-in this ViewModel just recorded, for the confirmation ("Checked in: Bar, 18:02"). */
 data class AutoCheckedIn(val missionTitle: String, val time: String)
 
+/** Which mission a check-in is for: mission ids are only unique within their event. */
+data class MissionKey(val eventId: String, val missionId: String)
+
+private val Mission.key
+  get() = MissionKey(eventId, id)
+
 /**
  * What the automatic check-in shows.
  *
@@ -82,21 +88,20 @@ data class AutoCheckedIn(val missionTitle: String, val time: String)
  *   the location services when it is not [LocationStatus.GRANTED].
  * @property checkedIn the last check-in recorded, or null when none was recorded yet.
  * @property error the last failure, cleared by the next check-in recorded.
- * @property notCheckedIn why each open mission is not checked in yet, by (event id, mission id);
- *   read it with [whyNotCheckedIn]. A mission checked in, or no longer open, has no entry.
+ * @property notCheckedIn why each open mission is not checked in yet, by its [MissionKey]; read it
+ *   with [whyNotCheckedIn]. A mission checked in, or no longer open, has no entry.
  */
 data class AutoCheckInUiState(
     val locationStatus: LocationStatus = LocationStatus.GRANTED,
     val checkedIn: AutoCheckedIn? = null,
     val error: AutoCheckInError? = null,
-    val notCheckedIn: Map<Pair<String, String>, NotCheckedIn> = emptyMap(),
+    val notCheckedIn: Map<MissionKey, NotCheckedIn> = emptyMap(),
 )
 
 /**
  * Why the volunteer is not checked in to [mission] yet, or null when nothing keeps them from it.
  */
-fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? =
-    notCheckedIn[mission.eventId to mission.id]
+fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? = notCheckedIn[mission.key]
 
 /**
  * Checks the signed-in volunteer in to their missions as soon as they are eligible, while the
@@ -128,10 +133,10 @@ class AutoCheckInViewModel(
   private val _uiState = MutableStateFlow(AutoCheckInUiState(locationProvider.status.value))
 
   /**
-   * Missions tried, as (event id, mission id): in flight, recorded or refused. A mission is
-   * forgotten once it leaves the open missions, so that it is tried again if it comes back.
+   * Missions tried: in flight, recorded or refused. A mission is forgotten once it leaves the open
+   * missions, so that it is tried again if it comes back.
    */
-  private val tried = mutableSetOf<Pair<String, String>>()
+  private val tried = mutableSetOf<MissionKey>()
 
   // [watch] never emits: it only updates [_uiState], and runs while the screen collects.
   val uiState: StateFlow<AutoCheckInUiState> =
@@ -263,7 +268,7 @@ class AutoCheckInViewModel(
       if (events.isEmpty()) flowOf(KnownCheckIns())
       else
           combine(events.map { checkInRepository.observeMyCheckIns(it, userId) }) { lists ->
-            val done = lists.flatMap { list -> list.map { it.eventId to it.missionId } }
+            val done = lists.flatMap { list -> list.map { MissionKey(it.eventId, it.missionId) } }
             KnownCheckIns(events, done.toSet())
           }
 
@@ -326,16 +331,13 @@ class AutoCheckInViewModel(
   private val CheckInEligibility.isTooFar
     get() = this is CheckInEligibility.Ineligible && reason == CheckInEligibility.Reason.TOO_FAR
 
-  private val Mission.key
-    get() = eventId to id
-
   /**
-   * The volunteer's check-ins to the missions of [events]: [done] lists them as (event id, mission
-   * id). A mission of another event is not known to be done or not yet.
+   * The volunteer's check-ins to the missions of [events]: [done] lists their missions. A mission
+   * of another event is not known to be done or not yet.
    */
   private data class KnownCheckIns(
       val events: Set<String> = emptySet(),
-      val done: Set<Pair<String, String>> = emptySet(),
+      val done: Set<MissionKey> = emptySet(),
   )
 
   companion object {
