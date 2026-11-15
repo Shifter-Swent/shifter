@@ -3,10 +3,8 @@ package com.swent.shifter.ui.location
 
 import android.Manifest
 import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +21,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.ui.permission.openAppSettings
 
 /**
  * Asks for the precise location permission and shows a [LocationPermissionCard] until [status] is
@@ -90,18 +89,4 @@ fun LocationPermissionGate(
       },
       modifier = modifier,
   )
-}
-
-/** Opens this app's settings, or does nothing if the device has no such screen. */
-private fun Context.openAppSettings() {
-  try {
-    startActivity(
-        Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", packageName, null),
-        )
-    )
-  } catch (_: ActivityNotFoundException) {
-    // Nothing else can grant the permission: the card stays as it is.
-  }
 }
