@@ -17,6 +17,7 @@ import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
 import java.time.Duration
@@ -120,8 +121,8 @@ data class VolunteerPin(
  * no volunteer.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
- * @param now the clock telling which missions are over and how old a position is, replaceable in
- *   tests.
+ * @param clock tells which missions are over and, each minute, how old a position is; replaceable
+ *   in tests.
  * @param zone the time zone the mission hours are shown in, replaceable in tests.
  * @param locationProvider gives the user's position to show on the map; null for a user the map
  *   does not locate, such as an organizer.
@@ -132,7 +133,7 @@ class MapViewModel(
     private val eventRepository: EventRepository,
     private val missionRepository: MissionRepository,
     private val currentUserId: () -> String?,
-    private val now: () -> Instant = Instant::now,
+    private val clock: MinuteClock,
     private val zone: ZoneId = ZoneId.systemDefault(),
     locationProvider: LocationProvider? = null,
     private val liveLocations: LiveLocationRepository? = null,
@@ -202,7 +203,7 @@ class MapViewModel(
                 .sortedBy { it.startAt }
         val markers = missions.mapNotNull { it.toMarker() }
         val userId = currentUserId()
-        val now = now()
+        val now = clock.now()
         val next =
             missions
                 .firstOrNull { userId in it.assigneeIds && it.endAt > now }
@@ -271,8 +272,8 @@ class MapViewModel(
       if (userId == null || readableUntil == null) emit(emptyList<Team>())
       else
           emitAll(
-              everyMinute().map {
-                if (now() > readableUntil) emptyList() else teamsToWatch.of(eventId, userId)
+              clock.ticks.map { now ->
+                if (now > readableUntil) emptyList() else teamsToWatch.of(eventId, userId)
               }
           )
     }
@@ -290,9 +291,9 @@ class MapViewModel(
       // Read once per volunteer; a failed read is not kept, so it is tried again later.
       val names = mutableMapOf<String, String?>()
       emitAll(
-          combine(locations, everyMinute()) { latest, _ -> latest }
-              .map { latest ->
-                val now = now()
+          // Each minute, so an age grows without a new position.
+          combine(locations, clock.ticks) { latest, now -> latest to now }
+              .map { (latest, now) ->
                 // Left out before the names, so a hidden volunteer's name is never read.
                 val shown = latest.filter { it.ageAt(now) <= HIDDEN_AFTER }
                 val unknown = shown.map { it.userId }.filter { it !in names }
@@ -320,14 +321,15 @@ class MapViewModel(
               .observeTeamLocations(eventId, team.id)
               .map { locations -> locations.filter { it.userId in team.memberIds } }
               // A team that cannot be read, before the event or once it has another manager, just
-              // has nobody to show: the other teams keep working. It is tried again every minute,
-              // since reading only opens with the event; a team no longer managed stops being tried
+              // has nobody to show: the other teams keep working. It is tried again after
+              // [REFUSED_TEAM_RETRY_MILLIS], on its own delay rather than the clock, since reading
+              // only opens with the event; a team no longer managed stops being tried
               // at the next read of the teams, and every team once the event is over.
               .retryWhen { cause, _ ->
                 val refused = cause is LiveLocationRepositoryException.PermissionDenied
                 if (refused) {
                   emit(emptyList())
-                  delay(AGE_REFRESH_MILLIS)
+                  delay(REFUSED_TEAM_RETRY_MILLIS)
                 }
                 refused
               }
@@ -377,8 +379,8 @@ class MapViewModel(
      */
     val HIDDEN_AFTER: Duration = Duration.ofHours(1)
 
-    /** How often the age of the positions is refreshed when no new position arrives. */
-    const val AGE_REFRESH_MILLIS = 60_000L
+    /** How long to wait before reading again a team whose positions were refused. */
+    const val REFUSED_TEAM_RETRY_MILLIS = 60_000L
 
     /** How long to wait before reading the positions again after a failure. */
     const val RETRY_DELAY_MILLIS = 10_000L
@@ -389,14 +391,6 @@ class MapViewModel(
      */
     val READABLE_AFTER_END: Duration = Duration.ofHours(1)
 
-    /** Emits now, then every [AGE_REFRESH_MILLIS], so an age grows without a new position. */
-    private fun everyMinute(): Flow<Unit> = flow {
-      while (true) {
-        emit(Unit)
-        delay(AGE_REFRESH_MILLIS)
-      }
-    }
-
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments. Without [liveLocations] and [watchedTeams], the map shows no volunteer.
@@ -406,6 +400,7 @@ class MapViewModel(
         eventRepository: EventRepository,
         missionRepository: MissionRepository,
         currentUserId: () -> String?,
+        clock: MinuteClock,
         locationProvider: LocationProvider? = null,
         liveLocations: LiveLocationRepository? = null,
         watchedTeams: WatchedTeams? = null,
@@ -417,6 +412,7 @@ class MapViewModel(
             eventRepository,
             missionRepository,
             currentUserId,
+            clock,
             locationProvider = locationProvider,
             liveLocations = liveLocations,
             watchedTeams = watchedTeams,
