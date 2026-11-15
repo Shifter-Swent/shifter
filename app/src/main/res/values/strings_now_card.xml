@@ -11,4 +11,30 @@
     <!-- The strip of what comes next: when, then the mission and its place. -->
     <string name="now_card_then_in">Then, in %1$s</string>
     <string name="now_card_then_what">%1$s · %2$s</string>
+    <!-- The volunteer's card. Status pills; the running one reuses now_card_now. -->
+    <string name="now_card_next_mission">Next mission</string>
+    <string name="now_card_starting_soon">Starting soon</string>
+    <string name="now_card_not_checked_in">Not checked in</string>
+    <string name="now_card_today">Today</string>
+    <!-- Headlines: %1$s is a time ("14:00") or a duration ("20 min"). -->
+    <string name="now_card_at">At %1$s</string>
+    <string name="now_card_in">In %1$s</string>
+    <string name="now_card_started_ago">Started %1$s ago</string>
+    <string name="now_card_started_just_now">Started just now</string>
+    <string name="now_card_left">%1$s left</string>
+    <string name="now_card_done_for_today">You\'re done for today</string>
+    <!-- The mission's hours, e.g. "14:00–15:30". -->
+    <string name="now_card_time_range">%1$s–%2$s</string>
+    <string name="now_card_checked_in_at">Checked in at %1$s</string>
+    <!-- Why the volunteer is not checked in yet, beside the existing check-in messages. -->
+    <string name="now_card_outside_zone">You\'re outside the mission\'s zone.</string>
+    <string name="now_card_no_place">This mission has no place: your manager checks you in.</string>
+    <string name="now_card_no_place_organizer">This mission has no place: the organizer checks you in.</string>
+    <!-- Actions. -->
+    <string name="now_card_view_on_map">View on map</string>
+    <string name="now_card_view_details">View details</string>
+    <string name="now_card_tell_manager">Tell your manager</string>
+    <string name="now_card_tell_organizer">Tell the organizer</string>
+    <string name="now_card_contact_manager">Contact your manager</string>
+    <string name="now_card_contact_organizer">Contact the organizer</string>
 </resources>

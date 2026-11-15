@@ -80,6 +80,10 @@ object NowCardTestTags {
   const val TIME_BAR = "nowCardTimeBar"
   /** The [ThenStrip]. */
   const val NEXT = "nowCardNext"
+  /** The card's one action, in its body or in its [ThenStrip]. */
+  const val ACTION = "nowCardAction"
+  /** Why the volunteer is not checked in yet, on the volunteer's card. */
+  const val REASON = "nowCardReason"
 }
 
 /**
