@@ -248,7 +248,12 @@ private fun Detail(text: String) {
 /** Why the volunteer is not checked in to [mission] yet, when the card knows it. */
 @Composable
 private fun ReasonLine(mission: Mission, reason: NotCheckedIn?) {
-  val message = if (mission.location == null) R.string.now_card_no_place else reason?.message
+  val message =
+      when {
+        mission.location != null -> reason?.message
+        mission.teamId == null -> R.string.now_card_no_place_organizer
+        else -> R.string.now_card_no_place
+      }
   message ?: return
   Text(
       text = stringResource(message),

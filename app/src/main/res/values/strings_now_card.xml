@@ -29,6 +29,7 @@
     <!-- Why the volunteer is not checked in yet, beside the existing check-in messages. -->
     <string name="now_card_outside_zone">You\'re outside the mission\'s zone.</string>
     <string name="now_card_no_place">This mission has no place: your manager checks you in.</string>
+    <string name="now_card_no_place_organizer">This mission has no place: the organizer checks you in.</string>
     <!-- Actions. -->
     <string name="now_card_view_on_map">View on map</string>
     <string name="now_card_view_details">View details</string>

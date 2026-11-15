@@ -146,6 +146,15 @@ class NowCardTest {
   }
 
   @Test
+  fun late_withoutPlaceNorTeam_saysTheOrganizerChecksIn() {
+    show(NowState.Late(NO_PLACE_NOR_TEAM, null), START.plusSeconds(6 * 60))
+
+    composeTestRule
+        .onNodeWithTag(NowCardTestTags.REASON)
+        .assertTextEquals("This mission has no place: the organizer checks you in.")
+  }
+
+  @Test
   fun late_withoutKnownReason_saysNothingMore() {
     show(NowState.Late(BAR, null), START.plusSeconds(6 * 60))
 
@@ -330,6 +339,7 @@ class NowCardTest {
     val BAR = mission("Bar")
     val NO_PLACE = mission("Stage", place = null)
     val NO_TEAM = mission("Info stand", team = null)
+    val NO_PLACE_NOR_TEAM = mission("Info stand", place = null, team = null)
     val DESK = mission("Welcome desk", START.plus(Duration.ofMinutes(105)), "Main gate")
   }
 }
