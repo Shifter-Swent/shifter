@@ -23,6 +23,7 @@ import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.time.FakeMinuteClock
 import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -58,6 +59,7 @@ class EventOverviewScreenTest {
   private val teams = FakeTeamRepository()
   private val users = FakeUserRepository(listOf(User("ann", "Ann", "ann@x.org")))
   private val checkIns = FakeCheckInRepository()
+  private val clock = FakeMinuteClock(Instant.now())
 
   init {
     events.events +=
@@ -100,6 +102,7 @@ class EventOverviewScreenTest {
         EventOverviewScreen(
             viewModel = viewModel,
             volunteerOverview = { Text("Volunteer planning") },
+            clock = clock,
             onAddMission = onAddMission,
             onEditMission = onEditMission,
         )
@@ -180,6 +183,7 @@ class EventOverviewScreenTest {
         EventOverviewScreen(
             viewModel = viewModel,
             volunteerOverview = { Text("Volunteer planning") },
+            clock = clock,
         )
       }
     }
@@ -212,7 +216,9 @@ class EventOverviewScreenTest {
     val viewModel =
         AttendanceViewModel("event-1", "manager", events, missions, teams, users, checkIns)
     compose.setContent {
-      ShifterTheme { if (shown) EventOverviewScreen(viewModel = viewModel, volunteerOverview = {}) }
+      ShifterTheme {
+        if (shown) EventOverviewScreen(viewModel = viewModel, volunteerOverview = {}, clock = clock)
+      }
     }
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
     compose.waitForIdle()
@@ -249,6 +255,19 @@ class EventOverviewScreenTest {
 
     assertTrue(checkIns.checkIns.isEmpty())
     compose.onNodeWithTag(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
+  }
+
+  @Test
+  fun clockMovingOn_opensTheCheckInWindowOnItsOwn() {
+    // Its check-in opens 15 min before the start, so 5 min from now.
+    val mission = missionWithAnnStartingIn(Duration.ofMinutes(20))
+    show("manager")
+    compose.onNodeWithText("Check-in not open yet").assertIsDisplayed()
+
+    clock.advance(Duration.ofMinutes(6))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission(mission.id)).assertIsDisplayed()
+    compose.onNodeWithText("Check-in not open yet").assertDoesNotExist()
   }
 
   private companion object {
@@ -291,6 +310,24 @@ class EventOverviewScreenTest {
             volunteersNeeded = 1,
             startAt = startAt,
             endAt = startAt.plus(Duration.ofHours(1)),
+            createdAt = start,
+        )
+    )
+  }
+
+  /** A mission of the manager's team starting [startsIn] after the fake clock's now, with Ann. */
+  private fun missionWithAnnStartingIn(startsIn: Duration) = runBlocking {
+    val startAt = clock.now().plus(startsIn)
+    missions.createMission(
+        Mission(
+            eventId = "event-1",
+            title = "Set up",
+            description = "",
+            teamId = "logistics",
+            volunteersNeeded = 1,
+            startAt = startAt,
+            endAt = startAt.plus(Duration.ofHours(1)),
+            assigneeIds = listOf("ann"),
             createdAt = start,
         )
     )

@@ -297,6 +297,7 @@ private fun ShifterNavGraph(
                 RefreshOnReturn(viewModel::refresh)
                 EventOverviewScreen(
                     viewModel = viewModel,
+                    clock = repositories.minuteClock,
                     onAddMission = { nav.navigateTo(VolunteerEventScreen.AddMission) },
                     onEditMission = {
                       // A second pencil tapped before the form opens would reuse its entry, with

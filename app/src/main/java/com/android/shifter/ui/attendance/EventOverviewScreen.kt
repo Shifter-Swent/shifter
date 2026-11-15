@@ -14,21 +14,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.swent.shifter.R
-import java.time.Instant
-import kotlin.time.Duration.Companion.minutes
-import kotlinx.coroutines.delay
+import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.ui.components.time.rememberNow
 
 /**
  * The Overview of an event as the signed-in user may see it: whoever manages one of its teams, or
@@ -41,6 +36,8 @@ import kotlinx.coroutines.delay
  *
  * @param volunteerOverview what someone who manages no team of the event sees instead. It is the
  *   stand-in until #204 puts the volunteer's planning there, and the only place to change for it.
+ * @param clock moves the attendance on each minute, so a check-in window opens on its own without
+ *   an arrival to announce it.
  * @param onAddMission opens the mission creation form, offered to a manager only.
  * @param onEditMission opens the edit form of a mission, offered to a manager only, and none when
  *   null.
@@ -49,6 +46,7 @@ import kotlinx.coroutines.delay
 fun EventOverviewScreen(
     viewModel: AttendanceViewModel,
     volunteerOverview: @Composable () -> Unit,
+    clock: MinuteClock,
     modifier: Modifier = Modifier,
     onAddMission: () -> Unit = {},
     onEditMission: ((String) -> Unit)? = null,
@@ -67,7 +65,7 @@ fun EventOverviewScreen(
     true ->
         ManagerOverviewContent(
             state = state,
-            now = rememberNow(),
+            now = rememberNow(clock),
             onRetry = viewModel::refresh,
             modifier = modifier,
             onCheckIn = viewModel::checkIn,
@@ -104,21 +102,4 @@ private fun UnknownRole(loadFailed: Boolean, onRetry: () -> Unit, modifier: Modi
       CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
     }
   }
-}
-
-/**
- * Now, moved on while the screen is composed, so a check-in window opens on its own without an
- * arrival to announce it. The effect is cancelled with the screen, and a minute is fine for a
- * window measured in them.
- */
-@Composable
-private fun rememberNow(): Instant {
-  var now by remember { mutableStateOf(Instant.now()) }
-  LaunchedEffect(Unit) {
-    while (true) {
-      delay(1.minutes)
-      now = Instant.now()
-    }
-  }
-  return now
 }
