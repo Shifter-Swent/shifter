@@ -47,6 +47,8 @@ val shifter_warning = Color(0xFFF5A623)
 val shifter_warningContainer = Color(0xFF2A2000)
 val shifter_inputBackground = Color(0xFF101722)
 val shifter_mutedText = Color(0xFF6B85A1)
+/** Text that is there but has nothing behind it, such as a day without missions. */
+val shifter_dimmedText = Color(0xFF3D4F66)
 val shifter_tabInactive = Color(0xFF4A5E78)
 val shifter_divider = Color(0xFF2A3547)
 val shifter_avatarBackground = Color(0xFF2F3E55)
