@@ -51,6 +51,7 @@ fun OrgaEventsScreen(
       onManageEvent = onManageEvent,
       onCreateEventClick = onCreateEventClick,
       onAvatarClick = onAvatarClick,
+      onRefresh = viewModel::refresh,
   )
 }
 
@@ -63,6 +64,7 @@ fun OrgaEventsContent(
     onManageEvent: (EventCardUi) -> Unit,
     onCreateEventClick: () -> Unit,
     onAvatarClick: () -> Unit,
+    onRefresh: () -> Unit = {},
 ) {
   MyEventsLayout(
       state = state,
@@ -70,6 +72,7 @@ fun OrgaEventsContent(
       subtitle = stringResource(R.string.my_events_organizer_view),
       onTabSelected = onTabSelected,
       onAvatarClick = onAvatarClick,
+      onRefresh = onRefresh,
       cardAction = { card ->
         EventCardAction(EventCardActionType.MANAGE_EVENT) { onManageEvent(card) }
       },

@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -209,7 +210,12 @@ fun ManagerOverviewContent(
       onUndoWindowOver = onUndoWindowOver,
       onErrorShown = onCheckInErrorShown,
   )
-  Box(modifier = modifier.fillMaxSize()) {
+  RefreshableList(
+      // The list's own spinner says it while there are no missions to keep.
+      isRefreshing = state.isLoading && missions.isNotEmpty(),
+      onRefresh = onRetry,
+      modifier = modifier.fillMaxSize(),
+  ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag(ManagerOverviewTestTags.SCREEN),
         contentPadding = PaddingValues(16.dp),

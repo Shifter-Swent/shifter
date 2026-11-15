@@ -52,6 +52,7 @@ fun StaffEventsScreen(
       onOpenEvent = onOpenEvent,
       onScanQrClick = onScanQrClick,
       onAvatarClick = onAvatarClick,
+      onRefresh = viewModel::refresh,
   )
 }
 
@@ -70,12 +71,14 @@ fun StaffEventsContent(
     onOpenEvent: (EventCardUi) -> Unit,
     onScanQrClick: () -> Unit,
     onAvatarClick: () -> Unit,
+    onRefresh: () -> Unit = {},
 ) {
   MyEventsLayout(
       state = state,
       avatarInitial = avatarInitial,
       onTabSelected = onTabSelected,
       onAvatarClick = onAvatarClick,
+      onRefresh = onRefresh,
       // An event that is over can no longer be left.
       cardAction = { card ->
         if (card.badge == EventBadge.ENDED) null

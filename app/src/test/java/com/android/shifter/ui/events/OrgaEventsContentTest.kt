@@ -6,6 +6,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.events.organizer.OrgaEventsContent
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -13,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class OrgaEventsContentTest {
@@ -22,6 +25,7 @@ class OrgaEventsContentTest {
   private val managed = mutableListOf<EventCardUi>()
   private val selectedTabs = mutableListOf<EventTab>()
   private var createClicks = 0
+  private var refreshes = 0
 
   private fun setContent(state: MyEventsUiState) {
     composeTestRule.setContent {
@@ -33,9 +37,20 @@ class OrgaEventsContentTest {
             onManageEvent = { managed += it },
             onCreateEventClick = { createClicks++ },
             onAvatarClick = {},
+            onRefresh = { refreshes++ },
         )
       }
     }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_onTheEventList_refreshes() {
+    setContent(MyEventsUiState(upcoming = SampleMyEvents.organizer))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.EVENT_LIST).performTouchInput { swipeDown() }
+
+    composeTestRule.runOnIdle { assertEquals(1, refreshes) }
   }
 
   @Test

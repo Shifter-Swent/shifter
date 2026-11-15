@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
@@ -40,6 +41,7 @@ import com.swent.shifter.ui.events.MyEventsUiState
  *
  * @param cardAction the action link of each card, or null to hide it.
  * @param cardOpen what tapping each card does, or null for a card that cannot be opened.
+ * @param onRefresh reloads the cards when the list, or its message, is pulled down.
  */
 @Composable
 fun MyEventsLayout(
@@ -51,6 +53,7 @@ fun MyEventsLayout(
     modifier: Modifier = Modifier,
     cardOpen: (EventCardUi) -> (() -> Unit)? = { null },
     subtitle: String? = null,
+    onRefresh: () -> Unit = {},
     floatingContent: @Composable BoxScope.() -> Unit = {},
 ) {
   Scaffold(
@@ -77,7 +80,22 @@ fun MyEventsLayout(
                     .testTag(MyEventsTestTags.WITHDRAW_ERROR),
         )
       }
-      Box(Modifier.fillMaxSize()) {
+      if (state.loadFailed && state.visibleEvents.isNotEmpty()) {
+        Text(
+            text = stringResource(R.string.my_events_load_error),
+            color = MaterialTheme.colorScheme.error,
+            fontSize = 13.sp,
+            modifier =
+                Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    .testTag(MyEventsTestTags.ERROR),
+        )
+      }
+      RefreshableList(
+          // The centred spinner says it while there are no cards to keep.
+          isRefreshing = state.isLoading && state.visibleEvents.isNotEmpty(),
+          onRefresh = onRefresh,
+          modifier = Modifier.fillMaxSize(),
+      ) {
         when {
           // A reload keeps the cards already shown instead of replacing them with the spinner.
           state.isLoading && state.visibleEvents.isEmpty() ->
@@ -85,7 +103,8 @@ fun MyEventsLayout(
                   color = MaterialTheme.colorScheme.primary,
                   modifier = Modifier.align(Alignment.Center).testTag(MyEventsTestTags.LOADING),
               )
-          state.loadFailed ->
+          // A reload that fails keeps the cards already shown: the error goes above them.
+          state.loadFailed && state.visibleEvents.isEmpty() ->
               CenteredMessage(stringResource(R.string.my_events_load_error), MyEventsTestTags.ERROR)
           state.visibleEvents.isEmpty() ->
               CenteredMessage(
@@ -117,13 +136,20 @@ fun MyEventsLayout(
   }
 }
 
+/** A message centred in the list's place, in a list so that it can be pulled to reload too. */
 @Composable
-private fun BoxScope.CenteredMessage(text: String, testTag: String) {
-  Text(
-      text = text,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      fontSize = 14.sp,
-      textAlign = TextAlign.Center,
-      modifier = Modifier.align(Alignment.Center).padding(24.dp).testTag(testTag),
-  )
+private fun CenteredMessage(text: String, testTag: String) {
+  LazyColumn(Modifier.fillMaxSize()) {
+    item {
+      Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(24.dp).testTag(testTag),
+        )
+      }
+    }
+  }
 }

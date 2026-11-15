@@ -4,4 +4,6 @@
     <string name="content_description_back">Back</string>
     <string name="dialog_confirm">OK</string>
     <string name="dialog_cancel">Cancel</string>
+    <!-- The accessibility action of a list that is reloaded by pulling it down. -->
+    <string name="refresh">Refresh</string>
 </resources>

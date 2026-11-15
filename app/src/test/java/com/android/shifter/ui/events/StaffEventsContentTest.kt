@@ -5,6 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -16,14 +19,18 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.events.staff.StaffEventsContent
+import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class StaffEventsContentTest {
@@ -37,6 +44,7 @@ class StaffEventsContentTest {
   private val opened = mutableListOf<EventCardUi>()
   private var scanQrClicks = 0
   private var avatarClicks = 0
+  private var refreshes = 0
 
   private fun setContent(initial: MyEventsUiState) {
     composeTestRule.setContent {
@@ -50,9 +58,99 @@ class StaffEventsContentTest {
             onOpenEvent = { opened += it },
             onScanQrClick = { scanQrClicks++ },
             onAvatarClick = { avatarClicks++ },
+            onRefresh = { refreshes++ },
         )
       }
     }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_onTheEventList_refreshes() {
+    setContent(MyEventsUiState(upcoming = upcoming, past = past))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.EVENT_LIST).performTouchInput { swipeDown() }
+
+    composeTestRule.runOnIdle { assertEquals(1, refreshes) }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_onTheEmptyState_refreshes() {
+    setContent(MyEventsUiState())
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.EMPTY_STATE).assertIsDisplayed()
+    // From the middle of the screen, inside the message's list, to its bottom.
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).performTouchInput {
+      swipeDown(startY = centerY, endY = bottom)
+    }
+
+    composeTestRule.runOnIdle { assertEquals(1, refreshes) }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_onTheScreen_reloadsTheEvents() {
+    var loads = 0
+    val viewModel =
+        StaffEventsViewModel(
+            loader = {
+              loads++
+              upcoming
+            },
+            withdrawer = {},
+        )
+    composeTestRule.setContent {
+      ShifterTheme {
+        StaffEventsScreen(
+            viewModel = viewModel,
+            avatarInitial = "J",
+            onOpenEvent = {},
+            onScanQrClick = {},
+            onAvatarClick = {},
+        )
+      }
+    }
+    composeTestRule.waitForIdle()
+    assertEquals(1, loads)
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.EVENT_LIST).performTouchInput { swipeDown() }
+    composeTestRule.waitForIdle()
+
+    composeTestRule.runOnIdle { assertEquals(2, loads) }
+  }
+
+  /**
+   * Material's pull spinner while it reloads, and the centred one: neither has a known progress.
+   */
+  private val spinner =
+      SemanticsMatcher.expectValue(
+          SemanticsProperties.ProgressBarRangeInfo,
+          ProgressBarRangeInfo.Indeterminate,
+      )
+
+  @Test
+  fun reloading_withCards_showsOnlyThePullSpinner() {
+    setContent(MyEventsUiState(upcoming = upcoming, isLoading = true))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertDoesNotExist()
+    composeTestRule.onAllNodes(spinner).assertCountEquals(1)
+  }
+
+  @Test
+  fun loading_withoutCards_showsOnlyTheCentredSpinner() {
+    setContent(MyEventsUiState(isLoading = true))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertIsDisplayed()
+    composeTestRule.onAllNodes(spinner).assertCountEquals(1)
+  }
+
+  @Test
+  fun failedReload_keepsTheCardsWithTheError() {
+    setContent(MyEventsUiState(upcoming = upcoming, loadFailed = true))
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.ERROR).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard(upcoming.first().id)).assertExists()
   }
 
   @Test

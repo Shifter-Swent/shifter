@@ -6,12 +6,15 @@ package com.swent.shifter.ui.attendance
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -28,6 +31,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -40,6 +45,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class ManagerOverviewContentTest {
@@ -698,6 +704,40 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY).assertTextEquals("No missions available")
     compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("0 missions")
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_callsOnRetry() {
+    var retries = 0
+    show(AttendanceUiState(isLoading = false, missions = listOf(setUp)), onRetry = { retries++ })
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performTouchInput { swipeDown() }
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  /** The pull spinner while it reloads, and the list's own one: neither has a known progress. */
+  private val spinner =
+      SemanticsMatcher.expectValue(
+          SemanticsProperties.ProgressBarRangeInfo,
+          ProgressBarRangeInfo.Indeterminate,
+      )
+
+  @Test
+  fun reloading_withMissions_showsOnlyThePullSpinner() {
+    show(AttendanceUiState(isLoading = true, missions = listOf(setUp)))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertDoesNotExist()
+    compose.onAllNodes(spinner).assertCountEquals(1)
+  }
+
+  @Test
+  fun loading_withoutMissions_showsOnlyTheListSpinner() {
+    show(AttendanceUiState(isLoading = true))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertExists()
+    compose.onAllNodes(spinner).assertCountEquals(1)
   }
 
   @Test
