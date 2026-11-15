@@ -43,6 +43,7 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
 import java.time.LocalDate
@@ -284,11 +285,13 @@ internal fun formatEventPeriod(
   val start = startAt.atZone(zone)
   val end = endAt.atZone(zone)
   val year = if (start.year == today.year && end.year == today.year) "" else " uuuu"
+  val from = startAt.formatTime(zone)
+  val to = endAt.formatTime(zone)
   return if (start.toLocalDate() == end.toLocalDate()) {
-    "${start.format(datePattern("EEE d MMM$year · HH:mm"))} – ${end.format(datePattern("HH:mm"))}"
+    "${start.format(datePattern("EEE d MMM$year"))} · $from – $to"
   } else {
-    val dayAndTime = datePattern("d MMM$year HH:mm")
-    "${start.format(dayAndTime)} – ${end.format(dayAndTime)}"
+    val day = datePattern("d MMM$year")
+    "${start.format(day)} $from – ${end.format(day)} $to"
   }
 }
 

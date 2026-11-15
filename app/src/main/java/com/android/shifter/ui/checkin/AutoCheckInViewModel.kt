@@ -18,10 +18,10 @@ import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
+import com.swent.shifter.ui.components.time.formatTime
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -290,7 +290,7 @@ class AutoCheckInViewModel(
       withTimeout(CHECK_IN_TIMEOUT_MILLIS) {
         checkInRepository.checkIn(mission.eventId, mission.id, userId, CheckInMethod.SELF)
       }
-      val time = HOURS.format(now().atZone(zone))
+      val time = now().formatTime(zone)
       report(mission, null)
       _uiState.update { it.copy(checkedIn = AutoCheckedIn(mission.title, time), error = null) }
     } catch (_: CheckInRepositoryException.AlreadyCheckedIn) {
@@ -358,8 +358,6 @@ class AutoCheckInViewModel(
 
     /** How long a check-in may take before it is reported as offline and tried again. */
     const val CHECK_IN_TIMEOUT_MILLIS = 10_000L
-
-    private val HOURS: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor

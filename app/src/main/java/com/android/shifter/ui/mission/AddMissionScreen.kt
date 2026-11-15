@@ -77,6 +77,7 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.map.LocationPicker
@@ -904,7 +905,7 @@ private fun TimeField(
   Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
     FieldLabel(stringResource(label))
     PickerField(
-        text = time?.format(TIME_FORMAT),
+        text = time?.formatTime(),
         enabled = enabled,
         onClick = { open = true },
         testTag = testTag,
@@ -977,8 +978,8 @@ private fun formatPeriod(event: EventPeriod): String =
       stringResource(
           R.string.add_mission_event_period,
           event.start.format(DAY_FORMAT),
-          event.start.format(TIME_FORMAT),
-          event.end.format(TIME_FORMAT),
+          event.start.toLocalTime().formatTime(),
+          event.end.toLocalTime().formatTime(),
       )
     } else {
       stringResource(
@@ -996,14 +997,12 @@ private fun formatConflict(conflict: MissionConflict, isEditing: Boolean): Strin
         else R.string.add_mission_error_conflict,
         conflict.title,
         conflict.start.format(DATE_TIME_FORMAT),
-        conflict.end.format(
-            if (conflict.start.toLocalDate() == conflict.end.toLocalDate()) TIME_FORMAT
-            else DATE_TIME_FORMAT
-        ),
+        if (conflict.start.toLocalDate() == conflict.end.toLocalDate())
+            conflict.end.toLocalTime().formatTime()
+        else conflict.end.format(DATE_TIME_FORMAT),
     )
 
 private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM uuuu")
-private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 private val DATE_TIME_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEE d MMM uuuu HH:mm")
 

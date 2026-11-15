@@ -3,6 +3,7 @@ package com.swent.shifter.ui.events
 
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventStatus
+import com.swent.shifter.ui.components.time.formatTime
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -74,7 +75,7 @@ private fun Event.toCard(badge: EventBadge, footer: EventCardFooter, zone: ZoneI
       title = title,
       dateLabel = dateLabel,
       locationLabel = location.address,
-      timeLabel = "${start.format(TIME)} – ${end.format(TIME)}",
+      timeLabel = "${startAt.formatTime(zone)} – ${endAt.formatTime(zone)}",
       badge = badge,
       footer = footer,
   )
@@ -82,4 +83,3 @@ private fun Event.toCard(badge: EventBadge, footer: EventCardFooter, zone: ZoneI
 
 private val DAY = DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.ENGLISH)
 private val DAY_IN_RANGE = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
-private val TIME = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
