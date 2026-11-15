@@ -100,7 +100,10 @@ data class AutoCheckInUiState(
 )
 
 /**
- * Why the volunteer is not checked in to [mission] yet, or null when nothing keeps them from it.
+ * Why the volunteer is not checked in to [mission] yet, or null when the automatic check-in knows
+ * no reason. Null also covers what it cannot see, for the screen to tell: a mission without a
+ * place, the location off or denied, no position yet, or the missions no longer followed after a
+ * failure ([AutoCheckInUiState.error]).
  */
 fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? = notCheckedIn[mission.key]
 
