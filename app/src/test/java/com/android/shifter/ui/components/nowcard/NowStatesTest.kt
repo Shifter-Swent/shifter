@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.nowcard
 
 import com.swent.shifter.model.mission.Mission
@@ -11,6 +12,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -24,10 +27,10 @@ class NowStatesTest {
 
   @Test
   fun nowStates_onCollection_emitsTheCombinedState() = runTest {
-    val clock = FakeMinuteClock(START.minusSeconds(3_600))
+    val clock = FakeMinuteClock(START.minus(Duration.ofHours(1)))
     val received = mutableListOf<NowState>()
 
-    collect(
+    startCollecting(
         nowStates(MutableStateFlow(listOf(mission)), MutableStateFlow(emptySet()), clock),
         received,
     )
@@ -36,17 +39,17 @@ class NowStatesTest {
   }
 
   @Test
-  fun nowStates_whenTimePasses_followsTheBoundariesWithoutReloading() = runTest {
-    val clock = FakeMinuteClock(START.minus(Duration.ofMinutes(46)))
+  fun nowStates_whenTimePasses_followsTheBoundaries() = runTest {
+    val clock = FakeMinuteClock(START.minus(Duration.ofMinutes(31)))
     val received = mutableListOf<NowState>()
-    collect(
+    startCollecting(
         nowStates(MutableStateFlow(listOf(mission)), MutableStateFlow(emptySet()), clock),
         received,
     )
 
     clock.advance(Duration.ofMinutes(1))
     runCurrent()
-    clock.advance(Duration.ofMinutes(45))
+    clock.advance(Duration.ofMinutes(30))
     runCurrent()
     clock.advance(Duration.ofHours(1))
     runCurrent()
@@ -66,7 +69,7 @@ class NowStatesTest {
   fun nowStates_whenCheckInsArriveOrAreRolledBack_updatesPresence() = runTest {
     val checkedIn = MutableStateFlow(emptySet<String>())
     val received = mutableListOf<NowState>()
-    collect(
+    startCollecting(
         nowStates(MutableStateFlow(listOf(mission)), checkedIn, FakeMinuteClock(START)),
         received,
     )
@@ -88,10 +91,10 @@ class NowStatesTest {
 
   @Test
   fun nowStates_afterAnEarlyCheckIn_becomesOngoingOnlyAtStart() = runTest {
-    val clock = FakeMinuteClock(START.minusSeconds(600))
+    val clock = FakeMinuteClock(START.minus(Duration.ofMinutes(10)))
     val checkedIn = MutableStateFlow(emptySet<String>())
     val received = mutableListOf<NowState>()
-    collect(nowStates(MutableStateFlow(listOf(mission)), checkedIn, clock), received)
+    startCollecting(nowStates(MutableStateFlow(listOf(mission)), checkedIn, clock), received)
 
     checkedIn.value = setOf(mission.id)
     runCurrent()
@@ -106,7 +109,10 @@ class NowStatesTest {
   fun nowStates_whenAMissionIsAssignedOrUnassigned_updatesTheSelection() = runTest {
     val missions = MutableStateFlow(emptyList<Mission>())
     val received = mutableListOf<NowState>()
-    collect(nowStates(missions, MutableStateFlow(emptySet()), FakeMinuteClock(START)), received)
+    startCollecting(
+        nowStates(missions, MutableStateFlow(emptySet()), FakeMinuteClock(START)),
+        received,
+    )
 
     missions.value = listOf(mission)
     runCurrent()
@@ -123,7 +129,7 @@ class NowStatesTest {
   fun nowStates_whenMissionDetailsChange_emitsTheUpdatedMission() = runTest {
     val missions = MutableStateFlow(listOf(mission))
     val received = mutableListOf<NowState>()
-    collect(
+    startCollecting(
         nowStates(missions, MutableStateFlow(setOf(mission.id)), FakeMinuteClock(START)),
         received,
     )
@@ -140,12 +146,12 @@ class NowStatesTest {
     val next =
         mission.copy(
             id = "next",
-            startAt = START.plusSeconds(1_800),
-            endAt = START.plusSeconds(5_400),
+            startAt = START.plus(Duration.ofMinutes(20)),
+            endAt = START.plus(Duration.ofMinutes(80)),
         )
     val missions = MutableStateFlow(listOf(mission, next))
     val received = mutableListOf<NowState>()
-    collect(
+    startCollecting(
         nowStates(missions, MutableStateFlow(setOf(mission.id)), FakeMinuteClock(START)),
         received,
     )
@@ -160,7 +166,7 @@ class NowStatesTest {
   fun nowStates_whenTicksKeepTheSameState_doesNotEmitDuplicates() = runTest {
     val clock = FakeMinuteClock(START)
     val received = mutableListOf<NowState>()
-    collect(
+    startCollecting(
         nowStates(MutableStateFlow(listOf(mission)), MutableStateFlow(emptySet()), clock),
         received,
     )
@@ -184,7 +190,7 @@ class NowStatesTest {
         }
     val received = mutableListOf<NowState>()
 
-    collect(
+    startCollecting(
         nowStates(MutableStateFlow(listOf(mission)), MutableStateFlow(emptySet()), clock),
         received,
     )
@@ -197,7 +203,7 @@ class NowStatesTest {
     val missions = MutableSharedFlow<List<Mission>>(replay = 1)
     val checkedIn = MutableSharedFlow<Set<String>>(replay = 1)
     val received = mutableListOf<NowState>()
-    collect(nowStates(missions, checkedIn, FakeMinuteClock(START)), received)
+    startCollecting(nowStates(missions, checkedIn, FakeMinuteClock(START)), received)
     assertTrue(received.isEmpty())
 
     missions.emit(listOf(mission))
@@ -210,20 +216,44 @@ class NowStatesTest {
   }
 
   @Test
-  fun nowStates_whenCollectionStops_releasesItsClockSubscription() = runTest {
+  fun nowStates_whenCollectionStops_releasesItsSubscriptions() = runTest {
     val clock = FakeMinuteClock(START)
-    val flow = nowStates(MutableStateFlow(listOf(mission)), MutableStateFlow(emptySet()), clock)
+    val missions = MutableStateFlow(listOf(mission))
+    val checkedIn = MutableStateFlow(emptySet<String>())
+    val flow = nowStates(missions, checkedIn, clock)
     assertEquals(0, clock.subscriptionCount.value)
-    val observer = collect(flow, mutableListOf())
+    val observer = startCollecting(flow, mutableListOf())
     assertEquals(1, clock.subscriptionCount.value)
+    assertEquals(1, missions.subscriptionCount.value)
+    assertEquals(1, checkedIn.subscriptionCount.value)
 
     observer.cancel()
     runCurrent()
 
     assertEquals(0, clock.subscriptionCount.value)
+    assertEquals(0, missions.subscriptionCount.value)
+    assertEquals(0, checkedIn.subscriptionCount.value)
   }
 
-  private fun TestScope.collect(flow: Flow<NowState>, received: MutableList<NowState>): Job {
+  @Test
+  fun nowStates_whenCheckInsFail_propagatesTheError() = runTest {
+    val failure = IllegalStateException("check-ins unavailable")
+    val checkedIn = flow<Set<String>> { throw failure }
+
+    val error = runCatching {
+      nowStates(MutableStateFlow(listOf(mission)), checkedIn, FakeMinuteClock(START)).first()
+    }
+        .exceptionOrNull()
+
+    // Coroutines may hand over a copy of the exception, with the collector's stack trace.
+    assertTrue(error is IllegalStateException)
+    assertEquals(failure.message, error?.message)
+  }
+
+  private fun TestScope.startCollecting(
+      flow: Flow<NowState>,
+      received: MutableList<NowState>,
+  ): Job {
     val job = backgroundScope.launch { flow.collect { received += it } }
     runCurrent()
     return job
@@ -237,8 +267,8 @@ class NowStatesTest {
           description = "Briefing",
           volunteersNeeded = 1,
           startAt = START,
-          endAt = START.plusSeconds(3_600),
-          createdAt = START.minusSeconds(86_400),
+          endAt = START.plus(Duration.ofHours(1)),
+          createdAt = START.minus(Duration.ofDays(1)),
       )
 
   private companion object {
