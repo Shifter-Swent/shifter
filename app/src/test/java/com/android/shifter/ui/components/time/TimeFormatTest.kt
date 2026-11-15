@@ -3,13 +3,40 @@ package com.swent.shifter.ui.components.time
 
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class TimeFormatTest {
+
+  @Test
+  fun formatDay_writesTheDayAndMonth() {
+    assertEquals("21 Jul", LocalDate.of(2026, 7, 21).formatDay())
+    assertEquals("21 Jul 2026", LocalDate.of(2026, 7, 21).formatDay(withYear = true))
+    assertEquals("1 Jan", LocalDate.of(2027, 1, 1).formatDay())
+  }
+
+  @Test
+  fun formatWeekday_writesTheWeekdayFirst() {
+    assertEquals("Mon 22 Jun", LocalDate.of(2026, 6, 22).formatWeekday())
+    assertEquals("Mon 22 Jun 2026", LocalDate.of(2026, 6, 22).formatWeekday(withYear = true))
+  }
+
+  @Test
+  fun formatWeekday_inAnotherLocale_followsIt() {
+    val day = LocalDate.of(2026, 6, 22)
+    // Compared with the JDK's own French names, which differ between JDKs and Android.
+    val french = DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.FRENCH).format(day)
+
+    assertEquals(french, day.formatWeekday(withYear = true, locale = Locale.FRENCH))
+    assertNotEquals(french, day.formatWeekday(withYear = true))
+  }
 
   @Test
   fun formatTime_inTheZone_writesHoursAndMinutes() {

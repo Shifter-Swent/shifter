@@ -78,6 +78,7 @@ import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.time.formatTime
+import com.swent.shifter.ui.components.time.formatWeekday
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.map.LocationPicker
@@ -86,7 +87,7 @@ import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 object AddMissionScreenTestTags {
   const val EVENT_TITLE = "AddMissionEventTitle"
@@ -847,7 +848,7 @@ private fun DayField(
 ) {
   var open by rememberSaveable { mutableStateOf(false) }
   PickerField(
-      text = day?.format(DAY_FORMAT),
+      text = day?.missionDay(),
       enabled = enabled,
       onClick = { open = true },
       testTag = AddMissionScreenTestTags.DAY_FIELD,
@@ -977,15 +978,15 @@ private fun formatPeriod(event: EventPeriod): String =
     if (event.start.toLocalDate() == event.end.toLocalDate()) {
       stringResource(
           R.string.add_mission_event_period,
-          event.start.format(DAY_FORMAT),
+          event.start.toLocalDate().missionDay(),
           event.start.toLocalTime().formatTime(),
           event.end.toLocalTime().formatTime(),
       )
     } else {
       stringResource(
           R.string.add_mission_event_period_multi_day,
-          event.start.format(DATE_TIME_FORMAT),
-          event.end.format(DATE_TIME_FORMAT),
+          event.start.missionDateTime(),
+          event.end.missionDateTime(),
       )
     }
 
@@ -996,15 +997,23 @@ private fun formatConflict(conflict: MissionConflict, isEditing: Boolean): Strin
         if (isEditing) R.string.edit_mission_error_conflict
         else R.string.add_mission_error_conflict,
         conflict.title,
-        conflict.start.format(DATE_TIME_FORMAT),
+        conflict.start.missionDateTime(),
         if (conflict.start.toLocalDate() == conflict.end.toLocalDate())
             conflict.end.toLocalTime().formatTime()
-        else conflict.end.format(DATE_TIME_FORMAT),
+        else conflict.end.missionDateTime(),
     )
 
-private val DAY_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM uuuu")
-private val DATE_TIME_FORMAT: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEE d MMM uuuu HH:mm")
+/**
+ * "Fri 20 Jun 2025", in the device's language: the one screen that does not write dates in English,
+ * as before the formats were shared (#543). [Locale.Category.FORMAT] is the locale a formatter
+ * without one used.
+ */
+private fun LocalDate.missionDay(): String =
+    formatWeekday(withYear = true, locale = Locale.getDefault(Locale.Category.FORMAT))
+
+/** "Fri 20 Jun 2025 14:00", the day as [missionDay] writes it. */
+private fun LocalDateTime.missionDateTime(): String =
+    "${toLocalDate().missionDay()} ${toLocalTime().formatTime()}"
 
 @get:StringRes
 private val MissionFormError.message: Int

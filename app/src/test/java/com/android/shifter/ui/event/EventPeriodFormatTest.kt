@@ -3,6 +3,7 @@ package com.swent.shifter.ui.event
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -37,11 +38,20 @@ class EventPeriodFormatTest {
     )
   }
 
-  private fun format(startAt: String, endAt: String) =
+  @Test
+  fun formatEventPeriod_inTheZone_takesTheZonesDay() {
+    // Still the 22nd in UTC, already the 23rd in Zurich.
+    assertEquals(
+        "Tue 23 Jun · 00:30 – 02:00",
+        format("2026-06-22T22:30:00Z", "2026-06-23T00:00:00Z", ZoneId.of("Europe/Zurich")),
+    )
+  }
+
+  private fun format(startAt: String, endAt: String, zone: ZoneId = ZoneOffset.UTC) =
       formatEventPeriod(
           Instant.parse(startAt),
           Instant.parse(endAt),
-          ZoneOffset.UTC,
+          zone,
           today = LocalDate.of(2026, 10, 9),
       )
 }

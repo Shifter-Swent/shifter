@@ -8,6 +8,7 @@ import androidx.compose.ui.platform.LocalResources
 import com.swent.shifter.R
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -20,6 +21,26 @@ fun Instant.formatTime(zone: ZoneId): String = TIME.format(atZone(zone))
 fun LocalTime.formatTime(): String = TIME.format(this)
 
 private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
+
+/**
+ * "21 Jul", or "21 Jul 2026" [withYear]. The caller converts to its zone and decides when the year
+ * is needed, since each screen has its own rule.
+ */
+fun LocalDate.formatDay(withYear: Boolean = false, locale: Locale = Locale.ENGLISH): String =
+    (if (withYear) DAY_YEAR else DAY).withLocale(locale).format(this)
+
+/**
+ * "Mon 22 Jun", or "Mon 22 Jun 2026" [withYear], like [formatDay]. The app writes dates in English;
+ * [locale] is only for the mission form, which keeps the device's.
+ */
+fun LocalDate.formatWeekday(withYear: Boolean = false, locale: Locale = Locale.ENGLISH): String =
+    (if (withYear) WEEKDAY_YEAR else WEEKDAY).withLocale(locale).format(this)
+
+private val DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
+private val DAY_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM uuuu", Locale.ENGLISH)
+private val WEEKDAY: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH)
+private val WEEKDAY_YEAR: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.ENGLISH)
 
 /**
  * The [duration] as the now card writes it: "25 min", "1 h", "1 h 05". Rounded down to the minute

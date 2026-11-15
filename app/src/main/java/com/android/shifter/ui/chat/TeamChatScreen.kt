@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_announcement
 import com.swent.shifter.ui.theme.shifter_announcementContainer
@@ -55,8 +56,6 @@ import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 object TeamChatTestTags {
   const val LOADING = "teamChatLoading"
@@ -356,12 +355,8 @@ private val ChatError.messageRes: Int
  * The time of a message sent [today], or its day and time otherwise: the channel stays open after
  * the event, which can last several days, so an old instruction must not read as a current one.
  */
-internal fun sentAtLabel(sentAt: ZonedDateTime, today: LocalDate): String =
-    when {
-      sentAt.toLocalDate() == today -> sentAt.toLocalTime().formatTime()
-      sentAt.year == today.year -> DAY_AND_TIME.format(sentAt)
-      else -> DATE_AND_TIME.format(sentAt)
-    }
-
-private val DAY_AND_TIME = DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.ENGLISH)
-private val DATE_AND_TIME = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.ENGLISH)
+internal fun sentAtLabel(sentAt: ZonedDateTime, today: LocalDate): String {
+  val time = sentAt.toLocalTime().formatTime()
+  val day = sentAt.toLocalDate()
+  return if (day == today) time else "${day.formatDay(withYear = day.year != today.year)}, $time"
+}
