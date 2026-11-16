@@ -157,7 +157,7 @@ class CameraQrScanner(
 
     var detached = false
     var cameraState: LiveData<CameraState>? = null
-    val stateObserver = Observer<CameraState> { scanError(it.error)?.let(::onCameraError) }
+    val stateObserver = Observer<CameraState> { scanError(it)?.let(::onCameraError) }
     val torchObserver = Observer<Int> { onTorch(it == TorchState.ON) }
 
     fun start() {
@@ -215,12 +215,16 @@ class CameraQrScanner(
     const val SIGHTINGS_BUFFER = 64
 
     /**
-     * The error to report for a camera state: any CameraX error stops the scan, even one CameraX
-     * may recover from (e.g. the camera in use by another app), since the volunteer can always type
-     * the code instead of staring at a black preview.
+     * The error to report for a camera [state]: a critical error, or one CameraX gave up on (the
+     * camera closed). A recoverable error CameraX is still retrying, e.g. the camera in use by
+     * another app while coming back from the background, is not reported: the screen keeps the
+     * first error, so a short hiccup would hide the camera until it is opened again.
      */
-    fun scanError(stateError: CameraState.StateError?): ScanError? = stateError?.let {
-      ScanError.CAMERA_FAILED
+    fun scanError(state: CameraState): ScanError? {
+      val error = state.error ?: return null
+      val givenUp =
+          error.type == CameraState.ErrorType.CRITICAL || state.type == CameraState.Type.CLOSED
+      return if (givenUp) ScanError.CAMERA_FAILED else null
     }
 
     /** ML Kit's barcode scanner, keeping only QR codes. */

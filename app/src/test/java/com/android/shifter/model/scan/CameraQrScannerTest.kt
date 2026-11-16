@@ -88,16 +88,34 @@ class CameraQrScannerTest {
   }
 
   @Test
-  fun scanError_ofACameraError_isCameraFailed() {
-    val inUse = CameraState.StateError.create(CameraState.ERROR_CAMERA_IN_USE)
+  fun scanError_ofACriticalError_isCameraFailed() {
+    val disabled =
+        CameraState.create(CameraState.Type.CLOSING, error(CameraState.ERROR_CAMERA_DISABLED))
+
+    assertEquals(ScanError.CAMERA_FAILED, CameraQrScanner.scanError(disabled))
+  }
+
+  @Test
+  fun scanError_ofARecoverableErrorCameraXRetries_isNull() {
+    val inUse =
+        CameraState.create(CameraState.Type.PENDING_OPEN, error(CameraState.ERROR_CAMERA_IN_USE))
+
+    assertNull(CameraQrScanner.scanError(inUse))
+  }
+
+  @Test
+  fun scanError_ofARecoverableErrorOnceClosed_isCameraFailed() {
+    val inUse = CameraState.create(CameraState.Type.CLOSED, error(CameraState.ERROR_CAMERA_IN_USE))
 
     assertEquals(ScanError.CAMERA_FAILED, CameraQrScanner.scanError(inUse))
   }
 
   @Test
   fun scanError_withoutError_isNull() {
-    assertNull(CameraQrScanner.scanError(null))
+    assertNull(CameraQrScanner.scanError(CameraState.create(CameraState.Type.OPEN)))
   }
+
+  private fun error(code: Int) = CameraState.StateError.create(code)
 
   @Test
   fun torch_beforeTheCameraStarts_staysOff() {
