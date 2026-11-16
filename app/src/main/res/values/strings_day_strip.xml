@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The day strip, where the missions of an event are picked one day at a time -->
+    <string name="day_strip_today">Today</string>
+    <!-- Read out for today in the day strip, e.g. "Today, Saturday 14 June" -->
+    <string name="day_strip_today_description">Today, %1$s</string>
+    <!-- Read out for a day of the strip, e.g. "Monday 16 June, no missions" -->
+    <string name="day_strip_no_missions">%1$s, no missions</string>
+</resources>

@@ -30,7 +30,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_dimmedText
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -145,16 +144,15 @@ private fun DayChip(
   ) {
     Text(
         text = if (isToday) stringResource(R.string.day_strip_today) else day.shortWeekday(),
+        style = MaterialTheme.typography.labelSmall,
         color = labelColor,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
         maxLines = 1,
     )
     Text(
         text = day.dayOfMonth.toString(),
-        color = dayColor,
-        fontSize = 16.sp,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
+        color = dayColor,
     )
     // Keeps its height without a dot, so every chip is the same size.
     Box(modifier = Modifier.size(4.dp)) {
