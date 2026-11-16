@@ -151,6 +151,13 @@ dependencies {
   implementation(libs.play.services.location)
   // QR codes of the join codes, generated on the device
   implementation(libs.zxing.core)
+  // The camera that reads the QR codes of the join codes
+  implementation(libs.camera.core)
+  implementation(libs.camera.camera2)
+  implementation(libs.camera.lifecycle)
+  implementation(libs.camera.view)
+  implementation(libs.camera.mlkit.vision)
+  implementation(libs.mlkit.barcode.scanning)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)

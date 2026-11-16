@@ -22,6 +22,8 @@ mapsCompose = "9.0.1"
 playServicesMaps = "20.1.0"
 playServicesLocation = "21.3.0"
 zxing = "3.5.3"
+camerax = "1.6.2"
+mlkitBarcode = "17.3.0"
 
 # Firebase
 firebaseBom = "34.19.0"
@@ -64,6 +66,12 @@ maps-compose = { module = "com.google.maps.android:maps-compose", version.ref = 
 play-services-maps = { module = "com.google.android.gms:play-services-maps", version.ref = "playServicesMaps" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+camera-mlkit-vision = { module = "androidx.camera:camera-mlkit-vision", version.ref = "camerax" }
+mlkit-barcode-scanning = { module = "com.google.mlkit:barcode-scanning", version.ref = "mlkitBarcode" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 
 kaspresso = { group = "com.kaspersky.android-components", name = "kaspresso", version.ref = "kaspresso" }
