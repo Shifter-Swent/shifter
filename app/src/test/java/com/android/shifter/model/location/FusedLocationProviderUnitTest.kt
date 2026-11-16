@@ -113,18 +113,35 @@ class FusedLocationProviderUnitTest {
   }
 
   @Test
-  fun positions_whenGranted_emitsTheLocationResults() = runTest {
+  fun positions_whenGranted_emitsTheLocationResultsWithTheirAccuracy() = runTest {
     grantFinePermission()
     val provider = FusedLocationProvider(application, intervalMillis = 1_000L)
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
-    callback.captured.onLocationResult(LocationResult.create(listOf(location(LAUSANNE))))
+    callback.captured.onLocationResult(LocationResult.create(listOf(location(LAUSANNE, 8f))))
     callback.captured.onLocationResult(LocationResult.create(emptyList()))
-    callback.captured.onLocationResult(LocationResult.create(listOf(location(GENEVA))))
+    callback.captured.onLocationResult(LocationResult.create(listOf(location(GENEVA, 120f))))
 
-    assertEquals(listOf(LAUSANNE, GENEVA), received)
+    assertEquals(
+        listOf(MeasuredPosition(LAUSANNE, 8.0), MeasuredPosition(GENEVA, 120.0)),
+        received,
+    )
+    job.cancel()
+  }
+
+  @Test
+  fun positions_withoutAccuracy_givesAnInfiniteOne() = runTest {
+    grantFinePermission()
+    val provider = FusedLocationProvider(application)
+    val received = mutableListOf<MeasuredPosition>()
+    val job =
+        launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
+
+    callback.captured.onLocationResult(LocationResult.create(listOf(location(LAUSANNE, null))))
+
+    assertEquals(listOf(MeasuredPosition(LAUSANNE, Double.POSITIVE_INFINITY)), received)
     job.cancel()
   }
 
@@ -242,14 +259,14 @@ class FusedLocationProviderUnitTest {
     val received = mutableListOf<GeoPosition>()
     val job = launch {
       provider.positions().collect {
-        received += it
+        received += it.position
         delay(10_000L)
       }
     }
     runCurrent()
 
     listOf(LAUSANNE, GENEVA, BERN, ZURICH).forEach {
-      callback.captured.onLocationResult(LocationResult.create(listOf(location(it))))
+      callback.captured.onLocationResult(LocationResult.create(listOf(location(it, 5f))))
       runCurrent()
     }
     advanceUntilIdle()
@@ -290,10 +307,12 @@ class FusedLocationProviderUnitTest {
     shadowOf(application).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION)
   }
 
-  private fun location(position: GeoPosition) =
+  /** A location at [position], with no accuracy when [accuracyMeters] is null. */
+  private fun location(position: GeoPosition, accuracyMeters: Float?) =
       Location(LocationManager.GPS_PROVIDER).apply {
         latitude = position.latitude
         longitude = position.longitude
+        accuracyMeters?.let { accuracy = it }
       }
 
   private fun availability(isAvailable: Boolean) =

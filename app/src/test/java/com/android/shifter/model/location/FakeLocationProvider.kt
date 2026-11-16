@@ -33,7 +33,7 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   var refreshCount = 0
     private set
 
-  private val updates = MutableSharedFlow<GeoPosition>()
+  private val updates = MutableSharedFlow<MeasuredPosition>()
 
   /** How many collectors are listening for positions right now, to check the updates stop. */
   val activeCollectors: Int
@@ -46,7 +46,7 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   }
 
   /** Delivers [position] to every collector; it is lost if nobody is listening. */
-  suspend fun emit(position: GeoPosition) = updates.emit(position)
+  suspend fun emit(position: MeasuredPosition) = updates.emit(position)
 
   override fun refreshStatus() {
     refreshCount++
@@ -54,8 +54,14 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   }
 
   @OptIn(ExperimentalCoroutinesApi::class)
-  override fun positions(): Flow<GeoPosition> = flow {
+  override fun positions(): Flow<MeasuredPosition> = flow {
     refreshStatus()
     emitAll(status.flatMapLatest { if (it == LocationStatus.GRANTED) updates else emptyFlow() })
   }
 }
+
+/** [position] measured precisely, for a test where the accuracy plays no part. */
+fun accurate(position: GeoPosition) = MeasuredPosition(position, ACCURATE_METERS)
+
+/** The accuracy of [accurate]: an outdoor GPS fix, well within any check-in rule. */
+private const val ACCURATE_METERS = 5.0

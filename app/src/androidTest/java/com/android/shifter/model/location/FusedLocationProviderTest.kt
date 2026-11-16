@@ -86,7 +86,7 @@ class FusedLocationProviderTest {
       }
     }
 
-    assertEquals(LAUSANNE, position)
+    assertEquals(MeasuredPosition(LAUSANNE, 1.0), position)
   }
 
   private fun mockLocation(position: GeoPosition) =

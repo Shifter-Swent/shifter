@@ -47,7 +47,7 @@ class LiveLocationSessionsTest {
         // still publish nothing before the event.
         startSession(target(START + Duration.ofHours(1), START + Duration.ofHours(4)))
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(0, provider.activeCollectors)
         assertEquals(emptyList<LiveLocation>(), shared())
         // Nor is any state reported: the indicator has nothing to show for an event not begun.
@@ -55,7 +55,7 @@ class LiveLocationSessionsTest {
 
         // At the start it begins, shares, and reports as any session does.
         advanceTimeBy(Duration.ofHours(1).toKotlinDuration() + 1.milliseconds)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(GENEVA, shared().single().position)
         assertEquals(listOf(WAITING, SHARED), states)
       }
@@ -65,7 +65,7 @@ class LiveLocationSessionsTest {
       runTest(UnconfinedTestDispatcher()) {
         startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(3)))
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(GENEVA, shared().single().position)
         assertEquals(1, provider.activeCollectors)
@@ -75,7 +75,7 @@ class LiveLocationSessionsTest {
   fun publish_stopsAtTheEnd_thenCollectsNoGpsAndSharesNoMore() =
       runTest(UnconfinedTestDispatcher()) {
         startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(2)))
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, provider.activeCollectors)
 
         // A millisecond before the end it is still sharing.
@@ -89,7 +89,7 @@ class LiveLocationSessionsTest {
         // A later position is shared no more; the one stored before the end stays: the end is not
         // the consent turning off, so no OFF is reported and nothing is taken out. Nothing is
         // reported at all any more; dropping the state it had reported is the coordinator's.
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         assertEquals(GENEVA, shared().single().position)
         assertEquals(listOf(WAITING, SHARED), states)
       }
@@ -99,7 +99,7 @@ class LiveLocationSessionsTest {
       runTest(UnconfinedTestDispatcher()) {
         startSession(target(START - Duration.ofHours(4), START - Duration.ofSeconds(1)))
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(0, provider.activeCollectors)
         assertEquals(emptyList<LiveLocation>(), shared())
@@ -117,7 +117,7 @@ class LiveLocationSessionsTest {
         val sharing = MutableStateFlow(true)
         val session =
             startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(1)), sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(GENEVA, shared().single().position)
 
         advanceTimeBy(Duration.ofMinutes(50).toKotlinDuration())
@@ -130,7 +130,7 @@ class LiveLocationSessionsTest {
         advanceTimeBy(Duration.ofMinutes(10).toKotlinDuration() + 1.milliseconds)
         assertTrue(session.isCompleted)
         sharing.value = true
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(0, provider.activeCollectors)
         assertEquals(emptyList<LiveLocation>(), shared())
@@ -144,7 +144,7 @@ class LiveLocationSessionsTest {
         // own.
         startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(1), "early"))
         startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(3), "late"))
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(2, provider.activeCollectors)
 
         // Past the early event's end, before the late one's: only the late session remains.
@@ -160,7 +160,7 @@ class LiveLocationSessionsTest {
   fun publish_whenCancelledBeforeTheEnd_stopsTheGpsAndKeepsThePosition() =
       runTest(UnconfinedTestDispatcher()) {
         val session = startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(3)))
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, provider.activeCollectors)
 
         session.cancel()
@@ -177,7 +177,7 @@ class LiveLocationSessionsTest {
         // the event either: the end stops it whatever the writes did.
         repository.failure = LiveLocationRepositoryException.Unavailable()
         startSession(target(START - Duration.ofHours(1), START + Duration.ofHours(1)))
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, provider.activeCollectors)
 
         advanceTimeBy(Duration.ofHours(1).toKotlinDuration() + 1.milliseconds)
@@ -202,7 +202,7 @@ class LiveLocationSessionsTest {
         }
 
         // The write starts within the event and then hangs, with the GPS still collected.
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, suspending.writes)
         assertEquals(1, provider.activeCollectors)
 
@@ -212,7 +212,7 @@ class LiveLocationSessionsTest {
 
         // A later position starts no new write: the client initiates nothing past the end. What
         // Firestore may have already queued is its own to send; this does not recall it.
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         assertEquals(1, suspending.writes)
       }
 

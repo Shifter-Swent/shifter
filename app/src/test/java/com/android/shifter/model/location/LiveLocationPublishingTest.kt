@@ -112,7 +112,7 @@ class LiveLocationPublishingTest {
         }
 
         // Sharing is on: the GPS is collected and a measured position is published.
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, provider.activeCollectors)
         assertEquals(
             listOf(GENEVA),

@@ -26,7 +26,7 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   private val mutableStatus = MutableStateFlow(initialStatus)
   override val status: StateFlow<LocationStatus> = mutableStatus.asStateFlow()
 
-  private val position = MutableStateFlow<GeoPosition?>(null)
+  private val position = MutableStateFlow<MeasuredPosition?>(null)
 
   /** How many sessions are collecting [positions] right now, to check that GPS collection stops. */
   val activeCollectors: Int
@@ -39,13 +39,13 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
   val faultTriggered = MutableStateFlow(false)
 
   /** Sets the current position, replayed to any session collecting [positions]. */
-  fun setPosition(newPosition: GeoPosition) {
+  fun setPosition(newPosition: MeasuredPosition) {
     position.value = newPosition
   }
 
   override fun refreshStatus() = Unit
 
-  override fun positions(): Flow<GeoPosition> = status.flatMapLatest {
+  override fun positions(): Flow<MeasuredPosition> = status.flatMapLatest {
     when {
       it != LocationStatus.GRANTED -> emptyFlow()
       failing ->
@@ -57,3 +57,9 @@ class FakeLocationProvider(initialStatus: LocationStatus = LocationStatus.GRANTE
     }
   }
 }
+
+/** [position] measured precisely, for a test where the accuracy plays no part. */
+fun accurate(position: GeoPosition) = MeasuredPosition(position, ACCURATE_METERS)
+
+/** The accuracy of [accurate]: an outdoor GPS fix, well within any check-in rule. */
+private const val ACCURATE_METERS = 5.0

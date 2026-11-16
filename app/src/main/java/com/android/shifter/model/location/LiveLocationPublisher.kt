@@ -178,7 +178,8 @@ class LiveLocationPublisher(
     var lastShared: GeoPosition? = null
     // Sequential on purpose: the next position waits for the write of the previous one, so two
     // writes of the same volunteer never overlap.
-    locationProvider.positions().collect { position ->
+    locationProvider.positions().collect { measured ->
+      val position = measured.position
       val measuredAt = now()
       // Nothing reported since the session started or the access came back: the volunteer is
       // waiting to be shown as shared, so this position goes out at once, whatever came before.

@@ -18,25 +18,25 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenGranted_emitsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.GRANTED)
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
-    provider.emit(LAUSANNE)
-    provider.emit(GENEVA)
+    provider.emit(accurate(LAUSANNE))
+    provider.emit(accurate(GENEVA))
 
-    assertEquals(listOf(LAUSANNE, GENEVA), received)
+    assertEquals(listOf(accurate(LAUSANNE), accurate(GENEVA)), received)
     job.cancel()
   }
 
   @Test
   fun positions_whenDenied_emitsNothingAndDoesNotListen() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
-    provider.emit(LAUSANNE)
+    provider.emit(accurate(LAUSANNE))
 
     assertTrue(received.isEmpty())
     assertEquals(0, provider.activeCollectors)
@@ -46,29 +46,29 @@ class FakeLocationProviderTest {
   @Test
   fun positions_whenGrantedLater_startsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
     provider.setStatus(LocationStatus.GRANTED)
-    provider.emit(LAUSANNE)
+    provider.emit(accurate(LAUSANNE))
 
-    assertEquals(listOf(LAUSANNE), received)
+    assertEquals(listOf(accurate(LAUSANNE)), received)
     job.cancel()
   }
 
   @Test
   fun positions_whenLocationTurnedOff_stopsTheUpdates() = runTest {
     val provider = FakeLocationProvider(LocationStatus.GRANTED)
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
-    provider.emit(LAUSANNE)
+    provider.emit(accurate(LAUSANNE))
 
     provider.setStatus(LocationStatus.LOCATION_OFF)
-    provider.emit(GENEVA)
+    provider.emit(accurate(GENEVA))
 
-    assertEquals(listOf(LAUSANNE), received)
+    assertEquals(listOf(accurate(LAUSANNE)), received)
     assertEquals(0, provider.activeCollectors)
     job.cancel()
   }
@@ -88,13 +88,13 @@ class FakeLocationProviderTest {
   fun positions_whenCollected_readsTheStatusAgain() = runTest {
     val provider = FakeLocationProvider(LocationStatus.DENIED)
     provider.deviceStatus = LocationStatus.GRANTED
-    val received = mutableListOf<GeoPosition>()
+    val received = mutableListOf<MeasuredPosition>()
     val job =
         launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
 
-    provider.emit(LAUSANNE)
+    provider.emit(accurate(LAUSANNE))
 
-    assertEquals(listOf(LAUSANNE), received)
+    assertEquals(listOf(accurate(LAUSANNE)), received)
     job.cancel()
   }
 

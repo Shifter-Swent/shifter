@@ -15,6 +15,8 @@ import com.swent.shifter.model.location.LiveLocationRepository
 import com.swent.shifter.model.location.LiveLocationRepositoryException
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.model.location.MeasuredPosition
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -240,10 +242,10 @@ class MapViewModelTest {
     collectPosition(viewModel)
     assertNull(viewModel.myPosition.value)
 
-    location.emit(TENT.position)
+    location.emit(accurate(TENT.position))
     assertEquals(TENT.position, viewModel.myPosition.value)
 
-    location.emit(STAND.position)
+    location.emit(accurate(STAND.position))
     assertEquals(STAND.position, viewModel.myPosition.value)
   }
 
@@ -254,7 +256,7 @@ class MapViewModelTest {
     val viewModel = viewModel(location)
     collectPosition(viewModel)
 
-    location.emit(TENT.position)
+    location.emit(accurate(TENT.position))
 
     assertNull(viewModel.myPosition.value)
     assertEquals(1, viewModel.uiState.value.markers.size)
@@ -265,7 +267,7 @@ class MapViewModelTest {
     val location = FakeLocationProvider()
     val viewModel = viewModel(location)
     collectPosition(viewModel)
-    location.emit(TENT.position)
+    location.emit(accurate(TENT.position))
 
     location.setStatus(LocationStatus.LOCATION_OFF)
 
@@ -277,19 +279,19 @@ class MapViewModelTest {
     val location = FakeLocationProvider()
     val viewModel = viewModel(location)
     collectPosition(viewModel)
-    location.emit(TENT.position)
+    location.emit(accurate(TENT.position))
     location.setStatus(LocationStatus.LOCATION_OFF)
 
     location.setStatus(LocationStatus.GRANTED)
     assertNull(viewModel.myPosition.value)
 
-    location.emit(STAND.position)
+    location.emit(accurate(STAND.position))
     assertEquals(STAND.position, viewModel.myPosition.value)
   }
 
   @Test
   fun myPosition_ignoresAPositionArrivingAfterTheAccessIsLost() = runTest {
-    val late = MutableSharedFlow<GeoPosition>()
+    val late = MutableSharedFlow<MeasuredPosition>()
     val location =
         object : LocationProvider by FakeLocationProvider(LocationStatus.DENIED) {
           override fun positions() = late
@@ -297,7 +299,7 @@ class MapViewModelTest {
     val viewModel = viewModel(location)
     collectPosition(viewModel)
 
-    late.emit(TENT.position)
+    late.emit(accurate(TENT.position))
 
     assertNull(viewModel.myPosition.value)
   }
@@ -314,7 +316,8 @@ class MapViewModelTest {
   fun myPosition_staysUnknownWhenTheGpsFailsAndTheMapStillLoads() = runTest {
     val failing =
         object : LocationProvider by FakeLocationProvider() {
-          override fun positions() = flow<GeoPosition> { throw IllegalStateException("no GPS") }
+          override fun positions() =
+              flow<MeasuredPosition> { throw IllegalStateException("no GPS") }
         }
     val viewModel = viewModel(failing)
     collectPosition(viewModel)
@@ -332,7 +335,7 @@ class MapViewModelTest {
         object : LocationProvider by location {
           override fun positions() = flow {
             if (attempts++ == 0) {
-              emit(TENT.position)
+              emit(accurate(TENT.position))
               gpsLost.await()
               throw IllegalStateException("GPS lost")
             }
@@ -349,7 +352,7 @@ class MapViewModelTest {
     assertNull(viewModel.myPosition.value)
 
     advanceTimeBy(MapViewModel.RETRY_DELAY_MILLIS + 1)
-    location.emit(STAND.position)
+    location.emit(accurate(STAND.position))
 
     assertEquals(STAND.position, viewModel.myPosition.value)
   }
@@ -360,7 +363,7 @@ class MapViewModelTest {
     val viewModel = viewModel(location)
     assertEquals(0, location.activeCollectors)
     val screen = collectPosition(viewModel)
-    location.emit(TENT.position)
+    location.emit(accurate(TENT.position))
     assertEquals(1, location.activeCollectors)
 
     screen.cancel()

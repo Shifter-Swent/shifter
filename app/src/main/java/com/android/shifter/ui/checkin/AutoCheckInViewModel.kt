@@ -208,7 +208,9 @@ class AutoCheckInViewModel(
         missions
             .map { it.isNotEmpty() }
             .distinctUntilChanged()
-            .flatMapLatest { any -> if (any) locationProvider.positions() else flowOf(null) }
+            .flatMapLatest { any ->
+              if (any) locationProvider.positions().map { it.position } else flowOf(null)
+            }
     // The last position is checked again when the check-ins change, so a position that came before
     // they were known is not lost until the next one.
     combine(positions, known) { position, checkIns -> position to checkIns }

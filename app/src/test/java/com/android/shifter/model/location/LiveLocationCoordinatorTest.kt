@@ -623,7 +623,7 @@ class LiveLocationCoordinatorTest {
               .publish(BAR, MutableStateFlow(true), reported::add)
         }
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         // What the publisher reports reaches the coordinator: without it, no state would ever show.
         assertEquals(listOf(WAITING, SHARED), reported)
