@@ -61,4 +61,24 @@
     <string name="attendance_check_in_outside_window">%1$s can\'t be checked in now: check-in is open from 15 minutes before the mission until its end.</string>
     <string name="attendance_expand">Show who is present</string>
     <string name="attendance_collapse">Hide who is present</string>
+    <!-- The manager's now card: is the team where it should be, now? -->
+    <string name="attendance_now_needs_you">Needs you</string>
+    <plurals name="attendance_now_missing">
+        <item quantity="one">%1$d volunteer missing</item>
+        <item quantity="other">%1$d volunteers missing</item>
+    </plurals>
+    <!-- Under a name: the mission they are missing from, and how late they are. -->
+    <string name="attendance_now_late">%1$s · late %2$s</string>
+    <string name="attendance_now_check_in">Check in</string>
+    <string name="attendance_now_checked_in">Checked in</string>
+    <plurals name="attendance_now_others">
+        <item quantity="one">%1$d other checked in</item>
+        <item quantity="other">%1$d others checked in</item>
+    </plurals>
+    <!-- Not being seen is not being absent: these missions are not counted as empty. -->
+    <plurals name="attendance_now_unknown">
+        <item quantity="one">Attendance not known for %1$d mission</item>
+        <item quantity="other">Attendance not known for %1$d missions</item>
+    </plurals>
+    <string name="attendance_now_view_on_map">View team on map</string>
 </resources>

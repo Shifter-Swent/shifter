@@ -5,7 +5,9 @@ package com.swent.shifter.ui.attendance
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -19,11 +21,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.time.formatTime
@@ -38,21 +40,20 @@ import java.time.ZoneId
 @Composable
 internal fun AttendanceVolunteerRow(
     volunteer: AttendanceVolunteer,
-    icon: ImageVector,
-    tint: Color,
-    zone: ZoneId,
     checkInTestTag: String,
-    manualTestTag: String,
-    pendingTestTag: String,
+    leading: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    gap: Dp = 8.dp,
+    nameStyle: TextStyle = MaterialTheme.typography.bodySmall,
+    subtitle: @Composable () -> Unit = {},
     onCheckIn: (() -> Unit)? = null,
+    trailing: @Composable RowScope.() -> Unit = {},
 ) {
-  // An id is not a name, so someone whose profile could not be read stays unnamed.
-  val name =
-      volunteer.displayName?.takeIf { it.isNotBlank() }
-          ?: stringResource(R.string.attendance_volunteer_unknown)
+  val name = attendanceVolunteerName(volunteer)
   Row(
       modifier =
-          Modifier.fillMaxWidth()
+          modifier
+              .fillMaxWidth()
               .then(
                   if (onCheckIn == null) Modifier
                   // 48 dp tall at least, since one tap writes a check-in that cannot be
@@ -70,38 +71,59 @@ internal fun AttendanceVolunteerRow(
                           .testTag(checkInTestTag)
               ),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      horizontalArrangement = Arrangement.spacedBy(gap),
   ) {
-    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+    leading()
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Text(text = name, style = nameStyle, color = MaterialTheme.colorScheme.onSurface)
+      subtitle()
+    }
+    trailing()
+  }
+}
+
+/**
+ * The name of [volunteer], or a stand-in when their profile could not be read: an id is not a name,
+ * so someone unnamed reads the same wherever they are listed.
+ */
+@Composable
+private fun attendanceVolunteerName(volunteer: AttendanceVolunteer): String =
+    volunteer.displayName?.takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.attendance_volunteer_unknown)
+
+/**
+ * What is known of a volunteer's check-in on a mission card: checked in by hand, not confirmed by
+ * the backend yet, and when they arrived. Emitted into the row it trails.
+ */
+@Composable
+internal fun AttendanceCheckInDetails(
+    volunteer: AttendanceVolunteer,
+    zone: ZoneId,
+    manualTestTag: String,
+    pendingTestTag: String,
+) {
+  if (volunteer.checkedInManually) {
     Text(
-        text = name,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.weight(1f),
+        text = stringResource(R.string.attendance_manual),
+        style = MaterialTheme.typography.labelSmall,
+        color = shifter_mutedText,
+        modifier = Modifier.testTag(manualTestTag),
     )
-    if (volunteer.checkedInManually) {
-      Text(
-          text = stringResource(R.string.attendance_manual),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
-          modifier = Modifier.testTag(manualTestTag),
-      )
-    }
-    if (volunteer.checkInPending) {
-      // Not confirmed yet: in its undo window, or waiting for the network.
-      Icon(
-          Icons.Filled.CloudOff,
-          contentDescription = stringResource(R.string.attendance_not_synced),
-          tint = shifter_mutedText,
-          modifier = Modifier.size(14.dp).testTag(pendingTestTag),
-      )
-    }
-    volunteer.checkedInAt?.let {
-      Text(
-          text = it.formatTime(zone),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
-      )
-    }
+  }
+  if (volunteer.checkInPending) {
+    // Not confirmed yet: in its undo window, or waiting for the network.
+    Icon(
+        Icons.Filled.CloudOff,
+        contentDescription = stringResource(R.string.attendance_not_synced),
+        tint = shifter_mutedText,
+        modifier = Modifier.size(14.dp).testTag(pendingTestTag),
+    )
+  }
+  volunteer.checkedInAt?.let {
+    Text(
+        text = it.formatTime(zone),
+        style = MaterialTheme.typography.labelSmall,
+        color = shifter_mutedText,
+    )
   }
 }

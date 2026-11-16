@@ -800,14 +800,19 @@ private fun People(
     people.forEach { volunteer ->
       AttendanceVolunteerRow(
           volunteer = volunteer,
-          icon = icon,
-          tint = tint,
-          zone = zone,
           checkInTestTag = ManagerOverviewTestTags.checkIn(missionId, volunteer.userId),
-          manualTestTag = ManagerOverviewTestTags.manual(missionId, volunteer.userId),
-          pendingTestTag = ManagerOverviewTestTags.pending(missionId, volunteer.userId),
+          leading = {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+          },
           onCheckIn = onCheckIn?.let { checkIn -> { checkIn(volunteer.userId) } },
-      )
+      ) {
+        AttendanceCheckInDetails(
+            volunteer = volunteer,
+            zone = zone,
+            manualTestTag = ManagerOverviewTestTags.manual(missionId, volunteer.userId),
+            pendingTestTag = ManagerOverviewTestTags.pending(missionId, volunteer.userId),
+        )
+      }
     }
   }
 }
