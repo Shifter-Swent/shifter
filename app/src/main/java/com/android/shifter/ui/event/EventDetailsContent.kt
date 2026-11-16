@@ -43,13 +43,13 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
+import com.swent.shifter.ui.components.time.formatWeekday
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 object EventDetailsTestTags {
   const val CATEGORY = "EventDetailsCategory"
@@ -282,17 +282,14 @@ internal fun formatEventPeriod(
     zone: ZoneId = ZoneId.systemDefault(),
     today: LocalDate = LocalDate.now(zone),
 ): String {
-  val start = startAt.atZone(zone)
-  val end = endAt.atZone(zone)
-  val year = if (start.year == today.year && end.year == today.year) "" else " uuuu"
+  val startDay = startAt.atZone(zone).toLocalDate()
+  val endDay = endAt.atZone(zone).toLocalDate()
+  val withYear = startDay.year != today.year || endDay.year != today.year
   val from = startAt.formatTime(zone)
   val to = endAt.formatTime(zone)
-  return if (start.toLocalDate() == end.toLocalDate()) {
-    "${start.format(datePattern("EEE d MMM$year"))} · $from – $to"
+  return if (startDay == endDay) {
+    "${startDay.formatWeekday(withYear)} · $from – $to"
   } else {
-    val day = datePattern("d MMM$year")
-    "${start.format(day)} $from – ${end.format(day)} $to"
+    "${startDay.formatDay(withYear)} $from – ${endDay.formatDay(withYear)} $to"
   }
 }
-
-private fun datePattern(pattern: String) = DateTimeFormatter.ofPattern(pattern, Locale.ENGLISH)

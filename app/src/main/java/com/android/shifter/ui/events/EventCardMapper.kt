@@ -3,11 +3,11 @@ package com.swent.shifter.ui.events
 
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventStatus
+import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
+import com.swent.shifter.ui.components.time.formatWeekday
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * Whether [event] is over: the organizer closed it, or its end has passed. An over event goes to
@@ -62,14 +62,18 @@ internal fun List<Pair<Event, EventCardUi>>.inDisplayOrder(): List<EventCardUi> 
 
 /**
  * "Sat 14 Jun 2025" and "08:00 – 14:00" within a day; "21 Jul – 26 Jul 2026" and "12:00 – 21:30"
- * across days. Times are shown in [zone], the device's time zone in the app.
+ * across days, with the year on the start too when it differs: "30 Dec 2026 – 2 Jan 2027". Times
+ * are shown in [zone], the device's time zone in the app.
  */
 private fun Event.toCard(badge: EventBadge, footer: EventCardFooter, zone: ZoneId): EventCardUi {
-  val start = startAt.atZone(zone)
-  val end = endAt.atZone(zone)
+  val startDay = startAt.atZone(zone).toLocalDate()
+  val endDay = endAt.atZone(zone).toLocalDate()
   val dateLabel =
-      if (start.toLocalDate() == end.toLocalDate()) start.format(DAY)
-      else "${start.format(DAY_IN_RANGE)} – ${end.format(DAY_IN_RANGE)} ${end.year}"
+      if (startDay == endDay) startDay.formatWeekday(withYear = true)
+      else {
+        val startDate = startDay.formatDay(withYear = startDay.year != endDay.year)
+        "$startDate – ${endDay.formatDay(withYear = true)}"
+      }
   return EventCardUi(
       id = id,
       title = title,
@@ -80,6 +84,3 @@ private fun Event.toCard(badge: EventBadge, footer: EventCardFooter, zone: ZoneI
       footer = footer,
   )
 }
-
-private val DAY = DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.ENGLISH)
-private val DAY_IN_RANGE = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)

@@ -44,6 +44,15 @@ class EventCardMapperTest {
   }
 
   @Test
+  fun card_acrossTwoYears_showsBothYears() {
+    val card =
+        testEvent(startAt = "2026-12-30T10:00:00Z", endAt = "2027-01-02T10:00:00Z")
+            .toOrganizerCard(now, zone)
+
+    assertEquals("30 Dec 2026 – 2 Jan 2027", card.dateLabel)
+  }
+
+  @Test
   fun organizerBadge_followsTheEventLifecycle() {
     assertEquals(EventBadge.ONGOING, testEvent(status = EventStatus.ONGOING).organizerBadge())
     assertEquals(EventBadge.ENDED, testEvent(status = EventStatus.COMPLETED).organizerBadge())

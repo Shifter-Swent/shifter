@@ -68,14 +68,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 object ManagerOverviewTestTags {
   const val SCREEN = "managerOverviewScreen"
@@ -858,21 +857,21 @@ private fun People(
  */
 @Composable
 private fun schedule(mission: AttendanceMission, now: Instant, zone: ZoneId): String {
-  val start = mission.startAt.atZone(zone)
-  val end = mission.endAt.atZone(zone)
+  val startDay = mission.startAt.atZone(zone).toLocalDate()
+  val endDay = mission.endAt.atZone(zone).toLocalDate()
   return when {
-    start.toLocalDate() != end.toLocalDate() ->
+    startDay != endDay ->
         stringResource(
             R.string.attendance_schedule_across_days,
-            DAY.format(start),
+            startDay.formatDay(),
             mission.startAt.formatTime(zone),
-            DAY.format(end),
+            endDay.formatDay(),
             mission.endAt.formatTime(zone),
         )
-    start.toLocalDate() != now.atZone(zone).toLocalDate() ->
+    startDay != now.atZone(zone).toLocalDate() ->
         stringResource(
             R.string.attendance_schedule_on_day,
-            DAY.format(start),
+            startDay.formatDay(),
             mission.startAt.formatTime(zone),
             mission.endAt.formatTime(zone),
         )
@@ -884,5 +883,3 @@ private fun schedule(mission: AttendanceMission, now: Instant, zone: ZoneId): St
         )
   }
 }
-
-private val DAY = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)

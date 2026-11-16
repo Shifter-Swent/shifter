@@ -5,7 +5,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -24,6 +26,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,7 +37,8 @@ import org.junit.runner.RunWith
 
 /**
  * When [AddMissionScreen] reports a saved mission: only once it is resumed, since going back is
- * ignored before and the form would stay open with nothing left to save (#467).
+ * ignored before and the form would stay open with nothing left to save (#467). Also that the dates
+ * follow the device's language (#543).
  */
 @RunWith(AndroidJUnit4::class)
 class AddMissionScreenLifecycleTest {
@@ -111,6 +116,23 @@ class AddMissionScreenLifecycleTest {
 
     assertEquals(emptyList<Mission>(), saved)
     assertFalse(viewModel.uiState.value.savedMissionHandled)
+  }
+
+  @Test
+  fun eventPeriod_inAFrenchLocale_writesTheDayInFrench() {
+    val formatLocale = Locale.getDefault(Locale.Category.FORMAT)
+    Locale.setDefault(Locale.Category.FORMAT, Locale.FRENCH)
+    try {
+      showScreen()
+
+      // Compared with the JDK's own French names, which differ between JDKs and Android.
+      val day = DateTimeFormatter.ofPattern("EEE d MMM uuuu", Locale.FRENCH).format(eventDay)
+      composeTestRule
+          .onNodeWithTag(AddMissionScreenTestTags.EVENT_PERIOD)
+          .assertTextEquals("$day · 10:00–18:00")
+    } finally {
+      Locale.setDefault(Locale.Category.FORMAT, formatLocale)
+    }
   }
 
   /** The screen with [viewModel], while [shown], with the lifecycle of [screen]. */
