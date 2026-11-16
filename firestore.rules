@@ -572,11 +572,14 @@ service cloud.firestore {
           return request.resource.data.get('teamId', null);
         }
 
-        // A location is whole: an address and coordinates in range, as the mapper reads it.
+        // A location is whole: a non-blank address and coordinates in range, as MissionLocation
+        // requires it. Rules have no trim(), and \S takes only ASCII whitespace as blank; (?s) lets
+        // an address span several lines.
         function isValidLocation(location) {
           return location is map
             && location.keys().hasOnly(['address', 'latitude', 'longitude'])
             && location.address is string
+            && location.address.matches('(?s).*\\S.*')
             && location.latitude is number
             && location.longitude is number
             && location.latitude >= -90 && location.latitude <= 90

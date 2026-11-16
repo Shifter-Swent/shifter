@@ -368,7 +368,7 @@ that changes them; it can also be run by hand from the Actions tab.
 
 **Valid fields** of `teams`, `shifts` and `missions`: no field outside the ones of this page
 (except the legacy `checkInZone` of teams written before #164), and each field that is there with its type above (`volunteersNeeded` of a mission an integer of
-at least 1, a `location` with an address and coordinates in range). A time slot ends after it
+at least 1, a `location` with a non-blank address and coordinates in range). A time slot ends after it
 starts. A field may still be absent: the mappers fail loudly on a missing required one, and a rule
 requiring every field would refuse the partial documents the emulator tests write.
 

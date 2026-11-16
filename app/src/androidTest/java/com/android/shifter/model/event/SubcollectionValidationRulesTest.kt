@@ -90,6 +90,20 @@ class SubcollectionValidationRulesTest {
   }
 
   @Test
+  fun writeMission_withABlankAddress_isDenied() = emulatorTest {
+    newDocument("missions").set(MISSION - "location").await()
+
+    assertDenied {
+      newDocument("missions").set(MISSION + ("location" to LOCATION + ("address" to ""))).await()
+    }
+    assertDenied {
+      newDocument("missions")
+          .set(MISSION + ("location" to LOCATION + ("address" to "  \t")))
+          .await()
+    }
+  }
+
+  @Test
   fun updateMission_withAWrongType_isDenied() = emulatorTest {
     val mission = newDocument("missions").also { it.set(MISSION).await() }
 
