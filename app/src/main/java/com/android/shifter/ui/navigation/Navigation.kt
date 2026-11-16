@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -30,7 +31,7 @@ import kotlinx.serialization.Serializable
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
  *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
- *       Discussions (+ Channel)
+ *       Discussions (+ Channel), Sharing
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -321,7 +322,7 @@ data class OrganizerEvent(override val eventId: String, override val eventTitle:
 
 object OrganizerTabs : TabSet {
   override val all
-    get() = listOf(Overview, People, Map, Discussions)
+    get() = listOf(Overview, People, Map, Discussions, Sharing)
 
   override val home
     get() = Overview
@@ -370,6 +371,18 @@ object OrganizerTabs : TabSet {
     override val label = "Discussions"
     override val icon = Icons.AutoMirrored.Filled.Chat
     override val testTag = NavigationTestTags.DISCUSSIONS_TAB
+    override val set
+      get() = OrganizerTabs
+  }
+
+  @Serializable
+  data object Sharing : Tab {
+    override val home
+      get() = OrganizerEventScreen.Sharing
+
+    override val label = "Share"
+    override val icon = Icons.Filled.QrCode2
+    override val testTag = NavigationTestTags.SHARING_TAB
     override val set
       get() = OrganizerTabs
   }
@@ -428,6 +441,14 @@ sealed interface OrganizerEventScreen : Destination {
     override val title = "Discussions"
     override val tab
       get() = OrganizerTabs.Discussions
+  }
+
+  /** The event's join code and its QR code, to share with volunteers. */
+  @Serializable
+  data object Sharing : OrganizerEventScreen {
+    override val title = "Share"
+    override val tab
+      get() = OrganizerTabs.Sharing
   }
 
   /** A chat channel, opened from Discussions. */

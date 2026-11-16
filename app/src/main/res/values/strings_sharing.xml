@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sharing tab of the organizer's event -->
+    <string name="sharing_hint">Volunteers scan this code, or type it in Join Event.</string>
+    <string name="sharing_share_code">Share the code</string>
+    <string name="sharing_export_qr">Export the QR code</string>
+    <string name="sharing_message">Join %1$s on Shifter with the code %2$s</string>
+</resources>

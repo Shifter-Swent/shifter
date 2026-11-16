@@ -90,6 +90,9 @@ import com.swent.shifter.ui.planning.PlanningScreen
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
+import com.swent.shifter.ui.sharing.AndroidEventSharer
+import com.swent.shifter.ui.sharing.EventSharer
+import com.swent.shifter.ui.sharing.SharingScreen
 import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
@@ -106,6 +109,8 @@ import kotlinx.coroutines.flow.filter
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
  *   passes one that answers with a fake account, as the system picker cannot be driven.
  * @param locationProvider The volunteer's position, for the automatic check-in and their map.
+ * @param eventSharer What sends an event's join code to another app from its Sharing tab. A test
+ *   passes a fake, as the system share sheet cannot be driven.
  */
 @Composable
 fun ShifterNavHost(
@@ -121,6 +126,8 @@ fun ShifterNavHost(
         LocalContext.current.let { context ->
           remember(context) { FusedLocationProvider(context) }
         },
+    eventSharer: EventSharer =
+        LocalContext.current.let { context -> remember(context) { AndroidEventSharer(context) } },
 ) {
   val nav = rememberNavigationActions(navController)
   val locationSharing: LocationSharingViewModel =
@@ -153,6 +160,7 @@ fun ShifterNavHost(
         nav,
         credentialManager,
         locationProvider,
+        eventSharer,
     )
   }
 }
@@ -167,6 +175,7 @@ private fun ShifterNavGraph(
     nav: NavigationActions,
     credentialManager: CredentialManager,
     locationProvider: LocationProvider,
+    eventSharer: EventSharer,
 ) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
@@ -612,6 +621,25 @@ private fun ShifterNavGraph(
             repositories,
             currentUserId,
             channel = OrganizerEventScreen::Channel,
+        )
+        tab<OrganizerTabs.Sharing, OrganizerEventScreen.Sharing, OrganizerEvent>(
+            OrganizerTabs.Sharing,
+            nav,
+            navController,
+            built = true,
+            content = { _, event ->
+              SharingScreen(
+                  viewModel =
+                      viewModel(
+                          factory =
+                              EventCreatedViewModel.factory(
+                                  repositories.eventRepository,
+                                  event.eventId,
+                              )
+                      ),
+                  sharer = eventSharer,
+              )
+            },
         )
       }
     }

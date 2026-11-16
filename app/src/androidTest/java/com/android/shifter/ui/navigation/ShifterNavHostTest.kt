@@ -67,6 +67,8 @@ import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.planning.PlanningTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
+import com.swent.shifter.ui.sharing.EventSharer
+import com.swent.shifter.ui.sharing.SharingScreenTestTags
 import com.swent.shifter.ui.team.CreateTeamFormTestTags
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.team.TeamSetupScreenTestTags
@@ -672,6 +674,41 @@ class ShifterNavHostTest {
     assertTabsReachable(OrganizerTabs)
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun organizerSharing_showsTheCodeOfTheEventAndSharesIt() {
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    val shared = mutableListOf<Pair<String, String>>()
+    val nav =
+        NavigationActions(
+            showSignedInApp(
+                UserMode.ORGANIZER,
+                EventSharer { title, code -> shared += title to code },
+            )
+        )
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent(event.id, event.title)) }
+
+    composeTestRule.onNodeWithTag(OrganizerTabs.Sharing.testTag).performClick()
+
+    waitForNode(SharingScreenTestTags.QR_CODE)
+    composeTestRule.onNodeWithTag(SharingScreenTestTags.JOIN_CODE).assertTextEquals(event.joinCode)
+    composeTestRule
+        .onNodeWithTag(SharingScreenTestTags.SHARE_BUTTON)
+        .performScrollTo()
+        .performClick()
+    assertEquals(listOf(event.title to event.joinCode), shared)
+  }
+
+  @Test
+  fun volunteerEvent_hasNoSharingTab() {
+    val nav = setAppAndGetNavigation()
+
+    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1", EVENT_TITLE)) }
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NavigationTestTags.SHARING_TAB).assertDoesNotExist()
   }
 
   @Test
@@ -1409,6 +1446,10 @@ class ShifterNavHostTest {
   private fun assertTabShown(tab: Tab) {
     when (tab) {
       OrganizerTabs.People -> assertPeopleScreenShown()
+      OrganizerTabs.Sharing -> {
+        composeTestRule.onNodeWithTag(SharingScreenTestTags.SCREEN).assertIsDisplayed()
+        assertEventTabSelected(tab)
+      }
       VolunteerTabs.Map,
       OrganizerTabs.Map -> {
         composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
@@ -1658,9 +1699,13 @@ class ShifterNavHostTest {
 
   /**
    * Launches the app with the session already open, its profile saved in [mode], and waits for the
-   * events of that mode; returns its controller.
+   * events of that mode; returns its controller. A fake [eventSharer] by default, so no test opens
+   * the system share sheet.
    */
-  private fun showSignedInApp(mode: UserMode = UserMode.VOLUNTEER): NavHostController {
+  private fun showSignedInApp(
+      mode: UserMode = UserMode.VOLUNTEER,
+      eventSharer: EventSharer = EventSharer { _, _ -> },
+  ): NavHostController {
     // Without a profile, the app would ask for the mode instead.
     saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
     lateinit var navController: NavHostController
@@ -1671,6 +1716,7 @@ class ShifterNavHostTest {
             isSignedIn = true,
             repositories = repositories,
             navController = navController,
+            eventSharer = eventSharer,
         )
       }
     }
