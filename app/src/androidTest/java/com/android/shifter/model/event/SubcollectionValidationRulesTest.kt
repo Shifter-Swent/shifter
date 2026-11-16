@@ -138,8 +138,10 @@ class SubcollectionValidationRulesTest {
   }
 
   private companion object {
-    val START = Timestamp(1_784_620_800, 0) // 2026-07-21T08:00:00Z
-    val END = Timestamp(1_784_635_200, 0) // 2026-07-21T12:00:00Z
+    // In the future: a mission past its end counts as completed, and its details can no longer
+    // change.
+    val START = Timestamp(2_100_240_000, 0) // 2036-07-21T08:00:00Z
+    val END = Timestamp(2_100_254_400, 0) // 2036-07-21T12:00:00Z
 
     val TEAM: Map<String, Any?> =
         mapOf(
