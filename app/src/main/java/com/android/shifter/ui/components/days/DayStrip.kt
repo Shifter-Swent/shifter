@@ -51,6 +51,8 @@ object DayStripTestTags {
  *
  * @param days the days to offer, in order.
  * @param daysWithMissions the days among [days] that hold at least one mission.
+ * @param today the event day it is now, `now.eventDay(zone)`, not `LocalDate.now()`: between
+ *   midnight and 04:00 it is still the day before, under which the missions running are grouped.
  * @param onSelect called with the day tapped.
  */
 @Composable

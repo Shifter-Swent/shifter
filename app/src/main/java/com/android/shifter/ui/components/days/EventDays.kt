@@ -12,6 +12,10 @@ import java.time.ZoneId
  * Without the [period], when the event could not be read, the days run from the first to the last
  * item: only the empty days before and after them are missing.
  *
+ * An item outside the period still widens the days, so that it is never hidden. The app refuses a
+ * mission outside its event when it is created (`MissionFormError.OUTSIDE_EVENT`), so this only
+ * happens with data written some other way.
+ *
  * @param period when the event starts and ends, or null when unknown.
  * @param itemDays the days holding at least one item, e.g. the keys of [groupByDay].
  * @return the days in order, or an empty list when there is neither a period nor an item.
