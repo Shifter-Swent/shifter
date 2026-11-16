@@ -139,9 +139,10 @@ data class AttendanceMission(
 /**
  * State of the attendance screen.
  *
- * @property loadFailed whether the missions could not be loaded, which drops them. A mission whose
- *   check-ins could not be observed is a failure of that mission alone,
- *   [AttendanceMission.attendanceFailed], and leaves the others as they are.
+ * @property loadFailed whether the last load of the missions failed. A reload that fails keeps the
+ *   missions already shown, whose check-ins are still followed. A mission whose check-ins could not
+ *   be observed is a failure of that mission alone, [AttendanceMission.attendanceFailed], and
+ *   leaves the others as they are.
  * @property canViewAttendance whether the user may watch the attendance of this event: they manage
  *   one of its teams, or they organize it, so it is wider than being a manager. It is null while
  *   that is not known, which is what a first load that failed leaves it at, so the attendance is
@@ -221,6 +222,11 @@ class AttendanceViewModel(
   /** The load running, if any: a newer one cancels it so it cannot publish stale missions. */
   private var loadJob: Job? = null
 
+  /**
+   * The collections of the check-ins of the missions shown, replaced by each load that succeeds.
+   */
+  private var observeJob: Job? = null
+
   /** The check-ins last observed, by mission id: only missions whose attendance is known. */
   private val observed = mutableMapOf<String, List<CheckIn>>()
 
@@ -256,28 +262,39 @@ class AttendanceViewModel(
             if (isOrganizer) teamRepository.getTeamsByEvent(eventId)
             else teamRepository.getTeamsManagedBy(eventId, currentUserId)
         val missions = missions(isOrganizer, teams)
-        // The check-ins of the load it supersedes would be applied to missions they no longer
-        // describe: they come again from the collections started below.
-        observed.clear()
-        _uiState.update {
-          it.copy(
-              isLoading = false,
-              isOrganizer = isOrganizer,
-              // The teams already read say whether they manage any, so no role is asked for twice.
-              canViewAttendance = isOrganizer || teams.isNotEmpty(),
-              missions =
-                  missions.map { mission ->
-                    if (mission.id in it.markingCompletedIds) mission.copy(completed = true)
-                    else mission
-                  },
-          )
+        // The collections of the previous load stop here, not when this one started, so a load
+        // that fails leaves the attendance shown still followed.
+        observeJob?.cancel()
+        // The check-ins of a mission still listed describe it as well as before: kept until its
+        // new collection delivers, so a reload never shows its volunteers as not known for a
+        // moment, nor drops the check-in still in its undo window.
+        val ids = missions.mapTo(mutableSetOf()) { it.id }
+        observed.keys.retainAll(ids)
+        _uiState.update { state ->
+          observed.keys.fold(
+              state.copy(
+                  isLoading = false,
+                  isOrganizer = isOrganizer,
+                  // The teams already read say whether they manage any, so no role is asked for
+                  // twice.
+                  canViewAttendance = isOrganizer || teams.isNotEmpty(),
+                  missions =
+                      missions.map { mission ->
+                        if (mission.id in state.markingCompletedIds) mission.copy(completed = true)
+                        else mission
+                      },
+              )
+          ) { withKnown, missionId ->
+            withKnown.withAttendance(missionId)
+          }
         }
-        observeAttendance(missions)
+        observeJob = viewModelScope.launch { observeAttendance(missions) }
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
-        // A stale attendance list reads as the current one, so it is dropped.
-        _uiState.update { it.copy(isLoading = false, loadFailed = true, missions = emptyList()) }
+        // The missions already shown stay, with their attendance still followed: a reload that
+        // fails, e.g. a pull on a weak network, must not empty the screen.
+        _uiState.update { it.copy(isLoading = false, loadFailed = true) }
       }
     }
   }
@@ -362,8 +379,8 @@ class AttendanceViewModel(
    *
    * One collection per mission, each updating that mission only, so a check-in to one leaves the
    * attendance of the others untouched and no mission, team or profile is read again. They are
-   * children of the load, which the next [refresh] cancels, taking them with it; no mission means
-   * no collection at all.
+   * children of the observing job, which the next load that succeeds cancels, taking them with it;
+   * no mission means no collection at all.
    */
   private fun CoroutineScope.observeAttendance(missions: List<AttendanceMission>) {
     missions.forEach { mission ->

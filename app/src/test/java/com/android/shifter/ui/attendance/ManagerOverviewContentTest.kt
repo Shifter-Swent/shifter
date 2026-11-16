@@ -755,6 +755,14 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun failedReload_keepsTheMissionsWithTheError() {
+    show(AttendanceUiState(isLoading = false, loadFailed = true, missions = listOf(setUp)))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOAD_ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission(setUp.id)).assertExists()
+  }
+
+  @Test
   fun addMission_asAManager_showsTheButtonAndCallsBack() {
     var opened = 0
     show(loaded, onAddMission = { opened++ })

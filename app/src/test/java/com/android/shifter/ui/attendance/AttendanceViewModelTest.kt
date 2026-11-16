@@ -30,8 +30,10 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
@@ -313,10 +315,9 @@ class AttendanceViewModelTest {
   }
 
   @Test
-  fun load_whenAReadFails_showsTheFailureAndNoMission() = runTest {
-    addMission("Set up", "logistics", hour = 1)
+  fun refresh_whenAReadFails_keepsTheMissionsStillFollowed() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann"))
     open("manager")
-    assertEquals(listOf("Set up"), titles())
     events.failure = EventRepositoryException.Unavailable()
 
     viewModel.refresh()
@@ -326,8 +327,47 @@ class AttendanceViewModelTest {
     assertFalse(state.isLoading)
     assertTrue(state.loadFailed)
     assertFalse(state.isEmpty)
-    assertTrue(state.missions.isEmpty())
+    assertEquals(listOf("Set up"), titles())
+    // Their check-ins are still collected: an arrival after the failure shows up.
+    arrive(setUp.id, "ann")
+    advanceUntilIdle()
+    assertEquals(listOf("ann"), viewModel.uiState.value.presentIds())
   }
+
+  @Test
+  fun refresh_keepsTheAttendanceShownUntilTheNewCheckInsArrive() = runTest {
+    val setUp = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ann", "bob"))
+    arrive(setUp.id, "bob")
+    val silentOnReload = SilentAfterFirstCollection()
+    viewModel =
+        AttendanceViewModel(
+            "event-1",
+            "manager",
+            events,
+            missions,
+            teams,
+            users,
+            silentOnReload,
+            now = { tapTime },
+        )
+    advanceUntilIdle()
+    viewModel.checkIn(setUp.id, "ann")
+    runCurrent()
+
+    viewModel.refresh()
+    // Not past the undo window, which would send Ann's check-in.
+    runCurrent()
+
+    // The new collection has not delivered: Bob's arrival and Ann's check-in, still in its undo
+    // window, are kept rather than shown as not known.
+    val mission = viewModel.uiState.value.missions.single()
+    assertTrue(mission.attendanceKnown)
+    assertEquals(setOf("ann", "bob"), mission.presentAssignees.mapTo(mutableSetOf()) { it.userId })
+    assertEquals("ann", viewModel.uiState.value.undoableCheckIn?.userId)
+  }
+
+  /** The user ids present on the only mission loaded. */
+  private fun AttendanceUiState.presentIds() = missions.single().presentAssignees.map { it.userId }
 
   @Test
   fun refresh_listsTheMissionsAddedSince() = runTest {
@@ -971,6 +1011,17 @@ class AttendanceViewModelTest {
         checkIns.observeCheckIns(eventId, missionId).onEach {
           if (it.isNotEmpty()) throw CheckInRepositoryException.Unavailable()
         }
+  }
+
+  /**
+   * Delivers the check-ins to the first collection of each mission only, as a slow reload would.
+   */
+  private inner class SilentAfterFirstCollection : CheckInRepository by checkIns {
+    private val collected = mutableSetOf<String>()
+
+    override fun observeCheckIns(eventId: String, missionId: String): Flow<List<CheckIn>> =
+        if (collected.add(missionId)) checkIns.observeCheckIns(eventId, missionId)
+        else flow { awaitCancellation() }
   }
 
   /** Counts the check-in collections, to check a load replaces those of the one it supersedes. */
