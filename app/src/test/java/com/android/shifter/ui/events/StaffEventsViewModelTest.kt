@@ -121,6 +121,43 @@ class StaffEventsViewModelTest {
   }
 
   @Test
+  fun refresh_answeredAfterAWithdrawal_doesNotBringTheEventBack() = runTest {
+    // The reload reads the events before the withdrawal reaches the backend, and answers after.
+    val reload = CompletableDeferred<List<EventCardUi>>()
+    var loads = 0
+    val viewModel =
+        StaffEventsViewModel(
+            { if (loads++ == 0) SampleMyEvents.staff else reload.await() },
+            withdrawer,
+        )
+    advanceUntilIdle()
+
+    viewModel.refresh()
+    viewModel.withdraw("city-marathon")
+    advanceUntilIdle()
+    reload.complete(SampleMyEvents.staff)
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.upcoming.any { it.id == "city-marathon" })
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun refresh_afterAWithdrawal_showsWhatTheBackendSays() = runTest {
+    // The sample loader still lists the event, as after joining it again.
+    val viewModel = viewModel()
+    advanceUntilIdle()
+    viewModel.withdraw("city-marathon")
+    advanceUntilIdle()
+
+    // Joined again later: a load that started after the withdrawal lists it.
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertTrue(viewModel.uiState.value.upcoming.any { it.id == "city-marathon" })
+  }
+
+  @Test
   fun factory_createsAViewModelUsingTheLoaderAndTheWithdrawer() = runTest {
     val viewModel =
         StaffEventsViewModel.factory(SampleMyEvents.staffLoader, withdrawer)

@@ -8,10 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -27,9 +29,13 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.isIndeterminateSpinner
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
@@ -40,6 +46,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class ManagerOverviewContentTest {
@@ -701,6 +708,51 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  @Config(qualifiers = "w360dp-h720dp")
+  fun pull_callsOnRetry() {
+    var retries = 0
+    show(AttendanceUiState(isLoading = false, missions = listOf(setUp)), onRetry = { retries++ })
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performTouchInput { swipeDown() }
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  fun reloading_withMissions_keepsThemWithoutASpinner() {
+    // An automatic reload, e.g. on coming back: only a pull shows the spinner.
+    show(AttendanceUiState(isLoading = true, missions = listOf(setUp)))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission(setUp.id)).assertExists()
+    compose.onAllNodes(isIndeterminateSpinner).assertCountEquals(0)
+  }
+
+  @Test
+  fun loading_withoutMissions_showsOnlyTheListSpinner() {
+    show(AttendanceUiState(isLoading = true))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertExists()
+    compose.onAllNodes(isIndeterminateSpinner).assertCountEquals(1)
+  }
+
+  @Test
+  @OptIn(ExperimentalTestApi::class)
+  fun refreshAction_onAMissionAndTheHeader_callsOnRetry() {
+    var retries = 0
+    show(AttendanceUiState(isLoading = false, missions = listOf(setUp)), onRetry = { retries++ })
+
+    // On the nodes themselves, as screen readers read them, not on what they merge.
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.missionHeader(setUp.id), useUnmergedTree = true)
+        .performCustomAccessibilityActionWithLabel("Refresh")
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.SUBTITLE, useUnmergedTree = true)
+        .performCustomAccessibilityActionWithLabel("Refresh")
+
+    compose.runOnIdle { assertEquals(2, retries) }
+  }
+
+  @Test
   fun failedLoad_showsTheErrorAndRetries() {
     var retries = 0
     show(AttendanceUiState(isLoading = false, loadFailed = true), onRetry = { retries++ })
@@ -712,6 +764,14 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.RETRY).performClick()
 
     assertEquals(1, retries)
+  }
+
+  @Test
+  fun failedReload_keepsTheMissionsWithTheError() {
+    show(AttendanceUiState(isLoading = false, loadFailed = true, missions = listOf(setUp)))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOAD_ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission(setUp.id)).assertExists()
   }
 
   @Test

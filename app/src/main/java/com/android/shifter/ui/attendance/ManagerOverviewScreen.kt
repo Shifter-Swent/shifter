@@ -68,6 +68,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.RefreshableList
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -209,7 +211,13 @@ fun ManagerOverviewContent(
       onUndoWindowOver = onUndoWindowOver,
       onErrorShown = onCheckInErrorShown,
   )
-  Box(modifier = modifier.fillMaxSize()) {
+  RefreshableList(
+      isLoading = state.isLoading,
+      // The list's own spinner says it while there are no missions to keep.
+      hasContent = missions.isNotEmpty(),
+      onRefresh = onRetry,
+      modifier = modifier.fillMaxSize(),
+  ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag(ManagerOverviewTestTags.SCREEN),
         contentPadding = PaddingValues(16.dp),
@@ -390,7 +398,8 @@ private fun Header(isOrganizer: Boolean) {
             ),
         style = MaterialTheme.typography.bodySmall,
         color = shifter_mutedText,
-        modifier = Modifier.testTag(ManagerOverviewTestTags.SUBTITLE),
+        // Always there, so screen readers can refresh with no mission listed too.
+        modifier = Modifier.refreshAction().testTag(ManagerOverviewTestTags.SUBTITLE),
     )
   }
 }
@@ -560,13 +569,15 @@ private fun MissionCard(
                     if (!expandable) Modifier
                     else
                         Modifier.clickable(
-                            onClickLabel =
-                                stringResource(
-                                    if (expanded) R.string.attendance_collapse
-                                    else R.string.attendance_expand
-                                ),
-                            onClick = onToggle,
-                        )
+                                onClickLabel =
+                                    stringResource(
+                                        if (expanded) R.string.attendance_collapse
+                                        else R.string.attendance_expand
+                                    ),
+                                onClick = onToggle,
+                            )
+                            // What screen readers focus when it expands: its title is read with it.
+                            .refreshAction()
                 )
                 .testTag(ManagerOverviewTestTags.missionHeader(mission.id)),
         verticalAlignment = Alignment.CenterVertically,
@@ -577,6 +588,8 @@ private fun MissionCard(
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
+            // Focused on its own when the header does not expand.
+            modifier = Modifier.refreshAction(),
         )
         Text(
             text =
