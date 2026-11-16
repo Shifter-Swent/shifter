@@ -20,12 +20,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
+import java.util.concurrent.Executor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -109,78 +112,92 @@ class CameraQrScanner(
     if (hasCameraFeature) CameraPreview(modifier) else Box(modifier)
   }
 
-  /** Binds the camera to the screen while shown, and reports what happens to it. */
+  /** The camera image, bound to the screen while shown. */
   @Composable
   private fun CameraPreview(modifier: Modifier) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val controller = remember { LifecycleCameraController(context) }
-
     DisposableEffect(controller, lifecycleOwner) {
-      val executor = ContextCompat.getMainExecutor(context)
-      val barcodes =
-          BarcodeScanning.getClient(
-              BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
-          )
-      controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
-      controller.setImageAnalysisAnalyzer(
-          executor,
-          MlKitAnalyzer(listOf(barcodes), ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL, executor) {
-            onSightings(it.getValue(barcodes).orEmpty().mapNotNull(Barcode::getRawValue))
-          },
-      )
-
-      var disposed = false
-      var cameraState: LiveData<CameraState>? = null
-      val stateObserver = Observer<CameraState> { scanError(it.error)?.let(::onCameraError) }
-      val torchObserver = Observer<Int> { onTorch(it == TorchState.ON) }
-
-      fun start() {
-        if (disposed) return
-        val selector =
-            listOf(CameraSelector.DEFAULT_BACK_CAMERA, CameraSelector.DEFAULT_FRONT_CAMERA)
-                .firstOrNull(controller::hasCamera)
-        if (selector == null) {
-          onCameraError(ScanError.NO_CAMERA)
-          return
-        }
-        controller.cameraSelector = selector
-        controller.bindToLifecycle(lifecycleOwner)
-        controller.torchState.observe(lifecycleOwner, torchObserver)
-        cameraState = controller.cameraInfo?.cameraState
-        cameraState?.observe(lifecycleOwner, stateObserver)
-        onStarted(controller, controller.cameraInfo?.hasFlashUnit() == true)
-      }
-
-      controller.initializationFuture.addListener(
-          {
-            // Never a crash: a camera that cannot start (no permission, in use, CameraX failing
-            // to initialize) is reported, and the screen shows the typed code instead.
-            try {
-              controller.initializationFuture.get()
-              start()
-            } catch (e: Exception) {
-              onCameraError(ScanError.CAMERA_FAILED)
-            }
-          },
-          executor,
-      )
-
-      onDispose {
-        disposed = true
-        cameraState?.removeObserver(stateObserver)
-        controller.torchState.removeObserver(torchObserver)
-        controller.clearImageAnalysisAnalyzer()
-        controller.unbind()
-        barcodes.close()
-        onStopped()
-      }
+      val detach =
+          attach(controller, lifecycleOwner, ContextCompat.getMainExecutor(context), qrDetector())
+      onDispose { detach() }
     }
-
     AndroidView(
         factory = { PreviewView(it).apply { this.controller = controller } },
         modifier = modifier,
     )
+  }
+
+  /**
+   * Starts [controller] for [lifecycleOwner] once CameraX is ready, reads the QR codes of each
+   * frame with [barcodes], and reports what happens to the camera. Returns what releases them all.
+   *
+   * Never a crash: a camera that cannot start (no permission, in use, CameraX failing to
+   * initialize) is reported as a [ScanError], and the screen shows the typed code instead.
+   */
+  internal fun attach(
+      controller: LifecycleCameraController,
+      lifecycleOwner: LifecycleOwner,
+      executor: Executor,
+      barcodes: BarcodeScanner,
+  ): () -> Unit {
+    controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
+    controller.setImageAnalysisAnalyzer(
+        executor,
+        MlKitAnalyzer(listOf(barcodes), ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL, executor) {
+          onResult(it, barcodes)
+        },
+    )
+
+    var detached = false
+    var cameraState: LiveData<CameraState>? = null
+    val stateObserver = Observer<CameraState> { scanError(it.error)?.let(::onCameraError) }
+    val torchObserver = Observer<Int> { onTorch(it == TorchState.ON) }
+
+    fun start() {
+      if (detached) return
+      val selector =
+          listOf(CameraSelector.DEFAULT_BACK_CAMERA, CameraSelector.DEFAULT_FRONT_CAMERA)
+              .firstOrNull(controller::hasCamera)
+      if (selector == null) {
+        onCameraError(ScanError.NO_CAMERA)
+        return
+      }
+      controller.cameraSelector = selector
+      controller.bindToLifecycle(lifecycleOwner)
+      controller.torchState.observe(lifecycleOwner, torchObserver)
+      cameraState = controller.cameraInfo?.cameraState
+      cameraState?.observe(lifecycleOwner, stateObserver)
+      onStarted(controller, controller.cameraInfo?.hasFlashUnit() == true)
+    }
+
+    controller.initializationFuture.addListener(
+        {
+          try {
+            controller.initializationFuture.get()
+            start()
+          } catch (e: Exception) {
+            onCameraError(ScanError.CAMERA_FAILED)
+          }
+        },
+        executor,
+    )
+
+    return {
+      detached = true
+      cameraState?.removeObserver(stateObserver)
+      controller.torchState.removeObserver(torchObserver)
+      controller.clearImageAnalysisAnalyzer()
+      controller.unbind()
+      barcodes.close()
+      onStopped()
+    }
+  }
+
+  /** The texts of the QR codes [barcodes] read in one frame. */
+  internal fun onResult(result: MlKitAnalyzer.Result, barcodes: BarcodeScanner) {
+    onSightings(result.getValue(barcodes).orEmpty().mapNotNull(Barcode::getRawValue))
   }
 
   internal companion object {
@@ -198,5 +215,11 @@ class CameraQrScanner(
     fun scanError(stateError: CameraState.StateError?): ScanError? = stateError?.let {
       ScanError.CAMERA_FAILED
     }
+
+    /** ML Kit's barcode scanner, keeping only QR codes. */
+    fun qrDetector(): BarcodeScanner =
+        BarcodeScanning.getClient(
+            BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+        )
   }
 }
