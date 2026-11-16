@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.firestore.Source
+import com.swent.shifter.R
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
@@ -289,7 +290,7 @@ class ShifterNavHostTest {
         .assertIsEnabled()
         .performClick()
 
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    waitForRequestSent(event.title)
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
     val request = runBlocking {
@@ -584,7 +585,7 @@ class ShifterNavHostTest {
         .performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    waitForRequestSent(event.title)
 
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
@@ -1825,6 +1826,16 @@ class ShifterNavHostTest {
   private fun waitForNode(tag: String) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+  }
+
+  /** Waits for the events list, where the app goes back once a request is sent, to confirm it. */
+  private fun waitForRequestSent(eventTitle: String) {
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    val confirmation =
+        composeTestRule.activity.getString(R.string.join_event_request_sent, eventTitle)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(confirmation).fetchSemanticsNodes().isNotEmpty()
     }
   }
 

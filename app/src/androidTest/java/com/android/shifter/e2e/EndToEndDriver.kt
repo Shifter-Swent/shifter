@@ -12,6 +12,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -215,7 +216,12 @@ class EndToEndDriver(
         .performClick()
     // The button stays pinned under the event, out of the scrolling part.
     click(JoinEventScreenTestTags.APPLY_BUTTON)
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    // Once sent, the app goes back to the events list, which confirms the request.
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    val confirmation = context.getString(R.string.join_event_request_sent, eventTitle)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(confirmation).fetchSemanticsNodes().isNotEmpty()
+    }
   }
 
   /**
