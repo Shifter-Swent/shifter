@@ -37,19 +37,28 @@ class FakeQrScannerPreviewTest {
   }
 
   @Test
-  fun preview_shownAgain_clearsTheError() {
+  fun preview_leaving_clearsTheError() {
     val scanner = FakeQrScanner()
     var shown by mutableStateOf(true)
     composeTestRule.setContent { if (shown) scanner.Preview() }
 
     scanner.fail(ScanError.CAMERA_FAILED)
-    shown = false
     composeTestRule.waitForIdle()
     assertEquals(ScanError.CAMERA_FAILED, scanner.error.value)
 
-    shown = true
+    shown = false
     composeTestRule.waitForIdle()
     assertNull(scanner.error.value)
+  }
+
+  @Test
+  fun preview_withAnErrorOnPreview_reportsItAsItEnters() {
+    val scanner = FakeQrScanner().apply { errorOnPreview = ScanError.NO_CAMERA }
+
+    composeTestRule.setContent { scanner.Preview() }
+
+    composeTestRule.waitForIdle()
+    assertEquals(ScanError.NO_CAMERA, scanner.error.value)
   }
 
   private companion object {
