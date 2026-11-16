@@ -100,6 +100,16 @@ class CameraQrScannerAttachTest {
   }
 
   @Test
+  fun attach_whenNoCameraIsBound_reportsCameraFailed() {
+    every { controller.cameraInfo } returns null
+
+    attachAndStart()
+
+    assertEquals(ScanError.CAMERA_FAILED, scanner.error.value)
+    assertFalse(scanner.hasTorch.value)
+  }
+
+  @Test
   fun attach_withOnlyAFrontCamera_bindsIt() {
     every { controller.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) } returns false
     every { controller.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) } returns true

@@ -171,10 +171,16 @@ class CameraQrScanner(
       }
       controller.cameraSelector = selector
       controller.bindToLifecycle(lifecycleOwner)
+      // Null only if CameraX bound no camera, e.g. without a PreviewView attached, which the
+      // preview attaches before CameraX is ready. Then no state would ever be reported: a failure.
+      val cameraInfo = controller.cameraInfo
+      if (cameraInfo == null) {
+        onCameraError(ScanError.CAMERA_FAILED)
+        return
+      }
       controller.torchState.observe(lifecycleOwner, torchObserver)
-      cameraState = controller.cameraInfo?.cameraState
-      cameraState?.observe(lifecycleOwner, stateObserver)
-      onStarted(controller, controller.cameraInfo?.hasFlashUnit() == true)
+      cameraState = cameraInfo.cameraState.also { it.observe(lifecycleOwner, stateObserver) }
+      onStarted(controller, cameraInfo.hasFlashUnit())
     }
 
     controller.initializationFuture.addListener(
