@@ -8,6 +8,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
 import androidx.camera.core.TorchState
 import androidx.camera.mlkit.vision.MlKitAnalyzer
+import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LiveData
@@ -93,6 +94,8 @@ class CameraQrScannerAttachTest {
   fun attach_withABackCamera_bindsIt() {
     attachAndStart()
 
+    verify { controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS) }
+    verify { controller.setImageAnalysisAnalyzer(executor, any<MlKitAnalyzer>()) }
     verify { controller.cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA }
     verify { controller.bindToLifecycle(owner) }
     assertTrue(scanner.hasTorch.value)
