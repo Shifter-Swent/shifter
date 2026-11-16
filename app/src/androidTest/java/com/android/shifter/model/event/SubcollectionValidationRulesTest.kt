@@ -4,6 +4,7 @@ package com.swent.shifter.model.event
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
@@ -54,13 +55,25 @@ class SubcollectionValidationRulesTest {
   fun writeTeam_checksItsFields() = emulatorTest {
     newDocument("teams").set(TEAM).await()
     newDocument("teams").set(TEAM + ("managerId" to null) + ("volunteersNeeded" to null)).await()
-    // Teams written before #164 still hold a check-in zone, and must stay writable.
-    newDocument("teams").set(TEAM + ("checkInZone" to mapOf("radiusMeters" to 75.0))).await()
 
     assertDenied { newDocument("teams").set(TEAM + ("poles" to listOf("bar"))).await() }
     assertDenied { newDocument("teams").set(TEAM + ("name" to 42)).await() }
     assertDenied { newDocument("teams").set(TEAM + ("memberIds" to "user-1")).await() }
     assertDenied { newDocument("teams").set(TEAM + ("volunteersNeeded" to 2.5)).await() }
+  }
+
+  @Test
+  fun updateTeam_withALegacyCheckInZone_isAllowedButNeverAdded() = emulatorTest {
+    // Teams written before #164 still hold a check-in zone, and must stay writable.
+    val legacy = newDocument("teams")
+    FirestoreEmulatorAdmin.createDocument(legacy.path, TEAM + ("checkInZone" to ZONE))
+    legacy.update("memberIds", listOf("user-1", "user-2", "user-3")).await()
+    assertDenied { legacy.update("checkInZone", mapOf("radiusMeters" to 500.0)).await() }
+    legacy.update("checkInZone", FieldValue.delete()).await()
+
+    assertDenied { newDocument("teams").set(TEAM + ("checkInZone" to ZONE)).await() }
+    val team = newDocument("teams").also { it.set(TEAM).await() }
+    assertDenied { team.update("checkInZone", ZONE).await() }
   }
 
   @Test
@@ -138,6 +151,8 @@ class SubcollectionValidationRulesTest {
             "volunteersNeeded" to 4,
             "createdAt" to START,
         )
+
+    val ZONE: Map<String, Any?> = mapOf("radiusMeters" to 75.0)
 
     val SHIFT: Map<String, Any?> =
         mapOf(

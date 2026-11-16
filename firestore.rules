@@ -259,13 +259,22 @@ service cloud.firestore {
           return managerId == null || !(memberIds is list) || !(managerId in memberIds);
         }
 
+        // Teams written before #164 still hold a checkInZone, and refusing it would keep the
+        // organizer from ever updating them. It is kept as it was, or removed, but never added.
+        function keepsLegacyCheckInZone() {
+          let data = request.resource.data;
+          return !('checkInZone' in data)
+            || (resource != null
+                && 'checkInZone' in resource.data
+                && data.checkInZone == resource.data.checkInZone);
+        }
+
         // The fields of TeamSchema. volunteersNeeded is null until the organizer sets a need.
-        // checkInZone is tolerated: teams written before #164 still hold it, and refusing it would
-        // keep the organizer from ever updating them.
         function isValidTeam() {
           let data = request.resource.data;
           return data.keys().hasOnly(['name', 'description', 'icon', 'managerId', 'memberIds',
                                       'volunteersNeeded', 'createdAt', 'checkInZone'])
+            && keepsLegacyCheckInZone()
             && isAbsentOrString(data, 'name')
             && isAbsentOrString(data, 'description')
             && isAbsentOrString(data, 'icon')
