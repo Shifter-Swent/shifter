@@ -82,7 +82,7 @@ class AutoCheckInViewModelTest {
             { userId },
             { mission, time, at ->
               eligibleAt += time
-              if (isEligible(mission, time, at)) CheckInEligibility.Eligible
+              if (isEligible(mission, time, at.position)) CheckInEligibility.Eligible
               else CheckInEligibility.Ineligible(ineligibleReason)
             },
             { clock },

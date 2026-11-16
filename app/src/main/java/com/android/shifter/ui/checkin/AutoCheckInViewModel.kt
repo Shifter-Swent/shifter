@@ -12,9 +12,9 @@ import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.checkInEligibility
 import com.swent.shifter.model.checkin.checkInWindow
-import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.model.location.MeasuredPosition
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import java.time.Duration
@@ -112,7 +112,7 @@ class AutoCheckInViewModel(
     private val checkInRepository: CheckInRepository,
     private val locationProvider: LocationProvider,
     private val currentUserId: () -> String?,
-    private val eligibility: (Mission, Instant, GeoPosition) -> CheckInEligibility,
+    private val eligibility: (Mission, Instant, MeasuredPosition) -> CheckInEligibility,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
 
@@ -204,13 +204,11 @@ class AutoCheckInViewModel(
             .stateIn(this, SharingStarted.Eagerly, KnownCheckIns())
     // Positions are only read while there is a mission to check in to. When they stop, null drops
     // the last one, which says nothing about where the volunteer is when a mission comes next.
-    val positions: Flow<GeoPosition?> =
+    val positions: Flow<MeasuredPosition?> =
         missions
             .map { it.isNotEmpty() }
             .distinctUntilChanged()
-            .flatMapLatest { any ->
-              if (any) locationProvider.positions().map { it.position } else flowOf(null)
-            }
+            .flatMapLatest { any -> if (any) locationProvider.positions() else flowOf(null) }
     // The last position is checked again when the check-ins change, so a position that came before
     // they were known is not lost until the next one.
     combine(positions, known) { position, checkIns -> position to checkIns }
@@ -232,7 +230,7 @@ class AutoCheckInViewModel(
   private fun CoroutineScope.evaluate(
       mission: Mission,
       time: Instant,
-      position: GeoPosition,
+      position: MeasuredPosition,
       checkIns: KnownCheckIns,
       userId: String,
       known: StateFlow<KnownCheckIns>,

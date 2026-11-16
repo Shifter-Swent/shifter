@@ -1,7 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.checkin
 
-import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.MeasuredPosition
 import com.swent.shifter.model.mission.Mission
 import java.time.Duration
 import java.time.Instant
@@ -26,7 +26,10 @@ sealed interface CheckInEligibility {
     /** The mission is over. */
     TOO_LATE,
 
-    /** The volunteer's position is not known yet. */
+    /**
+     * The volunteer's position is not known yet, or too imprecise to tell whether they are in the
+     * zone: the next one is awaited.
+     */
     NO_POSITION,
 
     /** The volunteer is outside the mission's zone. */
@@ -44,6 +47,14 @@ object CheckInRules {
    * stand, a gate), so a volunteer is not checked in from the next stand or the car park.
    */
   const val RADIUS_METERS = 50.0
+
+  /**
+   * The worst accuracy a position may have to be compared with the zone, in meters. A less precise
+   * one is ignored until a better one comes: indoors, where it is often 50 to 150 m, the measured
+   * point can land in the zone from the next building, or out of it from the stand itself. Below
+   * this, the measured point is trusted as is.
+   */
+  const val MAX_ACCURACY_METERS = 30.0
 }
 
 /**
@@ -62,7 +73,7 @@ fun Mission.checkInWindow(): ClosedRange<Instant> = checkInWindow(startAt, endAt
 /**
  * Tells whether a volunteer at [position] can check in to [mission] at [now]: during its
  * [checkInWindow], within [CheckInRules.RADIUS_METERS] of the mission's location, both bounds
- * included.
+ * included. A position less precise than [CheckInRules.MAX_ACCURACY_METERS] counts as no position.
  *
  * It does not check that the volunteer is assigned to the mission: the caller only passes their
  * missions, and the backend rules enforce it. The time is checked before the position, so a mission
@@ -73,7 +84,7 @@ fun Mission.checkInWindow(): ClosedRange<Instant> = checkInWindow(startAt, endAt
 fun checkInEligibility(
     mission: Mission,
     now: Instant,
-    position: GeoPosition?,
+    position: MeasuredPosition?,
 ): CheckInEligibility {
   val location =
       mission.location
@@ -83,8 +94,9 @@ fun checkInEligibility(
       when {
         now < window.start -> CheckInEligibility.Reason.TOO_EARLY
         now > window.endInclusive -> CheckInEligibility.Reason.TOO_LATE
-        position == null -> CheckInEligibility.Reason.NO_POSITION
-        position.distanceTo(location.position) > CheckInRules.RADIUS_METERS ->
+        position == null || position.accuracyMeters > CheckInRules.MAX_ACCURACY_METERS ->
+            CheckInEligibility.Reason.NO_POSITION
+        position.position.distanceTo(location.position) > CheckInRules.RADIUS_METERS ->
             CheckInEligibility.Reason.TOO_FAR
         else -> return CheckInEligibility.Eligible
       }
