@@ -4,7 +4,6 @@ package com.swent.shifter.ui.location
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,9 +17,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.ui.permission.hasPermission
 import com.swent.shifter.ui.permission.openAppSettings
 
 /**
@@ -61,11 +60,7 @@ fun LocationPermissionGate(
                       activity,
                       Manifest.permission.ACCESS_FINE_LOCATION,
                   ),
-          approximateGranted =
-              ContextCompat.checkSelfPermission(
-                  context,
-                  Manifest.permission.ACCESS_COARSE_LOCATION,
-              ) == PackageManager.PERMISSION_GRANTED,
+          approximateGranted = context.hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION),
       )
   LocationPermissionCard(
       access = access,

@@ -2,8 +2,6 @@
 package com.swent.shifter.ui.scan
 
 import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,9 +21,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.swent.shifter.model.scan.ScanError
+import com.swent.shifter.ui.permission.hasPermission
 import com.swent.shifter.ui.permission.openAppSettings
 import kotlinx.coroutines.flow.first
 
@@ -52,15 +50,15 @@ fun CameraGate(
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
-  var granted by remember { mutableStateOf(context.cameraGranted()) }
+  var granted by remember { mutableStateOf(context.hasPermission(Manifest.permission.CAMERA)) }
   var requested by rememberSaveable { mutableStateOf(false) }
   val launcher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         requested = true
-        granted = context.cameraGranted()
+        granted = context.hasPermission(Manifest.permission.CAMERA)
       }
   LifecycleResumeEffect(Unit) {
-    granted = context.cameraGranted()
+    granted = context.hasPermission(Manifest.permission.CAMERA)
     onPauseOrDispose {}
   }
   LaunchedEffect(Unit) { if (!granted && !requested) launcher.launch(Manifest.permission.CAMERA) }
@@ -108,7 +106,3 @@ fun CameraGate(
     }
   }
 }
-
-private fun Context.cameraGranted() =
-    ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-        PackageManager.PERMISSION_GRANTED
