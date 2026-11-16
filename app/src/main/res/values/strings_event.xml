@@ -10,6 +10,10 @@
     <string name="create_event_field_type">Event type</string>
     <string name="create_event_field_type_selected">Event type · %1$s selected</string>
     <string name="create_event_field_address">Address</string>
+    <string name="create_event_coordinates_rule">Optional. Add both coordinates to drop a pin on the map, or leave them empty for an address only.</string>
+    <string name="create_event_clear_location">Clear coordinates</string>
+    <string name="create_event_error_latitude_invalid">Enter a latitude between -90 and 90</string>
+    <string name="create_event_error_longitude_invalid">Enter a longitude between -180 and 180</string>
     <string name="create_event_period_title">Activity period</string>
     <string name="create_event_period_instructions">Enter the start date, then the end date.</string>
     <string name="create_event_field_start">Start</string>

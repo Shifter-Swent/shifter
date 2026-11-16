@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.map
 
 import androidx.compose.foundation.layout.Box
@@ -149,3 +150,11 @@ internal fun LocationPicker(
  * a French device does not write the decimal point as a comma.
  */
 internal fun formatCoordinate(value: Double): String = String.format(Locale.ROOT, "%.5f", value)
+
+/**
+ * The coordinate typed in [text], or null when it is not a number within [range]. A decimal comma
+ * is accepted as well as a point, as typed on many keyboards; anything else that is not a plain
+ * number, such as a unit or a hemisphere letter, is refused rather than read in part.
+ */
+internal fun parseCoordinate(text: String, range: ClosedFloatingPointRange<Double>): Double? =
+    text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in range }
