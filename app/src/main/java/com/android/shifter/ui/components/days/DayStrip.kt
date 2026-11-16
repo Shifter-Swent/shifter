@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.time.formatDayOfWeek
+import com.swent.shifter.ui.components.time.formatFullDate
 import com.swent.shifter.ui.theme.shifter_dimmedText
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
@@ -128,7 +130,7 @@ private fun DayChip(
     }
   }
   // Read out instead of the chip's texts, so it says all they and the colors show.
-  val fullDate = day.fullDate()
+  val fullDate = day.formatFullDate()
   val date =
       if (isToday) stringResource(R.string.day_strip_today_description, fullDate) else fullDate
   val description = if (hasMissions) date else stringResource(R.string.day_strip_no_missions, date)
@@ -145,7 +147,7 @@ private fun DayChip(
               .testTag(DayStripTestTags.day(day)),
   ) {
     Text(
-        text = if (isToday) stringResource(R.string.day_strip_today) else day.shortWeekday(),
+        text = if (isToday) stringResource(R.string.day_strip_today) else day.formatDayOfWeek(),
         style = MaterialTheme.typography.labelSmall,
         color = labelColor,
         maxLines = 1,

@@ -29,6 +29,16 @@ class TimeFormatTest {
   }
 
   @Test
+  fun formatDayOfWeek_writesTheShortDay() {
+    assertEquals("Sun", LocalDate.of(2025, 6, 15).formatDayOfWeek())
+  }
+
+  @Test
+  fun formatFullDate_writesTheWholeDate() {
+    assertEquals("Sunday 15 June", LocalDate.of(2025, 6, 15).formatFullDate())
+  }
+
+  @Test
   fun formatWeekday_inAnotherLocale_followsIt() {
     val day = LocalDate.of(2026, 6, 22)
     // Compared with the JDK's own French names, which differ between JDKs and Android.
