@@ -268,7 +268,7 @@ class AttendanceViewModel(
         // The check-ins of a mission still listed describe it as well as before: kept until its
         // new collection delivers, so a reload never shows its volunteers as not known for a
         // moment, nor drops the check-in still in its undo window.
-        val ids = missions.mapTo(mutableSetOf()) { it.id }
+        val ids = missions.map { it.id }.toSet()
         observed.keys.retainAll(ids)
         _uiState.update { state ->
           observed.keys.fold(
