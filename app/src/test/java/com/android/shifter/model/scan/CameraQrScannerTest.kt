@@ -211,17 +211,18 @@ class CameraQrScannerTest {
   }
 
   @Test
-  fun preview_shownAgain_clearsTheErrorBeforeTrying() {
+  fun preview_leaving_clearsTheError() {
     val scanner = scanner(hasCamera = false)
-    var shown by mutableStateOf(false)
+    var shown by mutableStateOf(true)
     composeTestRule.setContent { if (shown) scanner.Preview() }
-    scanner.onCameraError(ScanError.CAMERA_FAILED)
+    composeTestRule.waitForIdle()
+    assertEquals(ScanError.NO_CAMERA, scanner.error.value)
 
-    shown = true
+    shown = false
     composeTestRule.waitForIdle()
 
-    // The old error is dropped and the camera tried again: without one, it is NO_CAMERA now.
-    assertEquals(ScanError.NO_CAMERA, scanner.error.value)
+    // The next screen that opens does not see the error of this one.
+    assertNull(scanner.error.value)
   }
 
   private companion object {

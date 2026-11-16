@@ -150,6 +150,17 @@ class CameraQrScannerAttachTest {
   }
 
   @Test
+  fun attach_detachedBeforeCameraXFails_reportsNothing() {
+    every { initialization.get() } throws ExecutionException(IllegalStateException("no camera"))
+    val detach = scanner.attach(controller, owner, executor, barcodes)
+
+    detach()
+    whenReady?.run()
+
+    assertNull(scanner.error.value)
+  }
+
+  @Test
   fun detach_releasesTheCamera() {
     val detach = attachAndStart()
     torchObserver.captured.onChanged(TorchState.ON)

@@ -105,10 +105,9 @@ class CameraQrScanner(
   @Composable
   override fun Preview(modifier: Modifier) {
     DisposableEffect(Unit) {
-      // A new try: the error of a previous camera no longer applies.
-      mutableError.value = null
       if (!hasCameraFeature) onCameraError(ScanError.NO_CAMERA)
-      onDispose {}
+      // The error belongs to this preview: the next one starts without it.
+      onDispose { mutableError.value = null }
     }
     if (hasCameraFeature) CameraPreview(modifier) else Box(modifier)
   }
@@ -182,7 +181,8 @@ class CameraQrScanner(
             controller.initializationFuture.get()
             start()
           } catch (e: Exception) {
-            onCameraError(ScanError.CAMERA_FAILED)
+            // Once detached, the error would outlive the preview it belongs to.
+            if (!detached) onCameraError(ScanError.CAMERA_FAILED)
           }
         },
         executor,

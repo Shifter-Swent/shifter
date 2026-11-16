@@ -30,7 +30,9 @@ interface QrScanner {
   /**
    * Why the camera cannot read codes, or null while it can. Readable at any time, so an error that
    * happens before the screen collects is not lost. Set when the camera cannot start or stops, and
-   * back to null when [Preview] enters the composition again.
+   * back to null when [Preview] leaves the composition: an error always belongs to the preview
+   * shown, so a screen that opens never sees the error of a previous visit. It may come as soon as
+   * [Preview] enters, e.g. [ScanError.NO_CAMERA].
    */
   val error: StateFlow<ScanError?>
 

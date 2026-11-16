@@ -56,13 +56,20 @@ class FakeQrScanner(hasTorch: Boolean = true) : QrScanner {
   }
 
   /**
-   * An empty box in place of the camera image. Like the camera, showing it again clears [error].
+   * The error [Preview] reports as soon as it enters, like the camera on a device without one; null
+   * for a camera that starts.
+   */
+  var errorOnPreview: ScanError? = null
+
+  /**
+   * An empty box in place of the camera image. Like the camera, it reports [errorOnPreview] when it
+   * enters, and clears [error] when it leaves.
    */
   @Composable
   override fun Preview(modifier: Modifier) {
     DisposableEffect(Unit) {
-      mutableError.value = null
-      onDispose {}
+      errorOnPreview?.let(::fail)
+      onDispose { mutableError.value = null }
     }
     Box(modifier)
   }
