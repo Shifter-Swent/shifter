@@ -7,6 +7,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.Source
 import com.swent.shifter.firebase.FirestoreEmulator
+import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.ScratchEvents
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
@@ -400,7 +401,8 @@ class TeamFirestoreMapperTest {
   private suspend fun writeRawTeam(body: Map<String, Any?>): String {
     val document = teams.document()
     createdTeamIds += document.id
-    step("write") { document.set(body).await() }
+    // As an admin: the rules refuse the malformed documents these tests store.
+    step("write") { FirestoreEmulatorAdmin.createDocument(document.path, body) }
     return document.id
   }
 
