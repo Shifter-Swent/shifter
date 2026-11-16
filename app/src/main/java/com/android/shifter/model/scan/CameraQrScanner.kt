@@ -44,6 +44,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * the composition and released when it leaves. The back camera is used, or the front one on a
  * device without.
  *
+ * @param context any context, e.g. the application's: only its package manager is read, and it is
+ *   not kept, so a scanner that outlives the screen leaks nothing.
  * @param now the current time in milliseconds, for the 2-second window of [codes].
  */
 class CameraQrScanner(
