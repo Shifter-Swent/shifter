@@ -14,10 +14,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.app.ActivityCompat
@@ -25,7 +23,6 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.swent.shifter.model.scan.ScanError
 import com.swent.shifter.ui.permission.hasPermission
 import com.swent.shifter.ui.permission.openAppSettings
-import kotlinx.coroutines.flow.first
 
 /**
  * Shows [camera] once the camera can be used, and a [ScanFallback] that leads to the typed code
@@ -33,9 +30,8 @@ import kotlinx.coroutines.flow.first
  * reads it again after the dialog and each time the screen resumes, so a permission granted in the
  * settings brings the camera back.
  *
- * The scanner outlives the screen, and its error only goes back to null once its preview is shown
- * again. So each time the gate opens it shows [camera] first, and an [error] only counts once it
- * has been null in this gate: an error left by a previous visit gives the camera another try.
+ * Once the scanner reports an [error], the gate keeps the fallback until it leaves: the error goes
+ * back to null when the preview leaves, which would otherwise bring the camera back and fail again.
  *
  * @param error the scanner's `QrScanner.error`, collected by the screen.
  * @param onEnterCode goes back to the typed code.
@@ -63,8 +59,8 @@ fun CameraGate(
   }
   LaunchedEffect(Unit) { if (!granted && !requested) launcher.launch(Manifest.permission.CAMERA) }
 
-  val currentError by rememberUpdatedState(error)
-  var cameraStarted by remember { mutableStateOf(false) }
+  var cameraFailed by remember { mutableStateOf(false) }
+  LaunchedEffect(error) { if (error != null) cameraFailed = true }
   val access =
       cameraAccess(
           granted = granted,
@@ -90,19 +86,13 @@ fun CameraGate(
             },
             modifier = modifier,
         )
-    cameraStarted && error != null ->
+    cameraFailed || error != null ->
         ScanFallback(
             reason = ScanFallbackReason.CAMERA_ERROR,
             onEnterCode = onEnterCode,
             onAllowCamera = {},
             modifier = modifier,
         )
-    else -> {
-      Box(modifier.fillMaxSize()) { camera() }
-      LaunchedEffect(Unit) {
-        snapshotFlow { currentError }.first { it == null }
-        cameraStarted = true
-      }
-    }
+    else -> Box(modifier.fillMaxSize()) { camera() }
   }
 }

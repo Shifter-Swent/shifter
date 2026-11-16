@@ -198,14 +198,15 @@ class ScanFallbackTest {
   }
 
   @Test
-  fun errorLeftByAPreviousVisit_givesTheCameraAnotherTry() {
+  fun noCamera_keepsTheErrorFallback() {
     grantedPermissions += Manifest.permission.CAMERA
-    scanner.fail(ScanError.CAMERA_FAILED)
+    scanner.errorOnPreview = ScanError.NO_CAMERA
     setGate()
 
-    tag(CAMERA).assertIsDisplayed()
+    // The preview leaving clears the error: the gate must not bring the camera back for it.
+    compose.onNodeWithText("The camera isn't working").assertIsDisplayed()
     assertNull(scanner.error.value)
-    tag(ScanScreenTestTags.FALLBACK).assertDoesNotExist()
+    tag(CAMERA).assertDoesNotExist()
   }
 
   private companion object {
