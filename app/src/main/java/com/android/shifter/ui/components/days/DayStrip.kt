@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +35,7 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_dimmedText
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
+import kotlinx.coroutines.flow.first
 
 object DayStripTestTags {
   const val STRIP = "dayStrip"
@@ -62,17 +64,21 @@ fun DayStrip(
     modifier: Modifier = Modifier,
 ) {
   val listState = rememberLazyListState()
-  // Brings the selected day into view, when it opens off-screen or is picked from elsewhere.
+  // Brings the selected day into view when it is not fully on screen, with the day before it on
+  // the left: the days to come matter more than the past. Near the end of the event, the strip
+  // stops at its last day, so more past days stay in view.
   LaunchedEffect(selected, days) {
     val index = days.indexOf(selected)
-    val layout = listState.layoutInfo
+    if (index < 0) return@LaunchedEffect
+    // Waits for the first layout: before it, no chip is visible and the strip would slide on open.
+    val layout = snapshotFlow { listState.layoutInfo }.first { it.visibleItemsInfo.isNotEmpty() }
     val fullyVisible =
         layout.visibleItemsInfo.any {
           it.index == index &&
               it.offset >= layout.viewportStartOffset &&
               it.offset + it.size <= layout.viewportEndOffset
         }
-    if (index >= 0 && !fullyVisible) listState.animateScrollToItem(index)
+    if (!fullyVisible) listState.animateScrollToItem((index - 1).coerceAtLeast(0))
   }
   LazyRow(
       state = listState,

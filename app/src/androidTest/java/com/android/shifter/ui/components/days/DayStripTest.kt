@@ -4,6 +4,7 @@ package com.swent.shifter.ui.components.days
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
@@ -112,11 +113,35 @@ class DayStripTest {
   }
 
   @Test
+  fun dayStrip_withTheSelectedDayVisible_doesNotScroll() {
+    val month = (0L until 30L).map { friday.plusDays(it) }
+
+    show(days = month, daysWithMissions = month.toSet(), selected = month[2])
+
+    // Scrolled to the selected day, the strip would push the first one off-screen.
+    day(month.first()).assertIsDisplayed()
+  }
+
+  @Test
   fun dayStrip_withTheSelectedDayOffScreen_scrollsToIt() {
+    val month = (0L until 30L).map { friday.plusDays(it) }
+
+    show(days = month, daysWithMissions = month.toSet(), selected = month[15])
+
+    day(month[15]).assertIsDisplayed()
+    // The day before stays in view on the left, and the one before that is scrolled away.
+    day(month[14]).assertIsDisplayed()
+    day(month[13]).assertIsNotDisplayed()
+  }
+
+  @Test
+  fun dayStrip_withTheLastDaySelected_keepsMorePastDaysInView() {
     val month = (0L until 30L).map { friday.plusDays(it) }
 
     show(days = month, daysWithMissions = month.toSet(), selected = month.last())
 
     day(month.last()).assertIsDisplayed()
+    // The strip stops at its last day instead of leaving it alone next to the day before.
+    day(month[month.size - 3]).assertIsDisplayed()
   }
 }
