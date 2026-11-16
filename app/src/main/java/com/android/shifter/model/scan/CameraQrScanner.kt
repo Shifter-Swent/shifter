@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.util.Consumer
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.Observer
@@ -145,9 +146,12 @@ class CameraQrScanner(
     controller.setEnabledUseCases(CameraController.IMAGE_ANALYSIS)
     controller.setImageAnalysisAnalyzer(
         executor,
-        MlKitAnalyzer(listOf(barcodes), ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL, executor) {
-          onResult(it, barcodes)
-        },
+        MlKitAnalyzer(
+            listOf(barcodes),
+            ImageAnalysis.COORDINATE_SYSTEM_ORIGINAL,
+            executor,
+            codesOf(barcodes),
+        ),
     )
 
     var detached = false
@@ -195,10 +199,11 @@ class CameraQrScanner(
     }
   }
 
-  /** The texts of the QR codes [barcodes] read in one frame. */
-  internal fun onResult(result: MlKitAnalyzer.Result, barcodes: BarcodeScanner) {
-    onSightings(result.getValue(barcodes).orEmpty().mapNotNull(Barcode::getRawValue))
-  }
+  /** Passes the texts of the QR codes [barcodes] read in each frame to [codes]. */
+  internal fun codesOf(barcodes: BarcodeScanner) =
+      Consumer<MlKitAnalyzer.Result> { result ->
+        onSightings(result.getValue(barcodes).orEmpty().mapNotNull(Barcode::getRawValue))
+      }
 
   internal companion object {
     /** How long a code must be out of view before it is emitted again. */

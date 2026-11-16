@@ -200,7 +200,7 @@ class CameraQrScannerAttachTest {
   }
 
   @Test
-  fun onResult_emitsTheTextsOfTheQrCodes() = runTest {
+  fun codesOf_emitsTheTextsOfTheQrCodes() = runTest {
     val received = mutableListOf<String>()
     val job = launch(UnconfinedTestDispatcher(testScheduler)) { scanner.codes.toList(received) }
     val read = mockk<Barcode> { every { rawValue } returns CODE }
@@ -210,7 +210,7 @@ class CameraQrScannerAttachTest {
           every { getValue(barcodes) } returns listOf(read, unreadable)
         }
 
-    scanner.onResult(result, barcodes)
+    scanner.codesOf(barcodes).accept(result)
 
     assertEquals(listOf(CODE), received)
     job.cancel()
