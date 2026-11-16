@@ -38,6 +38,12 @@ open class MyEventsViewModel(private val loader: MyEventsLoader) : ViewModel() {
 
   private var loadJob: Job? = null
 
+  /**
+   * The events [remove]d since the load running started: its answer may have been read before the
+   * backend applied the change, and must not bring them back.
+   */
+  private val removedSinceLoad = mutableSetOf<String>()
+
   init {
     refresh()
   }
@@ -52,10 +58,15 @@ open class MyEventsViewModel(private val loader: MyEventsLoader) : ViewModel() {
    */
   fun refresh() {
     loadJob?.cancel()
+    removedSinceLoad.clear()
     mutableUiState.update { it.copy(isLoading = true, loadFailed = false) }
     loadJob = viewModelScope.launch {
       try {
-        val (past, upcoming) = loader.load().partition { it.badge == EventBadge.ENDED }
+        val (past, upcoming) =
+            loader
+                .load()
+                .filterNot { it.id in removedSinceLoad }
+                .partition { it.badge == EventBadge.ENDED }
         mutableUiState.update { it.copy(upcoming = upcoming, past = past, isLoading = false) }
       } catch (e: CancellationException) {
         throw e
@@ -64,6 +75,17 @@ open class MyEventsViewModel(private val loader: MyEventsLoader) : ViewModel() {
         Log.e(TAG, "Could not load the events", e)
         mutableUiState.update { it.copy(isLoading = false, loadFailed = true) }
       }
+    }
+  }
+
+  /** Takes the card of [eventId] off both tabs, and out of the answer of the load running. */
+  protected fun remove(eventId: String) {
+    removedSinceLoad += eventId
+    mutableUiState.update { state ->
+      state.copy(
+          upcoming = state.upcoming.filterNot { it.id == eventId },
+          past = state.past.filterNot { it.id == eventId },
+      )
     }
   }
 
@@ -96,12 +118,7 @@ class StaffEventsViewModel(loader: MyEventsLoader, private val withdrawer: Event
     viewModelScope.launch {
       try {
         withdrawer.withdraw(eventId)
-        mutableUiState.update { state ->
-          state.copy(
-              upcoming = state.upcoming.filterNot { it.id == eventId },
-              past = state.past.filterNot { it.id == eventId },
-          )
-        }
+        remove(eventId)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
