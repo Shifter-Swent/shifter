@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.mlkit.common.sdkinternal.MlKitContext
+import com.google.mlkit.vision.interfaces.Detector
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.toList
@@ -178,6 +180,34 @@ class CameraQrScannerTest {
 
     composeTestRule.onNodeWithTag(PREVIEW).assertHeightIsEqualTo(200.dp)
     assertEquals(ScanError.NO_CAMERA, scanner.error.value)
+  }
+
+  @Test
+  fun preview_withACamera_showsItAndReleasesItWithoutCrashing() {
+    // In the app, ML Kit initializes itself at launch; Robolectric does not run its provider.
+    MlKitContext.initializeIfNeeded(context)
+    val scanner = scanner(hasCamera = true)
+    var shown by mutableStateOf(true)
+    composeTestRule.setContent {
+      if (shown) scanner.Preview(Modifier.size(200.dp).testTag(PREVIEW))
+    }
+
+    composeTestRule.onNodeWithTag(PREVIEW).assertHeightIsEqualTo(200.dp)
+    shown = false
+    composeTestRule.waitForIdle()
+
+    composeTestRule.onNodeWithTag(PREVIEW).assertDoesNotExist()
+    assertFalse(scanner.hasTorch.value)
+  }
+
+  @Test
+  fun qrDetector_isABarcodeScanner() {
+    MlKitContext.initializeIfNeeded(context)
+
+    val detector = CameraQrScanner.qrDetector()
+
+    assertEquals(Detector.TYPE_BARCODE_SCANNING, detector.detectorType)
+    detector.close()
   }
 
   @Test
