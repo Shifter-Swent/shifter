@@ -5,9 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -18,10 +16,12 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.isIndeterminateSpinner
 import com.swent.shifter.ui.events.staff.StaffEventsContent
 import com.swent.shifter.ui.events.staff.StaffEventsScreen
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -120,21 +120,13 @@ class StaffEventsContentTest {
     composeTestRule.runOnIdle { assertEquals(2, loads) }
   }
 
-  /**
-   * Material's pull spinner while it reloads, and the centred one: neither has a known progress.
-   */
-  private val spinner =
-      SemanticsMatcher.expectValue(
-          SemanticsProperties.ProgressBarRangeInfo,
-          ProgressBarRangeInfo.Indeterminate,
-      )
-
   @Test
-  fun reloading_withCards_showsOnlyThePullSpinner() {
+  fun reloading_withCards_keepsThemWithoutASpinner() {
+    // An automatic reload, e.g. on coming back: only a pull shows the spinner.
     setContent(MyEventsUiState(upcoming = upcoming, isLoading = true))
 
-    composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertDoesNotExist()
-    composeTestRule.onAllNodes(spinner).assertCountEquals(1)
+    composeTestRule.onNodeWithTag(MyEventsTestTags.eventCard(upcoming.first().id)).assertExists()
+    composeTestRule.onAllNodes(isIndeterminateSpinner).assertCountEquals(0)
   }
 
   @Test
@@ -142,7 +134,24 @@ class StaffEventsContentTest {
     setContent(MyEventsUiState(isLoading = true))
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.LOADING).assertIsDisplayed()
-    composeTestRule.onAllNodes(spinner).assertCountEquals(1)
+    composeTestRule.onAllNodes(isIndeterminateSpinner).assertCountEquals(1)
+  }
+
+  @Test
+  @OptIn(ExperimentalTestApi::class)
+  fun refreshAction_onACard_refreshes() {
+    setContent(MyEventsUiState(upcoming = upcoming))
+
+    // A card that opens is focused as a whole; one awaiting approval, by its title.
+    composeTestRule
+        .onNodeWithTag(MyEventsTestTags.eventCard("city-marathon"), useUnmergedTree = true)
+        .performCustomAccessibilityActionWithLabel("Refresh")
+    val pending = upcoming.first { it.id == "beach-cleanup" }
+    composeTestRule
+        .onNodeWithText(pending.title, useUnmergedTree = true)
+        .performCustomAccessibilityActionWithLabel("Refresh")
+
+    composeTestRule.runOnIdle { assertEquals(2, refreshes) }
   }
 
   @Test

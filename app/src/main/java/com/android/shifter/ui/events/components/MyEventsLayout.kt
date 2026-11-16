@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.events.components
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.RefreshableList
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.events.EventCardUi
 import com.swent.shifter.ui.events.EventTab
 import com.swent.shifter.ui.events.MyEventsTestTags
@@ -71,28 +73,16 @@ fun MyEventsLayout(
       )
       EventTabs(selected = state.selectedTab, onSelect = onTabSelected)
       if (state.withdrawFailed) {
-        Text(
-            text = stringResource(R.string.my_events_withdraw_error),
-            color = MaterialTheme.colorScheme.error,
-            fontSize = 13.sp,
-            modifier =
-                Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    .testTag(MyEventsTestTags.WITHDRAW_ERROR),
-        )
+        ErrorBanner(R.string.my_events_withdraw_error, MyEventsTestTags.WITHDRAW_ERROR)
       }
+      // The same failure as the centred message, said above the cards a failed reload keeps.
       if (state.loadFailed && state.visibleEvents.isNotEmpty()) {
-        Text(
-            text = stringResource(R.string.my_events_load_error),
-            color = MaterialTheme.colorScheme.error,
-            fontSize = 13.sp,
-            modifier =
-                Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                    .testTag(MyEventsTestTags.ERROR),
-        )
+        ErrorBanner(R.string.my_events_load_error, MyEventsTestTags.ERROR)
       }
       RefreshableList(
+          isLoading = state.isLoading,
           // The centred spinner says it while there are no cards to keep.
-          isRefreshing = state.isLoading && state.visibleEvents.isNotEmpty(),
+          hasContent = state.visibleEvents.isNotEmpty(),
           onRefresh = onRefresh,
           modifier = Modifier.fillMaxSize(),
       ) {
@@ -147,9 +137,20 @@ private fun CenteredMessage(text: String, testTag: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(24.dp).testTag(testTag),
+            modifier = Modifier.padding(24.dp).refreshAction().testTag(testTag),
         )
       }
     }
   }
+}
+
+/** A failure said in red under the tabs. */
+@Composable
+private fun ErrorBanner(@StringRes text: Int, testTag: String) {
+  Text(
+      text = stringResource(text),
+      color = MaterialTheme.colorScheme.error,
+      fontSize = 13.sp,
+      modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp).testTag(testTag),
+  )
 }

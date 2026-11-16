@@ -6,16 +6,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
@@ -33,62 +30,88 @@ class RefreshableListTest {
 
   @get:Rule val composeTestRule = createComposeRule()
 
-  /** The spinner shown while the list reloads: its only node without a known progress. */
-  private val spinner =
-      SemanticsMatcher.expectValue(
-          SemanticsProperties.ProgressBarRangeInfo,
-          ProgressBarRangeInfo.Indeterminate,
-      )
+  private var refreshes = 0
+  /** Whether the screen loads, which a refresh starts as a ViewModel would. */
+  private var loading by mutableStateOf(false)
 
-  @Test
-  fun pull_callsOnRefreshAndShowsTheSpinner() {
-    var refreshes = 0
+  private fun show(hasContent: Boolean = true) {
     composeTestRule.setContent {
-      var refreshing by remember { mutableStateOf(false) }
       ShifterTheme {
         RefreshableList(
-            isRefreshing = refreshing,
+            isLoading = loading,
+            hasContent = hasContent,
             onRefresh = {
               refreshes++
-              refreshing = true
+              loading = true
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-          LazyColumn(Modifier.fillMaxSize().testTag(LIST)) { items(3) { Text("Item $it") } }
+          LazyColumn(Modifier.fillMaxSize().testTag(LIST)) {
+            items(3) { Text("Item $it", Modifier.refreshAction()) }
+          }
         }
       }
     }
-    composeTestRule.onNode(spinner).assertDoesNotExist()
+  }
 
-    composeTestRule.onNodeWithTag(LIST).performTouchInput { swipeDown() }
+  private fun pull() = composeTestRule.onNodeWithTag(LIST).performTouchInput { swipeDown() }
+
+  @Test
+  fun pull_callsOnRefreshAndShowsTheSpinnerUntilTheLoadEnds() {
+    show()
+    composeTestRule.onNode(isIndeterminateSpinner).assertDoesNotExist()
+
+    pull()
 
     composeTestRule.runOnIdle { assertEquals(1, refreshes) }
-    composeTestRule.onNode(spinner).assertExists()
+    composeTestRule.onNode(isIndeterminateSpinner).assertExists()
+    loading = false
+    composeTestRule.onNode(isIndeterminateSpinner).assertDoesNotExist()
+  }
+
+  @Test
+  fun automaticLoad_staysSilent() {
+    show()
+
+    loading = true
+
+    composeTestRule.onNode(isIndeterminateSpinner).assertDoesNotExist()
+  }
+
+  @Test
+  fun pull_whileALoadRuns_waitsForItWithTheSpinner() {
+    show()
+    loading = true
+
+    pull()
+
+    composeTestRule.runOnIdle { assertEquals(0, refreshes) }
+    composeTestRule.onNode(isIndeterminateSpinner).assertExists()
+  }
+
+  @Test
+  fun pull_withoutContentWhileALoadRuns_neitherRestartsItNorShowsTheSpinner() {
+    show(hasContent = false)
+    loading = true
+
+    pull()
+
+    composeTestRule.runOnIdle { assertEquals(0, refreshes) }
+    composeTestRule.onNode(isIndeterminateSpinner).assertDoesNotExist()
   }
 
   @Test
   @OptIn(ExperimentalTestApi::class)
-  fun refreshAction_callsOnRefresh() {
-    var refreshes = 0
-    composeTestRule.setContent {
-      ShifterTheme {
-        RefreshableList(
-            isRefreshing = false,
-            onRefresh = { refreshes++ },
-            modifier = Modifier.fillMaxSize().testTag(BOX),
-        ) {
-          LazyColumn(Modifier.fillMaxSize()) { items(3) { Text("Item $it") } }
-        }
-      }
-    }
+  fun refreshAction_onAnItem_callsOnRefresh() {
+    show()
 
-    composeTestRule.onNodeWithTag(BOX).performCustomAccessibilityActionWithLabel("Refresh")
+    composeTestRule.onNodeWithText("Item 1").performCustomAccessibilityActionWithLabel("Refresh")
 
     composeTestRule.runOnIdle { assertEquals(1, refreshes) }
+    composeTestRule.onNode(isIndeterminateSpinner).assertExists()
   }
 
   private companion object {
     const val LIST = "list"
-    const val BOX = "box"
   }
 }

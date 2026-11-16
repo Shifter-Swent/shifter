@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PillColors
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.events.EventBadge
 import com.swent.shifter.ui.events.EventCardFooter
 import com.swent.shifter.ui.events.EventCardUi
@@ -93,8 +94,9 @@ fun EventCard(
               .background(colors.surfaceVariant)
               .border(1.dp, colors.outlineVariant, shape)
               .then(
+                  // A card that opens is what screen readers focus, its texts read with it.
                   if (onOpen == null) Modifier
-                  else Modifier.openedBy(presses) { latestOnOpen?.invoke() }
+                  else Modifier.openedBy(presses) { latestOnOpen?.invoke() }.refreshAction()
               )
               .padding(16.dp)
               .testTag(MyEventsTestTags.eventCard(card.id)),
@@ -115,6 +117,8 @@ fun EventCard(
         fontWeight = FontWeight.Bold,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
+        // Focused on its own when the card does not open.
+        modifier = Modifier.refreshAction(),
     )
 
     Row(
