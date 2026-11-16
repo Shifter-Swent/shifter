@@ -21,7 +21,10 @@ fun eventDays(
     itemDays: Collection<LocalDate>,
     zone: ZoneId,
 ): List<LocalDate> {
-  val ends = period?.let { listOf(it.start.eventDay(zone), it.endInclusive.eventDay(zone)) }
+  val ends = period?.let {
+    // The end is when the event is over: one ending at 04:00 sharp ends with the night before.
+    listOf(it.start.eventDay(zone), it.endInclusive.minusNanos(1).eventDay(zone))
+  }
   val bounds = itemDays + ends.orEmpty()
   val first = bounds.minOrNull() ?: return emptyList()
   val last = bounds.max()

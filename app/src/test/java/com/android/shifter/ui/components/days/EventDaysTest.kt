@@ -48,8 +48,15 @@ class EventDaysTest {
   }
 
   @Test
-  fun eventDays_includesTheDayTheEventEndsOn_evenAtFour() {
+  fun eventDays_withAnEventEndingAtFourSharp_endsWithTheNightBefore() {
     val period = at("2025-06-13T20:00:00Z")..at("2025-06-15T04:00:00Z")
+
+    assertEquals(days("2025-06-13", "2025-06-14"), eventDays(period, emptySet()))
+  }
+
+  @Test
+  fun eventDays_withAnEventEndingAfterFour_includesItsLastMorning() {
+    val period = at("2025-06-13T20:00:00Z")..at("2025-06-15T04:01:00Z")
 
     assertEquals(days("2025-06-13", "2025-06-15"), eventDays(period, emptySet()))
   }
