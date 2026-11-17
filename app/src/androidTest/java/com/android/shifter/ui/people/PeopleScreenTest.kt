@@ -643,6 +643,40 @@ class PeopleScreenTest {
     compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
   }
 
+  private fun setRequests(onRetry: () -> Unit) {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(requests = listOf(item), isLoading = false),
+            {},
+            {},
+            onRetry,
+        )
+      }
+    }
+  }
+
+  @Test
+  fun pull_reloadsTheRequests() {
+    var retries = 0
+    setRequests { retries++ }
+
+    compose.onRoot().performTouchInput { swipeDown() }
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  @OptIn(ExperimentalTestApi::class)
+  fun refreshAction_onARequestsName_reloadsTheRequests() {
+    var retries = 0
+    setRequests { retries++ }
+
+    compose.onNodeWithText("Alice Martin").performCustomAccessibilityActionWithLabel("Refresh")
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
   @Test
   fun decidedRequests_remainVisibleWithTheirStatus() {
     compose.setContent {

@@ -41,7 +41,9 @@ import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.ui.components.Pill
+import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.membershipStatusColors
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 
@@ -52,6 +54,9 @@ object MembershipRequestsTestTags {
   fun acceptButton(userId: String) = "MembershipRequestAccept_$userId"
 }
 
+/**
+ * The requests to join the event, one card each. Pulling the list down reloads it with [onRetry].
+ */
 @Composable
 fun MembershipRequestsScreen(
     uiState: MembershipRequestUIState,
@@ -61,56 +66,63 @@ fun MembershipRequestsScreen(
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
-  LazyColumn(
-      modifier = modifier.fillMaxSize().background(colors.background),
-      contentPadding = PaddingValues(16.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
+  RefreshableList(
+      isLoading = uiState.isLoading,
+      hasContent = uiState.requests.isNotEmpty(),
+      onRefresh = onRetry,
+      modifier = modifier.fillMaxSize(),
   ) {
-    // A reload keeps the list already shown instead of replacing it with the spinner.
-    if (uiState.isLoading && uiState.requests.isEmpty()) {
-      item { CircularProgressIndicator(color = colors.primary) }
-    }
-    uiState.errorMsg?.let { message ->
-      item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-          Text(
-              text = message,
-              color = colors.error,
-              fontSize = 14.sp,
-              textAlign = TextAlign.Center,
-          )
-          TextButton(
-              onClick = onRetry,
-              enabled = !uiState.isLoading && uiState.processingRequestIds.isEmpty(),
-          ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(colors.background),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      // A reload keeps the list already shown instead of replacing it with the spinner.
+      if (uiState.isLoading && uiState.requests.isEmpty()) {
+        item { CircularProgressIndicator(color = colors.primary) }
+      }
+      uiState.errorMsg?.let { message ->
+        item {
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = stringResource(R.string.membership_requests_retry),
-                fontWeight = FontWeight.SemiBold,
+                text = message,
+                color = colors.error,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
             )
+            TextButton(
+                onClick = onRetry,
+                enabled = !uiState.isLoading && uiState.processingRequestIds.isEmpty(),
+            ) {
+              Text(
+                  text = stringResource(R.string.membership_requests_retry),
+                  fontWeight = FontWeight.SemiBold,
+              )
+            }
           }
         }
       }
-    }
-    if (!uiState.isLoading && uiState.errorMsg == null && uiState.requests.isEmpty()) {
-      item {
-        Text(
-            text = stringResource(R.string.membership_requests_empty),
-            color = colors.onSurfaceVariant,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(24.dp),
+      if (!uiState.isLoading && uiState.errorMsg == null && uiState.requests.isEmpty()) {
+        item {
+          Text(
+              text = stringResource(R.string.membership_requests_empty),
+              color = colors.onSurfaceVariant,
+              fontSize = 14.sp,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(24.dp),
+          )
+        }
+      }
+      items(uiState.requests, key = { it.request.userId }) { item ->
+        MembershipRequestCard(
+            item = item,
+            isProcessing = item.request.id in uiState.processingRequestIds,
+            onAccept = { onAccept(item.request.userId) },
+            onReject = { onReject(item.request.userId) },
+            canAccept = !uiState.hasEnded,
         )
       }
-    }
-    items(uiState.requests, key = { it.request.userId }) { item ->
-      MembershipRequestCard(
-          item = item,
-          isProcessing = item.request.id in uiState.processingRequestIds,
-          onAccept = { onAccept(item.request.userId) },
-          onReject = { onReject(item.request.userId) },
-          canAccept = !uiState.hasEnded,
-      )
     }
   }
 }
@@ -149,7 +161,8 @@ fun MembershipRequestCard(
           fontWeight = FontWeight.Bold,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.weight(1f),
+          // TalkBack focuses the name: it offers the list's Refresh there.
+          modifier = Modifier.weight(1f).refreshAction(),
       )
       RequestStatusPill(
           item.request.status,

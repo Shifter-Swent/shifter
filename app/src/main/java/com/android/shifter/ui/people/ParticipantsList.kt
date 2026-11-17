@@ -69,7 +69,9 @@ import com.swent.shifter.R
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PillColors
+import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.avatarInitials
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 
@@ -105,6 +107,8 @@ object ParticipantsListTestTags {
  * A tap on a card unfolds the actions its participant allows, and folds it again; one card is open
  * at a time. No action is offered while a change runs.
  *
+ * Pulling the list down reloads it with [onRetry].
+ *
  * @param onManagerAction called with a member and their team to make them its manager, or with its
  *   manager to stop it.
  * @param onMoveAction called with a member to move them to another team, or with a participant of
@@ -131,74 +135,81 @@ fun ParticipantsList(
       expanded = null
     }
   }
-  LazyColumn(
-      modifier = modifier.fillMaxSize().background(colors.background),
-      contentPadding = PaddingValues(16.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
+  RefreshableList(
+      isLoading = state.isLoading,
+      hasContent = state.groups.isNotEmpty(),
+      onRefresh = onRetry,
+      modifier = modifier.fillMaxSize(),
   ) {
-    // A reload keeps the list already shown instead of replacing it with the spinner.
-    if (state.isLoading && state.groups.isEmpty()) {
-      item {
-        CircularProgressIndicator(
-            color = colors.primary,
-            modifier = Modifier.testTag(ParticipantsListTestTags.LOADING),
-        )
-      }
-    }
-    state.error?.let { error ->
-      item { ErrorMessage(error, enabled = !state.isLoading, onRetry = onRetry) }
-    }
-    if (!state.isLoading && state.error == null && state.groups.isEmpty()) {
-      item {
-        Text(
-            text = stringResource(R.string.participants_empty),
-            color = colors.onSurfaceVariant,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(24.dp).testTag(ParticipantsListTestTags.EMPTY),
-        )
-      }
-    }
-    state.groups.forEach { group ->
-      item(key = "team-${group.team?.id}") { TeamBar(group) }
-      val team = group.team
-      if (team != null && group.participants.isEmpty()) {
-        item(key = "empty-${team.id}") {
-          Text(
-              text = stringResource(R.string.participants_team_empty),
-              color = colors.onSurfaceVariant,
-              fontSize = 14.sp,
-              modifier =
-                  Modifier.fillMaxWidth()
-                      .padding(horizontal = 4.dp)
-                      .testTag(ParticipantsListTestTags.noParticipants(team.id)),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(colors.background),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      // A reload keeps the list already shown instead of replacing it with the spinner.
+      if (state.isLoading && state.groups.isEmpty()) {
+        item {
+          CircularProgressIndicator(
+              color = colors.primary,
+              modifier = Modifier.testTag(ParticipantsListTestTags.LOADING),
           )
         }
       }
-      items(group.participants, key = { "participant-${it.userId}" }) { participant ->
-        val userId = participant.userId
-        ParticipantCard(
-            participant = participant,
-            expanded = expanded == userId,
-            enabled = !state.isUpdating,
-            onToggle = { expanded = if (expanded == userId) null else userId },
-            // An action folds the card: its dialog takes over, and the list moves on after it.
-            onManagerAction =
-                team?.let {
-                  {
-                    expanded = null
-                    onManagerAction(participant, it)
-                  }
-                },
-            onMoveAction =
-                onMoveAction?.let {
-                  {
-                    expanded = null
-                    it(participant)
-                  }
-                },
-        )
+      state.error?.let { error ->
+        item { ErrorMessage(error, enabled = !state.isLoading, onRetry = onRetry) }
+      }
+      if (!state.isLoading && state.error == null && state.groups.isEmpty()) {
+        item {
+          Text(
+              text = stringResource(R.string.participants_empty),
+              color = colors.onSurfaceVariant,
+              fontSize = 14.sp,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(24.dp).testTag(ParticipantsListTestTags.EMPTY),
+          )
+        }
+      }
+      state.groups.forEach { group ->
+        item(key = "team-${group.team?.id}") { TeamBar(group) }
+        val team = group.team
+        if (team != null && group.participants.isEmpty()) {
+          item(key = "empty-${team.id}") {
+            Text(
+                text = stringResource(R.string.participants_team_empty),
+                color = colors.onSurfaceVariant,
+                fontSize = 14.sp,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                        .testTag(ParticipantsListTestTags.noParticipants(team.id)),
+            )
+          }
+        }
+        items(group.participants, key = { "participant-${it.userId}" }) { participant ->
+          val userId = participant.userId
+          ParticipantCard(
+              participant = participant,
+              expanded = expanded == userId,
+              enabled = !state.isUpdating,
+              onToggle = { expanded = if (expanded == userId) null else userId },
+              // An action folds the card: its dialog takes over, and the list moves on after it.
+              onManagerAction =
+                  team?.let {
+                    {
+                      expanded = null
+                      onManagerAction(participant, it)
+                    }
+                  },
+              onMoveAction =
+                  onMoveAction?.let {
+                    {
+                      expanded = null
+                      it(participant)
+                    }
+                  },
+          )
+        }
       }
     }
   }
@@ -323,6 +334,7 @@ private fun ParticipantCard(
                 .padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp)
                 // TalkBack says whether the card is open, which the chevron only shows.
                 .semantics(mergeDescendants = true) { if (unfolds) stateDescription = state }
+                .refreshAction()
                 .testTag(ParticipantsListTestTags.participantCard(participant.userId)),
     ) {
       Initials(participant.name, highlighted = expanded)

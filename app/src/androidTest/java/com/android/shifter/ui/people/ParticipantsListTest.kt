@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
@@ -21,7 +22,11 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -387,6 +392,33 @@ class ParticipantsListTest {
 
     card("bob").assertIsDisplayed()
     node(ParticipantsListTestTags.LOADING).assertDoesNotExist()
+  }
+
+  @Test
+  fun pull_reloadsTheList() {
+    var retries = 0
+    setList(
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob)))),
+        onRetry = { retries++ },
+    )
+
+    composeTestRule.onRoot().performTouchInput { swipeDown() }
+
+    composeTestRule.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  @OptIn(ExperimentalTestApi::class)
+  fun refreshAction_onACard_reloadsTheList() {
+    var retries = 0
+    setList(
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob)))),
+        onRetry = { retries++ },
+    )
+
+    card("bob").performCustomAccessibilityActionWithLabel("Refresh")
+
+    composeTestRule.runOnIdle { assertEquals(1, retries) }
   }
 
   @Test
