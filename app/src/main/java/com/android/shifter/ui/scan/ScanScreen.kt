@@ -56,8 +56,8 @@ import com.swent.shifter.ui.theme.shifter_warning
  * typed code when the camera cannot be used.
  *
  * Only a valid join code is reported: anything else says it is not a Shifter event, and the scan
- * goes on. The text is checked as it is, not through `JoinCode.normalize`, which would turn a URL
- * into a code made of its first letters.
+ * goes on. The text is only trimmed and upper-cased, as a typed code is, and not passed through
+ * `JoinCode.normalize`, which would turn a URL into a code made of its first letters.
  *
  * @param onCodeScanned called with the join code read, e.g. to look its event up.
  * @param onEnterCode goes back to the typed code.
@@ -74,7 +74,7 @@ fun ScanScreen(
   var invalidCode by remember { mutableStateOf(false) }
   LaunchedEffect(scanner) {
     scanner.codes.collect { text ->
-      val code = text.trim()
+      val code = text.trim().uppercase()
       invalidCode = !JoinCode.isValid(code)
       if (!invalidCode) currentOnCodeScanned(code)
     }

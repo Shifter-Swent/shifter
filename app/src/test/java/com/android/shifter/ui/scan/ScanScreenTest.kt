@@ -86,10 +86,18 @@ class ScanScreenTest {
   }
 
   @Test
+  fun scan_withALowerCaseCode_reportsItUpperCased() {
+    show().read("abc234")
+
+    assertEquals(listOf("ABC234"), scanned)
+    tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
+  }
+
+  @Test
   fun scan_withAnotherText_saysSoAndGoesOn() {
     val scanner = show()
 
-    // Normalized, this URL would give HTTPSX, a valid code: it must be refused as it is.
+    // Normalized, this URL would give HTTPSE, a valid code: it must be refused.
     scanner.read("https://example.com")
     tag(ScanScreenTestTags.INVALID_CODE).assertIsDisplayed()
     tag(ScanScreenTestTags.HINT).assertDoesNotExist()
