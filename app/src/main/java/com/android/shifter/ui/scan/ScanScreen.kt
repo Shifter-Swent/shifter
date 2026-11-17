@@ -28,7 +28,6 @@ import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,30 +94,30 @@ fun ScanScreen(
   val error by scanner.error.collectAsState()
   val hasTorch by scanner.hasTorch.collectAsState()
   val torchOn by scanner.torchOn.collectAsState()
-  // The title and the torch only go with the camera: the fallback keeps nothing but Back.
-  var cameraShown by remember { mutableStateOf(false) }
   Box(
       modifier
           .fillMaxSize()
           .background(MaterialTheme.colorScheme.background)
           .testTag(ScanScreenTestTags.SCREEN)
   ) {
-    CameraGate(error = error, onEnterCode = onEnterCode) {
-      DisposableEffect(Unit) {
-        cameraShown = true
-        onDispose { cameraShown = false }
-      }
+    CameraGate(
+        error = error,
+        onEnterCode = onEnterCode,
+        // The title and the torch only go with the camera: the fallback keeps nothing but Back.
+        overlay = { cameraShown ->
+          ScanTopBar(
+              cameraShown = cameraShown,
+              showTorch = cameraShown && hasTorch,
+              torchOn = torchOn,
+              onTorchChange = scanner::torch,
+              onBack = onBack,
+          )
+        },
+    ) {
       ScanCamera(invalidCode = invalidCode, onEnterCode = onEnterCode) {
         scanner.Preview(Modifier.fillMaxSize())
       }
     }
-    ScanTopBar(
-        cameraShown = cameraShown,
-        showTorch = cameraShown && hasTorch,
-        torchOn = torchOn,
-        onTorchChange = scanner::torch,
-        onBack = onBack,
-    )
   }
 }
 
