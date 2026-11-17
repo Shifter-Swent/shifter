@@ -41,6 +41,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -152,6 +155,8 @@ internal fun ScanCamera(
           textAlign = TextAlign.Center,
           modifier =
               Modifier.fillMaxWidth()
+                  // Read again when it changes: a refused code is said without anything touched.
+                  .semantics { liveRegion = LiveRegionMode.Polite }
                   .testTag(
                       if (invalidCode) ScanScreenTestTags.INVALID_CODE else ScanScreenTestTags.HINT
                   ),

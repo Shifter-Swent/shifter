@@ -8,6 +8,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -120,6 +124,14 @@ class ScanScreenTest {
     compose.mainClock.advanceTimeBy(100)
     tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
     tag(ScanScreenTestTags.HINT).assertIsDisplayed()
+  }
+
+  @Test
+  fun scan_withAnotherText_isAnnounced() {
+    show().read("https://example.com")
+
+    tag(ScanScreenTestTags.INVALID_CODE)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
   }
 
   @Test
