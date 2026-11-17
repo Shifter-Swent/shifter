@@ -4,6 +4,9 @@ package com.swent.shifter.ui.map
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -129,10 +132,35 @@ class MapScreenTest {
       }
     }
 
-    compose.waitUntil(timeoutMillis = 5_000) { shown == 1 }
+    // The move waits for the map, which may be ready after the effect ran.
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(FOCUS) }
     compose.waitForIdle()
     assertEquals(1, shown)
-    assertTrue(camera.position.target.isNear(FOCUS))
+  }
+
+  @Test
+  fun focus_onAMapAlreadyShown_movesTheCameraToTheMission() {
+    lateinit var camera: CameraPositionState
+    var uiState by mutableStateOf(LOADED)
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = uiState,
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            onFocusShown = { uiState = uiState.copy(focus = null) },
+            cameraPositionState = camera,
+        )
+      }
+    }
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+
+    // "View on map" with the Map tab already open.
+    compose.runOnIdle { uiState = uiState.copy(selected = WATER, focus = FOCUS) }
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(FOCUS) }
   }
 
   // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the

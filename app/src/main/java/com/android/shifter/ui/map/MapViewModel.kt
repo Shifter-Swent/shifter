@@ -271,7 +271,10 @@ class MapViewModel(
     if (!_uiState.value.isLoading) load()
   }
 
-  /** Called once the camera moved to [MapUiState.focus], so it does not move there again. */
+  /**
+   * Called once the camera was sent to [MapUiState.focus], so it is not sent there again; the move
+   * itself may wait for the map to be ready.
+   */
   fun focusShown() = _uiState.update { it.copy(focus = null) }
 
   /** Closes the card of the selected mission. */

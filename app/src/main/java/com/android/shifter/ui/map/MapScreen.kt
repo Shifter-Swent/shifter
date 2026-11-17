@@ -100,7 +100,8 @@ fun MapScreen(
 /**
  * Stateless map screen: the event's venue above a map of its missions.
  *
- * @param onFocusShown called once the camera moved to [MapUiState.focus].
+ * @param onFocusShown called once the camera was sent to [MapUiState.focus]; the move itself may
+ *   wait for the map to be ready.
  * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
@@ -153,16 +154,14 @@ fun MapContent(
           cameraPositionState.position = CameraPosition.fromLatLngZoom(it.toLatLng(), EVENT_ZOOM)
         }
       }
-      // A mission opened from elsewhere, such as the now card, is brought to the middle once, as a
-      // tap on its marker does.
+      // A mission opened from elsewhere, such as the now card, is brought to the middle once. A
+      // move rather than an animation: the Map tab often opens at that moment, before the map is
+      // ready, and an animation can then be cancelled and leave the camera where it was. A move
+      // waits for the map. Declared after the effect of the center, so it comes last.
       LaunchedEffect(uiState.focus) {
         uiState.focus?.let {
-          try {
-            cameraPositionState.animate(CameraUpdateFactory.newLatLng(it.toLatLng()))
-          } finally {
-            // Also when the user moves the map meanwhile, so the camera never jumps back to it.
-            onFocusShown()
-          }
+          cameraPositionState.move(CameraUpdateFactory.newLatLng(it.toLatLng()))
+          onFocusShown()
         }
       }
       val next = uiState.next
