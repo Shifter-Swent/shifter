@@ -21,7 +21,7 @@ import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
-import com.swent.shifter.ui.checkin.AutoCheckInTestTags
+import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.membership.MembershipRequestsTestTags
@@ -34,6 +34,7 @@ import com.swent.shifter.ui.planning.PlanningTestTags
 import com.swent.shifter.ui.team.TeamSetupScreenTestTags
 import java.time.Duration
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.flow.first
@@ -42,6 +43,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -82,6 +84,9 @@ class EventDayEndToEndTest {
 
   @Test
   fun eventDay_fromAssignmentToAttendance_showsTheVolunteerPresent() {
+    // Near the start of an event day (DAY_STARTS_AT_HOUR), the mission falls on the next day and
+    // the card has nothing to show for it.
+    assumeFalse(LocalTime.now() in LocalTime.of(3, 30)..LocalTime.of(4, 0))
     app.launchApp(location)
 
     // ── 1. The organizer creates an event starting soon and its team, and gets the join code ──
@@ -179,19 +184,28 @@ class EventDayEndToEndTest {
     composeTestRule
         .onNodeWithTag(PlanningTestTags.address(mission.id), useUnmergedTree = true)
         .assertTextContains(DESK.address)
-    app.waitForNode(AutoCheckInTestTags.CARD)
+    app.waitForNode(NowCardTestTags.CARD)
 
     // Away from the desk, the positions read leave the volunteer unchecked.
     val readAway = location.emitted.get()
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.emitted.get() >= readAway + 3 }
-    assertNoNode(AutoCheckInTestTags.CONFIRMATION)
     assertNoNode(PlanningTestTags.checkIn(mission.id))
     assertEquals(emptyList<CheckIn>(), checkInsOf(event.id, volunteerId))
 
-    // At the desk, they are checked in on their own, and the Planning says so.
+    // At the desk, they are checked in on their own, and the Planning and the now card say so.
     location.position = DESK.position
-    app.waitForNode(AutoCheckInTestTags.CONFIRMATION)
     app.waitForNode(PlanningTestTags.checkIn(mission.id), useUnmergedTree = true)
+    val checkedInAt = context.getString(R.string.now_card_checked_in_at, "").trim()
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodes(
+              hasText(checkedInAt, substring = true) and
+                  hasAnyAncestor(hasTestTag(NowCardTestTags.CARD)),
+              useUnmergedTree = true,
+          )
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
     val checkIn = runBlocking {
       withTimeout(TIMEOUT_MILLIS) {
         repositories.checkInRepository

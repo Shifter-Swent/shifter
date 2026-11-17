@@ -44,8 +44,8 @@ import java.time.Instant
 import java.time.ZoneId
 
 /**
- * The volunteer's now card: what to do now and what comes next, in each [NowState]. It replaces the
- * automatic check-in card, so it also says when the volunteer was checked in, and why not yet.
+ * The volunteer's now card: what to do now and what comes next, in each [NowState]. It also says
+ * when the volunteer was checked in, and why not yet.
  *
  * @param state the volunteer's state, from today's missions only (see [nowState]).
  * @param now the clock's tick, which the countdowns ("In 20 min", "40 min left") are read at.

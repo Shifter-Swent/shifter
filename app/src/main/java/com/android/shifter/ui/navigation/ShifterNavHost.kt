@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -54,7 +52,6 @@ import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
 import com.swent.shifter.ui.chat.TeamChatScreen
 import com.swent.shifter.ui.chat.TeamChatViewModel
-import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.components.ShifterNavigationBar
 import com.swent.shifter.ui.components.ShifterTopBar
@@ -87,9 +84,9 @@ import com.swent.shifter.ui.mission.AddMissionViewModel
 import com.swent.shifter.ui.mission.RepositoryAssigneeCandidates
 import com.swent.shifter.ui.overview.OrganizerOverviewScreen
 import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
+import com.swent.shifter.ui.overview.VolunteerOverview
 import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
-import com.swent.shifter.ui.planning.PlanningScreen
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
@@ -329,39 +326,37 @@ private fun ShifterNavGraph(
                       }
                     },
                     volunteerOverview = {
-                      // Scrolls as one page, the card and the Planning together.
-                      Column(
-                          modifier =
-                              Modifier.fillMaxSize()
-                                  .verticalScroll(rememberScrollState())
-                                  .padding(16.dp)
-                      ) {
-                        AutoCheckInRoute(
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        AutoCheckInViewModel.factory(
-                                            repositories.missionRepository,
-                                            repositories.checkInRepository,
-                                            locationProvider,
-                                            currentUserId,
-                                        )
-                                )
-                        )
-                        PlanningScreen(
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        PlanningViewModel.factory(
-                                            eventId,
-                                            repositories.missionRepository,
-                                            repositories.checkInRepository,
-                                            repositories.minuteClock,
-                                            currentUserId,
-                                        )
-                                )
-                        )
-                      }
+                      VolunteerOverview(
+                          planning =
+                              viewModel(
+                                  factory =
+                                      PlanningViewModel.factory(
+                                          eventId,
+                                          repositories.missionRepository,
+                                          repositories.checkInRepository,
+                                          repositories.minuteClock,
+                                          currentUserId,
+                                      )
+                              ),
+                          autoCheckIn =
+                              viewModel(
+                                  factory =
+                                      AutoCheckInViewModel.factory(
+                                          repositories.missionRepository,
+                                          repositories.checkInRepository,
+                                          locationProvider,
+                                          currentUserId,
+                                      )
+                              ),
+                          clock = repositories.minuteClock,
+                          onOpenOnMap = { mission ->
+                            navController
+                                .getBackStackEntry<VolunteerEvent>()
+                                .savedStateHandle[OPEN_MISSION_KEY] = mission.id
+                            nav.switchTab(VolunteerTabs.Map)
+                          },
+                          onOpenDiscussions = { nav.switchTab(VolunteerTabs.Discussions) },
+                      )
                     },
                 )
               }
@@ -689,6 +684,12 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 }
 
 /**
+ * The key, in the saved state of an event's graph, of the mission its Map tab is asked to open: the
+ * tabs share no ViewModel, and the Map's route takes no argument as the home of its tab.
+ */
+private const val OPEN_MISSION_KEY = "openMission"
+
+/**
  * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, and
  * the user's position when given a [locationProvider], and the volunteers of [watchedTeams] who
  * share their position. Without [watchedTeams], the map shows no volunteer.
@@ -706,25 +707,33 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       val event = eventRoute<E>(navController, entry)
+      val viewModel: MapViewModel =
+          viewModel(
+              factory =
+                  MapViewModel.factory(
+                      event.eventId,
+                      repositories.eventRepository,
+                      repositories.missionRepository,
+                      currentUserId,
+                      repositories.minuteClock,
+                      locationProvider,
+                      liveLocations = repositories.liveLocationRepository,
+                      watchedTeams = watchedTeams,
+                      userRepository = repositories.userRepository,
+                  )
+          )
+      // A mission another tab asked to show, such as the now card's "View on map": read once, so
+      // coming back to the map later does not open it again.
+      val handle = remember(entry) { navController.getBackStackEntry<E>().savedStateHandle }
+      val missionToOpen by handle.getStateFlow<String?>(OPEN_MISSION_KEY, null).collectAsState()
+      LaunchedEffect(missionToOpen) {
+        missionToOpen?.let {
+          viewModel.openMission(it)
+          handle[OPEN_MISSION_KEY] = null
+        }
+      }
       TabPage(tab, nav, event.eventTitle) { padding ->
-        MapScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        MapViewModel.factory(
-                            event.eventId,
-                            repositories.eventRepository,
-                            repositories.missionRepository,
-                            currentUserId,
-                            repositories.minuteClock,
-                            locationProvider,
-                            liveLocations = repositories.liveLocationRepository,
-                            watchedTeams = watchedTeams,
-                            userRepository = repositories.userRepository,
-                        )
-                ),
-            contentPadding = padding,
-        )
+        MapScreen(viewModel = viewModel, contentPadding = padding)
       }
     }
   }
