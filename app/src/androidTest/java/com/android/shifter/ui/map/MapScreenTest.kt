@@ -111,6 +111,30 @@ class MapScreenTest {
     compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
   }
 
+  @Test
+  fun focus_movesTheCameraToTheMissionOnce() {
+    lateinit var camera: CameraPositionState
+    var shown = 0
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = LOADED.copy(selected = WATER, focus = FOCUS),
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            onFocusShown = { shown++ },
+            cameraPositionState = camera,
+        )
+      }
+    }
+
+    compose.waitUntil(timeoutMillis = 5_000) { shown == 1 }
+    compose.waitForIdle()
+    assertEquals(1, shown)
+    assertTrue(camera.position.target.isNear(FOCUS))
+  }
+
   // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
   // label is checked on its own.
   @Test
@@ -232,6 +256,8 @@ class MapScreenTest {
   private companion object {
     val HERE = GeoPosition(46.52, 6.57)
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
+    /** Away from the center the camera opens on. */
+    val FOCUS = GeoPosition(46.53, 6.58)
     val LOADED =
         MapUiState(
             venue = "Place Bellecour",

@@ -90,6 +90,7 @@ fun MapScreen(
       onMarkerClick = viewModel::selectMarker,
       onCloseCard = viewModel::clearSelection,
       onRetry = viewModel::load,
+      onFocusShown = viewModel::focusShown,
       myPosition = myPosition,
       volunteers = volunteers,
       contentPadding = contentPadding,
@@ -99,6 +100,7 @@ fun MapScreen(
 /**
  * Stateless map screen: the event's venue above a map of its missions.
  *
+ * @param onFocusShown called once the camera moved to [MapUiState.focus].
  * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
@@ -112,6 +114,7 @@ fun MapContent(
     onMarkerClick: (MapMarker) -> Unit,
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
+    onFocusShown: () -> Unit = {},
     myPosition: GeoPosition? = null,
     volunteers: List<VolunteerPin> = emptyList(),
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
@@ -148,6 +151,18 @@ fun MapContent(
       LaunchedEffect(uiState.center) {
         uiState.center?.let {
           cameraPositionState.position = CameraPosition.fromLatLngZoom(it.toLatLng(), EVENT_ZOOM)
+        }
+      }
+      // A mission opened from elsewhere, such as the now card, is brought to the middle once, as a
+      // tap on its marker does.
+      LaunchedEffect(uiState.focus) {
+        uiState.focus?.let {
+          try {
+            cameraPositionState.animate(CameraUpdateFactory.newLatLng(it.toLatLng()))
+          } finally {
+            // Also when the user moves the map meanwhile, so the camera never jumps back to it.
+            onFocusShown()
+          }
         }
       }
       val next = uiState.next
