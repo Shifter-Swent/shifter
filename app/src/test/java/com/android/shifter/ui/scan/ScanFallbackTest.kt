@@ -51,6 +51,9 @@ class ScanFallbackTest {
   private var enterCodeClicks = 0
   private var allowClicks = 0
 
+  /** What the gate last told its overlay, null before it drew it. */
+  private var overlayCameraShown: Boolean? = null
+
   private val refusingRegistry =
       object : ActivityResultRegistryOwner {
         override val activityResultRegistry =
@@ -101,6 +104,7 @@ class ScanFallbackTest {
           CameraGate(
               error = scanner.error.collectAsState().value,
               onEnterCode = { enterCodeClicks++ },
+              overlay = { overlayCameraShown = it },
           ) {
             // The fake's preview is an empty box: give it a size, or it never counts as displayed.
             scanner.Preview(Modifier.fillMaxSize().testTag(CAMERA))
@@ -148,6 +152,7 @@ class ScanFallbackTest {
     assertEquals(listOf(Manifest.permission.CAMERA), requested)
     tag(ScanScreenTestTags.ALLOW_CAMERA).assertIsDisplayed()
     tag(CAMERA).assertDoesNotExist()
+    assertEquals(false, overlayCameraShown)
   }
 
   @Test
@@ -195,6 +200,19 @@ class ScanFallbackTest {
     compose.onNodeWithText("The camera isn't working").assertIsDisplayed()
     tag(ScanScreenTestTags.ALLOW_CAMERA).assertDoesNotExist()
     tag(CAMERA).assertDoesNotExist()
+  }
+
+  @Test
+  fun overlay_isToldWhetherTheCameraIsShown() {
+    grantedPermissions += Manifest.permission.CAMERA
+    setGate()
+    compose.waitForIdle()
+    assertEquals(true, overlayCameraShown)
+
+    scanner.fail(ScanError.NO_CAMERA)
+    compose.waitForIdle()
+
+    assertEquals(false, overlayCameraShown)
   }
 
   @Test

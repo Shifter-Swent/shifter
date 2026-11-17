@@ -26,6 +26,12 @@
     <string name="event_details_about">About this event</string>
     <string name="event_details_approval_notice">Participation requires the organizer\'s approval. Your join code is not a confirmed place.</string>
     <string name="event_details_apply_hint">Send a participation request for organizer review.</string>
+    <!-- Scan a QR code -->
+    <string name="scan_title">Scan a QR code</string>
+    <string name="scan_hint">Point your camera at the event\'s QR code</string>
+    <string name="scan_invalid_code">This QR code is not a Shifter event</string>
+    <string name="scan_enter_code_instead">Enter the code instead</string>
+    <string name="scan_torch">Torch</string>
     <!-- Scan a QR code: the camera fallback -->
     <string name="scan_fallback_refused_title">Shifter can\'t use the camera</string>
     <string name="scan_fallback_refused_message">You can still join with the event\'s code. To scan, allow the camera.</string>
