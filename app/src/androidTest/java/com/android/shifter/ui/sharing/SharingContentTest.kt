@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -88,6 +89,22 @@ class SharingContentTest {
   }
 
   @Test
+  fun copy_showsTheMessageAboveTheButtons() {
+    setContent(loaded)
+
+    node(SharingScreenTestTags.COPY_BUTTON).performScrollTo().performClick()
+
+    composeTestRule.waitUntil { clipboard.text != null }
+    val message = composeTestRule.onNodeWithText(string(R.string.event_join_code_copied))
+    message.assertIsDisplayed()
+    // Covering them would leave Share and Export untappable while it shows.
+    val messageBottom = message.getUnclippedBoundsInRoot().bottom
+    assertTrue(
+        messageBottom <= node(SharingScreenTestTags.SHARE_BUTTON).getUnclippedBoundsInRoot().top
+    )
+  }
+
+  @Test
   fun share_sendsTheEventAndItsCode() {
     setContent(loaded)
 
@@ -127,9 +144,30 @@ class SharingContentTest {
 
     node(SharingScreenTestTags.QR_CODE).assertDoesNotExist()
     node(SharingScreenTestTags.UNAVAILABLE).assertIsDisplayed()
+    node(SharingScreenTestTags.LOAD_ERROR)
+        .assertTextEquals(string(R.string.event_created_error_offline))
     node(SharingScreenTestTags.SHARE_BUTTON).performScrollTo().assertIsNotEnabled()
     node(SharingScreenTestTags.RETRY_BUTTON).performScrollTo().performClick()
 
     assertTrue(retried)
+  }
+
+  @Test
+  fun notFound_saysWhyWithoutOfferingToRetry() {
+    setContent(EventCreatedUiState(isLoading = false, error = EventCreatedError.NOT_FOUND))
+
+    node(SharingScreenTestTags.LOAD_ERROR)
+        .assertTextEquals(string(R.string.sharing_error_not_found))
+    node(SharingScreenTestTags.RETRY_BUTTON).assertDoesNotExist()
+    node(SharingScreenTestTags.SHARE_BUTTON).performScrollTo().assertIsNotEnabled()
+  }
+
+  @Test
+  fun unexpectedError_saysWhyWithoutOfferingToRetry() {
+    setContent(EventCreatedUiState(isLoading = false, error = EventCreatedError.UNEXPECTED))
+
+    node(SharingScreenTestTags.LOAD_ERROR)
+        .assertTextEquals(string(R.string.event_created_error_unexpected))
+    node(SharingScreenTestTags.RETRY_BUTTON).assertDoesNotExist()
   }
 }

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.sharing
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import com.swent.shifter.R
@@ -25,7 +26,10 @@ class AndroidEventSharer(private val context: Context) : EventSharer {
               context.getString(R.string.sharing_message, eventTitle, joinCode),
           )
         }
-    // The context may be the application's rather than an activity, which needs a new task.
-    context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    val chooser = Intent.createChooser(send, null)
+    // An activity opens it on top of itself, so Back returns to the app; any other context, such
+    // as the application's, can only start it in a new task.
+    if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(chooser)
   }
 }

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -39,8 +40,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.QrCodeImage
+import com.swent.shifter.ui.event.EventCreatedError
 import com.swent.shifter.ui.event.EventCreatedUiState
 import com.swent.shifter.ui.event.EventCreatedViewModel
 import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
@@ -49,13 +52,13 @@ import com.swent.shifter.ui.event.JoinCodeCardSize
 import com.swent.shifter.ui.event.JoinCodeCardTestTags
 import com.swent.shifter.ui.event.JoinCodeUnavailableCard
 import com.swent.shifter.ui.event.rememberCopyJoinCode
-import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_qrLight
 
 object SharingScreenTestTags {
   const val SCREEN = "SharingScreen"
   const val QR_CODE = "SharingQrCode"
   const val LOADING_INDICATOR = "SharingLoadingIndicator"
+  const val LOAD_ERROR = "SharingLoadError"
   const val JOIN_CODE = JoinCodeCardTestTags.CODE
   const val COPY_BUTTON = JoinCodeCardTestTags.COPY_BUTTON
   const val UNAVAILABLE = JoinCodeCardTestTags.UNAVAILABLE
@@ -116,8 +119,10 @@ fun SharingContent(
         QrCodeSquare(state, ready)
         Text(
             text = stringResource(R.string.sharing_hint),
-            style = MaterialTheme.typography.labelSmall,
-            color = shifter_mutedText,
+            style = MaterialTheme.typography.bodySmall,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -129,7 +134,10 @@ fun SharingContent(
                   size = JoinCodeCardSize.Compact,
                   copyEnabled = false,
               )
-          state.error != null -> JoinCodeUnavailableCard(onRetry)
+          // Only a connection problem can be fixed by trying again.
+          state.error == EventCreatedError.OFFLINE -> JoinCodeUnavailableCard(onRetry)
+          // No retry can fix it: the message below says why.
+          state.error != null -> {}
           else ->
               JoinCodeCard(
                   joinCode = state.joinCode,
@@ -137,35 +145,50 @@ fun SharingContent(
                   size = JoinCodeCardSize.Compact,
               )
         }
-      }
-      Column(
-          modifier = Modifier.padding(top = 16.dp),
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        Button(
-            onClick = { onShare(state.eventTitle, state.joinCode) },
-            enabled = ready,
-            shape = MaterialTheme.shapes.medium,
-            modifier =
-                Modifier.fillMaxWidth().height(48.dp).testTag(SharingScreenTestTags.SHARE_BUTTON),
-        ) {
-          ButtonLabel(Icons.Outlined.Share, R.string.sharing_share_code)
+        state.error?.let { error ->
+          Text(
+              text = stringResource(error.message),
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.error,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.fillMaxWidth().testTag(SharingScreenTestTags.LOAD_ERROR),
+          )
         }
-        FilledTonalButton(
-            onClick = onExport,
-            enabled = ready,
-            shape = MaterialTheme.shapes.medium,
-            modifier =
-                Modifier.fillMaxWidth().height(48.dp).testTag(SharingScreenTestTags.EXPORT_BUTTON),
-        ) {
-          ButtonLabel(Icons.Outlined.Image, R.string.sharing_export_qr)
+      }
+      Column(modifier = Modifier.padding(top = 16.dp)) {
+        // Above the buttons, as in the Figma, so "Code copied" never covers them.
+        SnackbarHost(
+            snackbarHostState,
+            modifier = Modifier.testTag(SharingScreenTestTags.SNACKBAR),
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Button(
+              onClick = { onShare(state.eventTitle, state.joinCode) },
+              enabled = ready,
+              shape = MaterialTheme.shapes.medium,
+              modifier =
+                  Modifier.fillMaxWidth().height(48.dp).testTag(SharingScreenTestTags.SHARE_BUTTON),
+          ) {
+            ButtonLabel(Icons.Outlined.Share, R.string.sharing_share_code)
+          }
+          FilledTonalButton(
+              onClick = onExport,
+              enabled = ready,
+              shape = MaterialTheme.shapes.medium,
+              colors =
+                  ButtonDefaults.filledTonalButtonColors(
+                      containerColor = MaterialTheme.colorScheme.surfaceContainer
+                  ),
+              modifier =
+                  Modifier.fillMaxWidth()
+                      .height(48.dp)
+                      .testTag(SharingScreenTestTags.EXPORT_BUTTON),
+          ) {
+            ButtonLabel(Icons.Outlined.Image, R.string.sharing_export_qr)
+          }
         }
       }
     }
-    SnackbarHost(
-        snackbarHostState,
-        modifier = Modifier.align(Alignment.BottomCenter).testTag(SharingScreenTestTags.SNACKBAR),
-    )
   }
 }
 
@@ -206,3 +229,13 @@ private fun ButtonLabel(icon: ImageVector, @StringRes text: Int) {
       modifier = Modifier.padding(start = 8.dp),
   )
 }
+
+/** Why the code cannot be shown, in words the organizer can act on. */
+@get:StringRes
+private val EventCreatedError.message: Int
+  get() =
+      when (this) {
+        EventCreatedError.OFFLINE -> R.string.event_created_error_offline
+        EventCreatedError.NOT_FOUND -> R.string.sharing_error_not_found
+        EventCreatedError.UNEXPECTED -> R.string.event_created_error_unexpected
+      }
