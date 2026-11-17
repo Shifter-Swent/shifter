@@ -13,4 +13,10 @@
     <string name="planning_error_unexpected">Could not load your missions.</string>
     <string name="planning_retry">Retry</string>
     <string name="planning_check_ins_unavailable">Check-in status unavailable</string>
+    <!-- What a tap on a mission's row does, and whether it shows its details, read by TalkBack -->
+    <string name="planning_show_details">Show details</string>
+    <string name="planning_hide_details">Hide details</string>
+    <string name="planning_expanded">Expanded</string>
+    <string name="planning_collapsed">Collapsed</string>
+    <string name="planning_no_description">No details for this mission.</string>
 </resources>

@@ -226,6 +226,7 @@ class PlanningViewModel(
                     endAt = mission.endAt,
                     address = mission.location?.address,
                     checkedInAt = checkedInAt[mission.id],
+                    description = mission.description,
                 )
               },
           isLoading = false,

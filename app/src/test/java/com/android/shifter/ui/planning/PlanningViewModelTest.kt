@@ -56,12 +56,13 @@ class PlanningViewModelTest {
       location: MissionLocation? = null,
       startAt: Instant = START,
       endAt: Instant = startAt.plusSeconds(3600),
+      description: String = "",
   ): Mission =
       missions.createMission(
           Mission(
               eventId = eventId,
               title = title,
-              description = "",
+              description = description,
               volunteersNeeded = 2,
               startAt = startAt,
               endAt = endAt,
@@ -109,6 +110,16 @@ class PlanningViewModelTest {
     assertEquals(
         PlanningMission(unlocated.id, "Break", START, unlocated.endAt, null, null),
         shown[unlocated.id],
+    )
+  }
+
+  @Test
+  fun load_mapsTheDescription() = runTest {
+    create("Hand out water", description = "Fill the cups at the stand")
+
+    assertEquals(
+        "Fill the cups at the stand",
+        viewModel().uiState.value.missions.single().description,
     )
   }
 
