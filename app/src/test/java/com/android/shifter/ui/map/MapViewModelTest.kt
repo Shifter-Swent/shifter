@@ -326,12 +326,14 @@ class MapViewModelTest {
   @Test
   fun myPosition_afterAGpsFailure_followsTheVolunteerAgain() = runTest {
     val location = FakeLocationProvider()
-    var failures = 0
+    val gpsLost = CompletableDeferred<Unit>()
+    var attempts = 0
     val failingOnce =
         object : LocationProvider by location {
           override fun positions() = flow {
-            if (failures++ == 0) {
+            if (attempts++ == 0) {
               emit(TENT.position)
+              gpsLost.await()
               throw IllegalStateException("GPS lost")
             }
             emitAll(location.positions())
@@ -339,6 +341,10 @@ class MapViewModelTest {
         }
     val viewModel = viewModel(failingOnce)
     collectPosition(viewModel)
+    assertEquals(TENT.position, viewModel.myPosition.value)
+
+    gpsLost.complete(Unit)
+    runCurrent()
     // The failure clears the position rather than leaving a stale one on the map.
     assertNull(viewModel.myPosition.value)
 
