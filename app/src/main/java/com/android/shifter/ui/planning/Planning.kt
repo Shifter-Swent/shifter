@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.planning
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -16,12 +19,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,6 +49,7 @@ import java.time.ZoneId
  *
  * @property address where the mission takes place, or null for a mission with no fixed place.
  * @property checkedInAt when the user checked in to the mission, or null if they have not yet.
+ * @property description what the mission is about, shown once its row is expanded.
  */
 data class PlanningMission(
     val id: String,
@@ -48,6 +58,7 @@ data class PlanningMission(
     val endAt: Instant,
     val address: String? = null,
     val checkedInAt: Instant? = null,
+    val description: String = "",
 )
 
 object PlanningTestTags {
@@ -59,6 +70,8 @@ object PlanningTestTags {
   fun address(missionId: String) = "planningMissionAddress_$missionId"
 
   fun checkIn(missionId: String) = "planningMissionCheckIn_$missionId"
+
+  fun description(missionId: String) = "planningMissionDescription_$missionId"
 }
 
 /**
@@ -70,12 +83,18 @@ object PlanningTestTags {
  *
  * @param missions the missions to show, in any order.
  * @param zone the time zone the hours are shown in, replaceable in tests.
+ * @param expandedMissionId the mission whose row shows its description, brought into view when it
+ *   expands; none when null.
+ * @param onMissionClick called with the id of a row tapped, to expand or collapse it; the rows
+ *   cannot be tapped when null.
  */
 @Composable
 fun Planning(
     missions: List<PlanningMission>,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
+    expandedMissionId: String? = null,
+    onMissionClick: ((String) -> Unit)? = null,
 ) {
   Column(
       modifier = modifier.fillMaxWidth().testTag(PlanningTestTags.PLANNING),
@@ -104,44 +123,99 @@ fun Planning(
       )
     } else {
       val sorted = remember(missions) { missions.chronological() }
-      sorted.forEach { PlanningMissionRow(it, zone) }
+      // Keyed by mission, so a row keeps its own state when the missions before it change.
+      sorted.forEach {
+        key(it.id) {
+          PlanningMissionRow(it, zone, expanded = it.id == expandedMissionId, onMissionClick)
+        }
+      }
     }
   }
 }
 
 @Composable
-private fun PlanningMissionRow(mission: PlanningMission, zone: ZoneId) {
-  Row(
+private fun PlanningMissionRow(
+    mission: PlanningMission,
+    zone: ZoneId,
+    expanded: Boolean,
+    onClick: ((String) -> Unit)?,
+) {
+  val bringIntoView = remember { BringIntoViewRequester() }
+  // Shown whole once expanded. A row already expanded when it is first shown, as when the page
+  // comes back, leaves the page where it was.
+  val wasExpanded = remember { mutableStateOf(expanded) }
+  LaunchedEffect(expanded) {
+    if (expanded && !wasExpanded.value) bringIntoView.bringIntoView()
+    wasExpanded.value = expanded
+  }
+  Column(
       modifier =
           Modifier.fillMaxWidth()
+              .bringIntoViewRequester(bringIntoView)
               .clip(MaterialTheme.shapes.medium)
               .background(MaterialTheme.colorScheme.surfaceVariant)
+              .then(
+                  if (onClick == null) Modifier
+                  else {
+                    val state =
+                        stringResource(
+                            if (expanded) R.string.planning_expanded
+                            else R.string.planning_collapsed
+                        )
+                    Modifier.clickable(
+                            role = Role.Button,
+                            onClickLabel =
+                                stringResource(
+                                    if (expanded) R.string.planning_hide_details
+                                    else R.string.planning_show_details
+                                ),
+                        ) {
+                          onClick(mission.id)
+                        }
+                        .semantics { stateDescription = state }
+                  }
+              )
               .padding(horizontal = 14.dp, vertical = 10.dp)
-              .testTag(PlanningTestTags.mission(mission.id)),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+              .testTag(PlanningTestTags.mission(mission.id))
   ) {
-    CheckInMarker(checkedIn = mission.checkedInAt != null)
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    // The marker stays centred on the header, wherever the description below takes the row.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      CheckInMarker(checkedIn = mission.checkedInAt != null)
+      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text =
+                stringResource(
+                    R.string.planning_hours,
+                    mission.startAt.formatTime(zone),
+                    mission.endAt.formatTime(zone),
+                ),
+            style = MaterialTheme.typography.labelSmall,
+            color = shifter_mutedText,
+        )
+        Text(
+            text = mission.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Details(mission, zone)
+      }
+    }
+    if (expanded) {
       Text(
-          text =
-              stringResource(
-                  R.string.planning_hours,
-                  mission.startAt.formatTime(zone),
-                  mission.endAt.formatTime(zone),
-              ),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
+          text = mission.description.ifBlank { stringResource(R.string.planning_no_description) },
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          // Lined up with the header's text, past the marker (18 dp) and the gap (12 dp).
+          modifier =
+              Modifier.padding(start = 30.dp, top = 6.dp)
+                  .testTag(PlanningTestTags.description(mission.id)),
       )
-      Text(
-          text = mission.title,
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.onSurface,
-          maxLines = 2,
-          overflow = TextOverflow.Ellipsis,
-      )
-      Details(mission, zone)
     }
   }
 }
