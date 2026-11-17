@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
@@ -52,6 +53,8 @@ enum class PlanningError {
  *   [PlanningViewModel.load].
  * @property checkInsUnavailable whether the check-ins could not be read, so the statuses shown may
  *   be missing or outdated. Cleared by the next [PlanningViewModel.load].
+ * @property missionsOutdated whether the missions stopped being followed after they were shown, so
+ *   a change made since may be missing. Cleared by the next [PlanningViewModel.load].
  * @property now what the volunteer should do now, for the now card, from the missions of the
  *   current event day (04:00 to 04:00, as the Planning groups them). Null while it is not known:
  *   before the missions and the check-ins are loaded, after they failed to load, and until the
@@ -59,7 +62,7 @@ enum class PlanningError {
  *   the last state stays until the next tick, which comes at once. A consumer tells loading from
  *   failure with the other fields: null with [isLoading] is still loading; null with [error], or
  *   with [checkInsUnavailable] once loaded, failed and stays null until the next
- *   [PlanningViewModel.load].
+ *   [PlanningViewModel.load]. With [missionsOutdated], it follows the last missions read.
  * @property eventPeriod when the event starts and ends, so the Planning can offer each of its days,
  *   those without missions included. Null while unknown: the event is still being read, or could
  *   not be, and the Planning falls back on the days of the missions. The missions never wait for
@@ -70,13 +73,15 @@ data class PlanningUiState(
     val isLoading: Boolean = true,
     val error: PlanningError? = null,
     val checkInsUnavailable: Boolean = false,
+    val missionsOutdated: Boolean = false,
     val now: NowState? = null,
     val eventPeriod: ClosedRange<Instant>? = null,
 )
 
 /**
- * Loads the missions the signed-in user is assigned to in the event [eventId], and keeps their
- * check-in status live: a check-in recorded while the Planning is open shows up without reloading.
+ * Follows the missions the signed-in user is assigned to in the event [eventId], and their check-in
+ * status: a mission completed, rescheduled, assigned or unassigned, or a check-in recorded, while
+ * the Planning is open shows without reload, in the list and in the now state.
  *
  * When the check-ins or the event cannot be read, the missions stay shown without their status or
  * the event's dates, so the volunteer still knows where to be and when.
@@ -85,9 +90,6 @@ data class PlanningUiState(
  * same missions, their check-ins and [clock]. The clock is only followed while [uiState] is
  * collected: the screen must collect it with its lifecycle (`collectAsStateWithLifecycle`), so the
  * timer stops when it is in the background.
- *
- * Only the clock and the check-ins are live: the missions are read once per [load], so a mission
- * completed, rescheduled or reassigned meanwhile only shows after the next [load].
  *
  * @param zone the time zone that decides which missions are today's.
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
@@ -105,26 +107,34 @@ class PlanningViewModel(
   private val _uiState = MutableStateFlow(PlanningUiState())
   val uiState: StateFlow<PlanningUiState> = _uiState.asStateFlow()
 
-  /** The loading in progress, with the check-ins it observes. */
+  /** The load in progress, which follows the missions and their check-ins. */
   private var loading: Job? = null
 
   /**
-   * What one load gives [nowStates]: its [missions], and the ids of the missions checked in to. A
-   * plain class, so that each load is a new value even with the same missions, and the now state is
-   * computed again from it.
+   * What one load gives [nowStates]: its [missions] and the ids of the missions checked in to, each
+   * once read. A plain class, so that each load is a new value even with the same missions, and the
+   * now state is computed again from it.
    */
-  private class NowInputs(val missions: List<Mission>) {
-    private val read = MutableStateFlow<Set<String>?>(null)
+  private class NowInputs {
+    private val missionsRead = MutableStateFlow<List<Mission>?>(null)
+    private val checkInsRead = MutableStateFlow<Set<String>?>(null)
+
+    /** The missions of the event, again each time one changes. */
+    val missions: Flow<List<Mission>> = missionsRead.filterNotNull()
 
     /** The ids of the missions checked in to, once read: an empty set before would mean none. */
-    val checkedIn: Flow<Set<String>> = read.filterNotNull()
+    val checkedIn: Flow<Set<String>> = checkInsRead.filterNotNull()
 
-    fun show(checkIns: List<CheckIn>) {
-      read.value = checkIns.map { it.missionId }.toSet()
+    fun showMissions(missions: List<Mission>) {
+      missionsRead.value = missions
+    }
+
+    fun showCheckIns(checkIns: List<CheckIn>) {
+      checkInsRead.value = checkIns.map { it.missionId }.toSet()
     }
   }
 
-  /** The inputs of the current load, null until its missions are loaded. */
+  /** The inputs of the current load, null until it starts. */
   private val nowInputs = MutableStateFlow<NowInputs?>(null)
 
   init {
@@ -158,18 +168,17 @@ class PlanningViewModel(
   }
 
   /**
-   * The [missions] of the current event day, again each time the day changes. The days run from
-   * 04:00 to 04:00 ([eventDay]), as the Planning groups the missions. A mission running across
+   * The [missions] of the current event day, again each time they or the day change. The days run
+   * from 04:00 to 04:00 ([eventDay]), as the Planning groups the missions. A mission running across
    * 04:00 belongs to both days, so a shift running then stays shown.
    *
    * The day follows its own reading of the ticks: on the tick at 04:00, [nowStates] may compute
    * once with the new time and the previous day's missions, and is corrected right after.
    */
-  private fun todaysMissions(missions: List<Mission>): Flow<List<Mission>> =
-      clock.ticks
-          .map { it.eventDay(zone) }
-          .distinctUntilChanged()
-          .map { day -> missions.filter { it.isOn(day) } }
+  private fun todaysMissions(missions: Flow<List<Mission>>): Flow<List<Mission>> =
+      combine(clock.ticks.map { it.eventDay(zone) }.distinctUntilChanged(), missions) { day, all ->
+        all.filter { it.isOn(day) }
+      }
 
   private fun Mission.isOn(day: LocalDate): Boolean =
       endAt > day.start() && startAt < day.plusDays(1).start()
@@ -178,13 +187,22 @@ class PlanningViewModel(
   private fun LocalDate.start(): Instant =
       atTime(LocalTime.of(DAY_STARTS_AT_HOUR.toInt(), 0)).atZone(zone).toInstant()
 
-  /** Loads the missions and starts observing the check-ins, again after an error. */
+  /**
+   * Follows the missions and their check-ins, again after an error. The Planning shows once both
+   * are read, or the check-ins failed; then each change of either shows without reload.
+   */
   fun load() {
-    // Stops observing the check-ins of the previous load, so they are never observed twice.
+    // Stops following the previous load, so the missions and check-ins are never followed twice.
     loading?.cancel()
     nowInputs.value = null
     _uiState.update {
-      it.copy(isLoading = true, error = null, checkInsUnavailable = false, now = null)
+      it.copy(
+          isLoading = true,
+          error = null,
+          checkInsUnavailable = false,
+          missionsOutdated = false,
+          now = null,
+      )
     }
     loading = viewModelScope.launch {
       // Read alongside the missions, which neither depend on it nor wait for it. A failed read
@@ -193,34 +211,45 @@ class PlanningViewModel(
         readEventPeriod()?.let { period -> _uiState.update { it.copy(eventPeriod = period) } }
       }
       val userId = currentUserId()
-      val missions =
-          try {
-            // Nobody signed in only happens while the app is going back to sign-in.
-            checkNotNull(userId) { "No signed-in user" }
-            missionRepository.getMissionsAssignedTo(userId).filter { it.eventId == eventId }
-          } catch (e: CancellationException) {
-            throw e
-          } catch (e: Exception) {
-            val error =
-                if (e is MissionRepositoryException.Unavailable) PlanningError.OFFLINE
-                else PlanningError.UNEXPECTED
-            _uiState.update { it.copy(isLoading = false, error = error) }
-            return@launch
-          }
-      // The now state waits for the check-ins of this load, so it is never computed without them.
-      val inputs = NowInputs(missions).also { nowInputs.value = it }
+      val inputs = NowInputs().also { nowInputs.value = it }
+      var missions: List<Mission>? = null
+      var checkIns: List<CheckIn>? = null
       try {
-        checkInRepository.observeMyCheckIns(eventId, userId).collect { checkIns ->
-          show(missions, checkIns)
-          inputs.show(checkIns)
-        }
+        // Nobody signed in only happens while the app is going back to sign-in.
+        checkNotNull(userId) { "No signed-in user" }
+        missionRepository
+            .observeMissionsAssignedTo(userId)
+            .map { all -> all.filter { it.eventId == eventId } }
+            .distinctUntilChanged()
+            .collect { latest ->
+              val first = missions == null
+              missions = latest
+              inputs.showMissions(latest)
+              if (first) {
+                launch {
+                  followCheckIns(userId, inputs) {
+                    checkIns = it
+                    show(checkNotNull(missions), it)
+                  }
+                }
+              } else {
+                // Before the check-ins are read, the Planning is still loading.
+                checkIns?.let { show(latest, it) }
+              }
+            }
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        // Keeps the statuses already shown, if any: a check-in is never taken back. Without any,
-        // the now state stays unknown rather than calling a checked-in volunteer late.
-        if (_uiState.value.isLoading) show(missions, emptyList())
-        _uiState.update { it.copy(checkInsUnavailable = true) }
+        if (missions == null) {
+          nowInputs.value = null
+          val error =
+              if (e is MissionRepositoryException.Unavailable) PlanningError.OFFLINE
+              else PlanningError.UNEXPECTED
+          _uiState.update { it.copy(isLoading = false, error = error) }
+        } else {
+          // Keeps the last missions, which the check-ins still follow.
+          _uiState.update { it.copy(missionsOutdated = true) }
+        }
       }
     }
   }
@@ -234,6 +263,30 @@ class PlanningViewModel(
       } catch (e: Exception) {
         null
       }
+
+  /**
+   * Follows the check-ins of the event, passing each list to [onCheckIns]. When they fail, the
+   * statuses already shown stay, if any: a check-in is never taken back. Without any, the missions
+   * show without status, and the now state stays unknown rather than calling a checked-in volunteer
+   * late.
+   */
+  private suspend fun followCheckIns(
+      userId: String,
+      inputs: NowInputs,
+      onCheckIns: (List<CheckIn>) -> Unit,
+  ) {
+    try {
+      checkInRepository.observeMyCheckIns(eventId, userId).collect { checkIns ->
+        onCheckIns(checkIns)
+        inputs.showCheckIns(checkIns)
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      if (_uiState.value.isLoading) onCheckIns(emptyList())
+      _uiState.update { it.copy(checkInsUnavailable = true) }
+    }
+  }
 
   private fun show(missions: List<Mission>, checkIns: List<CheckIn>) {
     val checkedInAt = checkIns.associate { it.missionId to it.checkedInAt }
