@@ -148,7 +148,7 @@ internal fun ScanCamera(
           text =
               stringResource(if (invalidCode) R.string.scan_invalid_code else R.string.scan_hint),
           color = if (invalidCode) shifter_warning else Color.White,
-          fontSize = 14.sp,
+          fontSize = 15.sp,
           textAlign = TextAlign.Center,
           modifier =
               Modifier.fillMaxWidth()
@@ -200,7 +200,8 @@ internal fun ScanTopBar(
     if (cameraShown) {
       Text(
           text = stringResource(R.string.scan_title),
-          color = colors.onBackground,
+          // Over the camera image, which does not follow the theme, as the other texts.
+          color = Color.White,
           fontSize = 18.sp,
           fontWeight = FontWeight.SemiBold,
           modifier = Modifier.weight(1f),
