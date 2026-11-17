@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -52,6 +53,9 @@ class JoinEventFlowTest {
 
   /** What sending a request throws, or null to send it. */
   private var applyFailure: Exception? = null
+
+  /** The navigation of [showMyEventsThenJoin], to come back to My Events. */
+  private lateinit var navController: NavHostController
 
   private val events =
       object : EventRepository {
@@ -179,6 +183,20 @@ class JoinEventFlowTest {
     composeTestRule.onNodeWithText("Request sent to Lakeside").assertDoesNotExist()
   }
 
+  @Test
+  fun comingBackToMyEvents_afterTheConfirmation_doesNotShowItAgain() {
+    showMyEventsThenJoin()
+    findEventAndApply()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
+    composeTestRule.runOnUiThread { navController.popBackStack() }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertDoesNotExist()
+  }
+
   /**
    * Shows My Events, wired to the join screen as in `ShifterNavHost`, and opens the join screen
    * with its Scan QR button.
@@ -193,7 +211,7 @@ class JoinEventFlowTest {
             { Instant.ofEpochSecond(600) },
         )
     composeTestRule.setContent {
-      val navController = rememberNavController()
+      navController = rememberNavController()
       NavHost(navController, startDestination = MY_EVENTS) {
         composable(MY_EVENTS) { entry ->
           val snackbarHostState = remember { SnackbarHostState() }
