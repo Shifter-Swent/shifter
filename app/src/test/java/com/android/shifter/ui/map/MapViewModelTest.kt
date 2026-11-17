@@ -3,6 +3,7 @@ package com.swent.shifter.ui.map
 
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
@@ -40,6 +41,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -75,6 +77,161 @@ class MapViewModelTest {
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
         viewModel.myPosition.collect {}
       }
+
+  @Test
+  fun openMission_selectsItsMarkerAndFocusesOnIt() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    missions.createMission(mission("Tent", startHour = 12, endHour = 13, at = TENT))
+    val viewModel = viewModel()
+
+    viewModel.openMission(water.id)
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+    assertEquals(STAND.position, viewModel.uiState.value.focus)
+  }
+
+  @Test
+  fun openMission_afterAFailedLoad_opensItOnTheReload() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    events.failure = EventRepositoryException.Unavailable()
+    val viewModel = viewModel()
+    events.failure = null
+
+    // Asked while the map shows its error, the mission opens with the next load.
+    viewModel.openMission(water.id)
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+    assertEquals(STAND.position, viewModel.uiState.value.focus)
+  }
+
+  @Test
+  fun openMission_afterAFailedReload_usesTheMarkersShown() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val viewModel = viewModel()
+    events.failure = EventRepositoryException.Unavailable()
+    viewModel.load()
+
+    viewModel.openMission(water.id)
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+  }
+
+  @Test
+  fun openMission_placedAfterTheMarkersWereRead_readsThemAgain() = runTest {
+    val viewModel = viewModel()
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+
+    viewModel.openMission(water.id)
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+  }
+
+  @Test
+  fun openMission_withoutAPlace_opensNothing() = runTest {
+    val desk = missions.createMission(mission("Desk", startHour = 10, endHour = 11, at = null))
+    val viewModel = viewModel()
+
+    viewModel.openMission(desk.id)
+    viewModel.load()
+
+    assertNull(viewModel.uiState.value.selected)
+    assertNull(viewModel.uiState.value.focus)
+  }
+
+  /** The events of [events], each read waiting for [gate], so a test acts while the map loads. */
+  private fun gatedViewModel(gate: CompletableDeferred<Unit>) =
+      MapViewModel(
+          EVENT.id,
+          object : EventRepository by events {
+            override suspend fun getEvent(eventId: String): Event? {
+              gate.await()
+              return events.getEvent(eventId)
+            }
+          },
+          missions,
+          { userId },
+          FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
+          UTC,
+      )
+
+  @Test
+  fun openMission_duringTheFirstLoad_opensItOnceLoaded() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val gate = CompletableDeferred<Unit>()
+    val viewModel = gatedViewModel(gate)
+
+    viewModel.openMission(water.id)
+    gate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+    assertEquals(STAND.position, viewModel.uiState.value.focus)
+  }
+
+  @Test
+  fun openMission_shownDuringAReload_staysOpenAfterIt() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    var loads = 0
+    val reload = CompletableDeferred<Unit>()
+    val viewModel =
+        MapViewModel(
+            EVENT.id,
+            // The first load goes through, the next ones wait for [reload].
+            object : EventRepository by events {
+              override suspend fun getEvent(eventId: String): Event? {
+                if (loads++ > 0) reload.await()
+                return events.getEvent(eventId)
+              }
+            },
+            missions,
+            { userId },
+            FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
+            UTC,
+        )
+
+    // A mission not placed yet starts a reload; Water, already on the map, is opened meanwhile.
+    viewModel.openMission("not-placed")
+    viewModel.openMission(water.id)
+    reload.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+    assertEquals(STAND.position, viewModel.uiState.value.focus)
+  }
+
+  @Test
+  fun openMission_afterAFailedReload_showsTheCardOverTheError() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val viewModel = viewModel()
+    events.failure = EventRepositoryException.Unavailable()
+    viewModel.load()
+
+    viewModel.openMission(water.id)
+
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun focusShown_clearsTheFocusAndKeepsTheCard() = runTest {
+    val water = missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val viewModel = viewModel()
+    viewModel.openMission(water.id)
+
+    viewModel.focusShown()
+
+    assertNull(viewModel.uiState.value.focus)
+    assertEquals(water.id, viewModel.uiState.value.selected?.id)
+  }
+
+  @Test
+  fun selectMarker_leavesTheCameraToTheMap() = runTest {
+    missions.createMission(mission("Water", startHour = 10, endHour = 11, at = STAND))
+    val viewModel = viewModel()
+
+    viewModel.selectMarker(viewModel.uiState.value.markers.single())
+
+    assertNull(viewModel.uiState.value.focus)
+  }
 
   @Test
   fun myPosition_followsTheVolunteerWithTheLocationGranted() = runTest {

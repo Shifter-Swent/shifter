@@ -4,6 +4,9 @@ package com.swent.shifter.ui.map
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -109,6 +112,55 @@ class MapScreenTest {
     compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertIsDisplayed().performClick()
 
     compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+  }
+
+  @Test
+  fun focus_movesTheCameraToTheMissionOnce() {
+    lateinit var camera: CameraPositionState
+    var shown = 0
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = LOADED.copy(selected = WATER, focus = FOCUS),
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            onFocusShown = { shown++ },
+            cameraPositionState = camera,
+        )
+      }
+    }
+
+    // The move waits for the map, which may be ready after the effect ran.
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(FOCUS) }
+    compose.waitForIdle()
+    assertEquals(1, shown)
+  }
+
+  @Test
+  fun focus_onAMapAlreadyShown_movesTheCameraToTheMission() {
+    lateinit var camera: CameraPositionState
+    var uiState by mutableStateOf(LOADED)
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = uiState,
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            onFocusShown = { uiState = uiState.copy(focus = null) },
+            cameraPositionState = camera,
+        )
+      }
+    }
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+
+    // "View on map" with the Map tab already open.
+    compose.runOnIdle { uiState = uiState.copy(selected = WATER, focus = FOCUS) }
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(FOCUS) }
   }
 
   // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
@@ -232,6 +284,8 @@ class MapScreenTest {
   private companion object {
     val HERE = GeoPosition(46.52, 6.57)
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
+    /** Away from the center the camera opens on. */
+    val FOCUS = GeoPosition(46.53, 6.58)
     val LOADED =
         MapUiState(
             venue = "Place Bellecour",
