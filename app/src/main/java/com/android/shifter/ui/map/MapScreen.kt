@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -99,7 +100,8 @@ fun MapScreen(
 /**
  * Stateless map screen: the event's venue above a map of its missions.
  *
- * @param myPosition where the user is, shown on the map; null shows nothing.
+ * @param myPosition where the user is, shown on the map and where the recenter button goes; null
+ *   shows nothing, and the button goes back to the event.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
@@ -202,15 +204,17 @@ fun MapContent(
           verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         val scope = rememberCoroutineScope()
-        uiState.center?.let { center ->
+        // The user when the map knows where they are, as the icon promises; the event otherwise.
+        (myPosition ?: uiState.center)?.let { target ->
           RecenterButton(
+              onUser = myPosition != null,
               onClick = {
                 scope.launch {
                   cameraPositionState.animate(
-                      CameraUpdateFactory.newLatLngZoom(center.toLatLng(), EVENT_ZOOM)
+                      CameraUpdateFactory.newLatLngZoom(target.toLatLng(), EVENT_ZOOM)
                   )
                 }
-              }
+              },
           )
         }
         val overlay = Modifier.fillMaxWidth()
@@ -346,9 +350,13 @@ internal fun VolunteerLabel(marker: MapMarker, isStale: Boolean) {
   }
 }
 
-/** Moves the camera back to where the map opened, the venue or the first mission. */
+/**
+ * Moves the camera to the user when [onUser], with the "my location" icon; otherwise back to where
+ * the map opened, the venue or the first mission, with a pin, so the icon never promises the user's
+ * position the map does not know.
+ */
 @Composable
-private fun RecenterButton(onClick: () -> Unit) {
+private fun RecenterButton(onUser: Boolean, onClick: () -> Unit) {
   Surface(
       onClick = onClick,
       shape = MaterialTheme.shapes.medium,
@@ -358,8 +366,9 @@ private fun RecenterButton(onClick: () -> Unit) {
   ) {
     Box(contentAlignment = Alignment.Center) {
       Icon(
-          Icons.Outlined.MyLocation,
-          contentDescription = stringResource(R.string.map_recenter),
+          if (onUser) Icons.Outlined.MyLocation else Icons.Outlined.Place,
+          contentDescription =
+              stringResource(if (onUser) R.string.map_center_on_me else R.string.map_recenter),
           tint = MaterialTheme.colorScheme.primary,
       )
     }

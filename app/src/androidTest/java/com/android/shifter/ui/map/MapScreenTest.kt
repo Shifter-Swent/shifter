@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -35,7 +36,11 @@ class MapScreenTest {
   private var closes = 0
   private var retries = 0
 
-  private fun setContent(uiState: MapUiState, volunteers: List<VolunteerPin> = emptyList()) {
+  private fun setContent(
+      uiState: MapUiState,
+      volunteers: List<VolunteerPin> = emptyList(),
+      myPosition: GeoPosition? = null,
+  ) {
     compose.setContent {
       ShifterTheme {
         MapContent(
@@ -43,6 +48,7 @@ class MapScreenTest {
             onMarkerClick = {},
             onCloseCard = { closes++ },
             onRetry = { retries++ },
+            myPosition = myPosition,
             volunteers = volunteers,
         )
       }
@@ -89,7 +95,35 @@ class MapScreenTest {
   }
 
   @Test
-  fun recenterButton_movesTheCameraBackToTheCenter() {
+  fun loading_withMyPosition_offersToCenterOnTheUser() {
+    setContent(MapUiState(), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOADING).assertIsDisplayed()
+    compose.onNodeWithContentDescription("Center on your position").assertIsDisplayed()
+  }
+
+  @Test
+  fun recenterButton_withMyPosition_centersOnTheUser() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    compose.onNodeWithContentDescription("Center on your position").assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(ME) }
+  }
+
+  @Test
+  fun recenterButton_withoutMyPosition_centersOnTheEvent() {
+    val camera = setContentWithCamera(myPosition = null)
+
+    compose.onNodeWithContentDescription("Recenter the map").assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+  }
+
+  /** Shows the loaded map with [myPosition], its camera moved away from where the button goes. */
+  private fun setContentWithCamera(myPosition: GeoPosition?): CameraPositionState {
     lateinit var camera: CameraPositionState
     compose.setContent {
       ShifterTheme {
@@ -99,16 +133,14 @@ class MapScreenTest {
             onMarkerClick = {},
             onCloseCard = {},
             onRetry = {},
+            myPosition = myPosition,
             cameraPositionState = camera,
         )
       }
     }
-    // Moved away first, since the camera already opens on the center.
+    // Moved away first, since the camera already opens on the event.
     compose.runOnIdle { camera.position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 15f) }
-
-    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertIsDisplayed().performClick()
-
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    return camera
   }
 
   // Markers are drawn into bitmaps inside the native map, which Compose tests can't reach, so the
@@ -231,6 +263,8 @@ class MapScreenTest {
 
   private companion object {
     val HERE = GeoPosition(46.52, 6.57)
+    /** The user, far enough from the event for the camera to tell them apart. */
+    val ME = GeoPosition(46.53, 6.60)
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     val LOADED =
         MapUiState(
