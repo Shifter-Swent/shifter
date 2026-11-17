@@ -35,6 +35,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -643,6 +644,48 @@ class AutoCheckInViewModelTest {
     missions.failure = MissionRepositoryException.Unavailable()
     runCurrent()
 
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun missionsUpdateFailure_saysTheMissionsAreUnavailable() = runTest {
+    addMission()
+    open()
+    assertFalse(state.missionsUnavailable)
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    assertTrue(state.missionsUnavailable)
+  }
+
+  @Test
+  fun retry_afterAFailure_followsTheMissionsAndChecksIn() = runTest {
+    addMission()
+    open()
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    missions.failure = null
+    viewModel.retry()
+    runCurrent()
+    moveTo(NEAR)
+
+    assertFalse(state.missionsUnavailable)
+    assertEquals(1, checkIns.checkIns.size)
+  }
+
+  @Test
+  fun retry_beforeAFailure_doesNotRestartAfterIt() = runTest {
+    addMission()
+    open()
+    viewModel.retry()
+    runCurrent()
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    assertTrue(state.missionsUnavailable)
     assertEquals(0, location.activeCollectors)
   }
 

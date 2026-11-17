@@ -23,6 +23,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -73,17 +74,20 @@ private val Mission.key
  *   the location services when it is not [LocationStatus.GRANTED].
  * @property notCheckedIn why each open mission is not checked in yet, by its [MissionKey]; read it
  *   with [whyNotCheckedIn]. A mission checked in, or no longer open, has no entry.
+ * @property missionsUnavailable the missions could not be followed: no check-in is tried until
+ *   [AutoCheckInViewModel.retry].
  */
 data class AutoCheckInUiState(
     val locationStatus: LocationStatus = LocationStatus.GRANTED,
     val notCheckedIn: Map<MissionKey, NotCheckedIn> = emptyMap(),
+    val missionsUnavailable: Boolean = false,
 )
 
 /**
  * Why the volunteer is not checked in to [mission] yet, or null when the automatic check-in knows
  * no reason. Null also covers what it cannot see, for the screen to tell: a mission without a
- * place, the location off or denied, no position yet, or the missions no longer followed after a
- * failure to read them.
+ * place, the location off or denied, no position yet, or the missions no longer followed
+ * ([AutoCheckInUiState.missionsUnavailable]).
  */
 fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? = notCheckedIn[mission.key]
 
@@ -129,8 +133,16 @@ class AutoCheckInViewModel(
               _uiState.value,
           )
 
+  /** Asks [watch] to follow the missions again after they could not be. */
+  private val retries = Channel<Unit>(Channel.CONFLATED)
+
   /** Reads the permission and the location services again, e.g. after the permission dialog. */
   fun refreshLocation() = locationProvider.refreshStatus()
+
+  /** Follows the missions again after [AutoCheckInUiState.missionsUnavailable]. */
+  fun retry() {
+    retries.trySend(Unit)
+  }
 
   private suspend fun watch() {
     coroutineScope {
@@ -145,15 +157,20 @@ class AutoCheckInViewModel(
           }
         }
       }
-      try {
-        checkInWhenEligible()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: Exception) {
-        // Nothing is evaluated any more: the reasons would no longer follow the volunteer. The
-        // missions are only followed again after the state goes uncollected for
-        // STOP_TIMEOUT_MILLIS, as in the background.
-        _uiState.update { it.copy(notCheckedIn = emptyMap()) }
+      while (true) {
+        _uiState.update { it.copy(missionsUnavailable = false) }
+        try {
+          checkInWhenEligible()
+          break
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          // Nothing is evaluated any more: the reasons would no longer follow the volunteer.
+          _uiState.update { it.copy(notCheckedIn = emptyMap(), missionsUnavailable = true) }
+        }
+        // A retry asked while the missions were followed is not one for this failure.
+        retries.tryReceive()
+        retries.receive()
       }
     }
   }

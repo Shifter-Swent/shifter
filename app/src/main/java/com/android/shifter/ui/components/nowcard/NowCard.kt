@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -55,8 +54,6 @@ import java.time.ZoneId
  *   automatic check-in knows it (`whyNotCheckedIn`); a mission without a place is told by the card.
  * @param onOpenMission shows a mission: on the map when it has a place, its details otherwise.
  * @param onContact contacts a mission's manager, or the organizer for a mission of no team.
- * @param footer under the card, outside its animations: the location permission gate, whose state
- *   must survive the card changing state.
  */
 @Composable
 fun NowCard(
@@ -68,19 +65,16 @@ fun NowCard(
     onContact: (Mission) -> Unit,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
-    footer: @Composable () -> Unit = {},
 ) {
-  Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    NowCardContainer(
-        tone = state.tone,
-        status = stringResource(state.status),
-        headline = headline(state, now, zone),
-        state = NowCardBody(state, now, checkedInAt, notCheckedIn),
-        strip = { body -> NextStrip(body, onOpenMission) },
-    ) { body ->
-      Body(body, zone, onOpenMission, onContact)
-    }
-    footer()
+  NowCardContainer(
+      tone = state.tone,
+      status = stringResource(state.status),
+      headline = headline(state, now, zone),
+      state = NowCardBody(state, now, checkedInAt, notCheckedIn),
+      strip = { body -> NextStrip(body, onOpenMission) },
+      modifier = modifier,
+  ) { body ->
+    Body(body, zone, onOpenMission, onContact)
   }
 }
 

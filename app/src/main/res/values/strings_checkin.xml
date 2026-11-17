@@ -6,4 +6,7 @@
     <string name="auto_check_in_not_allowed">The check-in was refused: ask your manager to check you in.</string>
     <string name="auto_check_in_offline">Could not reach the server. Check your connection.</string>
     <string name="auto_check_in_unexpected">Something went wrong with the automatic check-in.</string>
+    <!-- Under the now card, when the missions can no longer be followed -->
+    <string name="auto_check_in_stopped">Automatic check-in stopped: your missions could not be read.</string>
+    <string name="auto_check_in_retry">Retry</string>
 </resources>
