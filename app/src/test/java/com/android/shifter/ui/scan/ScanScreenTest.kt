@@ -7,7 +7,10 @@ import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -15,6 +18,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -39,6 +43,15 @@ class ScanScreenTest {
   private var enterCodeClicks = 0
   private var backClicks = 0
 
+  /** The touch feedback the screen played, in order. */
+  private val felt = mutableListOf<HapticFeedbackType>()
+  private val haptics =
+      object : HapticFeedback {
+        override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+          felt += hapticFeedbackType
+        }
+      }
+
   private fun show(scanner: FakeQrScanner = FakeQrScanner()): FakeQrScanner {
     compose.setContent {
       val context = LocalContext.current
@@ -49,7 +62,10 @@ class ScanScreenTest {
               else PackageManager.PERMISSION_DENIED
         }
       }
-      CompositionLocalProvider(LocalContext provides granting) {
+      CompositionLocalProvider(
+          LocalContext provides granting,
+          LocalHapticFeedback provides haptics,
+      ) {
         ShifterTheme {
           ScanScreen(
               scanner = scanner,
@@ -118,12 +134,39 @@ class ScanScreenTest {
     val scanner = show()
 
     scanner.read("https://example.com")
-    compose.mainClock.advanceTimeBy(INVALID_CODE_SHOWN_MILLIS - 100)
+    // Reading lets the viewfinder's animations end, which already moves the clock a little.
+    compose.mainClock.advanceTimeBy(INVALID_CODE_SHOWN_MILLIS - 1_000)
     tag(ScanScreenTestTags.INVALID_CODE).assertIsDisplayed()
 
-    compose.mainClock.advanceTimeBy(100)
+    compose.mainClock.advanceTimeBy(1_000)
+    compose.waitForIdle()
     tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
     tag(ScanScreenTestTags.HINT).assertIsDisplayed()
+  }
+
+  @Test
+  fun scan_withAValidCode_saysTheCodeWasRead() {
+    show().read("ABC234")
+
+    tag(ScanScreenTestTags.VIEWFINDER).assertIsDisplayed()
+    tag(ScanScreenTestTags.HINT).assertTextEquals("Code read")
+  }
+
+  @Test
+  fun scan_withAValidCode_confirmsByTouch() {
+    show().read("ABC234")
+
+    assertEquals(listOf(HapticFeedbackType.Confirm), felt)
+  }
+
+  @Test
+  fun scan_withAnotherText_rejectsByTouch() {
+    val scanner = show()
+
+    scanner.read("https://example.com")
+    scanner.read("https://example.org")
+
+    assertEquals(listOf(HapticFeedbackType.Reject, HapticFeedbackType.Reject), felt)
   }
 
   @Test
