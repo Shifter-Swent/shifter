@@ -110,6 +110,19 @@ class ScanScreenTest {
   }
 
   @Test
+  fun scan_withAnotherText_saysSoForAWhile() {
+    val scanner = show()
+
+    scanner.read("https://example.com")
+    compose.mainClock.advanceTimeBy(INVALID_CODE_SHOWN_MILLIS - 100)
+    tag(ScanScreenTestTags.INVALID_CODE).assertIsDisplayed()
+
+    compose.mainClock.advanceTimeBy(100)
+    tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
+    tag(ScanScreenTestTags.HINT).assertIsDisplayed()
+  }
+
+  @Test
   fun enterTheCodeInstead_goesBackToTheTypedCode() {
     show()
 

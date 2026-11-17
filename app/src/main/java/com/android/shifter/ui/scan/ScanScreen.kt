@@ -50,6 +50,8 @@ import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.ui.components.BackButton
 import com.swent.shifter.ui.theme.shifter_warning
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * Scans the QR code of an event with [scanner]'s camera, behind a [CameraGate] that leads to the
@@ -73,10 +75,18 @@ fun ScanScreen(
   val currentOnCodeScanned by rememberUpdatedState(onCodeScanned)
   var invalidCode by remember { mutableStateOf(false) }
   LaunchedEffect(scanner) {
-    scanner.codes.collect { text ->
+    // The scanner cannot tell when a code leaves the frame, so a refused one is only said for a
+    // while. The next code cancels the wait: another refused one says it again, a valid one at
+    // once.
+    scanner.codes.collectLatest { text ->
       val code = text.trim().uppercase()
       invalidCode = !JoinCode.isValid(code)
-      if (!invalidCode) currentOnCodeScanned(code)
+      if (invalidCode) {
+        delay(INVALID_CODE_SHOWN_MILLIS)
+        invalidCode = false
+      } else {
+        currentOnCodeScanned(code)
+      }
     }
   }
   val error by scanner.error.collectAsState()
@@ -221,3 +231,6 @@ internal fun ScanTopBar(
 }
 
 private val TOP_BAR_HEIGHT = 56.dp
+
+/** How long a refused code is said under the frame. */
+internal const val INVALID_CODE_SHOWN_MILLIS = 3_000L
