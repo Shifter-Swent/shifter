@@ -89,11 +89,9 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
   val cornerColor =
       animateColorAsState(
           targetValue =
-              when (state) {
-                ViewfinderState.SEARCHING -> MaterialTheme.colorScheme.onPrimary
-                ViewfinderState.FOUND -> shifter_success
-                ViewfinderState.UNKNOWN -> shifter_warning
-              },
+              if (state == ViewfinderState.FOUND) shifter_success
+              else if (state == ViewfinderState.UNKNOWN) shifter_warning
+              else MaterialTheme.colorScheme.onPrimary,
           animationSpec =
               if (animate) tween(COLOR_MILLIS, easing = FastOutSlowInEasing) else snap(),
           label = "corner colour",
@@ -262,7 +260,7 @@ private fun cornersPath(size: Size, stroke: Float): Path {
  * The scan line at [phase] (0 to 1 going down, 1 to 2 going back up), in [color], with a soft glow
  * on the side it comes from. It fades near the edges of its travel.
  */
-private fun DrawScope.drawScanLine(
+internal fun DrawScope.drawScanLine(
     phase: Float,
     color: Color,
     alpha: Float,
@@ -299,21 +297,21 @@ private fun DrawScope.drawScanLine(
 /** The frame: 265 dp of the 358 dp between the margins of a 390 dp phone, as in the Figma. */
 private const val FRAME_WIDTH_FRACTION = 265f / 358f
 private const val HOLE_RADIUS_RATIO = 28f / 265f
-private const val CORNER_ARM_RATIO = 40f / 260f
-private const val CORNER_RADIUS_RATIO = 25.5f / 260f
-private val CORNER_STROKE = 5.dp
+internal const val CORNER_ARM_RATIO = 40f / 260f
+internal const val CORNER_RADIUS_RATIO = 25.5f / 260f
+internal val CORNER_STROKE = 5.dp
 private val SCRIM_COLOR = Color(0xCC0B1018)
 private const val SCRIM_REACH = 10_000f
 
 /** How far from the frame's edges the scan line stays, as a part of its side. */
-private const val LINE_INSET = 0.08f
+internal const val LINE_INSET = 0.08f
 private val LINE_HEIGHT = 3.dp
 private val GLOW_HEIGHT = 24.dp
 private const val GLOW_ALPHA = 0.28f
 
-private const val SWEEP_MILLIS = 1_800
+internal const val SWEEP_MILLIS = 1_800
 private const val COLOR_MILLIS = 280
 private const val LINE_FADE_MILLIS = 220
 private const val HINT_FADE_MILLIS = 180
 private const val SHAKE_MILLIS = 360
-private const val FOUND_SCALE = 0.9f
+internal const val FOUND_SCALE = 0.9f
