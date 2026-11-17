@@ -9,4 +9,5 @@ object NavigationTestTags {
   const val MAP_TAB = "MapTab"
   const val DISCUSSIONS_TAB = "DiscussionsTab"
   const val PEOPLE_TAB = "PeopleTab"
+  const val SHARING_TAB = "SharingTab"
 }

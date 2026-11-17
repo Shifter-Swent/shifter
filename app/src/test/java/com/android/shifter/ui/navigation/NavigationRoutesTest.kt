@@ -62,6 +62,7 @@ class NavigationRoutesTest {
             OrganizerTabs.People,
             OrganizerTabs.Map,
             OrganizerTabs.Discussions,
+            OrganizerTabs.Sharing,
         ),
         OrganizerTabs.all,
     )
