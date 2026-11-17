@@ -148,7 +148,7 @@ private fun PlanningMissionRow(
     if (expanded && !wasExpanded.value) bringIntoView.bringIntoView()
     wasExpanded.value = expanded
   }
-  Row(
+  Column(
       modifier =
           Modifier.fillMaxWidth()
               .bringIntoViewRequester(bringIntoView)
@@ -176,40 +176,46 @@ private fun PlanningMissionRow(
                   }
               )
               .padding(horizontal = 14.dp, vertical = 10.dp)
-              .testTag(PlanningTestTags.mission(mission.id)),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
+              .testTag(PlanningTestTags.mission(mission.id))
   ) {
-    CheckInMarker(checkedIn = mission.checkedInAt != null)
-    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(
-          text =
-              stringResource(
-                  R.string.planning_hours,
-                  mission.startAt.formatTime(zone),
-                  mission.endAt.formatTime(zone),
-              ),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
-      )
-      Text(
-          text = mission.title,
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.onSurface,
-          maxLines = 2,
-          overflow = TextOverflow.Ellipsis,
-      )
-      Details(mission, zone)
-      if (expanded) {
+    // The marker stays centred on the header, wherever the description below takes the row.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      CheckInMarker(checkedIn = mission.checkedInAt != null)
+      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            text = mission.description.ifBlank { stringResource(R.string.planning_no_description) },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier =
-                Modifier.padding(top = 4.dp).testTag(PlanningTestTags.description(mission.id)),
+            text =
+                stringResource(
+                    R.string.planning_hours,
+                    mission.startAt.formatTime(zone),
+                    mission.endAt.formatTime(zone),
+                ),
+            style = MaterialTheme.typography.labelSmall,
+            color = shifter_mutedText,
         )
+        Text(
+            text = mission.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Details(mission, zone)
       }
+    }
+    if (expanded) {
+      Text(
+          text = mission.description.ifBlank { stringResource(R.string.planning_no_description) },
+          style = MaterialTheme.typography.bodySmall,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          // Lined up with the header's text, past the marker (18 dp) and the gap (12 dp).
+          modifier =
+              Modifier.padding(start = 30.dp, top = 6.dp)
+                  .testTag(PlanningTestTags.description(mission.id)),
+      )
     }
   }
 }
