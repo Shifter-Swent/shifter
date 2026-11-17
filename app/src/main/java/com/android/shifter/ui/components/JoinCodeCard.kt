@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.swent.shifter.ui.event
+package com.swent.shifter.ui.components
 
 import android.content.ClipData
 import androidx.annotation.StringRes

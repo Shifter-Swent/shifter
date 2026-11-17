@@ -31,7 +31,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.JoinCodeCard
+import com.swent.shifter.ui.components.JoinCodeCardTestTags
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.rememberCopyJoinCode
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 
