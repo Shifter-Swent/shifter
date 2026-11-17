@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -86,8 +87,9 @@ internal const val JUST_CHECKED_IN_MILLIS = 5_000L
  *
  * The card draws the state it is given and reports what the manager does. It holds no attendance of
  * its own, apart from who was just checked in, whom the state stops reporting as soon as the write
- * is pending. Missions whose attendance is not known are said to be unknown rather than counted as
- * nobody there.
+ * is pending: a volunteer it goes on reporting is drawn as missing, so a check-in that did not
+ * happen is never confirmed in green. Missions whose attendance is not known are said to be unknown
+ * rather than counted as nobody there.
  *
  * @param now the clock's tick, which the lateness and the time bars are read at.
  * @param onCheckIn checks a volunteer in by hand, on the mission their row belongs to.
@@ -106,25 +108,32 @@ fun TeamNowCard(
   // reporting them at once, and the card holds them a moment so the tap is acknowledged. A list
   // of rows, not a map of volunteers: the rows keep the order they were checked in, and the same
   // person missing from two missions at once is checked in to one without the other following.
-  val justCheckedIn = remember { mutableStateListOf<MissingAssignee>() }
+  val justCheckedIn = remember { mutableStateListOf<PendingCheckIn>() }
   val scope = rememberCoroutineScope()
   val checkIn: (MissingAssignee) -> Unit = { assignee ->
-    justCheckedIn += assignee
+    // Every tap is forwarded: whether a check-in can be made is the view model's to say, and a
+    // second one on a volunteer it has already checked in is left alone there.
     onCheckIn(assignee.mission.id, assignee.volunteer.userId)
-    // A row in green is not tappable, so no second tap can add this row again before it goes,
-    // and this timer can only remove what this tap put there.
+    // One row however many taps, and until a moment after the last of them: a check-in the view
+    // model refuses leaves the row reported, hence tappable again, and that tap must not show a
+    // second row or be cut short by the first tap's timer.
+    val waiting = justCheckedIn.firstOrNull { it.assignee.rowId == assignee.rowId }
+    if (waiting == null) justCheckedIn += PendingCheckIn(assignee) else waiting.taps++
     scope.launch {
       delay(JUST_CHECKED_IN_MILLIS.milliseconds)
-      justCheckedIn.removeAll { it.rowId == assignee.rowId }
+      val pending = justCheckedIn.firstOrNull { it.assignee.rowId == assignee.rowId }
+      if (pending != null && --pending.taps == 0) justCheckedIn.remove(pending)
     }
   }
 
-  val green = justCheckedIn.mapTo(mutableSetOf()) { it.rowId }
   val reported = state.missing.mapTo(mutableSetOf()) { it.rowId }
-  // Rows the state no longer reports are kept where the eye can still find them: after the rest.
-  val left = justCheckedIn.filter { it.rowId !in reported }
+  // Green is the check-in that happened, which is the row the state has let go of. One it still
+  // reports is still missing -- the view model refused the check-in, or the manager undid it
+  // before the moment was over -- and stays the missing row it is, its tap included.
+  val left = justCheckedIn.map { it.assignee }.filter { it.rowId !in reported }
+  // The rows the state has let go of are kept where the eye can still find them: after the rest.
   val rows =
-      state.missing.map { TeamNowRow(it, it.rowId in green) } +
+      state.missing.map { TeamNowRow(it, justCheckedIn = false) } +
           left.map { TeamNowRow(it, justCheckedIn = true) }
   // "N volunteers missing" counts people, not rows: one volunteer missing from two missions is
   // one person to find. It counts what the state reports, so a volunteer just checked in is shown
@@ -134,7 +143,7 @@ fun TeamNowCard(
   // dropped from every mission is one of the others, and each of them once however many rows
   // they are shown in.
   val stillMissing = state.missing.mapTo(mutableSetOf()) { it.volunteer.userId }
-  val shownPresent = justCheckedIn.mapTo(mutableSetOf()) { it.volunteer.userId } - stillMissing
+  val shownPresent = left.mapTo(mutableSetOf()) { it.volunteer.userId } - stillMissing
 
   NowCardContainer(
       tone = NowTone.ALERT,
@@ -143,7 +152,10 @@ fun TeamNowCard(
       state =
           TeamNowCardBody(
               rows = rows,
-              missions = state.missing.map { it.mission }.distinctBy { it.id },
+              // The missions of the rows drawn, not of those reported: a mission whose last
+              // missing volunteer was just checked in keeps its bar while their row is still
+              // there, and a mission with two rows has one bar all the same.
+              missions = rows.map { it.assignee.mission }.distinctBy { it.id },
               // A volunteer shown in green is a row of their own, so not one of the others.
               others = (state.onDuty - shownPresent.size).coerceAtLeast(0),
               attendanceUnknown = state.attendanceUnknown,
@@ -195,6 +207,15 @@ private data class TeamNowCardBody(
 
 /** One volunteer of the card, and whether they were just checked in by hand. */
 private data class TeamNowRow(val assignee: MissingAssignee, val justCheckedIn: Boolean)
+
+/**
+ * A row the manager has tapped, held until a moment after the last tap on it. [taps] counts the
+ * taps still waiting out their moment, so a row tapped again is not taken away by the timer of the
+ * tap before it.
+ */
+private class PendingCheckIn(val assignee: MissingAssignee) {
+  var taps = 1
+}
 
 /** What tells one row from another: a volunteer has a row per mission they are missing from. */
 private data class TeamNowRowId(val missionId: String, val userId: String)
@@ -278,7 +299,13 @@ private fun VolunteerRow(row: TeamNowRow, now: Instant, onCheckIn: (MissingAssig
 @Composable
 private fun Avatar(volunteer: AttendanceVolunteer) {
   Box(
-      modifier = Modifier.size(36.dp).clip(CircleShape).background(shifter_avatarBackground),
+      // Decorative: the initial repeats the first letter of the name beside it, so it is drawn
+      // and not spoken, rather than read out as "C, Chloe Dubois".
+      modifier =
+          Modifier.size(36.dp)
+              .clip(CircleShape)
+              .background(shifter_avatarBackground)
+              .clearAndSetSemantics {},
       contentAlignment = Alignment.Center,
   ) {
     Text(

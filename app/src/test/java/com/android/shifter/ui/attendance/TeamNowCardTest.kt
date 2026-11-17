@@ -63,6 +63,13 @@ class TeamNowCardTest {
     show(mutableStateOf(state), onCheckIn, onViewOnMap)
   }
 
+  /** The state the view model reports once it has checked that row in: it is no longer missing. */
+  private fun TeamNowState.Missing.without(missionId: String, userId: String) =
+      copy(
+          missing =
+              missing.filterNot { it.mission.id == missionId && it.volunteer.userId == userId }
+      )
+
   /** The card on a state the test can refresh, as the view model does once a check-in lands. */
   private fun show(
       state: MutableState<TeamNowState.Missing>,
@@ -94,33 +101,29 @@ class TeamNowCardTest {
     compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
     compose.onNodeWithText("Food sorting · late 10 min").assertIsDisplayed()
     compose.onNodeWithText("Check in").assertIsDisplayed()
+    compose.onNodeWithText("3 others checked in").assertIsDisplayed()
   }
 
   @Test
-  fun missing_countsPeopleRatherThanRows() {
-    // One volunteer missing from two missions is one person to find, listed under each.
+  fun missing_countsPeopleAndMissionsOnce() {
+    // Three rows, two people, two missions: a volunteer missing from two missions is one person
+    // to find and is listed under each, and a mission missing two people still has one bar.
     show(
         TeamNowState.Missing(
-            listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, chloe)),
-            onDuty = 0,
-        )
-    )
-
-    compose.onNodeWithText("1 volunteer missing").assertIsDisplayed()
-  }
-
-  @Test
-  fun missing_withTwoVolunteers_saysTwoAndShowsARowEach() {
-    show(
-        TeamNowState.Missing(
-            listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, daniel)),
+            listOf(
+                MissingAssignee(sorting, chloe),
+                MissingAssignee(welcome, chloe),
+                MissingAssignee(sorting, daniel),
+            ),
             onDuty = 1,
         )
     )
 
     compose.onNodeWithText("2 volunteers missing").assertIsDisplayed()
     compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertIsDisplayed()
-    compose.onNodeWithTag(TeamNowCardTestTags.missing("m2", "u2")).assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m2", "u1")).assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u2")).assertIsDisplayed()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(2)
   }
 
   @Test
@@ -137,28 +140,10 @@ class TeamNowCardTest {
   }
 
   @Test
-  fun checkIn_keepsTheVolunteerInGreenForAMoment() {
-    show(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
-    compose.mainClock.autoAdvance = false
-
-    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
-    compose.mainClock.advanceTimeByFrame()
-
-    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
-    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertDoesNotExist()
-    // Checked in, their row can no longer be tapped: the check-in cannot be made twice.
-    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).assertDoesNotExist()
-
-    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS + 1_000)
-
-    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
-    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertExists()
-  }
-
-  @Test
-  fun checkIn_whenTheStateDropsThem_takesTheRowAwayAfterTheMoment() {
-    // What the interactive preview does: the view model stops reporting the volunteer missing as
-    // soon as the check-in shows, so once the green moment is over nothing is left of their row.
+  fun checkIn_whenTheStateDropsThem_keepsTheVolunteerInGreenForAMoment() {
+    // The green says the check-in happened, which is the state dropping the volunteer, as the
+    // view model does in the frame of the tap. Their row is then held a moment where it was,
+    // and the headline goes on counting what the state reports rather than what the card shows.
     val state =
         mutableStateOf(
             TeamNowState.Missing(
@@ -170,25 +155,118 @@ class TeamNowCardTest {
     compose.mainClock.autoAdvance = false
 
     compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
-    state.value = TeamNowState.Missing(listOf(MissingAssignee(sorting, daniel)), onDuty = 4)
+    state.value = state.value.without("m1", "u1")
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+    compose.onNodeWithText("Checked in").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertDoesNotExist()
+    // Checked in, their row can no longer be tapped: the check-in cannot be made twice.
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithText("1 volunteer missing").assertExists()
+    compose.onNodeWithText("2 volunteers missing").assertDoesNotExist()
+
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS + 1_000)
+
+    // The moment over, nothing is left of their row; the one the state still reports keeps its.
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithText("Checked in").assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u2")).assertExists()
+  }
+
+  @Test
+  fun checkIn_theStateDoesNotTakeUp_isNotConfirmedInGreen() {
+    // The view model refused it -- outside the check-in window, or the mission closed -- so it
+    // goes on reporting the volunteer missing. A row turned green here would say someone is
+    // there who is not, so the row stays the missing row it is, and can be tried again.
+    var taps = 0
+    show(
+        TeamNowState.Missing(
+            listOf(MissingAssignee(sorting, chloe), MissingAssignee(sorting, daniel)),
+            onDuty = 3,
+        ),
+        onCheckIn = { _, _ -> taps++ },
+    )
+    compose.mainClock.autoAdvance = false
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    compose.mainClock.advanceTimeByFrame()
+
+    assertEquals(1, taps)
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithText("Checked in").assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).assertExists()
+    compose.onNodeWithText("2 volunteers missing").assertExists()
+  }
+
+  @Test
+  fun checkIn_undoneWithinTheMoment_putsTheRowBackAmongTheMissing() {
+    // Undo before the five seconds are out: the view model reports the volunteer missing again,
+    // and the card follows it rather than go on confirming a check-in that was taken back.
+    val full =
+        TeamNowState.Missing(
+            listOf(MissingAssignee(sorting, chloe), MissingAssignee(sorting, daniel)),
+            onDuty = 3,
+        )
+    val state = mutableStateOf(full)
+    show(state)
+    compose.mainClock.autoAdvance = false
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = full.without("m1", "u1")
     Snapshot.sendApplyNotifications()
     compose.mainClock.advanceTimeByFrame()
 
     compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
 
-    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS + 1_000)
+    state.value = full
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
 
     compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
-    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertDoesNotExist()
-    // The volunteer the state still reports keeps their row.
-    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u2")).assertExists()
+    compose.onNodeWithText("Checked in").assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u1")).assertIsDisplayed()
+    // And she can be checked in again, the undo having left nothing behind.
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).assertExists()
   }
 
   @Test
-  fun missing_withOthersCheckedIn_saysHowMany() {
-    show(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
+  fun checkIn_tappedAgainAfterARefusal_triesAgainAndKeepsOneRow() {
+    // A refused check-in leaves the row tappable, so the same row can be tapped twice. Each tap
+    // is forwarded, the view model answering for it, and the two make one row, kept until a
+    // moment after the second tap rather than taken away by the timer of the first.
+    val state =
+        mutableStateOf(
+            TeamNowState.Missing(
+                listOf(MissingAssignee(sorting, chloe), MissingAssignee(sorting, daniel)),
+                onDuty = 3,
+            )
+        )
+    var taps = 0
+    show(state, onCheckIn = { _, _ -> taps++ })
+    compose.mainClock.autoAdvance = false
 
-    compose.onNodeWithText("3 others checked in").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    compose.mainClock.advanceTimeBy(2_000)
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = state.value.without("m1", "u1")
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+
+    assertEquals(2, taps)
+    compose.onAllNodesWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertCountEquals(1)
+
+    // The first tap's five seconds are over by now; the moment belongs to the second tap.
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS - 1_000)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+
+    compose.mainClock.advanceTimeBy(2_000)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
   }
 
   @Test
@@ -208,20 +286,58 @@ class TeamNowCardTest {
   }
 
   @Test
-  fun missing_showsATimeBarPerMissionConcerned() {
-    // Two missions, three rows: a mission with two people missing still has one bar.
-    show(
-        TeamNowState.Missing(
-            listOf(
-                MissingAssignee(sorting, chloe),
-                MissingAssignee(sorting, noah),
-                MissingAssignee(welcome, daniel),
-            ),
-            onDuty = 0,
+  fun checkIn_keepsTheMissionsTimeBarWhileTheGreenRowIsThere() {
+    // The last volunteer missing from a mission is checked in: a green row with no bar over it
+    // would read as a mission that has ended, so the bar stays as long as the row does. The
+    // other mission, untouched, keeps its own all along.
+    val state =
+        mutableStateOf(
+            TeamNowState.Missing(
+                listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, daniel)),
+                onDuty = 1,
+            )
         )
-    )
+    show(state)
+    compose.mainClock.autoAdvance = false
 
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = state.value.without("m1", "u1")
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
     compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(2)
+    compose.onNodeWithText("Food sorting").assertIsDisplayed()
+
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS + 1_000)
+
+    // The row gone, so is its bar; the mission still missing someone keeps its own.
+    compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(1)
+    compose.onNodeWithText("Food sorting").assertDoesNotExist()
+    compose.onNodeWithText("Welcome desk").assertIsDisplayed()
+  }
+
+  @Test
+  fun checkIn_withSomeoneStillMissingFromTheMission_keepsOneTimeBar() {
+    // A green row and a missing row of the same mission are two rows of one mission: one bar.
+    val state =
+        mutableStateOf(
+            TeamNowState.Missing(
+                listOf(MissingAssignee(sorting, chloe), MissingAssignee(sorting, noah)),
+                onDuty = 0,
+            )
+        )
+    show(state)
+    compose.mainClock.autoAdvance = false
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = state.value.without("m1", "u1")
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u3")).assertExists()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(1)
   }
 
   @Test
@@ -240,51 +356,47 @@ class TeamNowCardTest {
   }
 
   @Test
-  fun missing_withNamesTheProfileCannotGive_stillReadsTheRowAndItsInitial() {
+  fun missing_withANameTheProfileCannotGive_readsAStandIn() {
+    // An id is not a name: a volunteer whose profile could not be read is still a row to tap,
+    // under the stand-in they are given wherever they are listed. What their avatar draws is
+    // AvatarInitialsTest's: the card draws it without speaking it.
     val unnamed = AttendanceVolunteer("u8", null)
-    // A name whose first letter is outside the basic plane: its initial is a whole code point,
-    // never half a surrogate pair.
-    val astral = AttendanceVolunteer("u9", "𝐀lice Martin")
-    show(
-        TeamNowState.Missing(
-            listOf(MissingAssignee(sorting, unnamed), MissingAssignee(sorting, astral)),
-            onDuty = 0,
-        )
-    )
+    show(TeamNowState.Missing(listOf(MissingAssignee(sorting, unnamed)), onDuty = 0))
 
     compose.onNodeWithText("Unnamed volunteer").assertIsDisplayed()
-    compose.onNodeWithText("?").assertIsDisplayed()
-    compose.onNodeWithText("𝐀").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.missing("m1", "u8")).assertIsDisplayed()
   }
 
   @Test
-  fun checkIn_leavesTheCountToTheState() {
-    // The card acknowledges the tap in green, but what is missing is the state's to say: the
-    // headline must not read zero while the state still reports someone missing.
+  fun missing_leavesTheDecorativeInitialOutOfTheSemantics() {
+    // The avatar repeats the first letter of the name next to it, so it is drawn and not spoken:
+    // a reader that read both would say "C, Chloe Dubois".
     show(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
-    compose.mainClock.autoAdvance = false
 
-    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
-    compose.mainClock.advanceTimeByFrame()
-
-    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
-    compose.onNodeWithText("1 volunteer missing").assertExists()
-    compose.onNodeWithText("0 volunteers missing").assertDoesNotExist()
+    // The row as a reader reads it, the avatar being drawn under cleared semantics: the merged
+    // row no longer carries the lone initial, which it did when the avatar spoke for itself.
+    compose.onNodeWithText("C").assertDoesNotExist()
+    // What the row is for is still read: who it is, how late they are, and what a tap does.
+    compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
+    compose.onNodeWithText("Check in").assertIsDisplayed()
   }
 
   @Test
   fun checkIn_withAVolunteerMissingFromTwoMissions_takesOneMissionAtATime() {
     val missions = mutableListOf<String>()
-    show(
-        TeamNowState.Missing(
-            listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, chloe)),
-            onDuty = 3,
-        ),
-        onCheckIn = { missionId, _ -> missions += missionId },
-    )
+    val state =
+        mutableStateOf(
+            TeamNowState.Missing(
+                listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, chloe)),
+                onDuty = 3,
+            )
+        )
+    show(state, onCheckIn = { missionId, _ -> missions += missionId })
     compose.mainClock.autoAdvance = false
 
     compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = state.value.without("m1", "u1")
+    Snapshot.sendApplyNotifications()
     compose.mainClock.advanceTimeByFrame()
 
     compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
@@ -293,6 +405,8 @@ class TeamNowCardTest {
     compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m2", "u1")).assertDoesNotExist()
 
     compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m2", "u1")).performClick()
+    state.value = state.value.without("m2", "u1")
+    Snapshot.sendApplyNotifications()
     compose.mainClock.advanceTimeByFrame()
 
     assertEquals(listOf("m1", "m2"), missions)
@@ -306,11 +420,7 @@ class TeamNowCardTest {
     val state =
         mutableStateOf(
             TeamNowState.Missing(
-                listOf(
-                    MissingAssignee(sorting, chloe),
-                    MissingAssignee(welcome, chloe),
-                    MissingAssignee(sorting, daniel),
-                ),
+                listOf(MissingAssignee(sorting, chloe), MissingAssignee(welcome, chloe)),
                 onDuty = 3,
             )
         )
@@ -319,11 +429,7 @@ class TeamNowCardTest {
 
     compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
     // The view model drops the row it wrote, and still reports her missing from the other one.
-    state.value =
-        TeamNowState.Missing(
-            listOf(MissingAssignee(welcome, chloe), MissingAssignee(sorting, daniel)),
-            onDuty = 3,
-        )
+    state.value = state.value.without("m1", "u1")
     Snapshot.sendApplyNotifications()
     compose.mainClock.advanceTimeByFrame()
 
