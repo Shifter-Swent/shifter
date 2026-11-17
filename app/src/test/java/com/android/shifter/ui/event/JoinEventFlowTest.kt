@@ -2,15 +2,22 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
 package com.swent.shifter.ui.event
 
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
@@ -18,8 +25,12 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
+import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.events.MyEventsUiState
+import com.swent.shifter.ui.events.staff.StaffEventsContent
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -30,7 +41,8 @@ import org.junit.runner.RunWith
 /**
  * The whole join flow on the real screen and view model, with in-memory repositories: a wrong code
  * shows an error, the right one shows the event, the volunteer can go back to the code, picks a
- * team, Apply sends the request for it, and finding the event again shows that request.
+ * team, Apply sends the request for it, and finding the event again shows that request. Once sent,
+ * the request leads back to My Events with a confirmation; a failed one stays on the event.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinEventFlowTest {
@@ -38,6 +50,12 @@ class JoinEventFlowTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   private val sentRequests = mutableListOf<Pair<String, MembershipRequest>>()
+
+  /** What sending a request throws, or null to send it. */
+  private var applyFailure: Exception? = null
+
+  /** The navigation of [showMyEventsThenJoin], to come back to My Events. */
+  private lateinit var navController: NavHostController
 
   private val events =
       object : EventRepository {
@@ -54,8 +72,9 @@ class JoinEventFlowTest {
 
   private val requests =
       object : MembershipRequestRepository {
-        override suspend fun apply(eventId: String, request: MembershipRequest) = request.also {
-          sentRequests += eventId to it
+        override suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest {
+          applyFailure?.let { throw it }
+          return request.also { sentRequests += eventId to it }
         }
 
         override suspend fun accept(eventId: String, userId: String): Unit = error("unused")
@@ -91,7 +110,7 @@ class JoinEventFlowTest {
             { "volunteer-1" },
             { Instant.ofEpochSecond(600) },
         )
-    composeTestRule.setContent { JoinEventScreen(viewModel) }
+    composeTestRule.setContent { JoinEventScreen(viewModel, onRequestSent = {}) }
 
     typeCodeAndFind("WRNG23")
     composeTestRule
@@ -137,6 +156,94 @@ class JoinEventFlowTest {
     assertEquals(1, sentRequests.size)
   }
 
+  @Test
+  fun applying_goesBackToMyEventsWithTheConfirmation() {
+    showMyEventsThenJoin()
+
+    findEventAndApply()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertDoesNotExist()
+    assertEquals(1, sentRequests.size)
+  }
+
+  @Test
+  fun applying_whenSendingFails_staysOnTheEventWithTheError() {
+    applyFailure = MembershipRequestRepositoryException.Unavailable()
+    showMyEventsThenJoin()
+
+    findEventAndApply()
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.ERROR_MESSAGE)
+        .assertTextEquals("You are offline, try again later")
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertDoesNotExist()
+  }
+
+  @Test
+  fun comingBackToMyEvents_afterTheConfirmation_doesNotShowItAgain() {
+    showMyEventsThenJoin()
+    findEventAndApply()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
+    composeTestRule.runOnUiThread { navController.popBackStack() }
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Request sent to Lakeside").assertDoesNotExist()
+  }
+
+  /**
+   * Shows My Events, wired to the join screen as in `ShifterNavHost`, and opens the join screen
+   * with its Scan QR button.
+   */
+  private fun showMyEventsThenJoin() {
+    val viewModel =
+        JoinEventViewModel(
+            events,
+            requests,
+            FakeTeamRepository(listOf(TEAM)),
+            { "volunteer-1" },
+            { Instant.ofEpochSecond(600) },
+        )
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      NavHost(navController, startDestination = MY_EVENTS) {
+        composable(MY_EVENTS) { entry ->
+          val snackbarHostState = remember { SnackbarHostState() }
+          RequestSentSnackbar(entry.savedStateHandle, snackbarHostState)
+          StaffEventsContent(
+              state = MyEventsUiState(),
+              avatarInitial = "V",
+              onTabSelected = {},
+              onWithdraw = {},
+              onOpenEvent = {},
+              onScanQrClick = { navController.navigate(JOIN) },
+              onAvatarClick = {},
+              snackbarHostState = snackbarHostState,
+          )
+        }
+        composable(JOIN) {
+          JoinEventScreen(viewModel) { eventTitle ->
+            navController.getBackStackEntry(MY_EVENTS).savedStateHandle.putRequestSent(eventTitle)
+            navController.popBackStack(MY_EVENTS, inclusive = false)
+          }
+        }
+      }
+    }
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+  }
+
+  private fun findEventAndApply() {
+    typeCodeAndFind(EVENT.joinCode)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption(TEAM.id)).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
+  }
+
   /** Types [code], runs [beforeFind] to check what the screen shows, then clicks Find. */
   private fun typeCodeAndFind(code: String, beforeFind: () -> Unit = {}) {
     composeTestRule
@@ -150,6 +257,8 @@ class JoinEventFlowTest {
   }
 
   private companion object {
+    const val MY_EVENTS = "myEvents"
+    const val JOIN = "join"
     val EVENT =
         Event(
             id = "event-1",

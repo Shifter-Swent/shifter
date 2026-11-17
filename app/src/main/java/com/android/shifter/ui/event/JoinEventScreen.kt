@@ -33,8 +33,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -81,10 +83,22 @@ object JoinEventScreenTestTags {
   fun codeBox(index: Int) = "JoinEventCodeBox_$index"
 }
 
-/** The join screen wired to [viewModel]. */
+/**
+ * The join screen wired to [viewModel].
+ *
+ * @param onRequestSent called with the event's title once a request is sent, to leave the screen.
+ */
 @Composable
-fun JoinEventScreen(viewModel: JoinEventViewModel) {
+fun JoinEventScreen(viewModel: JoinEventViewModel, onRequestSent: (eventTitle: String) -> Unit) {
   val uiState by viewModel.uiState.collectAsState()
+  val currentOnRequestSent by rememberUpdatedState(onRequestSent)
+  val requestSentTo = uiState.requestSentTo
+  LaunchedEffect(requestSentTo) {
+    if (requestSentTo != null) {
+      currentOnRequestSent(requestSentTo)
+      viewModel.onRequestSentHandled()
+    }
+  }
   JoinEventContent(
       uiState = uiState,
       onJoinCodeChange = viewModel::onJoinCodeChange,
