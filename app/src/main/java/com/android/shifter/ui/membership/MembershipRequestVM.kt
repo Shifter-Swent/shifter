@@ -31,9 +31,8 @@ data class MembershipRequestItemUIState(
 /**
  * State of the organizer's requests list.
  *
- * @property isLoading whether there is no list to show yet because it is being read, which shows
- *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
- *   it.
+ * @property isLoading whether the list is being read. A list already loaded stays on screen until
+ *   the answer replaces it; the spinner is for a screen with nothing to show yet.
  * @property hasEnded whether the event has ended: a request can then only be rejected (#409).
  */
 data class MembershipRequestUIState(
@@ -57,9 +56,6 @@ class MembershipRequestVM(
   /** The load running, if any: a decision cancels it, as it may predate the write. */
   private var loadJob: Job? = null
 
-  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
-  private var loaded = false
-
   /** A load was cancelled or refused by a decision: it runs once no decision is being written. */
   private var reloadPending = false
 
@@ -75,7 +71,7 @@ class MembershipRequestVM(
       return
     }
     reloadPending = false
-    _uiState.update { it.copy(isLoading = !loaded, errorMsg = null) }
+    _uiState.update { it.copy(isLoading = true, errorMsg = null) }
     loadJob = viewModelScope.launch {
       try {
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
@@ -90,7 +86,6 @@ class MembershipRequestVM(
         _uiState.update {
           it.copy(requests = items, errorMsg = profileError, hasEnded = hasEnded())
         }
-        loaded = true
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {

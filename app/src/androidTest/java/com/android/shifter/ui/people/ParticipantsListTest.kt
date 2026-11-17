@@ -380,6 +380,16 @@ class ParticipantsListTest {
   }
 
   @Test
+  fun reload_keepsTheCardsWithoutTheIndicator() {
+    setList(
+        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob))), isLoading = true)
+    )
+
+    card("bob").assertIsDisplayed()
+    node(ParticipantsListTestTags.LOADING).assertDoesNotExist()
+  }
+
+  @Test
   fun noTeamsOrParticipants_showsTheEmptyMessage() {
     setList(ParticipantsUiState())
 

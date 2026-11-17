@@ -249,7 +249,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun loadRequests_afterASuccess_keepsTheListWithoutSpinnerThenShowsTheChanges() =
+  fun loadRequests_afterASuccess_keepsTheListWhileLoadingThenShowsTheChanges() =
       runTest(dispatcher) {
         val vm = vm()
         advanceUntilIdle()
@@ -258,7 +258,7 @@ class MembershipRequestVMTest {
 
         vm.loadRequests()
         runCurrent()
-        assertFalse(vm.uiState.value.isLoading)
+        assertTrue(vm.uiState.value.isLoading)
         assertEquals(items(requests), vm.uiState.value.requests)
 
         val updated = requests + request("carol")
@@ -268,19 +268,7 @@ class MembershipRequestVMTest {
       }
 
   @Test
-  fun loadRequests_afterAnEmptyList_doesNotShowTheSpinnerAgain() =
-      runTest(dispatcher) {
-        coEvery { repository.getMembershipRequestsByEId("event") } returns emptyList()
-        val vm = vm()
-        advanceUntilIdle()
-
-        vm.loadRequests()
-        assertFalse(vm.uiState.value.isLoading)
-        advanceUntilIdle()
-      }
-
-  @Test
-  fun loadRequests_afterAFirstFailure_showsTheSpinnerOnRetry() =
+  fun loadRequests_afterAFirstFailure_isLoadingOnRetry() =
       runTest(dispatcher) {
         coEvery { repository.getMembershipRequestsByEId("event") } throws
             MembershipRequestRepositoryException.Unavailable()

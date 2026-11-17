@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -623,6 +624,23 @@ class PeopleScreenTest {
     }
     compose.onNodeWithText("Accept").assertIsNotEnabled()
     compose.onNodeWithText("Reject").assertIsNotEnabled()
+  }
+
+  @Test
+  fun reload_keepsTheRequestsActionableWithoutTheSpinner() {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(requests = listOf(item), isLoading = true),
+            {},
+            {},
+            {},
+        )
+      }
+    }
+    compose.onNodeWithText("Accept").assertIsEnabled()
+    compose.onNodeWithText("Reject").assertIsEnabled()
+    compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
   }
 
   @Test

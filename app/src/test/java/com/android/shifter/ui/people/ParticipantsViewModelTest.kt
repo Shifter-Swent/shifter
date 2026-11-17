@@ -161,7 +161,7 @@ class ParticipantsViewModelTest {
   }
 
   @Test
-  fun load_afterAFirstFailure_showsTheSpinnerOnRetry() = runTest {
+  fun load_afterAFirstFailure_isLoadingOnRetry() = runTest {
     requests.failure = MembershipRequestRepositoryException.Unavailable()
     val viewModel = viewModel()
     advanceUntilIdle()
@@ -174,7 +174,7 @@ class ParticipantsViewModelTest {
   }
 
   @Test
-  fun load_afterASuccess_keepsTheListWithoutSpinnerThenShowsTheChanges() = runTest {
+  fun load_afterASuccess_keepsTheListWhileLoadingThenShowsTheChanges() = runTest {
     request("ann", MembershipRequestStatus.ACCEPTED)
     team("bar", memberIds = listOf("ann", "bob"))
     val viewModel = viewModel()
@@ -182,21 +182,11 @@ class ParticipantsViewModelTest {
 
     request("bob", MembershipRequestStatus.ACCEPTED)
     viewModel.load()
-    assertFalse(viewModel.uiState.value.isLoading)
+    assertTrue(viewModel.uiState.value.isLoading)
     assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
 
     advanceUntilIdle()
     assertEquals(listOf("ann", "bob"), viewModel.userIdsOf("bar"))
-  }
-
-  @Test
-  fun load_afterAnEmptyList_doesNotShowTheSpinnerAgain() = runTest {
-    val viewModel = viewModel()
-    advanceUntilIdle()
-
-    viewModel.load()
-    assertFalse(viewModel.uiState.value.isLoading)
-    advanceUntilIdle()
   }
 
   @Test

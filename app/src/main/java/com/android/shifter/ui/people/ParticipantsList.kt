@@ -137,7 +137,8 @@ fun ParticipantsList(
       verticalArrangement = Arrangement.spacedBy(12.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    if (state.isLoading) {
+    // A reload keeps the list already shown instead of replacing it with the spinner.
+    if (state.isLoading && state.groups.isEmpty()) {
       item {
         CircularProgressIndicator(
             color = colors.primary,

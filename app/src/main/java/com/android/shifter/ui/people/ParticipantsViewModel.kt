@@ -67,9 +67,8 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  *
  * @property groups one group per team of the event, in the order the repository returns them and
  *   including the teams nobody has joined yet, then the participants of no team when there are any.
- * @property isLoading whether there is no list to show yet because it is being read, which shows
- *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
- *   it.
+ * @property isLoading whether the list is being read. A list already loaded stays on screen until
+ *   the answer replaces it; the spinner is for a screen with nothing to show yet.
  * @property isUpdating whether a team's manager is being changed, or a volunteer moved.
  * @property managerChangeFailure the last change of manager that failed, until it has been shown.
  *   Loading the list does not clear it, so the reload that follows the failure cannot hide it.
@@ -105,9 +104,6 @@ class ParticipantsViewModel(
   /** The load running, if any: a change of manager replaces it, as it may predate the write. */
   private var loadJob: Job? = null
 
-  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
-  private var loaded = false
-
   init {
     load()
   }
@@ -115,7 +111,7 @@ class ParticipantsViewModel(
   /** Loads the participants again, e.g. to retry after an error. Ignored while loading. */
   fun load() {
     if (loadJob?.isActive == true) return
-    _uiState.update { it.copy(isLoading = !loaded, error = null) }
+    _uiState.update { it.copy(isLoading = true, error = null) }
     loadJob = viewModelScope.launch {
       try {
         val participantIds =
@@ -126,7 +122,6 @@ class ParticipantsViewModel(
         val teams = teamRepository.getTeamsByEvent(eventId)
         val names = userRepository.displayNames(participantIds)
         _uiState.update { it.copy(groups = group(participantIds, teams, names)) }
-        loaded = true
       } catch (e: CancellationException) {
         throw e
       } catch (e: MembershipRequestRepositoryException.Unavailable) {

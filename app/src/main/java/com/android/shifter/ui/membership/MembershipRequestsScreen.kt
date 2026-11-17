@@ -67,7 +67,8 @@ fun MembershipRequestsScreen(
       verticalArrangement = Arrangement.spacedBy(12.dp),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    if (uiState.isLoading) {
+    // A reload keeps the list already shown instead of replacing it with the spinner.
+    if (uiState.isLoading && uiState.requests.isEmpty()) {
       item { CircularProgressIndicator(color = colors.primary) }
     }
     uiState.errorMsg?.let { message ->
@@ -108,7 +109,6 @@ fun MembershipRequestsScreen(
           isProcessing = item.request.id in uiState.processingRequestIds,
           onAccept = { onAccept(item.request.userId) },
           onReject = { onReject(item.request.userId) },
-          enabled = !uiState.isLoading,
           canAccept = !uiState.hasEnded,
       )
     }
@@ -123,7 +123,6 @@ fun MembershipRequestCard(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
     canAccept: Boolean,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -164,7 +163,7 @@ fun MembershipRequestCard(
         if (canAccept) {
           Button(
               onClick = onAccept,
-              enabled = enabled && !isProcessing,
+              enabled = !isProcessing,
               shape = buttonShape,
               colors =
                   ButtonDefaults.buttonColors(
@@ -181,7 +180,7 @@ fun MembershipRequestCard(
         }
         OutlinedButton(
             onClick = onReject,
-            enabled = enabled && !isProcessing,
+            enabled = !isProcessing,
             shape = buttonShape,
             border = BorderStroke(1.dp, colors.outline),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.onSurface),
