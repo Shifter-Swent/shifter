@@ -134,16 +134,15 @@ fun SharingContent(
                   size = JoinCodeCardSize.Compact,
                   copyEnabled = false,
               )
-          // Only a connection problem can be fixed by trying again.
-          state.error == EventCreatedError.OFFLINE -> JoinCodeUnavailableCard(onRetry)
-          // No retry can fix it: the message below says why.
-          state.error != null -> {}
-          else ->
+          state.error == null ->
               JoinCodeCard(
                   joinCode = state.joinCode,
                   onCopy = { copyJoinCode(state.joinCode) },
                   size = JoinCodeCardSize.Compact,
               )
+          // Only a connection problem can be fixed by trying again; any other error shows no card,
+          // only the message below saying why.
+          state.error == EventCreatedError.OFFLINE -> JoinCodeUnavailableCard(onRetry)
         }
         state.error?.let { error ->
           Text(
