@@ -31,6 +31,7 @@
     <string name="scan_title">Scan a QR code</string>
     <string name="scan_hint">Point your camera at the event\'s QR code</string>
     <string name="scan_invalid_code">This QR code is not a Shifter event</string>
+    <string name="scan_code_read">Code read</string>
     <string name="scan_enter_code_instead">Enter the code instead</string>
     <string name="scan_torch">Torch</string>
     <!-- Scan a QR code: the camera fallback -->
