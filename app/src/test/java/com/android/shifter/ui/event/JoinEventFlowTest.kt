@@ -157,6 +157,29 @@ class JoinEventFlowTest {
   }
 
   @Test
+  fun scanQrCode_opensTheScan() {
+    val viewModel =
+        JoinEventViewModel(
+            events,
+            requests,
+            FakeTeamRepository(listOf(TEAM)),
+            { "volunteer-1" },
+            { Instant.ofEpochSecond(600) },
+        )
+    var scans = 0
+    composeTestRule.setContent {
+      JoinEventScreen(viewModel, onScanQrCode = { scans++ }, onRequestSent = {})
+    }
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    assertEquals(1, scans)
+  }
+
+  @Test
   fun applying_goesBackToMyEventsWithTheConfirmation() {
     showMyEventsThenJoin()
 

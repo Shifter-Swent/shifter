@@ -61,6 +61,28 @@ class JoinEventViewModelTest {
   }
 
   @Test
+  fun onCodeScanned_fillsInTheCodeAndShowsItsEvent() {
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
+
+    viewModel.onCodeScanned("ABC234")
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun onCodeScanned_withAnUnknownCode_saysSo() {
+    coEvery { events.getEventByJoinCode(any()) } returns null
+
+    viewModel.onCodeScanned("ABC234")
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertNull(viewModel.uiState.value.event)
+    assertEquals(JoinEventError.UNKNOWN_CODE, viewModel.uiState.value.error)
+  }
+
+  @Test
   fun findEvent_matchesALowercaseCode() {
     coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
 

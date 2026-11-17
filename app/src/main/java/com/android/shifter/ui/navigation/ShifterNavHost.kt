@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -41,6 +42,8 @@ import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.scan.CameraQrScanner
+import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
@@ -91,6 +94,7 @@ import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.planning.PlanningScreen
 import com.swent.shifter.ui.planning.PlanningViewModel
+import com.swent.shifter.ui.scan.ScanScreen
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.sharing.AndroidEventSharer
@@ -114,6 +118,7 @@ import kotlinx.coroutines.flow.filter
  * @param locationProvider The volunteer's position, for the automatic check-in and their map.
  * @param eventSharer What sends an event's join code to another app from its Sharing tab. A test
  *   passes a fake, as the system share sheet cannot be driven.
+ * @param qrScanner The camera that reads the event's QR code to join it. A test passes a fake one.
  */
 @Composable
 fun ShifterNavHost(
@@ -131,6 +136,10 @@ fun ShifterNavHost(
         },
     eventSharer: EventSharer =
         LocalContext.current.let { context -> remember(context) { AndroidEventSharer(context) } },
+    qrScanner: QrScanner =
+        LocalContext.current.let { context ->
+          remember(context) { CameraQrScanner(context.applicationContext) }
+        },
 ) {
   val nav = rememberNavigationActions(navController)
   val locationSharing: LocationSharingViewModel =
@@ -164,6 +173,7 @@ fun ShifterNavHost(
         credentialManager,
         locationProvider,
         eventSharer,
+        qrScanner,
     )
   }
 }
@@ -179,6 +189,7 @@ private fun ShifterNavGraph(
     credentialManager: CredentialManager,
     locationProvider: LocationProvider,
     eventSharer: EventSharer,
+    qrScanner: QrScanner,
 ) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
@@ -266,20 +277,12 @@ private fun ShifterNavGraph(
             credentialManager = credentialManager,
         )
       }
-      composable<Volunteer.QrApply> {
+      composable<Volunteer.QrApply> { entry ->
         // The screen's own Back returns from the event to the code; the device Back on the code
         // leaves it, back to the events list. Once a request is sent, the list confirms it.
         JoinEventScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        JoinEventViewModel.factory(
-                            repositories.eventRepository,
-                            repositories.membershipRequestRepository,
-                            repositories.teamRepository,
-                            currentUserId,
-                        )
-                ),
+            viewModel = joinEventViewModel(entry, repositories, currentUserId),
+            onScanQrCode = { nav.navigateTo(Volunteer.Scan) },
             onRequestSent = { eventTitle ->
               navController
                   .getBackStackEntry<Volunteer.Events>()
@@ -287,6 +290,20 @@ private fun ShifterNavGraph(
                   .putRequestSent(eventTitle)
               nav.backTo(Volunteer.Events)
             },
+        )
+      }
+      composable<Volunteer.Scan> { entry ->
+        // A code read fills in the join screen under it, which looks its event up, as typed.
+        val joinEntry = remember(entry) { navController.getBackStackEntry<Volunteer.QrApply>() }
+        val joinEvent = joinEventViewModel(joinEntry, repositories, currentUserId)
+        ScanScreen(
+            scanner = qrScanner,
+            onCodeScanned = { code ->
+              joinEvent.onCodeScanned(code)
+              nav.goBack()
+            },
+            onEnterCode = nav::goBack,
+            onBack = nav::goBack,
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
@@ -901,3 +918,23 @@ private fun appOfMode(mode: UserMode): App =
       UserMode.VOLUNTEER -> Volunteer
       UserMode.ORGANIZER -> Organizer
     }
+
+/**
+ * The join screen's ViewModel, kept in [owner], the join screen's entry, which the scan fills too.
+ */
+@Composable
+private fun joinEventViewModel(
+    owner: ViewModelStoreOwner,
+    repositories: RepositoryProvider,
+    currentUserId: () -> String?,
+): JoinEventViewModel =
+    viewModel(
+        viewModelStoreOwner = owner,
+        factory =
+            JoinEventViewModel.factory(
+                repositories.eventRepository,
+                repositories.membershipRequestRepository,
+                repositories.teamRepository,
+                currentUserId,
+            ),
+    )

@@ -179,6 +179,12 @@ class JoinEventViewModel(
     }
   }
 
+  /** Fills in the [code] read from a QR code and looks its event up, as a typed code would be. */
+  fun onCodeScanned(code: String) {
+    onJoinCodeChange(code)
+    findEvent()
+  }
+
   /** Clears [JoinEventUiState.requestSentTo] once the screen has left for My Events. */
   fun onRequestSentHandled() = _uiState.update { it.copy(requestSentTo = null) }
 

@@ -29,6 +29,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -70,6 +73,7 @@ import java.time.Instant
 object JoinEventScreenTestTags {
   const val JOIN_CODE_FIELD = "JoinEventCodeField"
   const val FIND_BUTTON = "JoinEventFindButton"
+  const val SCAN_BUTTON = "JoinEventScanButton"
   const val EVENT_TITLE = "JoinEventTitle"
   const val APPLY_BUTTON = "JoinEventApplyButton"
   const val ENDED = "JoinEventEnded"
@@ -86,10 +90,15 @@ object JoinEventScreenTestTags {
 /**
  * The join screen wired to [viewModel].
  *
+ * @param onScanQrCode opens the scan of the event's QR code, instead of typing its code.
  * @param onRequestSent called with the event's title once a request is sent, to leave the screen.
  */
 @Composable
-fun JoinEventScreen(viewModel: JoinEventViewModel, onRequestSent: (eventTitle: String) -> Unit) {
+fun JoinEventScreen(
+    viewModel: JoinEventViewModel,
+    onScanQrCode: () -> Unit = {},
+    onRequestSent: (eventTitle: String) -> Unit,
+) {
   val uiState by viewModel.uiState.collectAsState()
   val currentOnRequestSent by rememberUpdatedState(onRequestSent)
   val requestSentTo = uiState.requestSentTo
@@ -106,6 +115,7 @@ fun JoinEventScreen(viewModel: JoinEventViewModel, onRequestSent: (eventTitle: S
       onBack = viewModel::changeCode,
       onTeamSelected = viewModel::onTeamSelected,
       onApply = viewModel::applyToEvent,
+      onScanQrCode = onScanQrCode,
   )
 }
 
@@ -122,6 +132,7 @@ fun JoinEventContent(
     onBack: () -> Unit,
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
+    onScanQrCode: () -> Unit = {},
 ) {
   val event = uiState.event
   Box(
@@ -136,7 +147,9 @@ fun JoinEventContent(
               )
   ) {
     if (event == null) {
-      Box(Modifier.statusBarsPadding()) { JoinCodeStep(uiState, onJoinCodeChange, onFindEvent) }
+      Box(Modifier.statusBarsPadding()) {
+        JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
+      }
     } else {
       BackHandler(onBack = onBack)
       EventDetailsContent(
@@ -155,12 +168,16 @@ fun JoinEventContent(
   }
 }
 
-/** The code step scrolls, so the keyboard cannot hide the Find button on a small screen. */
+/**
+ * The code step scrolls, so the keyboard cannot hide the Find button on a small screen. Typing the
+ * code comes first; scanning the event's QR code is offered under it.
+ */
 @Composable
 private fun JoinCodeStep(
     uiState: JoinEventUiState,
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
+    onScanQrCode: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
   BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -208,6 +225,17 @@ private fun JoinCodeStep(
         )
       }
       uiState.error?.let { ErrorText(it) }
+      PrimaryButton(
+          text = stringResource(R.string.join_event_scan_qr_code),
+          onClick = onScanQrCode,
+          testTag = JoinEventScreenTestTags.SCAN_BUTTON,
+          icon = Icons.Outlined.QrCode2,
+          colors =
+              ButtonDefaults.buttonColors(
+                  containerColor = colors.secondaryContainer,
+                  contentColor = colors.onSecondaryContainer,
+              ),
+      )
     }
   }
 }
