@@ -38,7 +38,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.QrCodeImage
@@ -50,7 +49,6 @@ import com.swent.shifter.ui.event.JoinCodeCardSize
 import com.swent.shifter.ui.event.JoinCodeCardTestTags
 import com.swent.shifter.ui.event.JoinCodeUnavailableCard
 import com.swent.shifter.ui.event.rememberCopyJoinCode
-import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_qrLight
 
@@ -207,22 +205,4 @@ private fun ButtonLabel(icon: ImageVector, @StringRes text: Int) {
       fontWeight = FontWeight.SemiBold,
       modifier = Modifier.padding(start = 8.dp),
   )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun SharingContentPreview() {
-  ShifterTheme {
-    SharingContent(
-        state =
-            EventCreatedUiState(
-                eventTitle = "City Marathon 2025",
-                joinCode = "ABC234",
-                isLoading = false,
-            ),
-        onShare = { _, _ -> },
-        onExport = {},
-        onRetry = {},
-    )
-  }
 }

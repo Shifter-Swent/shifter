@@ -68,6 +68,15 @@ class SharingContentTest {
   }
 
   @Test
+  fun loaded_withAnEmptyCode_showsNoQrCode() {
+    // QrCodeImage cannot draw an empty code: the square stays empty rather than crash.
+    setContent(loaded.copy(joinCode = ""))
+
+    node(SharingScreenTestTags.QR_CODE).assertDoesNotExist()
+    node(SharingScreenTestTags.LOADING_INDICATOR).assertDoesNotExist()
+  }
+
+  @Test
   fun copy_putsTheCodeInTheClipboardAndConfirmsIt() {
     setContent(loaded)
 
