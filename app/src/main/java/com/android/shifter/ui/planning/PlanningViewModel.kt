@@ -12,9 +12,13 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.ui.components.days.DAY_STARTS_AT_HOUR
+import com.swent.shifter.ui.components.days.eventDay
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.components.nowcard.nowStates
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,10 +51,14 @@ enum class PlanningError {
  *   [PlanningViewModel.load].
  * @property checkInsUnavailable whether the check-ins could not be read, so the statuses shown may
  *   be missing or outdated. Cleared by the next [PlanningViewModel.load].
- * @property now what the volunteer should do now, for the now card, from today's missions only.
- *   Null while it is not known: before the missions and the check-ins are loaded, after they failed
- *   to load, and until the first tick of the clock once the screen first collects [uiState]. When
- *   the screen comes back, the last state stays until the next tick, which comes at once.
+ * @property now what the volunteer should do now, for the now card, from the missions of the
+ *   current event day (04:00 to 04:00, as the Planning groups them). Null while it is not known:
+ *   before the missions and the check-ins are loaded, after they failed to load, and until the
+ *   first tick of the clock once the screen first collects [uiState]. When the screen comes back,
+ *   the last state stays until the next tick, which comes at once. A consumer tells loading from
+ *   failure with the other fields: null with [isLoading] is still loading; null with [error], or
+ *   with [checkInsUnavailable] once loaded, failed and stays null until the next
+ *   [PlanningViewModel.load].
  */
 data class PlanningUiState(
     val missions: List<PlanningMission> = emptyList(),
@@ -72,6 +80,9 @@ data class PlanningUiState(
  * collected: the screen must collect it with its lifecycle (`collectAsStateWithLifecycle`), so the
  * timer stops when it is in the background.
  *
+ * Only the clock and the check-ins are live: the missions are read once per [load], so a mission
+ * completed, rescheduled or reassigned meanwhile only shows after the next [load].
+ *
  * @param zone the time zone that decides which missions are today's.
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  */
@@ -91,12 +102,19 @@ class PlanningViewModel(
   private var loading: Job? = null
 
   /**
-   * What one load gives [nowStates]: its [missions], and the ids of the missions checked in to,
-   * null until the check-ins are read (an empty set would mean none). A plain class, so that each
-   * load is a new value even with the same missions, and the now state is computed again from it.
+   * What one load gives [nowStates]: its [missions], and the ids of the missions checked in to. A
+   * plain class, so that each load is a new value even with the same missions, and the now state is
+   * computed again from it.
    */
   private class NowInputs(val missions: List<Mission>) {
-    val checkedIn = MutableStateFlow<Set<String>?>(null)
+    private val read = MutableStateFlow<Set<String>?>(null)
+
+    /** The ids of the missions checked in to, once read: an empty set before would mean none. */
+    val checkedIn: Flow<Set<String>> = read.filterNotNull()
+
+    fun show(checkIns: List<CheckIn>) {
+      read.value = checkIns.map { it.missionId }.toSet()
+    }
   }
 
   /** The inputs of the current load, null until its missions are loaded. */
@@ -122,7 +140,7 @@ class PlanningViewModel(
                     else
                         nowStates(
                             todaysMissions(inputs.missions),
-                            inputs.checkedIn.filterNotNull(),
+                            inputs.checkedIn,
                             clock,
                         )
                   }
@@ -133,21 +151,25 @@ class PlanningViewModel(
   }
 
   /**
-   * The [missions] of the current day, again each time the day changes. A mission running across
-   * midnight belongs to both days, so a night shift stays shown after midnight.
+   * The [missions] of the current event day, again each time the day changes. The days run from
+   * 04:00 to 04:00 ([eventDay]), as the Planning groups the missions. A mission running across
+   * 04:00 belongs to both days, so a shift running then stays shown.
    *
-   * The day follows its own reading of the ticks: on the tick at midnight, [nowStates] may compute
+   * The day follows its own reading of the ticks: on the tick at 04:00, [nowStates] may compute
    * once with the new time and the previous day's missions, and is corrected right after.
    */
   private fun todaysMissions(missions: List<Mission>): Flow<List<Mission>> =
       clock.ticks
-          .map { it.atZone(zone).toLocalDate() }
+          .map { it.eventDay(zone) }
           .distinctUntilChanged()
           .map { day -> missions.filter { it.isOn(day) } }
 
   private fun Mission.isOn(day: LocalDate): Boolean =
-      endAt > day.atStartOfDay(zone).toInstant() &&
-          startAt < day.plusDays(1).atStartOfDay(zone).toInstant()
+      endAt > day.start() && startAt < day.plusDays(1).start()
+
+  /** When the event day [this] starts: at 04:00 local time, also on a DST day, as [eventDay]. */
+  private fun LocalDate.start(): Instant =
+      atTime(LocalTime.of(DAY_STARTS_AT_HOUR.toInt(), 0)).atZone(zone).toInstant()
 
   /** Loads the missions and starts observing the check-ins, again after an error. */
   fun load() {
@@ -178,7 +200,7 @@ class PlanningViewModel(
       try {
         checkInRepository.observeMyCheckIns(eventId, userId).collect { checkIns ->
           show(missions, checkIns)
-          inputs.checkedIn.value = checkIns.map { it.missionId }.toSet()
+          inputs.show(checkIns)
         }
       } catch (e: CancellationException) {
         throw e

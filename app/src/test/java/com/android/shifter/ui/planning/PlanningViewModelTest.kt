@@ -206,11 +206,15 @@ class PlanningViewModelTest {
           }
         }
 
-    val state =
-        PlanningViewModel(EVENT, missions, failingAfterAStatus, clock) { userId }.uiState.value
+    clock.set(START.plusSeconds(60))
+    val viewModel =
+        PlanningViewModel(EVENT, missions, failingAfterAStatus, clock, ZoneOffset.UTC) { userId }
+    collect(viewModel)
 
+    val state = viewModel.uiState.value
     assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
     assertTrue(state.checkInsUnavailable)
+    assertEquals(NowState.Ongoing(mission, null), state.now)
   }
 
   @Test
@@ -339,26 +343,42 @@ class PlanningViewModelTest {
   }
 
   @Test
-  fun now_atMidnight_showsTheMissionsOfTheNewDay() = runTest {
-    val tomorrow = create("Tomorrow", startAt = START.plus(Duration.ofDays(1)))
-    clock.set(Instant.parse("2025-06-14T23:59:00Z"))
+  fun now_beforeMidnight_showsTheNightMissionOfTheSameDay() = runTest {
+    val night =
+        create(
+            "Night shift",
+            startAt = Instant.parse("2025-06-15T02:00:00Z"),
+            endAt = Instant.parse("2025-06-15T04:00:00Z"),
+        )
+    clock.set(Instant.parse("2025-06-14T23:00:00Z"))
     val viewModel = viewModel()
     collect(viewModel)
 
-    clock.set(Instant.parse("2025-06-15T00:00:00Z"))
+    assertEquals(NowState.Later(night), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_atFourInTheMorning_showsTheMissionsOfTheNewDay() = runTest {
+    val tomorrow = create("Tomorrow", startAt = START.plus(Duration.ofDays(1)))
+    clock.set(Instant.parse("2025-06-15T03:59:00Z"))
+    val viewModel = viewModel()
+    collect(viewModel)
+    assertEquals(NowState.DoneForToday, viewModel.uiState.value.now)
+
+    clock.set(Instant.parse("2025-06-15T04:00:00Z"))
 
     assertEquals(NowState.Later(tomorrow), viewModel.uiState.value.now)
   }
 
   @Test
-  fun now_afterMidnight_keepsTheMissionRunningAcrossIt() = runTest {
+  fun now_afterFourInTheMorning_keepsTheMissionRunningAcrossIt() = runTest {
     val night =
         create(
             "Night shift",
-            startAt = Instant.parse("2025-06-14T22:00:00Z"),
-            endAt = Instant.parse("2025-06-15T02:00:00Z"),
+            startAt = Instant.parse("2025-06-15T02:00:00Z"),
+            endAt = Instant.parse("2025-06-15T06:00:00Z"),
         )
-    clock.set(Instant.parse("2025-06-15T01:00:00Z"))
+    clock.set(Instant.parse("2025-06-15T05:00:00Z"))
     val viewModel = viewModel()
     collect(viewModel)
 
