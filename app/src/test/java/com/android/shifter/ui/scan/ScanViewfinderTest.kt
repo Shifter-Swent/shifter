@@ -2,22 +2,32 @@
 package com.swent.shifter.ui.scan
 
 import android.provider.Settings
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +54,17 @@ class ScanViewfinderTest {
   }
 
   private fun tag(tag: String) = compose.onNodeWithTag(tag)
+
+  /** The scan screen's camera view, without a camera, on a screen of [width] by [height]. */
+  private fun showOnScreen(width: Dp, height: Dp) {
+    compose.setContent {
+      ShifterTheme {
+        Box(Modifier.requiredSize(width, height)) {
+          ScanCamera(viewfinder = ViewfinderState.SEARCHING, refusals = 0, onEnterCode = {}) {}
+        }
+      }
+    }
+  }
 
   @Test
   fun searching_saysWhereToPointTheCamera() {
@@ -75,6 +96,26 @@ class ScanViewfinderTest {
 
     tag(ScanScreenTestTags.HINT)
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+  }
+
+  @Test
+  fun portrait_drawsTheFrameAsInTheFigma() {
+    showOnScreen(width = 390.dp, height = 844.dp)
+
+    tag(ScanScreenTestTags.VIEWFINDER).assertWidthIsEqualTo(265.dp).assertHeightIsEqualTo(265.dp)
+  }
+
+  @Test
+  fun landscape_keepsTheFrameAndTheButtonOnScreen() {
+    showOnScreen(width = 844.dp, height = 390.dp)
+
+    val frame = tag(ScanScreenTestTags.VIEWFINDER).getUnclippedBoundsInRoot()
+    val button = tag(ScanScreenTestTags.ENTER_CODE).getUnclippedBoundsInRoot()
+    assertEquals(frame.right - frame.left, frame.bottom - frame.top)
+    assertTrue(frame.bottom - frame.top < 265.dp)
+    assertTrue(frame.bottom <= button.top)
+    assertTrue(button.bottom <= 390.dp)
+    tag(ScanScreenTestTags.HINT).assertIsDisplayed()
   }
 
   @Test

@@ -147,10 +147,13 @@ internal fun ScanCamera(
                 .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      // Twice as much room under the frame as above it, as in the Figma.
-      Spacer(Modifier.weight(1f))
-      ScanViewfinder(state = viewfinder, refusals = refusals)
-      Spacer(Modifier.weight(2f))
+      // Twice as much room under the frame as above it, as in the Figma. The button is measured
+      // first, so in landscape the frame shrinks to the height left above it.
+      Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.weight(1f))
+        ScanViewfinder(state = viewfinder, refusals = refusals)
+        Spacer(Modifier.weight(2f))
+      }
       Button(
           onClick = onEnterCode,
           shape = RoundedCornerShape(18.dp),

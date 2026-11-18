@@ -22,7 +22,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -54,12 +54,14 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
 import kotlin.math.PI
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** What the viewfinder tells the volunteer about the last code the camera read. */
@@ -79,6 +81,9 @@ enum class ViewfinderState {
  * While searching, a line sweeps the frame. A code read turns the corners green and tightens them
  * with a spring; an unknown code turns them amber and shakes them. Without the system animations,
  * the states only change colour and text.
+ *
+ * The frame is at most 265 dp, and smaller when less height is left, in landscape for example: give
+ * the viewfinder a bounded height so the views under it stay on screen.
  *
  * @param refusals how many codes were refused so far: each new one shakes the corners again.
  */
@@ -135,8 +140,18 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
 
   Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
     Box(
-        Modifier.fillMaxWidth(FRAME_WIDTH_FRACTION)
-            .aspectRatio(1f)
+        Modifier.weight(1f, fill = false)
+            .layout { measurable, constraints ->
+              // A square: a share of the width, at most 265 dp, and no taller than the room left.
+              val side =
+                  minOf(
+                      (constraints.maxWidth * FRAME_WIDTH_FRACTION).roundToInt(),
+                      FRAME_MAX_SIZE.roundToPx(),
+                      constraints.maxHeight,
+                  )
+              val frame = measurable.measure(Constraints.fixed(side, side))
+              layout(side, side) { frame.place(0, 0) }
+            }
             .testTag(ScanScreenTestTags.VIEWFINDER)
             .drawWithCache {
               val scrim = scrimPath(size, size.width * HOLE_RADIUS_RATIO)
@@ -296,6 +311,7 @@ internal fun DrawScope.drawScanLine(
 
 /** The frame: 265 dp of the 358 dp between the margins of a 390 dp phone, as in the Figma. */
 private const val FRAME_WIDTH_FRACTION = 265f / 358f
+private val FRAME_MAX_SIZE = 265.dp
 private const val HOLE_RADIUS_RATIO = 28f / 265f
 internal const val CORNER_ARM_RATIO = 40f / 260f
 internal const val CORNER_RADIUS_RATIO = 25.5f / 260f
@@ -313,5 +329,6 @@ internal const val SWEEP_MILLIS = 1_800
 private const val COLOR_MILLIS = 280
 private const val LINE_FADE_MILLIS = 220
 private const val HINT_FADE_MILLIS = 180
+
 private const val SHAKE_MILLIS = 360
 internal const val FOUND_SCALE = 0.9f

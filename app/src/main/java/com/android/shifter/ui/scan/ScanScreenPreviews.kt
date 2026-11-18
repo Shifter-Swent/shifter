@@ -43,3 +43,7 @@ private fun CodeReadPreview() = ScanPreviewHost(ViewfinderState.FOUND)
 @Preview(name = "Not a Shifter code", widthDp = 390, heightDp = 844)
 @Composable
 private fun InvalidCodePreview() = ScanPreviewHost(ViewfinderState.UNKNOWN)
+
+@Preview(name = "Landscape", widthDp = 844, heightDp = 390)
+@Composable
+private fun LandscapePreview() = ScanPreviewHost(ViewfinderState.SEARCHING)
