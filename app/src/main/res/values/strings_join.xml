@@ -20,6 +20,7 @@
     <string name="join_event_error_permission_denied">You cannot apply to this event</string>
     <string name="join_event_error_unexpected">Something went wrong, try again</string>
     <string name="join_event_request_sent">Request sent to %1$s</string>
+    <string name="join_event_scan_qr_code">Scan a QR code</string>
     <string name="event_details_title">Event details</string>
     <string name="event_details_opened_from_code">Opened from your join code</string>
     <string name="event_details_date_time">Date &amp; time</string>

@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,6 +27,7 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.firestore.Source
 import com.swent.shifter.R
@@ -48,6 +50,7 @@ import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.scan.TestQrScanner
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
@@ -68,6 +71,7 @@ import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.planning.PlanningTestTags
+import com.swent.shifter.ui.scan.ScanScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.sharing.EventSharer
 import com.swent.shifter.ui.sharing.SharingScreenTestTags
@@ -110,6 +114,9 @@ class ShifterNavHostTest {
   fun setUp() {
     AuthEmulator.auth.signOut()
   }
+
+  /** The camera of the scan screen, read by hand, so no test opens the real one. */
+  private val qrScanner = TestQrScanner()
 
   /** Documents written by a test, deleted afterwards so the next tests start from a clean state. */
   private val createdPaths = mutableListOf<String>()
@@ -302,6 +309,34 @@ class ShifterNavHostTest {
       repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
     }
     assertEquals(teamId, request?.teamId)
+  }
+
+  @Test
+  fun joinEvent_scanningItsCodeShowsTheEventWithTheCodeFilledIn() {
+    val event = createEvent(signIn())
+    signIn()
+    // The scan screen opens the camera only once allowed, as it would ask the volunteer.
+    InstrumentationRegistry.getInstrumentation()
+        .uiAutomation
+        .grantRuntimePermission(composeTestRule.activity.packageName, Manifest.permission.CAMERA)
+    showSignedInApp()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON)
+        .performScrollTo()
+        .performClick()
+    waitForNode(ScanScreenTestTags.HINT)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { qrScanner.isListening }
+
+    composeTestRule.runOnIdle { qrScanner.read(event.joinCode) }
+
+    waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
+    // The screen's Back returns to the code, filled in with the one read.
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .assertTextContains(event.joinCode)
   }
 
   @Test
@@ -1800,6 +1835,7 @@ class ShifterNavHostTest {
             repositories = repositories,
             navController = navController,
             eventSharer = eventSharer,
+            qrScanner = qrScanner,
         )
       }
     }
