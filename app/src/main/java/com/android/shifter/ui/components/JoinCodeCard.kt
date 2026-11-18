@@ -38,11 +38,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.launch
 
@@ -259,24 +257,6 @@ fun rememberCopyJoinCode(snackbarHostState: SnackbarHostState): (String) -> Unit
         snackbarHostState.currentSnackbarData?.dismiss()
         snackbarHostState.showSnackbar(message)
       }
-    }
-  }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun JoinCodeCardPreview() {
-  ShifterTheme {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-      JoinCodeCard(joinCode = "ABC234", onCopy = {})
-      JoinCodeCard(joinCode = "ABC234", onCopy = {}, size = JoinCodeCardSize.Compact)
-      JoinCodeCard(
-          joinCode = JOIN_CODE_PLACEHOLDER,
-          onCopy = {},
-          size = JoinCodeCardSize.Compact,
-          copyEnabled = false,
-      )
-      JoinCodeUnavailableCard(onRetry = {})
     }
   }
 }
