@@ -780,7 +780,7 @@ class ShifterNavHostTest {
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
     signIn(volunteerAccount)
-    showApp()
+    val nav = NavigationActions(showSignedInApp())
     openEvent(event)
     // The general channel is left open in Discussions, as it was when the bug sent messages there.
     waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
@@ -788,7 +788,9 @@ class ShifterNavHostTest {
     waitForNode(ChatChannelsTestTags.GENERAL)
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).performClick()
     waitForNode(TeamChatTestTags.INPUT)
-    composeTestRule.onNodeWithTag(NavigationTestTags.OVERVIEW_TAB).performClick()
+    // A channel has no tab bar: the Overview is opened by the navigation, keeping the channel
+    // saved.
+    composeTestRule.runOnUiThread { nav.switchTab(VolunteerTabs.Overview) }
     waitForNode(NowCardTestTags.ACTION)
 
     composeTestRule.onNodeWithTag(NowCardTestTags.ACTION).performClick()
