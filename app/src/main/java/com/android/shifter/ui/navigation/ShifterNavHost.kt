@@ -92,6 +92,7 @@ import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.scan.ScanScreen
+import com.swent.shifter.ui.scan.toScanResult
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.sharing.AndroidEventSharer
@@ -277,9 +278,14 @@ private fun ShifterNavGraph(
       composable<Volunteer.QrApply> { entry ->
         // The screen's own Back returns from the event to the code; the device Back on the code
         // leaves it, back to the events list. Once a request is sent, the list confirms it.
+        val joinEvent = joinEventViewModel(entry, repositories, currentUserId)
         JoinEventScreen(
-            viewModel = joinEventViewModel(entry, repositories, currentUserId),
-            onScanQrCode = { nav.navigateTo(Volunteer.Scan) },
+            viewModel = joinEvent,
+            onScanQrCode = {
+              // The error of a code typed before would show as the result of the scan.
+              joinEvent.changeCode()
+              nav.navigateTo(Volunteer.Scan)
+            },
             onRequestSent = { eventTitle ->
               navController
                   .getBackStackEntry<Volunteer.Events>()
@@ -290,21 +296,25 @@ private fun ShifterNavGraph(
         )
       }
       composable<Volunteer.Scan> { entry ->
-        // A code read fills in the join screen under it, which looks its event up, as typed.
+        // A code read fills in the join screen under it, which looks its event up, as typed. The
+        // scan shows what it found: Continue goes back to the join screen, showing the event.
         val joinEntry = remember(entry) { navController.getBackStackEntry<Volunteer.QrApply>() }
         val joinEvent = joinEventViewModel(joinEntry, repositories, currentUserId)
-        // The scan still reads codes while it leaves: only the first one is looked up.
-        var handled by remember(entry) { mutableStateOf(false) }
+        val joinState by joinEvent.uiState.collectAsState()
+        // Leaving any other way drops the result: the join screen keeps the code read, filled in.
+        val leave = {
+          joinEvent.changeCode()
+          nav.goBack()
+        }
+        BackHandler(onBack = leave)
         ScanScreen(
             scanner = qrScanner,
-            onCodeScanned = { code ->
-              if (handled) return@ScanScreen
-              handled = true
-              joinEvent.onCodeScanned(code)
-              nav.goBack()
-            },
-            onEnterCode = nav::goBack,
-            onBack = nav::goBack,
+            onCodeScanned = joinEvent::onCodeScanned,
+            onEnterCode = leave,
+            onBack = leave,
+            result = joinState.toScanResult(),
+            onContinue = nav::goBack,
+            onScanAgain = joinEvent::changeCode,
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {

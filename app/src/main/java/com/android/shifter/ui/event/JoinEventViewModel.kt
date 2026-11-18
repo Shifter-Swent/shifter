@@ -124,6 +124,9 @@ class JoinEventViewModel(
   /**
    * Leaves the event details and goes back to typing a code, keeping the code typed so far. Ignored
    * while a request is being sent, so its result cannot land on the code step.
+   *
+   * Also drops what was found for a code, or the error it gave: the scan does so to scan again, or
+   * when the volunteer leaves it without going on to the event.
    */
   fun changeCode() {
     if (_uiState.value.isLoading) return
