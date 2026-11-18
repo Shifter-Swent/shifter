@@ -28,6 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,21 +108,27 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
               if (animate) tween(COLOR_MILLIS, easing = FastOutSlowInEasing) else snap(),
           label = "corner colour",
       )
+  val searching = animate && state == ViewfinderState.SEARCHING
   val lineAlpha =
       animateFloatAsState(
-          targetValue = if (animate && state == ViewfinderState.SEARCHING) 1f else 0f,
+          targetValue = if (searching) 1f else 0f,
           animationSpec = tween(LINE_FADE_MILLIS),
           label = "scan line alpha",
       )
+  // The line only sweeps while it is shown, fading out included: once hidden, it asks for no frame.
+  val fadingOut by remember { derivedStateOf { lineAlpha.value > 0f } }
   // Down then up, each way eased: the line slows at the edges instead of bouncing off them.
   val sweep =
-      rememberInfiniteTransition(label = "scan line")
-          .animateFloat(
-              initialValue = 0f,
-              targetValue = 2f,
-              animationSpec = infiniteRepeatable(tween(2 * SWEEP_MILLIS, easing = LinearEasing)),
-              label = "scan line sweep",
-          )
+      if (searching || fadingOut)
+          rememberInfiniteTransition(label = "scan line")
+              .animateFloat(
+                  initialValue = 0f,
+                  targetValue = 2f,
+                  animationSpec =
+                      infiniteRepeatable(tween(2 * SWEEP_MILLIS, easing = LinearEasing)),
+                  label = "scan line sweep",
+              )
+      else NoSweep
   val scale = remember { Animatable(1f) }
   LaunchedEffect(state, animate) {
     val target = if (state == ViewfinderState.FOUND) FOUND_SCALE else 1f
@@ -347,6 +357,9 @@ internal const val SWEEP_MILLIS = 1_800
 private const val COLOR_MILLIS = 280
 private const val LINE_FADE_MILLIS = 220
 private const val HINT_FADE_MILLIS = 180
+
+/** The scan line's phase while it is hidden: nothing animates it, and nothing ever changes it. */
+private val NoSweep: State<Float> = mutableFloatStateOf(0f)
 
 private const val SHAKE_MILLIS = 360
 internal const val FOUND_SCALE = 0.9f
