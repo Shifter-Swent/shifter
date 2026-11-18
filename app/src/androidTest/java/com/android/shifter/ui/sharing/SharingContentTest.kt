@@ -21,9 +21,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.FakeClipboard
 import com.swent.shifter.ui.event.EventCreatedError
 import com.swent.shifter.ui.event.EventCreatedUiState
-import com.swent.shifter.ui.event.FakeClipboard
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
