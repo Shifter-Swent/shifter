@@ -229,6 +229,7 @@ private fun JoinCodeStep(
           text = stringResource(R.string.join_event_scan_qr_code),
           onClick = onScanQrCode,
           testTag = JoinEventScreenTestTags.SCAN_BUTTON,
+          enabled = !uiState.isLoading,
           icon = Icons.Outlined.QrCode2,
           colors =
               ButtonDefaults.buttonColors(

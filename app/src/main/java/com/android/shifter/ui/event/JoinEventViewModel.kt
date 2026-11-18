@@ -179,8 +179,12 @@ class JoinEventViewModel(
     }
   }
 
-  /** Fills in the [code] read from a QR code and looks its event up, as a typed code would be. */
+  /**
+   * Fills in the [code] read from a QR code and looks its event up, as a typed code would be. A
+   * code read while a lookup runs is ignored, so the code shown stays the one of the event found.
+   */
   fun onCodeScanned(code: String) {
+    if (_uiState.value.isLoading) return
     onJoinCodeChange(code)
     findEvent()
   }
