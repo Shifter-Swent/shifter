@@ -1,6 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.scan
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,8 +56,10 @@ import com.swent.shifter.R
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.ui.components.BackButton
+import com.swent.shifter.ui.event.JoinEventError
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
 
 /**
  * Scans the QR code of an event with [scanner]'s camera, behind a [CameraGate] that leads to the
@@ -60,8 +69,14 @@ import kotlinx.coroutines.flow.collectLatest
  * goes on. The text is only trimmed and upper-cased, as a typed code is, and not passed through
  * `JoinCode.normalize`, which would turn a URL into a code made of its first letters.
  *
+ * What became of a code reported is the [result], shown in a [ScanResultSheet] under the frame. The
+ * scan pauses while it shows, until the volunteer continues or scans again.
+ *
  * @param onCodeScanned called with the join code read, e.g. to look its event up.
  * @param onEnterCode goes back to the typed code.
+ * @param result what became of the code reported, or null while there is nothing to show.
+ * @param onContinue goes on with the event found.
+ * @param onScanAgain drops the [result], so that the scan reads codes again.
  */
 @Composable
 fun ScanScreen(
@@ -70,31 +85,53 @@ fun ScanScreen(
     onEnterCode: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    result: ScanResult? = null,
+    onContinue: () -> Unit = {},
+    onScanAgain: () -> Unit = {},
 ) {
   val currentOnCodeScanned by rememberUpdatedState(onCodeScanned)
+  val currentResult by rememberUpdatedState(result)
   val haptics by rememberUpdatedState(LocalHapticFeedback.current)
   var viewfinder by remember { mutableStateOf(ViewfinderState.SEARCHING) }
   var refusals by remember { mutableIntStateOf(0) }
   LaunchedEffect(scanner) {
     // The scanner cannot tell when a code leaves the frame, so a refused one is only said for a
     // while. The next code cancels the wait: another refused one says it again, a valid one at
-    // once.
-    scanner.codes.collectLatest { text ->
-      val code = text.trim().uppercase()
-      if (JoinCode.isValid(code)) {
-        viewfinder = ViewfinderState.FOUND
-        // Felt as well as seen: a light tick for a code read, a firmer buzz for a refused one.
-        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-        currentOnCodeScanned(code)
-      } else {
-        viewfinder = ViewfinderState.UNKNOWN
-        refusals++
-        haptics.performHapticFeedback(HapticFeedbackType.Reject)
-        delay(INVALID_CODE_SHOWN_MILLIS)
-        viewfinder = ViewfinderState.SEARCHING
-      }
+    // once. A code seen while a result shows is dropped before, so it cancels nothing.
+    scanner.codes
+        .filter { currentResult == null }
+        .collectLatest { text ->
+          val code = text.trim().uppercase()
+          if (JoinCode.isValid(code)) {
+            viewfinder = ViewfinderState.FOUND
+            // Felt as well as seen: a light tick for a code read, a firmer buzz for a refused one.
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            currentOnCodeScanned(code)
+          } else {
+            viewfinder = ViewfinderState.UNKNOWN
+            refusals++
+            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+            delay(INVALID_CODE_SHOWN_MILLIS)
+            viewfinder = ViewfinderState.SEARCHING
+          }
+        }
+  }
+  // A lookup that fails is felt like a refused code, and a code no event uses looks like one too.
+  val failed = result as? ScanResult.Failed
+  val unknownCode = failed?.error == JoinEventError.UNKNOWN_CODE
+  LaunchedEffect(failed) {
+    if (failed != null) {
+      if (unknownCode) refusals++
+      haptics.performHapticFeedback(HapticFeedbackType.Reject)
     }
   }
+  val shown =
+      when {
+        result == null -> viewfinder
+        unknownCode -> ViewfinderState.UNKNOWN
+        // Looked up, found or not for another reason, such as being offline: the code was read.
+        else -> ViewfinderState.FOUND
+      }
   val error by scanner.error.collectAsState()
   val hasTorch by scanner.hasTorch.collectAsState()
   val torchOn by scanner.torchOn.collectAsState()
@@ -118,7 +155,17 @@ fun ScanScreen(
           )
         },
     ) {
-      ScanCamera(viewfinder = viewfinder, refusals = refusals, onEnterCode = onEnterCode) {
+      ScanCamera(
+          viewfinder = shown,
+          refusals = refusals,
+          onEnterCode = onEnterCode,
+          result = result,
+          onContinue = onContinue,
+          onScanAgain = {
+            viewfinder = ViewfinderState.SEARCHING
+            onScanAgain()
+          },
+      ) {
         scanner.Preview(Modifier.fillMaxSize())
       }
     }
@@ -126,7 +173,8 @@ fun ScanScreen(
 }
 
 /**
- * The [camera] image, with the [ScanViewfinder] above the middle and a way out at the bottom.
+ * The [camera] image, with the [ScanViewfinder] above the middle, a way out at the bottom, and the
+ * [result] of the code read in a [ScanResultSheet] above it.
  *
  * @param refusals how many codes were refused so far, to shake the viewfinder for each.
  */
@@ -135,6 +183,9 @@ internal fun ScanCamera(
     viewfinder: ViewfinderState,
     refusals: Int,
     onEnterCode: () -> Unit,
+    result: ScanResult? = null,
+    onContinue: () -> Unit = {},
+    onScanAgain: () -> Unit = {},
     camera: @Composable () -> Unit,
 ) {
   Box(Modifier.fillMaxSize()) {
@@ -162,13 +213,41 @@ internal fun ScanCamera(
                   containerColor = MaterialTheme.colorScheme.secondaryContainer,
                   contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
               ),
-          modifier = Modifier.fillMaxWidth().height(58.dp).testTag(ScanScreenTestTags.ENTER_CODE),
+          modifier =
+              Modifier.fillMaxWidth()
+                  .height(ENTER_CODE_HEIGHT)
+                  .testTag(ScanScreenTestTags.ENTER_CODE),
       ) {
         Text(
             text = stringResource(R.string.scan_enter_code_instead),
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
+      }
+    }
+    // Laid over the column rather than in it, so the frame stays where it is when the sheet shows.
+    Box(
+        modifier =
+            Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(16.dp)
+                .padding(bottom = ENTER_CODE_HEIGHT + 12.dp),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+      AnimatedContent(
+          targetState = result,
+          // Only showing and hiding the sheet slides it: a result that changes, e.g. once its event
+          // is found, is drawn in place.
+          contentKey = { it != null },
+          contentAlignment = Alignment.BottomCenter,
+          transitionSpec = {
+            (slideInVertically { it } + fadeIn()) togetherWith
+                (slideOutVertically { it } + fadeOut()) using
+                SizeTransform(clip = false)
+          },
+          label = "result sheet",
+      ) { shown ->
+        if (shown != null) ScanResultSheet(shown, onContinue, onScanAgain)
       }
     }
   }
@@ -229,6 +308,7 @@ internal fun ScanTopBar(
 }
 
 private val TOP_BAR_HEIGHT = 56.dp
+private val ENTER_CODE_HEIGHT = 58.dp
 
 /** How long a refused code is said under the frame. */
 internal const val INVALID_CODE_SHOWN_MILLIS = 3_000L

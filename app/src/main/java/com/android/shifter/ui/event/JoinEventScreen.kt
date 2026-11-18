@@ -348,7 +348,7 @@ internal fun StatusBadge(status: MembershipRequestStatus) {
 }
 
 @StringRes
-private fun JoinEventError.messageRes(): Int =
+internal fun JoinEventError.messageRes(): Int =
     when (this) {
       JoinEventError.UNKNOWN_CODE -> R.string.join_event_error_unknown_code
       JoinEventError.NOT_SIGNED_IN -> R.string.join_event_error_not_signed_in
