@@ -51,8 +51,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
@@ -180,6 +183,29 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
             }
     )
     Spacer(Modifier.height(24.dp))
+    ViewfinderHint(state, animate)
+  }
+}
+
+/**
+ * What to do, or what happened to the last code, under the frame, cross-faded when it changes.
+ *
+ * TalkBack reads it from the box around the fading texts: that box stays one node whose text
+ * changes, so each new text of the live region is read. The texts themselves are not read.
+ */
+@Composable
+private fun ViewfinderHint(state: ViewfinderState, animate: Boolean) {
+  val text = stringResource(hintText(state))
+  Box(
+      Modifier.fillMaxWidth().clearAndSetSemantics {
+        // Read again when it changes: a code read or refused is said without a touch.
+        liveRegion = LiveRegionMode.Polite
+        this.text = AnnotatedString(text)
+        testTag =
+            if (state == ViewfinderState.UNKNOWN) ScanScreenTestTags.INVALID_CODE
+            else ScanScreenTestTags.HINT
+      }
+  ) {
     if (animate) {
       AnimatedContent(
           targetState = state,
@@ -188,39 +214,31 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
           },
           label = "hint",
       ) {
-        ViewfinderHint(it)
+        HintText(it)
       }
     } else {
-      ViewfinderHint(state)
+      HintText(state)
     }
   }
 }
 
-/** What to do, or what happened to the last code, under the frame. */
 @Composable
-private fun ViewfinderHint(state: ViewfinderState) {
+private fun HintText(state: ViewfinderState) {
   Text(
-      text =
-          stringResource(
-              when (state) {
-                ViewfinderState.SEARCHING -> R.string.scan_hint
-                ViewfinderState.FOUND -> R.string.scan_code_read
-                ViewfinderState.UNKNOWN -> R.string.scan_invalid_code
-              }
-          ),
+      text = stringResource(hintText(state)),
       color = if (state == ViewfinderState.UNKNOWN) shifter_warning else Color.White,
       fontSize = 15.sp,
       textAlign = TextAlign.Center,
-      modifier =
-          Modifier.fillMaxWidth()
-              // Read again when it changes: a code read or refused is said without a touch.
-              .semantics { liveRegion = LiveRegionMode.Polite }
-              .testTag(
-                  if (state == ViewfinderState.UNKNOWN) ScanScreenTestTags.INVALID_CODE
-                  else ScanScreenTestTags.HINT
-              ),
+      modifier = Modifier.fillMaxWidth(),
   )
 }
+
+private fun hintText(state: ViewfinderState) =
+    when (state) {
+      ViewfinderState.SEARCHING -> R.string.scan_hint
+      ViewfinderState.FOUND -> R.string.scan_code_read
+      ViewfinderState.UNKNOWN -> R.string.scan_invalid_code
+    }
 
 /** Whether the system animations are on: off when "Remove animations" is set, for example. */
 @Composable

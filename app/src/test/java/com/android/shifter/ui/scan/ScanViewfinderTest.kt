@@ -99,6 +99,19 @@ class ScanViewfinderTest {
   }
 
   @Test
+  fun hint_staysOneNodeAcrossStates() {
+    show(ViewfinderState.SEARCHING)
+    val searching = tag(ScanScreenTestTags.HINT).fetchSemanticsNode().id
+
+    state = ViewfinderState.UNKNOWN
+    refusals++
+    compose.waitForIdle()
+
+    // The same node: TalkBack only reads a live region whose text changes, not a new one.
+    assertEquals(searching, tag(ScanScreenTestTags.INVALID_CODE).fetchSemanticsNode().id)
+  }
+
+  @Test
   fun portrait_drawsTheFrameAsInTheFigma() {
     showOnScreen(width = 390.dp, height = 844.dp)
 
