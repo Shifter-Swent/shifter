@@ -8,6 +8,7 @@ import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
@@ -22,6 +23,7 @@ import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -438,6 +440,31 @@ class PlanningViewModelTest {
     assertNull(state.eventPeriod)
     assertNull(state.error)
     assertFalse(state.isLoading)
+  }
+
+  @Test
+  fun load_whileTheEventIsStillRead_showsTheMissionsAndTheirCheckIns() = runTest {
+    val mission = create("Hand out water")
+    val event = createEvent(EVENT_START, EVENT_END)
+    // Answers only once completed, as a read stuck on a slow network would.
+    val read = CompletableDeferred<Event?>()
+    val slowEvents =
+        object : EventRepository by events {
+          override suspend fun getEvent(eventId: String) = read.await()
+        }
+    val viewModel =
+        PlanningViewModel(EVENT, missions, checkIns, slowEvents, clock, ZoneOffset.UTC) { userId }
+
+    checkIn(mission, CHECKED_IN_AT)
+
+    val state = viewModel.uiState.value
+    assertFalse(state.isLoading)
+    assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
+    assertNull(state.eventPeriod)
+
+    read.complete(event)
+
+    assertEquals(EVENT_START..EVENT_END, viewModel.uiState.value.eventPeriod)
   }
 
   @Test

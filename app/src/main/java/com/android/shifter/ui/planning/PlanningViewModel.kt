@@ -24,7 +24,6 @@ import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -62,8 +61,9 @@ enum class PlanningError {
  *   with [checkInsUnavailable] once loaded, failed and stays null until the next
  *   [PlanningViewModel.load].
  * @property eventPeriod when the event starts and ends, so the Planning can offer each of its days,
- *   those without missions included. Null while unknown: the event could not be read, and the
- *   Planning falls back on the days of the missions.
+ *   those without missions included. Null while unknown: the event is still being read, or could
+ *   not be, and the Planning falls back on the days of the missions. The missions never wait for
+ *   it.
  */
 data class PlanningUiState(
     val missions: List<PlanningMission> = emptyList(),
@@ -187,8 +187,11 @@ class PlanningViewModel(
       it.copy(isLoading = true, error = null, checkInsUnavailable = false, now = null)
     }
     loading = viewModelScope.launch {
-      // Read alongside the missions, which do not depend on it.
-      val eventPeriod = async { readEventPeriod() }
+      // Read alongside the missions, which neither depend on it nor wait for it. A failed read
+      // keeps the dates of a previous load: they are still the event's.
+      launch {
+        readEventPeriod()?.let { period -> _uiState.update { it.copy(eventPeriod = period) } }
+      }
       val userId = currentUserId()
       val missions =
           try {
@@ -204,7 +207,6 @@ class PlanningViewModel(
             _uiState.update { it.copy(isLoading = false, error = error) }
             return@launch
           }
-      _uiState.update { it.copy(eventPeriod = eventPeriod.await()) }
       // The now state waits for the check-ins of this load, so it is never computed without them.
       val inputs = NowInputs(missions).also { nowInputs.value = it }
       try {
