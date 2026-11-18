@@ -117,6 +117,16 @@ private fun TeamNowCardRunningPreview() {
   )
 }
 
+/** Before a mission: the countdown to it, who has arrived, and the volunteer it is short of. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 420)
+@Composable
+private fun TeamNowCardArrivingPreview() {
+  CardFrame(
+      state = TeamNowState.Arriving(handovers = emptyList(), next = listOf(BRIEFING)),
+      onCheckIn = { _, _ -> },
+  )
+}
+
 /** Nothing under way: what the team does next, and where. */
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 240)
 @Composable

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -632,6 +633,50 @@ class TeamNowCardTest {
 
     compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
     compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun arriving_beforeTheStart_countsDownAndSaysWhoIsThere() {
+    // Two of the three it needs have checked in early; the card names them and what is missing.
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(briefing)))
+
+    compose.onNodeWithText("Starting soon").assertIsDisplayed()
+    compose.onNodeWithText("Briefing in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("14:20–15:30 · Hall B").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.TIME_BAR).assertIsDisplayed()
+    compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
+    compose.onAllNodesWithText("Arrived").assertCountEquals(2)
+    compose.onNodeWithText("Noah Favre").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertIsDisplayed()
+    // Those not there yet are expected, not missing: nothing is short before the start.
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+    // The team is on its way, so the map is still worth offering.
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_atTheHandover_saysTheMissionHasStarted() {
+    // The mission is under way within its grace period: those not there yet are expected, not
+    // late, and the countdown gives way to the mission's own bar.
+    val handover = sorting.copy(assignees = listOf(chloe.copy(checkedInAt = now), daniel))
+    show(TeamNowState.Arriving(handovers = listOf(handover), next = emptyList()))
+
+    compose.onNodeWithText("Starting now").assertIsDisplayed()
+    compose.onNodeWithText("Food sorting has started").assertIsDisplayed()
+    compose.onNodeWithText("14:00–15:30 · Hall B").assertIsDisplayed()
+    compose.onNodeWithText("Arrived").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_withTheCheckInNotOpen_saysNobodyIsShort() {
+    // Nobody can have arrived yet, so the mission is not short of anyone: it is only expecting.
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(debrief)))
+
+    compose.onNodeWithText("Debrief in 25 min").assertIsDisplayed()
+    compose.onNodeWithText("Short of 3 volunteers").assertDoesNotExist()
+    compose.onNodeWithText("Arrived").assertDoesNotExist()
   }
 
   @Test

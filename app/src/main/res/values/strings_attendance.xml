@@ -81,6 +81,12 @@
         <item quantity="other">Attendance not known for %1$d missions</item>
     </plurals>
     <string name="attendance_now_view_on_map">View team on map</string>
+    <!-- The card before a mission starts, and at the handover once it has. -->
+    <string name="attendance_now_in">%1$s in %2$s</string>
+    <string name="attendance_now_starting_now">Starting now</string>
+    <string name="attendance_now_started">%1$s has started</string>
+    <string name="attendance_now_volunteer_arrived">Arrived</string>
+    <string name="attendance_now_volunteer_expected">Expected</string>
     <!-- The card with nothing under way: what the team does next, and the day over. -->
     <string name="attendance_now_next_for_team">Next for your team</string>
     <string name="attendance_now_at_time">%1$s at %2$s</string>
