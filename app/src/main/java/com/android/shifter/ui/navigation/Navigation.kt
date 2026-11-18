@@ -25,7 +25,7 @@ import kotlinx.serialization.Serializable
  * Starting: reads the mode saved on the profile, then enters Volunteer or Organizer
  * ChoosingMode: asks a user without a profile Volunteer or Organizer, once
  * Volunteer
- *   ├── Events (VM-00), ProfileSettings, QrApply
+ *   ├── Events (VM-00), ProfileSettings, QrApply (+ Scan)
  *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission, EditMission),
  *       Map, Discussions (+ Channel)
  * Organizer
@@ -160,6 +160,11 @@ data object Volunteer : App {
   @Serializable
   data object QrApply : Destination {
     override val title = "Join an event"
+  }
+
+  @Serializable
+  data object Scan : Destination {
+    override val title = "Scan a QR code"
   }
 }
 

@@ -17,6 +17,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -58,6 +59,43 @@ class JoinEventViewModelTest {
     assertEquals(EVENT, viewModel.uiState.value.event)
     assertNull(viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun onCodeScanned_fillsInTheCodeAndShowsItsEvent() {
+    coEvery { events.getEventByJoinCode("ABC234") } returns EVENT
+
+    viewModel.onCodeScanned("ABC234")
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun onCodeScanned_withAnUnknownCode_saysSo() {
+    coEvery { events.getEventByJoinCode(any()) } returns null
+
+    viewModel.onCodeScanned("ABC234")
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertNull(viewModel.uiState.value.event)
+    assertEquals(JoinEventError.UNKNOWN_CODE, viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun onCodeScanned_whileLoading_isIgnored() {
+    val lookup = CompletableDeferred<Event?>()
+    coEvery { events.getEventByJoinCode("ABC234") } coAnswers { lookup.await() }
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+
+    viewModel.onCodeScanned("XYZ789")
+    lookup.complete(EVENT)
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    coVerify(exactly = 0) { events.getEventByJoinCode("XYZ789") }
   }
 
   @Test
