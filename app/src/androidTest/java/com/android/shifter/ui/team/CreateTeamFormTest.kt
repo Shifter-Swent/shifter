@@ -88,6 +88,8 @@ class CreateTeamFormTest {
     override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
 
     override suspend fun removeMember(eventId: String, teamId: String, userId: String) = Unit
+
+    override suspend fun deleteTeam(eventId: String, teamId: String) = Unit
   }
 
   private fun viewModelOn(repository: TeamRepository) =
