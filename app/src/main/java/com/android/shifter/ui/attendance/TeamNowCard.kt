@@ -42,6 +42,7 @@ import com.swent.shifter.ui.components.nowcard.ThenStrip
 import com.swent.shifter.ui.components.nowcard.TimeBar
 import com.swent.shifter.ui.components.nowcard.accent
 import com.swent.shifter.ui.components.time.formatDuration
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
 import com.swent.shifter.ui.theme.shifter_avatarBackground
 import com.swent.shifter.ui.theme.shifter_success
@@ -85,8 +86,8 @@ object TeamNowCardTestTags {
 internal const val JUST_CHECKED_IN_MILLIS = 5_000L
 
 /**
- * The manager's now card while their team is at work: who is missing, how late they are and the one
- * tap that checks them in; or, with nobody missing, how many are at work and what comes next.
+ * The manager's now card, in each state of their team: who is missing and the one tap that checks
+ * them in, how many are at work and what comes next, what the team does next, or that it is done.
  *
  * The card draws the state it is given and reports what the manager does. It holds no attendance of
  * its own, apart from who was just checked in, whom the state stops reporting as soon as the write
@@ -143,7 +144,7 @@ fun TeamNowCard(
       missing.map { TeamNowRow(it, justCheckedIn = false) } +
           left.map { TeamNowRow(it, justCheckedIn = true) }
 
-  val shown = teamNowCardBody(state, rows, now) ?: return
+  val shown = teamNowCardBody(state, rows, now, zone) ?: return
   NowCardContainer(
       tone = shown.tone,
       status = shown.status,
@@ -152,6 +153,7 @@ fun TeamNowCard(
       modifier = modifier,
       strip = { body -> body.next?.let { NextStrip(it, body.now) } },
   ) { body ->
+    body.detail?.let { Line(it) }
     body.missions.forEach { mission ->
       TimeBar(
           from = mission.startAt,
@@ -171,34 +173,38 @@ fun TeamNowCard(
       val unknown = body.attendanceUnknown.size
       Line(pluralStringResource(R.plurals.attendance_now_unknown, unknown, unknown))
     }
-    val alert = body.tone == NowTone.ALERT
-    PrimaryButton(
-        text = stringResource(R.string.attendance_now_view_on_map),
-        onClick = onViewOnMap,
-        testTag = TeamNowCardTestTags.ACTION,
-        icon = Icons.Filled.Map,
-        colors =
-            ButtonDefaults.buttonColors(
-                // Amber while someone is missing, dark once the team is at work.
-                containerColor =
-                    if (alert) NowTone.ALERT.accent else MaterialTheme.colorScheme.surface,
-                contentColor =
-                    if (alert) MaterialTheme.colorScheme.surface
-                    else MaterialTheme.colorScheme.onSurface,
-            ),
-    )
+    // Nothing of the team to see on the map before its mission, or once the day is over.
+    if (body.missions.isNotEmpty()) {
+      val alert = body.tone == NowTone.ALERT
+      PrimaryButton(
+          text = stringResource(R.string.attendance_now_view_on_map),
+          onClick = onViewOnMap,
+          testTag = TeamNowCardTestTags.ACTION,
+          icon = Icons.Filled.Map,
+          colors =
+              ButtonDefaults.buttonColors(
+                  // Amber while someone is missing, dark once the team is at work.
+                  containerColor =
+                      if (alert) NowTone.ALERT.accent else MaterialTheme.colorScheme.surface,
+                  contentColor =
+                      if (alert) MaterialTheme.colorScheme.surface
+                      else MaterialTheme.colorScheme.onSurface,
+              ),
+      )
+    }
   }
 }
 
 /**
- * What the card says for [state], or null for the states it does not draw yet: it keeps quiet
- * rather than invent their wording. [rows] are the volunteers it draws, missing or just checked in.
+ * What the card says for [state]. [rows] are the volunteers it draws of its own, missing or just
+ * checked in; [zone] is the one the hours are read in.
  */
 @Composable
 private fun teamNowCardBody(
     state: TeamNowState,
     rows: List<TeamNowRow>,
     now: Instant,
+    zone: ZoneId,
 ): TeamNowCardBody? =
     when (state) {
       is TeamNowState.Missing -> {
@@ -269,6 +275,33 @@ private fun teamNowCardBody(
             now = now,
         )
       }
+      is TeamNowState.Quiet -> {
+        val mission = state.next.first()
+        val assigned = mission.assignees.size
+        TeamNowCardBody(
+            tone = NowTone.CALM,
+            status = stringResource(R.string.attendance_now_next_for_team),
+            headline =
+                stringResource(
+                    R.string.attendance_now_at_time,
+                    mission.title,
+                    mission.startAt.formatTime(zone),
+                ),
+            detail =
+                mission.andPlace(
+                    pluralStringResource(R.plurals.attendance_now_assigned, assigned, assigned)
+                ),
+            now = now,
+        )
+      }
+      TeamNowState.Done ->
+          TeamNowCardBody(
+              tone = NowTone.CALM,
+              status = stringResource(R.string.now_card_today),
+              headline = stringResource(R.string.attendance_now_done),
+              now = now,
+          )
+      // The states around a mission starting are drawn next.
       else -> null
     }
 
@@ -306,12 +339,14 @@ private data class TeamNowCardBody(
     val tone: NowTone,
     val status: String,
     val headline: String,
-    val rows: List<TeamNowRow>,
-    val missions: List<AttendanceMission>,
-    val others: Int,
-    val attendanceUnknown: List<AttendanceMission>,
-    val next: AttendanceMission?,
+    val rows: List<TeamNowRow> = emptyList(),
+    val missions: List<AttendanceMission> = emptyList(),
+    val others: Int = 0,
+    val attendanceUnknown: List<AttendanceMission> = emptyList(),
+    val next: AttendanceMission? = null,
     val now: Instant,
+    /** A line under the rest, such as how many are assigned to the next mission and where. */
+    val detail: String? = null,
 )
 
 /** One volunteer of the card, and whether they were just checked in by hand. */
@@ -425,6 +460,11 @@ private fun Avatar(volunteer: AttendanceVolunteer) {
     )
   }
 }
+
+/** [text] followed by where the mission is, when it has an address: "4 assigned · Hall B". */
+@Composable
+private fun AttendanceMission.andPlace(text: String): String =
+    address?.let { stringResource(R.string.attendance_mission_subtitle, text, it) } ?: text
 
 /** A line of the card under the rows, such as how many others are at work. */
 @Composable

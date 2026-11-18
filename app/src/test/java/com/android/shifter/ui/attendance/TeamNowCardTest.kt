@@ -72,6 +72,7 @@ class TeamNowCardTest {
           startAt = startAt,
           endAt = Instant.parse("2027-06-20T15:30:00Z"),
           assignees = assignees,
+          address = "Hall B",
           attendanceKnown = true,
       )
 
@@ -631,6 +632,27 @@ class TeamNowCardTest {
 
     compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
     compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun quiet_saysWhatTheTeamDoesNextAndWhere() {
+    show(TeamNowState.Quiet(listOf(briefing)))
+
+    compose.onNodeWithText("Next for your team").assertIsDisplayed()
+    compose.onNodeWithText("Briefing at 14:20").assertIsDisplayed()
+    compose.onNodeWithText("3 assigned · Hall B").assertIsDisplayed()
+    // Nothing is under way: no bar of a mission, and nobody out to see on the map.
+    compose.onNodeWithTag(TeamNowCardTestTags.TIME_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun done_saysTheTeamIsDone() {
+    show(TeamNowState.Done)
+
+    compose.onNodeWithText("Today").assertIsDisplayed()
+    compose.onNodeWithText("Your team is done").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertDoesNotExist()
   }
 
   @Test

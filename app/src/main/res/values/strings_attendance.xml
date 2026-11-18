@@ -81,6 +81,14 @@
         <item quantity="other">Attendance not known for %1$d missions</item>
     </plurals>
     <string name="attendance_now_view_on_map">View team on map</string>
+    <!-- The card with nothing under way: what the team does next, and the day over. -->
+    <string name="attendance_now_next_for_team">Next for your team</string>
+    <string name="attendance_now_at_time">%1$s at %2$s</string>
+    <plurals name="attendance_now_assigned">
+        <item quantity="one">%1$d assigned</item>
+        <item quantity="other">%1$d assigned</item>
+    </plurals>
+    <string name="attendance_now_done">Your team is done</string>
     <!-- The card with nobody missing: the team is at work, and another mission is coming. -->
     <string name="attendance_now_all_on_duty">All on duty</string>
     <string name="attendance_now_at_work">%1$d at work</string>

@@ -42,6 +42,7 @@ private fun mission(
         startAt = startAt,
         endAt = startAt + Duration.ofMinutes(90),
         assignees = assignees,
+        address = "Hall B",
         attendanceKnown = true,
     )
 
@@ -114,6 +115,20 @@ private fun TeamNowCardRunningPreview() {
       state = TeamNowState.Running(listOf(SORTING, WELCOME), onDuty = 3, next = listOf(BRIEFING)),
       onCheckIn = { _, _ -> },
   )
+}
+
+/** Nothing under way: what the team does next, and where. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 240)
+@Composable
+private fun TeamNowCardQuietPreview() {
+  CardFrame(state = TeamNowState.Quiet(listOf(BRIEFING)), onCheckIn = { _, _ -> })
+}
+
+/** The team's day over. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 200)
+@Composable
+private fun TeamNowCardDonePreview() {
+  CardFrame(state = TeamNowState.Done, onCheckIn = { _, _ -> })
 }
 
 /**
