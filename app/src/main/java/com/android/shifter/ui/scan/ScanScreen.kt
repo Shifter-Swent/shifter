@@ -2,7 +2,6 @@
 package com.swent.shifter.ui.scan
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -38,20 +38,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.ui.components.BackButton
-import com.swent.shifter.ui.theme.shifter_warning
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
@@ -75,19 +72,26 @@ fun ScanScreen(
     modifier: Modifier = Modifier,
 ) {
   val currentOnCodeScanned by rememberUpdatedState(onCodeScanned)
-  var invalidCode by remember { mutableStateOf(false) }
+  val haptics by rememberUpdatedState(LocalHapticFeedback.current)
+  var viewfinder by remember { mutableStateOf(ViewfinderState.SEARCHING) }
+  var refusals by remember { mutableIntStateOf(0) }
   LaunchedEffect(scanner) {
     // The scanner cannot tell when a code leaves the frame, so a refused one is only said for a
     // while. The next code cancels the wait: another refused one says it again, a valid one at
     // once.
     scanner.codes.collectLatest { text ->
       val code = text.trim().uppercase()
-      invalidCode = !JoinCode.isValid(code)
-      if (invalidCode) {
-        delay(INVALID_CODE_SHOWN_MILLIS)
-        invalidCode = false
-      } else {
+      if (JoinCode.isValid(code)) {
+        viewfinder = ViewfinderState.FOUND
+        // Felt as well as seen: a light tick for a code read, a firmer buzz for a refused one.
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
         currentOnCodeScanned(code)
+      } else {
+        viewfinder = ViewfinderState.UNKNOWN
+        refusals++
+        haptics.performHapticFeedback(HapticFeedbackType.Reject)
+        delay(INVALID_CODE_SHOWN_MILLIS)
+        viewfinder = ViewfinderState.SEARCHING
       }
     }
   }
@@ -114,7 +118,7 @@ fun ScanScreen(
           )
         },
     ) {
-      ScanCamera(invalidCode = invalidCode, onEnterCode = onEnterCode) {
+      ScanCamera(viewfinder = viewfinder, refusals = refusals, onEnterCode = onEnterCode) {
         scanner.Preview(Modifier.fillMaxSize())
       }
     }
@@ -122,12 +126,14 @@ fun ScanScreen(
 }
 
 /**
- * The [camera] image, with the frame to aim at above the middle, what to do or what was wrong with
- * the last code under it, and a way out at the bottom.
+ * The [camera] image, with the [ScanViewfinder] above the middle and a way out at the bottom.
+ *
+ * @param refusals how many codes were refused so far, to shake the viewfinder for each.
  */
 @Composable
 internal fun ScanCamera(
-    invalidCode: Boolean,
+    viewfinder: ViewfinderState,
+    refusals: Int,
     onEnterCode: () -> Unit,
     camera: @Composable () -> Unit,
 ) {
@@ -141,26 +147,13 @@ internal fun ScanCamera(
                 .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      // Twice as much room under the frame as above it, as in the Figma.
-      Spacer(Modifier.weight(1f))
-      // A plain frame for now: the viewfinder of #509 replaces it.
-      Box(Modifier.size(265.dp).border(3.dp, Color.White, RoundedCornerShape(24.dp)))
-      Spacer(Modifier.height(24.dp))
-      Text(
-          text =
-              stringResource(if (invalidCode) R.string.scan_invalid_code else R.string.scan_hint),
-          color = if (invalidCode) shifter_warning else Color.White,
-          fontSize = 15.sp,
-          textAlign = TextAlign.Center,
-          modifier =
-              Modifier.fillMaxWidth()
-                  // Read again when it changes: a refused code is said without anything touched.
-                  .semantics { liveRegion = LiveRegionMode.Polite }
-                  .testTag(
-                      if (invalidCode) ScanScreenTestTags.INVALID_CODE else ScanScreenTestTags.HINT
-                  ),
-      )
-      Spacer(Modifier.weight(2f))
+      // Twice as much room under the frame as above it, as in the Figma. The button is measured
+      // first, so in landscape the frame shrinks to the height left above it.
+      Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.weight(1f))
+        ScanViewfinder(state = viewfinder, refusals = refusals)
+        Spacer(Modifier.weight(2f))
+      }
       Button(
           onClick = onEnterCode,
           shape = RoundedCornerShape(18.dp),

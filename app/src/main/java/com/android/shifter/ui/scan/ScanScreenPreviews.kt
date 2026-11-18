@@ -15,10 +15,10 @@ import com.swent.shifter.ui.theme.ShifterTheme
 // which asks for the permission, and with a grey box in place of the camera image.
 
 @Composable
-private fun ScanPreviewHost(invalidCode: Boolean) {
+private fun ScanPreviewHost(viewfinder: ViewfinderState) {
   ShifterTheme {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-      ScanCamera(invalidCode = invalidCode, onEnterCode = {}) {
+      ScanCamera(viewfinder = viewfinder, refusals = 0, onEnterCode = {}) {
         Box(Modifier.fillMaxSize().background(Color(0xFF3A3F47)))
       }
       ScanTopBar(
@@ -34,8 +34,16 @@ private fun ScanPreviewHost(invalidCode: Boolean) {
 
 @Preview(name = "Scanning", widthDp = 390, heightDp = 844)
 @Composable
-private fun ScanningPreview() = ScanPreviewHost(invalidCode = false)
+private fun ScanningPreview() = ScanPreviewHost(ViewfinderState.SEARCHING)
+
+@Preview(name = "Code read", widthDp = 390, heightDp = 844)
+@Composable
+private fun CodeReadPreview() = ScanPreviewHost(ViewfinderState.FOUND)
 
 @Preview(name = "Not a Shifter code", widthDp = 390, heightDp = 844)
 @Composable
-private fun InvalidCodePreview() = ScanPreviewHost(invalidCode = true)
+private fun InvalidCodePreview() = ScanPreviewHost(ViewfinderState.UNKNOWN)
+
+@Preview(name = "Landscape", widthDp = 844, heightDp = 390)
+@Composable
+private fun LandscapePreview() = ScanPreviewHost(ViewfinderState.SEARCHING)

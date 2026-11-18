@@ -7,6 +7,7 @@ object ScanScreenTestTags {
   const val ENTER_CODE = "scanEnterCode"
   const val HINT = "scanHint"
   const val INVALID_CODE = "scanInvalidCode"
+  const val VIEWFINDER = "scanViewfinder"
   const val FALLBACK = "scanFallback"
   const val FALLBACK_ENTER_CODE = "scanFallbackEnterCode"
   const val ALLOW_CAMERA = "scanAllowCamera"
