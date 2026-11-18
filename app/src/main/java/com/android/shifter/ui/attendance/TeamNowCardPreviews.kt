@@ -60,6 +60,7 @@ private val WELCOME = mission("m2", "Welcome desk", "Front", assignees = AT_WORK
 
 private val CHLOE = AttendanceVolunteer("u1", "Chloé Dubois")
 private val NOAH = AttendanceVolunteer("u2", "Noah Favre")
+private val DANIEL = AttendanceVolunteer("u3", "Daniel Meier")
 
 /** What comes after them, its check-in open: two of the three it needs are there already. */
 private val BRIEFING =
@@ -68,7 +69,7 @@ private val BRIEFING =
         "Briefing",
         "Front",
         startAt = NOW + Duration.ofMinutes(10),
-        assignees = listOf(CHLOE.copy(checkedInAt = NOW), NOAH.copy(checkedInAt = NOW)),
+        assignees = listOf(CHLOE.copy(checkedInAt = NOW), NOAH.copy(checkedInAt = NOW), DANIEL),
     )
 
 /** [this] with [volunteer] checked in, as the state reports them once the manager has. */
@@ -117,12 +118,33 @@ private fun TeamNowCardRunningPreview() {
   )
 }
 
-/** Before a mission: the countdown to it, who has arrived, and the volunteer it is short of. */
-@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 420)
+/** Before a mission: the countdown to it, and who has arrived of the three expected. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 520)
 @Composable
 private fun TeamNowCardArrivingPreview() {
   CardFrame(
       state = TeamNowState.Arriving(handovers = emptyList(), next = listOf(BRIEFING)),
+      onCheckIn = { _, _ -> },
+  )
+}
+
+/** The handover: the mission started two minutes ago, still inside its grace period. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 520)
+@Composable
+private fun TeamNowCardStartingNowPreview() {
+  CardFrame(
+      state =
+          TeamNowState.Arriving(
+              handovers =
+                  listOf(
+                      WELCOME.copy(
+                          startAt = NOW - Duration.ofMinutes(2),
+                          volunteersNeeded = 2,
+                          assignees = listOf(CHLOE.copy(checkedInAt = NOW), NOAH),
+                      )
+                  ),
+              next = emptyList(),
+          ),
       onCheckIn = { _, _ -> },
   )
 }

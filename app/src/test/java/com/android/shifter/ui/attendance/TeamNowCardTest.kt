@@ -658,12 +658,17 @@ class TeamNowCardTest {
   fun arriving_atTheHandover_saysTheMissionHasStarted() {
     // The mission is under way within its grace period: those not there yet are expected, not
     // late, and the countdown gives way to the mission's own bar.
-    val handover = sorting.copy(assignees = listOf(chloe.copy(checkedInAt = now), daniel))
-    show(TeamNowState.Arriving(handovers = listOf(handover), next = emptyList()))
+    val handover =
+        sorting.copy(
+            startAt = now.minus(Duration.ofMinutes(2)),
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel),
+        )
+    // Through the state the missions really give, so the handover is one teamNowState reports.
+    show(teamNowState(listOf(handover), now))
 
     compose.onNodeWithText("Starting now").assertIsDisplayed()
     compose.onNodeWithText("Food sorting has started").assertIsDisplayed()
-    compose.onNodeWithText("14:00–15:30 · Hall B").assertIsDisplayed()
+    compose.onNodeWithText("14:08–15:30 · Hall B").assertIsDisplayed()
     compose.onNodeWithText("Arrived").assertIsDisplayed()
     compose.onNodeWithText("Expected").assertIsDisplayed()
     compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
@@ -698,6 +703,30 @@ class TeamNowCardTest {
     compose.onNodeWithText("Today").assertIsDisplayed()
     compose.onNodeWithText("Your team is done").assertIsDisplayed()
     compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun checkIn_whenTheTeamTurnsToArriving_keepsTheConfirmationForItsMoment() {
+    // Checking the last one in can leave another mission at its handover: the card follows the
+    // state there with the confirmation still on it, as it does to a team at work.
+    val state: MutableState<TeamNowState> =
+        mutableStateOf(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
+    show(state)
+    compose.mainClock.autoAdvance = false
+
+    val handover =
+        welcome.copy(startAt = now.minus(Duration.ofMinutes(2)), assignees = listOf(daniel))
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = teamNowState(listOf(handover), now)
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeBy(2_000)
+
+    compose.onNodeWithText("Welcome desk has started").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
   }
 
   @Test

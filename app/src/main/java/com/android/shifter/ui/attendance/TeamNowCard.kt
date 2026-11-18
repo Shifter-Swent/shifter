@@ -193,7 +193,7 @@ fun TeamNowCard(
       val unknown = body.attendanceUnknown.size
       Line(pluralStringResource(R.plurals.attendance_now_unknown, unknown, unknown))
     }
-    // Nothing of the team to see on the map before its mission, or once the day is over.
+    // The map shows the team on its mission, so a card speaking for none leaves it out.
     if (body.missions.isNotEmpty()) {
       val live = body.tone == NowTone.LIVE
       PrimaryButton(
@@ -322,6 +322,7 @@ private fun teamNowCardBody(
                         mission.endAt.formatTime(zone),
                     )
                 ),
+            rows = rows,
             missions = listOf(mission),
             assignees = mission.assignees,
             // Nobody is short before the mission starts: those not there yet are expected, not
@@ -406,7 +407,7 @@ private data class TeamNowCardBody(
     val assignees: List<AttendanceVolunteer> = emptyList(),
     /** How many volunteers that mission is short of, 0 when it has them all. */
     val short: Int = 0,
-    /** A line under the rest, such as how many are assigned to the next mission and where. */
+    /** A line under the headline: a mission's hours and place, or how many are assigned. */
     val detail: String? = null,
 )
 
