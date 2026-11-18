@@ -49,6 +49,7 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.scan.TestQrScanner
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
@@ -59,7 +60,7 @@ import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
-import com.swent.shifter.ui.checkin.AutoCheckInTestTags
+import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -80,6 +81,7 @@ import com.swent.shifter.ui.team.TeamSetupScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -92,6 +94,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -658,14 +661,14 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun volunteerOverview_showsTheAutomaticCheckIn() {
+  fun volunteerOverview_showsTheNowCard() {
     val event = acceptedEvent(asManager = false)
     showApp()
 
     openEvent(event)
 
-    waitForNode(AutoCheckInTestTags.CARD)
-    composeTestRule.onNodeWithTag(AutoCheckInTestTags.CARD).assertIsDisplayed()
+    waitForNode(NowCardTestTags.CARD)
+    composeTestRule.onNodeWithTag(NowCardTestTags.CARD).assertIsDisplayed()
   }
 
   @Test
@@ -699,6 +702,53 @@ class ShifterNavHostTest {
 
     waitForNode(PlanningTestTags.mission(mission.id))
     composeTestRule.onNodeWithText("Pick up the litter").assertIsDisplayed()
+  }
+
+  @Test
+  fun viewOnMap_onTheNowCard_opensTheMapOnTheMission() {
+    // Near the start of an event day (DAY_STARTS_AT_HOUR), the mission falls on the next day and
+    // the card has nothing to show for it.
+    assumeFalse(LocalTime.now() in LocalTime.of(3, 30)..LocalTime.of(4, 0))
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount, running = true)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    // Starting soon, within the running event, so the card offers to show it on the map.
+    val startAt = Instant.now().plus(Duration.ofMinutes(20))
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Pick up the litter",
+              description = "Along the shore.",
+              teamId = teamIds.getValue(event.id),
+              volunteersNeeded = 1,
+              startAt = startAt,
+              endAt = startAt.plus(Duration.ofMinutes(30)),
+              location = MissionLocation("Beach", GeoPosition(46.51, 6.63)),
+              assigneeIds = listOf(volunteer.uid),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    signIn(volunteerAccount)
+    showApp()
+    openEvent(event)
+    waitForNode(NowCardTestTags.ACTION)
+
+    composeTestRule.onNodeWithTag(NowCardTestTags.ACTION).performClick()
+
+    waitForNode(MapScreenTestTags.MISSION_CARD)
+    composeTestRule
+        .onNode(
+            hasText("Pick up the litter") and
+                hasAnyAncestor(hasTestTag(MapScreenTestTags.MISSION_CARD)),
+            useUnmergedTree = true,
+        )
+        .assertIsDisplayed()
   }
 
   @Test

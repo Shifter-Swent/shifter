@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -87,6 +88,8 @@ object PlanningTestTags {
  *   expands; none when null.
  * @param onMissionClick called with the id of a row tapped, to expand or collapse it; the rows
  *   cannot be tapped when null.
+ * @param revealRequest a new value brings the expanded row into view again, even when it was
+ *   already expanded, as the now card's "View details" does.
  */
 @Composable
 fun Planning(
@@ -95,6 +98,7 @@ fun Planning(
     zone: ZoneId = ZoneId.systemDefault(),
     expandedMissionId: String? = null,
     onMissionClick: ((String) -> Unit)? = null,
+    revealRequest: Int = 0,
 ) {
   Column(
       modifier = modifier.fillMaxWidth().testTag(PlanningTestTags.PLANNING),
@@ -126,7 +130,13 @@ fun Planning(
       // Keyed by mission, so a row keeps its own state when the missions before it change.
       sorted.forEach {
         key(it.id) {
-          PlanningMissionRow(it, zone, expanded = it.id == expandedMissionId, onMissionClick)
+          PlanningMissionRow(
+              it,
+              zone,
+              expanded = it.id == expandedMissionId,
+              onMissionClick,
+              revealRequest,
+          )
         }
       }
     }
@@ -139,14 +149,18 @@ private fun PlanningMissionRow(
     zone: ZoneId,
     expanded: Boolean,
     onClick: ((String) -> Unit)?,
+    revealRequest: Int,
 ) {
   val bringIntoView = remember { BringIntoViewRequester() }
-  // Shown whole once expanded. A row already expanded when it is first shown, as when the page
-  // comes back, leaves the page where it was.
+  // Shown whole once expanded, or asked again while expanded. A row already expanded when it is
+  // first shown, as when the page comes back, leaves the page where it was.
   val wasExpanded = remember { mutableStateOf(expanded) }
-  LaunchedEffect(expanded) {
-    if (expanded && !wasExpanded.value) bringIntoView.bringIntoView()
+  val lastRequest = remember { mutableIntStateOf(revealRequest) }
+  LaunchedEffect(expanded, revealRequest) {
+    val asked = !wasExpanded.value || revealRequest != lastRequest.intValue
     wasExpanded.value = expanded
+    lastRequest.intValue = revealRequest
+    if (expanded && asked) bringIntoView.bringIntoView()
   }
   Column(
       modifier =

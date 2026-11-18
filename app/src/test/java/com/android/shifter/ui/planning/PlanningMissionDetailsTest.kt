@@ -23,14 +23,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.swent.shifter.model.checkin.FakeCheckInRepository
-import com.swent.shifter.model.mission.FakeMissionRepository
-import com.swent.shifter.model.mission.Mission
-import com.swent.shifter.model.time.FakeMinuteClock
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -52,7 +47,7 @@ class PlanningMissionDetailsTest {
           description = description,
       )
 
-  /** Shows [missions] with the expanded row kept here, as [PlanningScreen] keeps it. */
+  /** Shows [missions] with the expanded row kept here, as the volunteer's Overview keeps it. */
   private fun show(vararg missions: PlanningMission) {
     compose.setContent {
       var expanded by remember { mutableStateOf<String?>(null) }
@@ -120,11 +115,13 @@ class PlanningMissionDetailsTest {
 
   /**
    * Shows the Planning under a tall block, in a short scrolling page, as the Overview hosts it.
-   * [visible] hides and shows it again, as when the page comes back.
+   * [visible] hides and shows it again, as when the page comes back, and [revealRequest] is the now
+   * card's "View details".
    */
   private fun showBelowTheFold(
       initiallyExpanded: String?,
       visible: () -> Boolean = { true },
+      revealRequest: () -> Int = { 0 },
   ): ScrollState {
     lateinit var scroll: ScrollState
     compose.setContent {
@@ -139,6 +136,7 @@ class PlanningMissionDetailsTest {
                 zone = ZoneOffset.UTC,
                 expandedMissionId = expanded,
                 onMissionClick = { id -> expanded = if (expanded == id) null else id },
+                revealRequest = revealRequest(),
             )
           }
         }
@@ -176,6 +174,19 @@ class PlanningMissionDetailsTest {
   }
 
   @Test
+  fun revealRequest_onARowAlreadyExpanded_bringsItIntoViewAgain() {
+    var request by mutableStateOf(0)
+    val scroll = showBelowTheFold(initiallyExpanded = "a", revealRequest = { request })
+    compose.waitForIdle()
+    assertEquals(0, scroll.value)
+
+    request++
+    compose.waitForIdle()
+
+    assertTrue(scroll.value > 0)
+  }
+
+  @Test
   fun row_saysWhetherItIsExpanded() {
     show(mission("a"))
     row("a").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
@@ -194,42 +205,7 @@ class PlanningMissionDetailsTest {
     row("a").assertHasNoClickAction()
   }
 
-  @Test
-  fun planningScreen_tapOnAMission_showsItsDescription() {
-    val missions = FakeMissionRepository()
-    val created = runBlocking {
-      missions.createMission(
-          Mission(
-              eventId = EVENT,
-              title = "Hand out water",
-              description = "Fill the cups at the stand",
-              volunteersNeeded = 1,
-              startAt = START,
-              endAt = START.plusSeconds(3600),
-              assigneeIds = listOf(USER),
-              createdAt = START,
-          )
-      )
-    }
-    val viewModel =
-        PlanningViewModel(
-            EVENT,
-            missions,
-            FakeCheckInRepository(currentUserId = USER),
-            FakeMinuteClock(START),
-        ) {
-          USER
-        }
-    compose.setContent { ShifterTheme { PlanningScreen(viewModel) } }
-
-    row(created.id).performClick()
-
-    description(created.id).assertTextEquals("Fill the cups at the stand")
-  }
-
   private companion object {
-    const val EVENT = "event-1"
-    const val USER = "volunteer-1"
     val START: Instant = Instant.parse("2025-06-14T08:00:00Z")
   }
 }
