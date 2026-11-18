@@ -217,6 +217,22 @@ class VolunteerOverviewTest {
   }
 
   @Test
+  fun planning_leftOpenAcross0400_movesOnToTheNextDay() {
+    val tonight = annMission(Duration.ofHours(8), title = "Tonight's shift")
+    val tomorrow = annMission(Duration.ofDays(1), title = "Tomorrow's shift")
+    // 03:59 is still the event day of the evening before.
+    val nextDay = TODAY.plusDays(1)
+    clock.set(nextDay.atTime(3, 59).atZone(ZoneId.systemDefault()).toInstant())
+    show()
+    compose.onNodeWithTag(PlanningTestTags.mission(tonight.id)).assertIsDisplayed()
+
+    clock.set(nextDay.atTime(4, 0).atZone(ZoneId.systemDefault()).toInstant())
+
+    compose.onNodeWithTag(PlanningTestTags.mission(tomorrow.id)).assertIsDisplayed()
+    compose.onNodeWithTag(PlanningTestTags.mission(tonight.id)).assertDoesNotExist()
+  }
+
+  @Test
   fun tap_onAPlanningRow_showsItsDescription() {
     val mission = annMission(Duration.ofMinutes(20), description = "Greet the runners")
     show()
