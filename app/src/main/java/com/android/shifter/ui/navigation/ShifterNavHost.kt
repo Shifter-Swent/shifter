@@ -296,9 +296,13 @@ private fun ShifterNavGraph(
         // A code read fills in the join screen under it, which looks its event up, as typed.
         val joinEntry = remember(entry) { navController.getBackStackEntry<Volunteer.QrApply>() }
         val joinEvent = joinEventViewModel(joinEntry, repositories, currentUserId)
+        // The scan still reads codes while it leaves: only the first one is looked up.
+        var handled by remember(entry) { mutableStateOf(false) }
         ScanScreen(
             scanner = qrScanner,
             onCodeScanned = { code ->
+              if (handled) return@ScanScreen
+              handled = true
               joinEvent.onCodeScanned(code)
               nav.goBack()
             },
