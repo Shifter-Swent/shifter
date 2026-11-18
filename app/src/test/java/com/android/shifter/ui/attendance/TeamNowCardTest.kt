@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
@@ -42,21 +43,40 @@ class TeamNowCardTest {
   private val sorting = mission("m1", "Food sorting")
   private val welcome = mission("m2", "Welcome desk")
 
-  private fun mission(id: String, title: String) =
+  /** The next mission, its check-in open: two of the three it needs are there, one is not. */
+  private val briefing =
+      mission(
+          "m3",
+          "Briefing",
+          startAt = now + Duration.ofMinutes(10),
+          needed = 3,
+          assignees = listOf(chloe.copy(checkedInAt = now), daniel.copy(checkedInAt = now), noah),
+      )
+
+  /** The one after it, whose check-in nobody can have used yet. */
+  private val debrief = mission("m4", "Debrief", startAt = now + Duration.ofMinutes(25), needed = 3)
+
+  private fun mission(
+      id: String,
+      title: String,
+      startAt: Instant = Instant.parse("2027-06-20T14:00:00Z"),
+      needed: Int = 2,
+      assignees: List<AttendanceVolunteer> = emptyList(),
+  ) =
       AttendanceMission(
           id = id,
           title = title,
           teamId = "team",
           teamName = "Logistics",
-          volunteersNeeded = 2,
-          startAt = Instant.parse("2027-06-20T14:00:00Z"),
+          volunteersNeeded = needed,
+          startAt = startAt,
           endAt = Instant.parse("2027-06-20T15:30:00Z"),
-          assignees = emptyList(),
+          assignees = assignees,
           attendanceKnown = true,
       )
 
   private fun show(
-      state: TeamNowState.Missing,
+      state: TeamNowState,
       onCheckIn: (String, String) -> Unit = { _, _ -> },
       onViewOnMap: () -> Unit = {},
   ) {
@@ -72,7 +92,7 @@ class TeamNowCardTest {
 
   /** The card on a state the test can refresh, as the view model does once a check-in lands. */
   private fun show(
-      state: MutableState<TeamNowState.Missing>,
+      state: MutableState<out TeamNowState>,
       onCheckIn: (String, String) -> Unit = { _, _ -> },
       onViewOnMap: () -> Unit = {},
   ) {
@@ -457,6 +477,195 @@ class TeamNowCardTest {
     // Her green row is one of the rows, so she is not also one of the others: 3, not 4.
     compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
     compose.onNodeWithText("3 others checked in").assertExists()
+  }
+
+  @Test
+  fun running_showsHowManyAreAtWorkAndABarPerMission() {
+    var opened = false
+    // Both missions have the two volunteers they need, so the team is all on duty.
+    val present = listOf(chloe.copy(checkedInAt = now), daniel.copy(checkedInAt = now))
+    show(
+        TeamNowState.Running(
+            listOf(sorting.copy(assignees = present), welcome.copy(assignees = present)),
+            onDuty = 2,
+            next = emptyList(),
+        ),
+        onViewOnMap = { opened = true },
+    )
+
+    compose.onNodeWithText("All on duty").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(2)
+    compose.onNodeWithText("Food sorting").assertIsDisplayed()
+    compose.onNodeWithText("Welcome desk").assertIsDisplayed()
+    // Nobody is missing, so there is no row to tap, and nothing to come, so no strip.
+    compose.onNodeWithText("Check in").assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.NEXT).assertDoesNotExist()
+    // The one action, here as while someone is missing.
+    compose.onAllNodesWithTag(TeamNowCardTestTags.ACTION).assertCountEquals(1)
+    compose.onNodeWithText("View team on map").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).performClick()
+
+    assertEquals(true, opened)
+  }
+
+  @Test
+  fun running_withANextMission_saysWhoArrivedAndWhatItIsShortOf() {
+    show(TeamNowState.Running(listOf(sorting), onDuty = 4, next = listOf(briefing, debrief)))
+
+    // The next one only: the manager is told what is coming, not the whole day.
+    compose.onAllNodesWithTag(TeamNowCardTestTags.NEXT).assertCountEquals(1)
+    compose.onNodeWithText("Then, in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("Briefing · 2 of 3 arrived").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
+  }
+
+  @Test
+  fun running_withTheNextCheckInNotOpen_saysHowManyAreExpected() {
+    // Nobody can have checked in yet, so "0 of 3 arrived" would read as a team that has not come.
+    show(TeamNowState.Running(listOf(sorting), onDuty = 4, next = listOf(debrief)))
+
+    compose.onNodeWithText("Then, in 25 min").assertIsDisplayed()
+    compose.onNodeWithText("Debrief · 3 volunteers expected").assertIsDisplayed()
+    compose.onNodeWithText("0 of 3 arrived").assertDoesNotExist()
+    compose.onNodeWithText("Short of 3 volunteers").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withNoAttendanceKnown_countsTheMissionsRatherThanNobodyAtWork() {
+    // The first load: not being seen is not being absent, and nobody seen is not an empty team.
+    show(
+        TeamNowState.Running(
+            listOf(sorting, welcome),
+            onDuty = 0,
+            next = emptyList(),
+            attendanceUnknown = listOf(sorting, welcome),
+        )
+    )
+
+    compose.onNodeWithText("2 missions running").assertIsDisplayed()
+    compose.onNodeWithText("Attendance not known for 2 missions").assertIsDisplayed()
+    compose.onNodeWithText("0 at work").assertDoesNotExist()
+    // Nor is the team all on duty: nobody has been seen, which is not everybody being there.
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withNobodyAssigned_doesNotReportATeamAtWork() {
+    // Nobody is assigned to the mission, and its attendance is known: there is nobody to be
+    // missing, so the team is Running with nobody on duty. "All on duty" would speak for a team
+    // that is not there, and "0 at work" would read as one that has not come.
+    show(TeamNowState.Running(listOf(sorting), onDuty = 0, next = emptyList()))
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("1 mission running").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+    compose.onNodeWithText("0 at work").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withAMissionShortOfVolunteers_doesNotSayAllOnDuty() {
+    // Both of the mission's assignees are there, so nobody is missing, but it asked for three:
+    // "All on duty" would read as a mission with the people it needs. The count still holds.
+    val short =
+        mission(
+            "m5",
+            "Gate",
+            needed = 3,
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel.copy(checkedInAt = now)),
+        )
+    show(TeamNowState.Running(listOf(short), onDuty = 2, next = emptyList()))
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withOneMissionsAttendanceUnknown_countsOnlyWhatIsKnown() {
+    // One of the two is followed, the other is not: the card counts the people it has been
+    // shown, says so for the mission it has not, and does not speak for the whole team.
+    val unknown = welcome.copy(attendanceKnown = false)
+    show(
+        TeamNowState.Running(
+            listOf(sorting, unknown),
+            onDuty = 2,
+            next = emptyList(),
+            attendanceUnknown = listOf(unknown),
+        )
+    )
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
+    compose.onNodeWithText("Attendance not known for 1 mission").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withTheNextAttendanceWaiting_saysHowManyAreExpected() {
+    // Its check-in is open, but its attendance has not arrived: who is there is not known yet,
+    // so the strip says how many are expected rather than counting the two it was given.
+    show(
+        TeamNowState.Running(
+            listOf(sorting),
+            onDuty = 4,
+            next = listOf(briefing.copy(attendanceKnown = false)),
+        )
+    )
+
+    compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
+    compose.onNodeWithText("Briefing · 2 of 3 arrived").assertDoesNotExist()
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withTheNextAttendanceFailed_saysHowManyAreExpected() {
+    // Its check-ins could not be read, which is not nobody being there either.
+    show(
+        TeamNowState.Running(
+            listOf(sorting),
+            onDuty = 4,
+            next = listOf(briefing.copy(attendanceFailed = true)),
+        )
+    )
+
+    compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun checkIn_whenTheTeamTurnsToRunning_keepsTheConfirmationForItsMoment() {
+    // The last volunteer missing is checked in, so the view model reports a team at work. The
+    // card follows it to Running without taking the confirmation from under the finger that
+    // tapped it, and lets it go when its moment is over rather than when the state changes.
+    val state: MutableState<TeamNowState> =
+        mutableStateOf(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
+    show(state)
+    compose.mainClock.autoAdvance = false
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = TeamNowState.Running(listOf(sorting), onDuty = 4, next = listOf(briefing))
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+
+    // Once the shell has finished sliding to the new state, the card is the Running card, with
+    // her row still on it: checked in, so no longer a target, over the bar of a mission at work.
+    compose.mainClock.advanceTimeBy(2_000)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+    compose.onNodeWithText("Checked in").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithText("4 at work").assertIsDisplayed()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(1)
+    compose.onNodeWithTag(TeamNowCardTestTags.NEXT).assertIsDisplayed()
+
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
+    compose.onNodeWithText("Checked in").assertDoesNotExist()
+    compose.onNodeWithText("4 at work").assertIsDisplayed()
   }
 
   @Test
