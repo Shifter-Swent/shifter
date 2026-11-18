@@ -9,6 +9,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -22,7 +23,15 @@ class PlanningScreenTest {
   private var retries = 0
 
   private fun show(state: PlanningUiState) {
-    compose.setContent { ShifterTheme { PlanningContent(state = state, onRetry = { retries++ }) } }
+    compose.setContent {
+      ShifterTheme {
+        PlanningContent(
+            state = state,
+            today = LocalDate.parse("2025-06-14"),
+            onRetry = { retries++ },
+        )
+      }
+    }
   }
 
   @Test

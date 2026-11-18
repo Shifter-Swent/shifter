@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_mutedText
+import java.time.LocalDate
 
 object PlanningScreenTestTags {
   const val LOADING = "planningLoading"
@@ -39,6 +40,7 @@ object PlanningScreenTestTags {
 @Composable
 fun PlanningContent(
     state: PlanningUiState,
+    today: LocalDate,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     expandedMissionId: String? = null,
@@ -67,6 +69,8 @@ fun PlanningContent(
         }
         Planning(
             missions = state.missions,
+            eventPeriod = state.eventPeriod,
+            today = today,
             expandedMissionId = expandedMissionId,
             onMissionClick = onMissionClick,
             revealRequest = revealRequest,

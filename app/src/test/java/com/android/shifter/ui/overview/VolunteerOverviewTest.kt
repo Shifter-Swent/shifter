@@ -28,6 +28,7 @@ import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInEligibility
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
@@ -38,6 +39,7 @@ import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.time.FakeMinuteClock
 import com.swent.shifter.ui.checkin.AutoCheckInUiState
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
+import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.planning.PlanningError
@@ -71,9 +73,8 @@ class VolunteerOverviewTest {
 
   @get:Rule val compose = createComposeRule()
 
-  /** Noon of a fixed day in the device's zone, so every mission below is today's. */
-  private val noon: Instant =
-      LocalDate.of(2027, 6, 20).atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()
+  /** Noon of [TODAY] in the device's zone, so every mission below is today's. */
+  private val noon: Instant = TODAY.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()
   private val clock = FakeMinuteClock(noon)
   private val missions = FakeMissionRepository()
   private val checkIns = FakeCheckInRepository()
@@ -96,7 +97,8 @@ class VolunteerOverviewTest {
   ) {
     // Unconfined, so the loads the ViewModels start have answered by the time the screen is read.
     Dispatchers.setMain(UnconfinedTestDispatcher())
-    val planning = PlanningViewModel(EVENT, missions, checkIns, clock) { ANN }
+    val planning =
+        PlanningViewModel(EVENT, missions, checkIns, FakeEventRepository(), clock) { ANN }
     val autoCheckIn =
         AutoCheckInViewModel(
             missions,
@@ -197,6 +199,37 @@ class VolunteerOverviewTest {
     compose.onNodeWithText("View details").performClick()
 
     description(mission.id).assertIsDisplayed()
+  }
+
+  @Test
+  fun viewDetails_whileAnotherDayIsPicked_showsTheMissionOnItsDay() {
+    val mission = annMission(Duration.ofMinutes(20), at = null, description = "Greet the runners")
+    val tomorrow = annMission(Duration.ofDays(1), title = "Tomorrow's shift")
+    show()
+    compose.onNodeWithTag(DayStripTestTags.day(TODAY.plusDays(1))).performClick()
+    compose.onNodeWithTag(PlanningTestTags.mission(tomorrow.id)).assertIsDisplayed()
+
+    compose.onNodeWithText("View details").performClick()
+
+    description(mission.id).assertIsDisplayed()
+    compose.onNodeWithTag(PlanningTestTags.mission(tomorrow.id)).assertDoesNotExist()
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun planning_leftOpenAcross0400_movesOnToTheNextDay() {
+    val tonight = annMission(Duration.ofHours(8), title = "Tonight's shift")
+    val tomorrow = annMission(Duration.ofDays(1), title = "Tomorrow's shift")
+    // 03:59 is still the event day of the evening before.
+    val nextDay = TODAY.plusDays(1)
+    clock.set(nextDay.atTime(3, 59).atZone(ZoneId.systemDefault()).toInstant())
+    show()
+    compose.onNodeWithTag(PlanningTestTags.mission(tonight.id)).assertIsDisplayed()
+
+    clock.set(nextDay.atTime(4, 0).atZone(ZoneId.systemDefault()).toInstant())
+
+    compose.onNodeWithTag(PlanningTestTags.mission(tomorrow.id)).assertIsDisplayed()
+    compose.onNodeWithTag(PlanningTestTags.mission(tonight.id)).assertDoesNotExist()
   }
 
   @Test
@@ -417,6 +450,7 @@ class VolunteerOverviewTest {
   private companion object {
     const val EVENT = "event-1"
     const val ANN = "ann"
+    val TODAY: LocalDate = LocalDate.of(2027, 6, 20)
     val DESK = MissionLocation("Welcome desk", GeoPosition(46.52, 6.57))
   }
 }

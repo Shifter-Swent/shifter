@@ -10,6 +10,7 @@ import androidx.lifecycle.testing.TestLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.checkin.CheckInEligibility
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
@@ -63,7 +64,8 @@ class VolunteerOverviewLifecycleTest {
           )
       )
     }
-    val planning = PlanningViewModel(EVENT, missions, checkIns, clock) { USER }
+    val planning =
+        PlanningViewModel(EVENT, missions, checkIns, FakeEventRepository(), clock) { USER }
     val autoCheckIn =
         AutoCheckInViewModel(
             missions,

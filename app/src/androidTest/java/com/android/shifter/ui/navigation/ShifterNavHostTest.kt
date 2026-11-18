@@ -701,7 +701,8 @@ class ShifterNavHostTest {
     openEvent(event)
 
     waitForNode(PlanningTestTags.mission(mission.id))
-    composeTestRule.onNodeWithText("Pick up the litter").assertIsDisplayed()
+    // Under the now card, the location gate and the day strip: below the fold on a small screen.
+    composeTestRule.onNodeWithText("Pick up the litter").performScrollTo().assertIsDisplayed()
   }
 
   @Test

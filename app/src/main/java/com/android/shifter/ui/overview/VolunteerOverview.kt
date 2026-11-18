@@ -31,6 +31,7 @@ import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.ui.checkin.AutoCheckInUiState
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.checkin.whyNotCheckedIn
+import com.swent.shifter.ui.components.days.eventDay
 import com.swent.shifter.ui.components.nowcard.NowCard
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.components.time.rememberNow
@@ -40,6 +41,7 @@ import com.swent.shifter.ui.planning.PlanningUiState
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
+import java.time.ZoneId
 
 object VolunteerOverviewTestTags {
   const val SCREEN = "volunteerOverview"
@@ -104,7 +106,7 @@ fun VolunteerOverview(
  * location permission gate while the location cannot be read, a notice while the automatic check-in
  * has stopped, and the Planning.
  *
- * @param now the clock's tick, for the card's countdowns.
+ * @param now the clock's tick, for the card's countdowns and the day the Planning opens on.
  * @param expandedMissionId the mission whose row in the Planning shows its details.
  * @param revealRequest a new value brings the expanded row into view again.
  * @param onMissionClick called with the id of a row of the Planning tapped.
@@ -161,6 +163,8 @@ fun VolunteerOverviewContent(
     if (checkIn.missionsUnavailable) CheckInStopped(onRetryCheckIn)
     PlanningContent(
         state = planning,
+        // Follows the clock: a Planning left open moves on to the next day at 04:00.
+        today = now.eventDay(ZoneId.systemDefault()),
         onRetry = onRetry,
         expandedMissionId = expandedMissionId,
         onMissionClick = onMissionClick,
