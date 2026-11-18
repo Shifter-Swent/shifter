@@ -464,6 +464,23 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun teamName_inATeamChannel_isTheNameOfTheTeam() = runTest {
+    assertEquals("Gate B", viewModel().uiState.value.teamName)
+  }
+
+  @Test
+  fun teamName_whenTheTeamCannotBeRead_isNull() = runTest {
+    teams.failure = TeamRepositoryException.Unavailable()
+
+    assertNull(viewModel().uiState.value.teamName)
+  }
+
+  @Test
+  fun teamName_inTheGeneralChannel_isNull() = runTest {
+    assertNull(viewModel(ChatChannelId.General(EVENT)).uiState.value.teamName)
+  }
+
+  @Test
   fun canAnnounce_whenTheTeamCannotBeRead_isFalse() = runTest {
     teams.teams[0] = team(managerId = ME)
     teams.failure = TeamRepositoryException.Unavailable()

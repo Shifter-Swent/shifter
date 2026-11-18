@@ -81,7 +81,7 @@ class VolunteerOverviewLifecycleTest {
               autoCheckIn = autoCheckIn,
               clock = clock,
               onOpenOnMap = {},
-              onOpenDiscussions = {},
+              onContact = {},
           )
         }
       }

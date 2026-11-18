@@ -61,6 +61,8 @@ data class ChatMessageItem(
  * @property asAnnouncement whether [draft] is to be sent as an announcement.
  * @property announcementRefused whether the last announcement was refused; its text is back in
  *   [draft], still as an announcement.
+ * @property teamName the name of the team, in a team's channel once its team is read; null before,
+ *   when it cannot be read, and in the event's channels.
  */
 data class TeamChatUiState(
     val messages: List<ChatMessageItem> = emptyList(),
@@ -71,6 +73,7 @@ data class TeamChatUiState(
     val canAnnounce: Boolean = false,
     val asAnnouncement: Boolean = false,
     val announcementRefused: Boolean = false,
+    val teamName: String? = null,
 ) {
   /**
    * Whether [draft] can be sent: not blank, not too long, once the channel is listed and while the
@@ -138,7 +141,7 @@ class TeamChatViewModel(
 
   init {
     load()
-    loadAnnounceRight()
+    loadTeam()
   }
 
   /** Starts listening to the channel, again after an error. */
@@ -220,7 +223,7 @@ class TeamChatViewModel(
         }
         // In a team's channel, the manager may have been replaced meanwhile: without the right any
         // more, the option goes, so the same announcement is not refused again and again.
-        if (refused) loadAnnounceRight()
+        if (refused) loadTeam()
       }
       sending = sending - message
       show()
@@ -228,27 +231,29 @@ class TeamChatViewModel(
   }
 
   /**
-   * Shows the option to the event's organizer in its general and admin channels, and in a team's
-   * channel reads whether the user manages the team, the only one who may announce there. A team
-   * that cannot be read leaves the option hidden.
+   * Shows the option to the event's organizer in its general and admin channels. In a team's
+   * channel, reads the team: its name, and whether the user manages it, the only one who may
+   * announce there. A team that cannot be read leaves the option hidden and the name unknown.
    */
-  private fun loadAnnounceRight() {
+  private fun loadTeam() {
     val team = channel as? ChatChannelId.Team
     if (team == null) {
       showAnnounceRight(asOrganizer)
       return
     }
     viewModelScope.launch {
-      val manager =
+      val read =
           try {
-            teamRepository.getTeam(team.eventId, team.teamId)?.managerId
+            teamRepository.getTeam(team.eventId, team.teamId)
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
             null
           }
       val me = currentUserId()
-      showAnnounceRight(me != null && manager == me)
+      // A name already read stays when the team cannot be read again.
+      if (read != null) _uiState.update { it.copy(teamName = read.name) }
+      showAnnounceRight(me != null && read?.managerId == me)
     }
   }
 

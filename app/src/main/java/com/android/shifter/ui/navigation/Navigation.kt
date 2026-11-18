@@ -17,6 +17,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.chat.ChatChannelId
+import com.swent.shifter.model.mission.Mission
 import kotlinx.serialization.Serializable
 
 /*
@@ -63,14 +64,15 @@ sealed interface TabSet {
 /**
  * A chat channel opened on top of the Discussions tab of either mode: the channel of the team
  * [teamId] for [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its
- * [name] is in the route, so the bar shows it without loading the team.
+ * [name] is in the route, so the bar shows it without loading the team; a team's channel opened
+ * without it, as from the now card, shows the name of the team once read.
  */
 sealed interface ChannelScreen : Destination {
   val kind: ChannelKind
   val teamId: String?
-  val name: String
+  val name: String?
   override val title: String
-    get() = name
+    get() = name.orEmpty()
 
   /** The channel this screen shows, in the event [eventId]. */
   fun channelId(eventId: String): ChatChannelId =
@@ -80,6 +82,15 @@ sealed interface ChannelScreen : Destination {
         ChannelKind.ADMIN -> ChatChannelId.Admin(eventId)
       }
 }
+
+/**
+ * The channel where a volunteer contacts the manager of [mission]: its team's, opened without a
+ * name so the bar shows the team's once read. A mission without a team is managed by the organizer,
+ * reached in the event's general channel, named [generalName].
+ */
+fun contactChannel(mission: Mission, generalName: String): VolunteerEventScreen.Channel =
+    mission.teamId?.let { VolunteerEventScreen.Channel(ChannelKind.TEAM, it, name = null) }
+        ?: VolunteerEventScreen.Channel(ChannelKind.GENERAL, null, generalName)
 
 /**
  * One event opened in Event mode. Screens inside read [eventId] from this graph's back stack entry.
@@ -267,7 +278,7 @@ sealed interface VolunteerEventScreen : Destination {
   data class Channel(
       override val kind: ChannelKind,
       override val teamId: String?,
-      override val name: String,
+      override val name: String?,
   ) : VolunteerEventScreen, ChannelScreen {
     override val tab
       get() = VolunteerTabs.Discussions
@@ -461,7 +472,7 @@ sealed interface OrganizerEventScreen : Destination {
   data class Channel(
       override val kind: ChannelKind,
       override val teamId: String?,
-      override val name: String,
+      override val name: String?,
   ) : OrganizerEventScreen, ChannelScreen {
     override val tab
       get() = OrganizerTabs.Discussions
@@ -523,6 +534,17 @@ open class NavigationActions(private val navController: NavHostController) {
       launchSingleTop = true
       restoreState = true
     }
+  }
+
+  /**
+   * Opens [channel] on top of the root of the Discussions [tab] of the mode, wherever the user is:
+   * a channel left open there is dropped, so the one asked for gets its own screen rather than
+   * reusing that channel's.
+   */
+  open fun openChannel(tab: Tab, channel: ChannelScreen) {
+    navController.clearBackStack(tab::class)
+    switchTab(tab)
+    navigateTo(channel)
   }
 
   open fun navigateTo(destination: Destination) {

@@ -11,12 +11,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavOptions
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.navOptions
+import com.swent.shifter.model.chat.ChannelKind
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -128,6 +130,19 @@ class NavigationActionsTest {
     nav.navigateTo(Volunteer.QrApply)
 
     assertTrue(optionsOf(Volunteer.QrApply).shouldLaunchSingleTop())
+  }
+
+  @Test
+  fun openChannel_dropsTheChannelLeftOpenThenOpensTheOneAsked() {
+    val channel = VolunteerEventScreen.Channel(ChannelKind.TEAM, "team", name = null)
+
+    nav.openChannel(VolunteerTabs.Discussions, channel)
+
+    verifyOrder {
+      navController.clearBackStack(VolunteerTabs.Discussions::class)
+      navController.navigate(VolunteerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
+    }
   }
 
   @Test

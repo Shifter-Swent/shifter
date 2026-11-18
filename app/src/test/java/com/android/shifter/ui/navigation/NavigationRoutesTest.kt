@@ -1,6 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import com.swent.shifter.model.chat.ChannelKind
+import com.swent.shifter.model.mission.Mission
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -103,4 +106,32 @@ class NavigationRoutesTest {
     assertSame(OrganizerTabs, organizerEvent.tabs)
     assertEquals(Organizer.Events, organizerEvent.list)
   }
+
+  @Test
+  fun contactChannel_withATeam_isItsChannelWithoutName() {
+    assertEquals(
+        VolunteerEventScreen.Channel(ChannelKind.TEAM, "team", name = null),
+        contactChannel(mission(teamId = "team"), "General"),
+    )
+  }
+
+  @Test
+  fun contactChannel_withoutTeam_isTheGeneralChannel() {
+    assertEquals(
+        VolunteerEventScreen.Channel(ChannelKind.GENERAL, null, "General"),
+        contactChannel(mission(teamId = null), "General"),
+    )
+  }
+
+  private fun mission(teamId: String?) =
+      Mission(
+          eventId = "event",
+          title = "Pick up the litter",
+          description = "",
+          teamId = teamId,
+          volunteersNeeded = 1,
+          startAt = Instant.EPOCH,
+          endAt = Instant.EPOCH,
+          createdAt = Instant.EPOCH,
+      )
 }

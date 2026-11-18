@@ -61,7 +61,7 @@ object VolunteerOverviewTestTags {
  *
  * @param clock moves the card's countdowns on each minute.
  * @param onOpenOnMap opens the Map tab on a mission that has a place.
- * @param onOpenDiscussions opens the Discussions tab, for the card's "Contact your manager".
+ * @param onContact the card's "Contact your manager" or "Tell your manager", for its mission.
  */
 @Composable
 fun VolunteerOverview(
@@ -69,7 +69,7 @@ fun VolunteerOverview(
     autoCheckIn: AutoCheckInViewModel,
     clock: MinuteClock,
     onOpenOnMap: (Mission) -> Unit,
-    onOpenDiscussions: () -> Unit,
+    onContact: (Mission) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val planningState by planning.uiState.collectAsStateWithLifecycle()
@@ -91,7 +91,7 @@ fun VolunteerOverview(
           revealRequest++
         }
       },
-      onContact = { onOpenDiscussions() },
+      onContact = onContact,
       onRefreshLocation = autoCheckIn::refreshLocation,
       onRetryCheckIn = autoCheckIn::retry,
       onRetry = planning::load,
