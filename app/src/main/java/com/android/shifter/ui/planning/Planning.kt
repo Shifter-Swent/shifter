@@ -107,7 +107,8 @@ object PlanningTestTags {
  * @param onMissionClick called with the id of a row tapped, to expand or collapse it; the rows
  *   cannot be tapped when null.
  * @param revealRequest a new value brings the expanded row into view again, even when it was
- *   already expanded, as the now card's "View details" does.
+ *   already expanded, as the now card's "View details" does; on another day than the one shown, the
+ *   Planning moves to the row's day first.
  */
 @Composable
 fun Planning(
@@ -131,13 +132,29 @@ fun Planning(
       picked?.let(LocalDate::ofEpochDay)?.takeIf { it in days }
           ?: days.firstOrNull()?.let { today.coerceIn(it, days.last()) }
   val showsStrip = missions.isNotEmpty() && days.size > 1
+  // The row asked by revealRequest while on another day: shown on its day, then brought into view.
+  // Not saved: after a rotation, nothing is asked again.
+  var revealOnShow by remember { mutableStateOf<String?>(null) }
+  val handledRequest = remember { mutableIntStateOf(revealRequest) }
+  LaunchedEffect(revealRequest) {
+    if (revealRequest == handledRequest.intValue) return@LaunchedEffect
+    handledRequest.intValue = revealRequest
+    val day = byDay.entries.firstOrNull { (_, ms) -> ms.any { it.id == expandedMissionId } }?.key
+    if (day != null && day != selected) {
+      picked = if (day == today) null else day.toEpochDay()
+      revealOnShow = expandedMissionId
+    }
+  }
   Column(
       modifier = modifier.fillMaxWidth().testTag(PlanningTestTags.PLANNING),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Header(
         awayFromToday = showsStrip && today in days && selected != today,
-        onBackToToday = { picked = null },
+        onBackToToday = {
+          picked = null
+          revealOnShow = null
+        },
     )
     if (missions.isEmpty() || selected == null) {
       Text(
@@ -154,7 +171,10 @@ fun Planning(
           daysWithMissions = byDay.keys,
           selected = selected,
           today = today,
-          onSelect = { picked = it.toEpochDay() },
+          onSelect = {
+            picked = it.toEpochDay()
+            revealOnShow = null
+          },
       )
     }
     val shown = byDay[selected].orEmpty()
@@ -169,6 +189,7 @@ fun Planning(
             expanded = it.id == expandedMissionId,
             onClick = onMissionClick,
             revealRequest = revealRequest,
+            revealOnShow = it.id == revealOnShow,
         )
       }
     }
@@ -235,11 +256,13 @@ private fun PlanningMissionRow(
     expanded: Boolean,
     onClick: ((String) -> Unit)?,
     revealRequest: Int,
+    revealOnShow: Boolean,
 ) {
   val bringIntoView = remember { BringIntoViewRequester() }
   // Shown whole once expanded, or asked again while expanded. A row already expanded when it is
-  // first shown, as when the page comes back, leaves the page where it was.
-  val wasExpanded = remember { mutableStateOf(expanded) }
+  // first shown, as when the page comes back, leaves the page where it was, unless it is shown
+  // because it was asked for ([revealOnShow]).
+  val wasExpanded = remember { mutableStateOf(expanded && !revealOnShow) }
   val lastRequest = remember { mutableIntStateOf(revealRequest) }
   LaunchedEffect(expanded, revealRequest) {
     val asked = !wasExpanded.value || revealRequest != lastRequest.intValue
