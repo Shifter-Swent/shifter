@@ -45,8 +45,17 @@ private fun mission(
         attendanceKnown = true,
     )
 
-private val SORTING = mission("m1", "Food sorting", "Logistics")
-private val WELCOME = mission("m2", "Welcome desk", "Front")
+/**
+ * The three volunteers already at work on both missions: each asks for three, so neither is short
+ * of people, which is what lets the card say the team is all on duty.
+ */
+private val AT_WORK =
+    listOf("Inès Roux", "Tom Keller", "Ava Blanc").mapIndexed { i, name ->
+      AttendanceVolunteer("p${i + 1}", name, checkedInAt = NOW)
+    }
+
+private val SORTING = mission("m1", "Food sorting", "Logistics", assignees = AT_WORK)
+private val WELCOME = mission("m2", "Welcome desk", "Front", assignees = AT_WORK)
 
 private val CHLOE = AttendanceVolunteer("u1", "Chloé Dubois")
 private val NOAH = AttendanceVolunteer("u2", "Noah Favre")
@@ -60,6 +69,10 @@ private val BRIEFING =
         startAt = NOW + Duration.ofMinutes(10),
         assignees = listOf(CHLOE.copy(checkedInAt = NOW), NOAH.copy(checkedInAt = NOW)),
     )
+
+/** [this] with [volunteer] checked in, as the state reports them once the manager has. */
+private fun AttendanceMission.with(volunteer: AttendanceVolunteer) =
+    copy(assignees = assignees + volunteer.copy(checkedInAt = NOW))
 
 /**
  * The card at the width it has on the Overview, on the screen's own background.
@@ -98,7 +111,7 @@ private fun TeamNowCardMissingPreview() {
 @Composable
 private fun TeamNowCardRunningPreview() {
   CardFrame(
-      state = TeamNowState.Running(listOf(SORTING, WELCOME), onDuty = 4, next = listOf(BRIEFING)),
+      state = TeamNowState.Running(listOf(SORTING, WELCOME), onDuty = 3, next = listOf(BRIEFING)),
       onCheckIn = { _, _ -> },
   )
 }
@@ -135,7 +148,11 @@ private fun TeamNowCardCheckInPreview() {
           val onDuty = missing.onDuty + 1
           state =
               if (left.isEmpty()) {
-                TeamNowState.Running(listOf(SORTING, WELCOME), onDuty, next = listOf(BRIEFING))
+                TeamNowState.Running(
+                    listOf(SORTING.with(CHLOE), WELCOME.with(NOAH)),
+                    onDuty,
+                    next = listOf(BRIEFING),
+                )
               } else {
                 missing.copy(missing = left, onDuty = onDuty)
               }

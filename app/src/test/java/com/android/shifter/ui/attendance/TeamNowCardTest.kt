@@ -482,13 +482,19 @@ class TeamNowCardTest {
   @Test
   fun running_showsHowManyAreAtWorkAndABarPerMission() {
     var opened = false
+    // Both missions have the two volunteers they need, so the team is all on duty.
+    val present = listOf(chloe.copy(checkedInAt = now), daniel.copy(checkedInAt = now))
     show(
-        TeamNowState.Running(listOf(sorting, welcome), onDuty = 4, next = emptyList()),
+        TeamNowState.Running(
+            listOf(sorting.copy(assignees = present), welcome.copy(assignees = present)),
+            onDuty = 2,
+            next = emptyList(),
+        ),
         onViewOnMap = { opened = true },
     )
 
     compose.onNodeWithText("All on duty").assertIsDisplayed()
-    compose.onNodeWithText("4 at work").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
     compose.onAllNodesWithTag(TeamNowCardTestTags.TIME_BAR).assertCountEquals(2)
     compose.onNodeWithText("Food sorting").assertIsDisplayed()
     compose.onNodeWithText("Welcome desk").assertIsDisplayed()
@@ -542,6 +548,89 @@ class TeamNowCardTest {
     compose.onNodeWithText("0 at work").assertDoesNotExist()
     // Nor is the team all on duty: nobody has been seen, which is not everybody being there.
     compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withNobodyAssigned_doesNotReportATeamAtWork() {
+    // Nobody is assigned to the mission, and its attendance is known: there is nobody to be
+    // missing, so the team is Running with nobody on duty. "All on duty" would speak for a team
+    // that is not there, and "0 at work" would read as one that has not come.
+    show(TeamNowState.Running(listOf(sorting), onDuty = 0, next = emptyList()))
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("1 mission running").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+    compose.onNodeWithText("0 at work").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withAMissionShortOfVolunteers_doesNotSayAllOnDuty() {
+    // Both of the mission's assignees are there, so nobody is missing, but it asked for three:
+    // "All on duty" would read as a mission with the people it needs. The count still holds.
+    val short =
+        mission(
+            "m5",
+            "Gate",
+            needed = 3,
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel.copy(checkedInAt = now)),
+        )
+    show(TeamNowState.Running(listOf(short), onDuty = 2, next = emptyList()))
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withOneMissionsAttendanceUnknown_countsOnlyWhatIsKnown() {
+    // One of the two is followed, the other is not: the card counts the people it has been
+    // shown, says so for the mission it has not, and does not speak for the whole team.
+    val unknown = welcome.copy(attendanceKnown = false)
+    show(
+        TeamNowState.Running(
+            listOf(sorting, unknown),
+            onDuty = 2,
+            next = emptyList(),
+            attendanceUnknown = listOf(unknown),
+        )
+    )
+
+    compose.onNodeWithText("Now").assertIsDisplayed()
+    compose.onNodeWithText("2 at work").assertIsDisplayed()
+    compose.onNodeWithText("Attendance not known for 1 mission").assertIsDisplayed()
+    compose.onNodeWithText("All on duty").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withTheNextAttendanceWaiting_saysHowManyAreExpected() {
+    // Its check-in is open, but its attendance has not arrived: who is there is not known yet,
+    // so the strip says how many are expected rather than counting the two it was given.
+    show(
+        TeamNowState.Running(
+            listOf(sorting),
+            onDuty = 4,
+            next = listOf(briefing.copy(attendanceKnown = false)),
+        )
+    )
+
+    compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
+    compose.onNodeWithText("Briefing · 2 of 3 arrived").assertDoesNotExist()
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun running_withTheNextAttendanceFailed_saysHowManyAreExpected() {
+    // Its check-ins could not be read, which is not nobody being there either.
+    show(
+        TeamNowState.Running(
+            listOf(sorting),
+            onDuty = 4,
+            next = listOf(briefing.copy(attendanceFailed = true)),
+        )
+    )
+
+    compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
   }
 
   @Test

@@ -143,7 +143,7 @@ fun TeamNowCard(
       missing.map { TeamNowRow(it, justCheckedIn = false) } +
           left.map { TeamNowRow(it, justCheckedIn = true) }
 
-  val shown = body(state, rows, now) ?: return
+  val shown = teamNowCardBody(state, rows, now) ?: return
   NowCardContainer(
       tone = shown.tone,
       status = shown.status,
@@ -195,7 +195,11 @@ fun TeamNowCard(
  * rather than invent their wording. [rows] are the volunteers it draws, missing or just checked in.
  */
 @Composable
-private fun body(state: TeamNowState, rows: List<TeamNowRow>, now: Instant): TeamNowCardBody? =
+private fun teamNowCardBody(
+    state: TeamNowState,
+    rows: List<TeamNowRow>,
+    now: Instant,
+): TeamNowCardBody? =
     when (state) {
       is TeamNowState.Missing -> {
         // "N volunteers missing" counts people, not rows: one volunteer missing from two missions
@@ -226,36 +230,45 @@ private fun body(state: TeamNowState, rows: List<TeamNowRow>, now: Instant): Tea
             now = now,
         )
       }
-      is TeamNowState.Running ->
-          TeamNowCardBody(
-              tone = NowTone.LIVE,
-              status =
-                  stringResource(
-                      // Not "all on duty" while a mission's attendance is unknown: that would
-                      // speak for people who have not been seen.
-                      if (state.attendanceUnknown.isEmpty()) R.string.attendance_now_all_on_duty
-                      else R.string.now_card_now
-                  ),
-              headline =
-                  // "0 at work" is either nobody checked in or an attendance nobody has read yet,
-                  // as on the first load: while not one mission is followed, they are counted
-                  // instead, rather than an empty team reported.
-                  if (state.attendanceUnknown.size < state.ongoing.size) {
-                    stringResource(R.string.attendance_now_at_work, state.onDuty)
-                  } else {
-                    val running = state.ongoing.size
-                    pluralStringResource(R.plurals.attendance_now_running, running, running)
-                  },
-              // Only those just checked in: this state reports nobody missing.
-              rows = rows,
-              missions = state.ongoing,
-              // The headline counts everyone at work, a green row's volunteer included, so there
-              // are no others to count beside them.
-              others = 0,
-              attendanceUnknown = state.attendanceUnknown,
-              next = state.next.firstOrNull(),
-              now = now,
-          )
+      is TeamNowState.Running -> {
+        // "All on duty" speaks for everyone the missions ask for, so it is only said when every
+        // ongoing mission's attendance is known, somebody is on duty, and no mission is short of
+        // the volunteers it needs: all of its assignees can be there and still leave it short,
+        // which the mission list flags as understaffed. Otherwise the card keeps the plain "Now".
+        val allOnDuty =
+            state.attendanceUnknown.isEmpty() &&
+                state.onDuty > 0 &&
+                state.ongoing.none { it.isUnderstaffed }
+        TeamNowCardBody(
+            tone = NowTone.LIVE,
+            status =
+                stringResource(
+                    if (allOnDuty) R.string.attendance_now_all_on_duty else R.string.now_card_now
+                ),
+            headline =
+                // Nobody is counted at work without having been seen there: a mission whose
+                // attendance nobody has read yet, as on the first load, and one nobody is
+                // assigned to both report nobody, so the missions are counted instead of "0 at
+                // work" reading as a team that has not come.
+                if (state.onDuty > 0) {
+                  stringResource(R.string.attendance_now_at_work, state.onDuty)
+                } else {
+                  val running = state.ongoing.size
+                  pluralStringResource(R.plurals.attendance_now_running, running, running)
+                },
+            // Only those just checked in: this state reports nobody missing.
+            rows = rows,
+            missions = state.ongoing,
+            // The headline counts everyone at work, a green row's volunteer included, so there
+            // are no others to count beside them.
+            others = 0,
+            attendanceUnknown = state.attendanceUnknown,
+            // Only the first upcoming mission is shown when several start at the same time.
+            // The card intentionally uses a single ThenStrip.
+            next = state.next.firstOrNull(),
+            now = now,
+        )
+      }
       else -> null
     }
 
