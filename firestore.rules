@@ -180,6 +180,10 @@ service cloud.firestore {
           // A volunteer applies to exactly one team, which must belong to the event.
           && request.resource.data.teamId is string
           && exists(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
+          // Nor to a team being deleted (#398): an application sent after the deletion read the
+          // pending ones would outlive the team.
+          && get(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
+               .data.get('deleting', false) != true
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
           && request.resource.data.createdAt is timestamp;

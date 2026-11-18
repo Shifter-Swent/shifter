@@ -102,7 +102,10 @@ interface TeamRepository {
    * halfway, it either fails the same way at its next read, or waits for the connection to come
    * back while a write is queued: a caller that wants a time limit sets its own.
    *
-   * Throws [TeamRepositoryException.PermissionDenied] when the user is not the event's organizer.
+   * Throws [TeamRepositoryException.PermissionDenied] when the user is not the event's organizer,
+   * and also when an application to the team is accepted or rejected, e.g. from another device,
+   * while the deletion runs: the last write then fails whole. Unlike the first case, trying again
+   * completes the deletion, as that application is no longer pending.
    */
   suspend fun deleteTeam(eventId: String, teamId: String)
 }

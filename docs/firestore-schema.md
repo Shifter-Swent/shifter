@@ -123,8 +123,8 @@ Belonging to a team (`memberIds`) is not the same as working a given slot (`Shif
 holds at most 500 writes, so it takes several commits, in an order that lets a deletion interrupted
 halfway be completed by calling it again:
 
-1. The team is marked `deleting: true`. From then on nobody sends a message to its channel or adds
-   a mission to it, and the organizer may delete its messages.
+1. The team is marked `deleting: true`. From then on nobody sends a message to its channel, adds
+   a mission to it or applies to it, and the organizer may delete its messages.
 2. Each of its missions, in one commit with its check-ins: the rules only let a check-in go with
    its mission.
 3. Its messages.
@@ -143,10 +143,10 @@ their `ACCEPTED` requests and `eventParticipants` are left as they are, and they
 does nothing. A deletion interrupted after step 1 leaves the team `deleting`, its chat closed, until
 it is tried again.
 
-What it leaves behind: an application sent, or a check-in recorded, between the moment it reads them
-and the commit that deletes them, and the position of a former member who left the team outside the
-repositories without deleting it. The first two are a window of a few round trips, in which someone
-has to act, unlike a position, which a member's app sends on its own.
+What it leaves behind: a check-in recorded between the moment it reads a mission's check-ins and the
+commit that deletes them, and the position of a former member who left the team outside the
+repositories without deleting it. The first is a window of a few round trips, in which someone has
+to act, unlike a position, which a member's app sends on its own.
 The final batch holds two writes plus one per member and one per pending application, so a team
 with more than 498 members and pending applications together can never be deleted: no event of the
 app comes near it. Shifts of the
@@ -375,7 +375,7 @@ every access to it is denied.
 | `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
 | `events/{eventId}` | `get`: any signed-in user, by id. `list`: the organizer, for their own events only, so nobody collects every event and its join code | Create with yourself as `organizerId`. Update and delete by the organizer only, never changing `joinCode` |
 | `joinCodes/{code}` | Any signed-in user, one document at a time (`get`): listing is denied | Create only, by the organizer of `eventId`, with only `eventId`, when the event has this `joinCode` after the same commit. Never updated, so a code is never taken over. Delete by the event's organizer |
-| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event, while the event has not ended. Only the organizer updates it. Either only `status`: `ACCEPTED`, only before the event's `endAt`, needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. Delete by the volunteer when they withdraw (see below), or by the organizer for a `PENDING` request, in the commit that deletes its team |
+| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event and is not `deleting`, while the event has not ended. Only the organizer updates it. Either only `status`: `ACCEPTED`, only before the event's `endAt`, needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. Delete by the volunteer when they withdraw (see below), or by the organizer for a `PENDING` request, in the commit that deletes its team |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, with valid fields (see below), never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist. `deleting` is one of its fields (see below), so the organizer sets it like any other |
 | `shifts` | The organizer and the event's participants | The organizer only, with valid fields (see below). Nothing is allowed under an event that does not exist |

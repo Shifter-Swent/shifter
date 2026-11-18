@@ -18,6 +18,7 @@ import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.membership.toFirestoreMap
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -269,6 +270,20 @@ class TeamDeletionTest {
         assertDenied { general.update("teamId", TEAM_ID).await() }
       }
 
+  /** An application sent once the team's pending applications were read would outlive the team. */
+  @Test
+  fun application_toATeamBeingDeleted_isRefused() =
+      emulatorTest(TEST_TIMEOUT_MILLIS) {
+        val late = account()
+        signIn(organizer)
+        teamRef(TEAM_ID).update(TeamSchema.DELETING, true).await()
+
+        // Written directly, as the repository turns the denial into its own error.
+        signIn(late)
+        paths += requestRef(late).path
+        assertDenied { requestRef(late).set(applicationOf(late)).await() }
+      }
+
   /** #426: the admin channel lets in whoever the index lists, so the deletion shuts them out. */
   @Test
   fun deleteTeam_shutsItsManagerOutOfTheAdminChannelAtOnce() =
@@ -416,6 +431,17 @@ class TeamDeletionTest {
     signIn(organizer)
     step("accept") { requests.accept(eventId, user.uid) }
   }
+
+  /** The pending application of [user] to [teamId], as the repository writes it. */
+  private fun applicationOf(user: Account, teamId: String = TEAM_ID): Map<String, Any?> =
+      MembershipRequest(
+              userId = user.uid,
+              teamId = teamId,
+              availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(60))),
+              status = MembershipRequestStatus.PENDING,
+              createdAt = Instant.EPOCH,
+          )
+          .toFirestoreMap()
 
   /** [user] applies to [teamId], and stays pending. */
   private suspend fun apply(user: Account, teamId: String = TEAM_ID) {

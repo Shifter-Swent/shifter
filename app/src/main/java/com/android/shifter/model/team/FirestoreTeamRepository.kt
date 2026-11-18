@@ -194,7 +194,8 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    * Several commits, since a batch holds at most [MAX_BATCH_WRITES] writes, ordered so that an
    * interrupted deletion is completed by calling it again:
    * 1. The team is marked [TeamSchema.DELETING], which the rules require to delete its messages,
-   *    and which stops new messages and new missions, so none arrives after they were read.
+   *    and which stops new messages, missions and applications, so none arrives after they were
+   *    read.
    * 2. Its missions, each in one commit with its check-ins, which the rules only let go with it.
    * 3. Its chat messages.
    * 4. The team itself last, in one batch with its manager's index entry, the positions its members
@@ -205,13 +206,12 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    * Everything is read from the server: offline, the cache could miss documents, which would be
    * left behind once the team is gone.
    *
-   * Pending applications sent after they were read, and check-ins recorded after a mission's were
-   * read, are left behind: the window lasts a few round trips and needs someone to act in it,
-   * unlike a member's app, which republishes its position on its own. The final batch holds one
-   * write per member and per pending application, plus two, so a team with more than 498 of them
-   * together cannot be deleted. The same for a position of a former member, who left the team
-   * outside these repositories without deleting it: positions are deleted by the uids of the
-   * members, since the rules only let the organizer list them during the event.
+   * Check-ins recorded after a mission's were read are left behind: the window lasts a few round
+   * trips and needs someone to act in it, unlike a member's app, which republishes its position on
+   * its own. The final batch holds one write per member and per pending application, plus two, so a
+   * team with more than 498 of them together cannot be deleted. The same for a position of a former
+   * member, who left the team outside these repositories without deleting it: positions are deleted
+   * by the uids of the members, since the rules only let the organizer list them during the event.
    */
   override suspend fun deleteTeam(eventId: String, teamId: String) {
     val document = teamDocument(eventId, teamId)
