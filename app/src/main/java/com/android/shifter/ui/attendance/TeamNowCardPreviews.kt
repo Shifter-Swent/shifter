@@ -26,16 +26,22 @@ import java.time.ZoneOffset
 private val START = Instant.parse("2027-06-20T14:00:00Z")
 private val NOW = START + Duration.ofMinutes(10)
 
-private fun mission(id: String, title: String, team: String) =
+private fun mission(
+    id: String,
+    title: String,
+    team: String,
+    startAt: Instant = START,
+    assignees: List<AttendanceVolunteer> = emptyList(),
+) =
     AttendanceMission(
         id = id,
         title = title,
         teamId = team.lowercase(),
         teamName = team,
         volunteersNeeded = 3,
-        startAt = START,
-        endAt = START + Duration.ofMinutes(90),
-        assignees = emptyList(),
+        startAt = startAt,
+        endAt = startAt + Duration.ofMinutes(90),
+        assignees = assignees,
         attendanceKnown = true,
     )
 
@@ -45,6 +51,16 @@ private val WELCOME = mission("m2", "Welcome desk", "Front")
 private val CHLOE = AttendanceVolunteer("u1", "Chloé Dubois")
 private val NOAH = AttendanceVolunteer("u2", "Noah Favre")
 
+/** What comes after them, its check-in open: two of the three it needs are there already. */
+private val BRIEFING =
+    mission(
+        "m3",
+        "Briefing",
+        "Front",
+        startAt = NOW + Duration.ofMinutes(10),
+        assignees = listOf(CHLOE.copy(checkedInAt = NOW), NOAH.copy(checkedInAt = NOW)),
+    )
+
 /**
  * The card at the width it has on the Overview, on the screen's own background.
  *
@@ -53,7 +69,7 @@ private val NOAH = AttendanceVolunteer("u2", "Noah Favre")
  * argument.
  */
 @Composable
-private fun CardFrame(state: TeamNowState.Missing, onCheckIn: (String, String) -> Unit) {
+private fun CardFrame(state: TeamNowState, onCheckIn: (String, String) -> Unit) {
   ShifterTheme {
     Box(Modifier.background(MaterialTheme.colorScheme.background).padding(16.dp).width(358.dp)) {
       TeamNowCard(
@@ -77,20 +93,30 @@ private fun TeamNowCardMissingPreview() {
   )
 }
 
+/** The team at work: two missions running, and the next one a volunteer short. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 560)
+@Composable
+private fun TeamNowCardRunningPreview() {
+  CardFrame(
+      state = TeamNowState.Running(listOf(SORTING, WELCOME), onDuty = 4, next = listOf(BRIEFING)),
+      onCheckIn = { _, _ -> },
+  )
+}
+
 /**
  * The same card to play with in the IDE's interactive preview: tapping a row checks that volunteer
  * in, as the manager would.
  *
  * The state answers the way `AttendanceViewModel` does, so what the tap shows is what the app
  * shows: the volunteer stops being reported missing and is counted on duty at once, while the card
- * keeps their row a moment in green. Checking both in leaves "0 volunteers missing", since the
- * state the team moves to then, Running, is not drawn yet.
+ * keeps their row a moment in green. Checking both in leaves nobody missing, so the team is at work
+ * and the card moves to Running, carrying the green row into it.
  */
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, widthDp = 390, heightDp = 760)
 @Composable
 private fun TeamNowCardCheckInPreview() {
   var state by remember {
-    mutableStateOf(
+    mutableStateOf<TeamNowState>(
         TeamNowState.Missing(
             listOf(MissingAssignee(SORTING, CHLOE), MissingAssignee(WELCOME, NOAH)),
             onDuty = 3,
@@ -101,14 +127,19 @@ private fun TeamNowCardCheckInPreview() {
       state = state,
       // Named, not a trailing lambda: what the card calls on a tap is spelled out here.
       onCheckIn = { missionId, userId ->
-        state =
-            state.copy(
-                missing =
-                    state.missing.filterNot {
-                      it.mission.id == missionId && it.volunteer.userId == userId
-                    },
-                onDuty = state.onDuty + 1,
-            )
+        (state as? TeamNowState.Missing)?.let { missing ->
+          val left =
+              missing.missing.filterNot {
+                it.mission.id == missionId && it.volunteer.userId == userId
+              }
+          val onDuty = missing.onDuty + 1
+          state =
+              if (left.isEmpty()) {
+                TeamNowState.Running(listOf(SORTING, WELCOME), onDuty, next = listOf(BRIEFING))
+              } else {
+                missing.copy(missing = left, onDuty = onDuty)
+              }
+        }
       },
   )
 }

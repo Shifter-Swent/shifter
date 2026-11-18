@@ -81,4 +81,24 @@
         <item quantity="other">Attendance not known for %1$d missions</item>
     </plurals>
     <string name="attendance_now_view_on_map">View team on map</string>
+    <!-- The card with nobody missing: the team is at work, and another mission is coming. -->
+    <string name="attendance_now_all_on_duty">All on duty</string>
+    <string name="attendance_now_at_work">%1$d at work</string>
+    <!-- Said instead while no mission's attendance is followed: "0 at work" would read as an
+         empty team. -->
+    <plurals name="attendance_now_running">
+        <item quantity="one">%1$d mission running</item>
+        <item quantity="other">%1$d missions running</item>
+    </plurals>
+    <!-- The next mission, at the foot of the card, beside its title: who is there of those it
+         needs, and how many are expected when its check-in cannot have been used yet. -->
+    <string name="attendance_now_arrived">%1$d of %2$d arrived</string>
+    <plurals name="attendance_now_expected">
+        <item quantity="one">%1$d volunteer expected</item>
+        <item quantity="other">%1$d volunteers expected</item>
+    </plurals>
+    <plurals name="attendance_now_short_of">
+        <item quantity="one">Short of %1$d volunteer</item>
+        <item quantity="other">Short of %1$d volunteers</item>
+    </plurals>
 </resources>
