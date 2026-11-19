@@ -216,7 +216,14 @@ internal fun ScanCamera(
       // first, so in landscape the frame shrinks to the height left above it.
       Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.weight(1f))
-        ScanViewfinder(state = viewfinder, refusals = refusals)
+        ScanViewfinder(
+            state = viewfinder,
+            refusals = refusals,
+            // The sheet says what became of the code, so the text under the frame only says it
+            // was read: a code no event uses keeps the amber corners, but isn't called another
+            // kind of QR code.
+            hint = if (result == null) viewfinder else ViewfinderState.FOUND,
+        )
         Spacer(Modifier.weight(2f))
       }
       Button(

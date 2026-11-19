@@ -143,7 +143,9 @@ class ScanResultSheetTest {
     text(NO_EVENT).assertIsDisplayed()
     text(UNKNOWN_CODE_HELP).assertIsDisplayed()
     tag(ScanScreenTestTags.RETRY).assertIsDisplayed()
-    tag(ScanScreenTestTags.INVALID_CODE).assertIsDisplayed()
+    // The code is a join code, so it isn't called another kind of QR code: it was read.
+    tag(ScanScreenTestTags.HINT).assertTextEquals(CODE_READ)
+    tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
   }
 
   @Test

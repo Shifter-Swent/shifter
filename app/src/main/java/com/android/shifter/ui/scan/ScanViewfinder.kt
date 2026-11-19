@@ -93,9 +93,15 @@ enum class ViewfinderState {
  * the viewfinder a bounded height so the views under it stay on screen.
  *
  * @param refusals how many codes were refused so far: each new one shakes the corners again.
+ * @param hint the state the text under the frame tells, the [state] of the corners by default.
  */
 @Composable
-fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusals: Int = 0) {
+fun ScanViewfinder(
+    state: ViewfinderState,
+    modifier: Modifier = Modifier,
+    refusals: Int = 0,
+    hint: ViewfinderState = state,
+) {
   val animate = rememberAnimationsEnabled()
   val primary = MaterialTheme.colorScheme.primary
   val cornerColor =
@@ -193,7 +199,7 @@ fun ScanViewfinder(state: ViewfinderState, modifier: Modifier = Modifier, refusa
             }
     )
     Spacer(Modifier.height(24.dp))
-    ViewfinderHint(state, animate)
+    ViewfinderHint(hint, animate)
   }
 }
 
