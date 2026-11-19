@@ -320,6 +320,21 @@ class PlanningTest {
   }
 
   @Test
+  fun aOneDayEvent_onAnotherDay_datesItsMissions() {
+    // The day before, with no strip to say the mission is not today.
+    show(weekend.take(1), eventPeriod = at("08:00")..at("22:00"), today = FRIDAY)
+
+    compose.onNodeWithText("14 Jun, 08:00–09:00").assertIsDisplayed()
+  }
+
+  @Test
+  fun aOneDayEvent_onItsDay_leavesTheDateOut() {
+    show(weekend.take(1), eventPeriod = at("08:00")..at("22:00"))
+
+    compose.onNodeWithText("08:00–09:00").assertIsDisplayed()
+  }
+
+  @Test
   fun withoutMissions_hasNoStrip() {
     show(emptyList(), festival)
 

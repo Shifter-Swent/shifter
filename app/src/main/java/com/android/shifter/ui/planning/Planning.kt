@@ -60,6 +60,7 @@ import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.eventDays
 import com.swent.shifter.ui.components.days.groupByDay
 import com.swent.shifter.ui.components.days.rememberDaySelection
+import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatDayOfWeek
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -110,7 +111,7 @@ object PlanningTestTags {
  *
  * A strip offers every day of the event, and opens on [today] (the first day before the event, the
  * last one after it); swiping the missions sideways moves to the next or previous day. An event of
- * one day shows its missions without the strip.
+ * one day shows its missions without the strip, dated when they are not today.
  *
  * The rows are a plain column rather than a lazy list: the Planning is one section of a scrolling
  * page, and a user has a handful of missions per day.
@@ -214,7 +215,10 @@ fun Planning(
           key(it.id) {
             PlanningMissionRow(
                 it,
-                day = day,
+                // Without a strip nothing says which day is shown: the rows of any other day
+                // than today then name it, as in the manager Overview.
+                day = if (showsStrip) day else today,
+                datesOtherDays = !showsStrip,
                 zone = zone,
                 expanded = it.id == expandedMissionId,
                 onClick = onMissionClick,
@@ -307,13 +311,15 @@ private fun Header(awayFromToday: Boolean, onBackToToday: () -> Unit) {
 }
 
 /**
- * One mission of [day]. A mission starting after midnight, which still belongs to the evening
- * before, names its calendar day: "Sun 02:00–04:00".
+ * One mission, whose hours leave out [day]. A mission starting on another calendar day names it: a
+ * night shift after midnight, still shown with the evening before, by its weekday ("Sun
+ * 02:00–04:00"); with [datesOtherDays], by its date ("14 Jun, 08:00–09:00").
  */
 @Composable
 private fun PlanningMissionRow(
     mission: PlanningMission,
     day: LocalDate,
+    datesOtherDays: Boolean,
     zone: ZoneId,
     expanded: Boolean,
     onClick: ((String) -> Unit)?,
@@ -375,6 +381,13 @@ private fun PlanningMissionRow(
                 if (startDay == day) {
                   stringResource(
                       R.string.planning_hours,
+                      mission.startAt.formatTime(zone),
+                      mission.endAt.formatTime(zone),
+                  )
+                } else if (datesOtherDays) {
+                  stringResource(
+                      R.string.planning_hours_on_date,
+                      startDay.formatDay(),
                       mission.startAt.formatTime(zone),
                       mission.endAt.formatTime(zone),
                   )
