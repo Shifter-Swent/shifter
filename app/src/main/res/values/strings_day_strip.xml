@@ -7,4 +7,8 @@
     <string name="day_strip_today_description">Today, %1$s</string>
     <!-- Read out for a day of the strip, e.g. "Monday 16 June, no missions" -->
     <string name="day_strip_no_missions">%1$s, no missions</string>
+    <!-- In a title's row while another day than today is shown -->
+    <string name="day_strip_back_to_today">Back to today</string>
+    <!-- A day of the event without missions, e.g. "Nothing planned on Monday 16 June" -->
+    <string name="day_strip_nothing_planned">Nothing planned on %1$s</string>
 </resources>
