@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
@@ -36,6 +37,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import com.swent.shifter.R
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
@@ -345,6 +347,7 @@ private fun ShifterNavGraph(
                     )
                 // Shows the missions a manager added or changed while the form was on top.
                 RefreshOnReturn(viewModel::refresh)
+                val generalChannel = stringResource(R.string.chat_channel_general)
                 EventOverviewScreen(
                     viewModel = viewModel,
                     clock = repositories.minuteClock,
@@ -387,7 +390,15 @@ private fun ShifterNavGraph(
                                 .savedStateHandle[OPEN_MISSION_KEY] = mission.id
                             nav.switchTab(VolunteerTabs.Map)
                           },
-                          onOpenDiscussions = { nav.switchTab(VolunteerTabs.Discussions) },
+                          onContact = { mission ->
+                            // As for the pencil, a second tap before the channel opens is ignored.
+                            if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
+                              nav.openChannel(
+                                  VolunteerTabs.Discussions,
+                                  contactChannel(mission, generalChannel),
+                              )
+                            }
+                          },
                       )
                     },
                 )
@@ -789,7 +800,7 @@ private inline fun <
     navController: NavHostController,
     repositories: RepositoryProvider,
     noinline currentUserId: () -> String?,
-    noinline channel: (kind: ChannelKind, teamId: String?, name: String) -> C,
+    noinline channel: (kind: ChannelKind, teamId: String?, name: String?) -> C,
 ) {
   tab<T, S, E>(
       tab,
@@ -815,20 +826,24 @@ private inline fun <
     composable<C> { entry ->
       val eventId = eventRoute<E>(navController, entry).eventId
       val route = remember(entry) { entry.toRoute<C>() }
-      Scaffold(topBar = { ShifterTopBar(route.title, onBack = nav::goBack) }) { padding ->
+      val chat: TeamChatViewModel =
+          viewModel(
+              factory =
+                  TeamChatViewModel.factory(
+                      route.channelId(eventId),
+                      asOrganizer,
+                      repositories.chatRepository,
+                      repositories.userRepository,
+                      repositories.teamRepository,
+                      currentUserId,
+                  )
+          )
+      // A team's channel opened without its name shows the team's once read.
+      val chatState by chat.uiState.collectAsState()
+      val title = route.name ?: chatState.teamName ?: stringResource(R.string.chat_channel_team)
+      Scaffold(topBar = { ShifterTopBar(title, onBack = nav::goBack) }) { padding ->
         TeamChatScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        TeamChatViewModel.factory(
-                            route.channelId(eventId),
-                            asOrganizer,
-                            repositories.chatRepository,
-                            repositories.userRepository,
-                            repositories.teamRepository,
-                            currentUserId,
-                        )
-                ),
+            viewModel = chat,
             // The bar's height is already taken, so the field only rises by the keyboard's.
             modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         )

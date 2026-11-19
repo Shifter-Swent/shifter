@@ -750,6 +750,68 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun tellYourManager_afterTheGeneralChannelWasLeftOpen_opensTheChannelOfTheTeam() {
+    // Near the start of an event day (DAY_STARTS_AT_HOUR), the mission falls on the day before.
+    assumeFalse(LocalTime.now() in LocalTime.of(4, 0)..LocalTime.of(4, 30))
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount, running = true)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    // Started without the volunteer checked in, so the card tells them to warn their manager.
+    val startAt = Instant.now().minus(Duration.ofMinutes(10))
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Pick up the litter",
+              description = "",
+              teamId = teamIds.getValue(event.id),
+              volunteersNeeded = 1,
+              startAt = startAt,
+              endAt = startAt.plus(Duration.ofHours(1)),
+              assigneeIds = listOf(volunteer.uid),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    signIn(volunteerAccount)
+    val nav = NavigationActions(showSignedInApp())
+    openEvent(event)
+    // The general channel is left open in Discussions, as it was when the bug sent messages there.
+    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+    waitForNode(ChatChannelsTestTags.GENERAL)
+    composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).performClick()
+    waitForNode(TeamChatTestTags.INPUT)
+    // A channel has no tab bar: the Overview is opened by the navigation, keeping the channel
+    // saved.
+    composeTestRule.runOnUiThread { nav.switchTab(VolunteerTabs.Overview) }
+    waitForNode(NowCardTestTags.ACTION)
+
+    composeTestRule.onNodeWithTag(NowCardTestTags.ACTION).performClick()
+
+    // The route has no name: the bar shows the team's once read.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodes(hasTestTag(NavigationTestTags.TOP_BAR_TITLE) and hasText("Litter pickers"))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).performTextInput("Running late")
+    composeTestRule.onNodeWithTag(TeamChatTestTags.SEND_BUTTON).performClick()
+    val teamChannel = ChatChannelId.Team(event.id, teamIds.getValue(event.id))
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { texts(teamChannel) == listOf("Running late") }
+    assertEquals(emptyList<String>(), texts(ChatChannelId.General(event.id)))
+    // Back leads to the channels, not to the general channel left open.
+    pressBack()
+    waitForNode(ChatChannelsTestTags.GENERAL)
+    composeTestRule.onNodeWithTag(TeamChatTestTags.INPUT).assertDoesNotExist()
+  }
+
+  @Test
   fun organizerEvent_opensOnOverviewAndReachesEveryTab() {
     val nav = setAppAndGetNavigation(UserMode.ORGANIZER)
 

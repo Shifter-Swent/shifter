@@ -82,8 +82,8 @@ class VolunteerOverviewTest {
   /** The missions opened on the map, by id. */
   private val openedOnMap = mutableListOf<String>()
 
-  /** How many times the Discussions tab was opened. */
-  private var discussionsOpened = 0
+  /** The missions whose manager was contacted, by id. */
+  private val contacted = mutableListOf<String>()
 
   @After fun tearDown() = Dispatchers.resetMain()
 
@@ -115,7 +115,7 @@ class VolunteerOverviewTest {
             autoCheckIn = autoCheckIn,
             clock = clock,
             onOpenOnMap = { openedOnMap += it.id },
-            onOpenDiscussions = { discussionsOpened++ },
+            onContact = { contacted += it.id },
         )
       }
     }
@@ -243,24 +243,24 @@ class VolunteerOverviewTest {
   }
 
   @Test
-  fun contactYourManager_opensTheDiscussions() {
+  fun contactYourManager_contactsTheManagerOfTheMission() {
     val mission = annMission(Duration.ofMinutes(-10))
     checkIns.add(CheckIn(EVENT, mission.id, ANN, noon, CheckInMethod.SELF, ANN))
     show()
 
     compose.onNodeWithText("Contact your manager").performClick()
 
-    assertEquals(1, discussionsOpened)
+    assertEquals(listOf(mission.id), contacted)
   }
 
   @Test
-  fun tellYourManager_whenLate_opensTheDiscussions() {
-    annMission(Duration.ofMinutes(-10))
+  fun tellYourManager_whenLate_contactsTheManagerOfTheMission() {
+    val mission = annMission(Duration.ofMinutes(-10))
     show()
 
     compose.onNodeWithText("Tell your manager").performClick()
 
-    assertEquals(1, discussionsOpened)
+    assertEquals(listOf(mission.id), contacted)
   }
 
   @Test
