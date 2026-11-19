@@ -105,7 +105,6 @@ fun MapScreen(
  *   shows nothing, and the button goes back to the event.
  * @param onFocusShown called once the camera was sent to [MapUiState.focus]; the move itself may
  *   wait for the map to be ready.
- * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
