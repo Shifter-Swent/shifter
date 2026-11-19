@@ -149,6 +149,8 @@ data class AttendanceMission(
  *   that is not known, which is what a first load that failed leaves it at, so the attendance is
  *   never offered to someone whose part in the event is unknown. It is not read from [missions]
  *   being empty: someone allowed to watch may have none.
+ * @property eventPeriod when the event starts and ends, so the screen can offer each of its days,
+ *   or null until the event has been read.
  * @property undoableCheckIn the manual check-in just made, while it can still be undone.
  * @property checkInErrors the manual check-ins not recorded, oldest first, each until the screen
  *   has shown it: several may fail at once when the device is back online.
@@ -162,6 +164,7 @@ data class AttendanceUiState(
     val isOrganizer: Boolean = false,
     val canViewAttendance: Boolean? = null,
     val missions: List<AttendanceMission> = emptyList(),
+    val eventPeriod: ClosedRange<Instant>? = null,
     val undoableCheckIn: UndoableCheckIn? = null,
     val checkInErrors: List<ManualCheckInFailure> = emptyList(),
     val markingCompletedIds: Set<String> = emptySet(),
@@ -276,6 +279,7 @@ class AttendanceViewModel(
               state.copy(
                   isLoading = false,
                   isOrganizer = isOrganizer,
+                  eventPeriod = event.startAt..event.endAt,
                   // The teams already read say whether they manage any, so no role is asked for
                   // twice.
                   canViewAttendance = isOrganizer || teams.isNotEmpty(),
