@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +19,7 @@ import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -53,9 +55,12 @@ class ScanResultSheetTest {
         }
       }
 
-  private fun show(): FakeQrScanner {
+  /** Shows the screen with [setContent], the rule's own unless a test rebuilds the screen. */
+  private fun show(
+      setContent: (@Composable () -> Unit) -> Unit = compose::setContent
+  ): FakeQrScanner {
     val scanner = FakeQrScanner()
-    compose.setContent {
+    setContent {
       val context = LocalContext.current
       val granting = remember {
         object : ContextWrapper(context) {
@@ -167,6 +172,19 @@ class ScanResultSheetTest {
     showResult(ScanResult.Failed(JoinEventError.UNKNOWN_CODE))
 
     assertEquals(listOf(HapticFeedbackType.Confirm, HapticFeedbackType.Reject), felt)
+  }
+
+  @Test
+  fun rebuilt_whileAFailureShows_doesNotFeelItAgain() {
+    val restoration = StateRestorationTester(compose)
+    show(restoration::setContent)
+    showResult(ScanResult.Failed(JoinEventError.UNKNOWN_CODE))
+
+    restoration.emulateSavedInstanceStateRestore()
+    compose.waitForIdle()
+
+    assertEquals(listOf(HapticFeedbackType.Reject), felt)
+    tag(ScanScreenTestTags.RETRY).assertIsDisplayed()
   }
 
   @Test

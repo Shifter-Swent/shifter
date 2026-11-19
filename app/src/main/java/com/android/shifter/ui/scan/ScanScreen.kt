@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -133,8 +134,13 @@ fun ScanScreen(
   // A lookup that fails is felt like a refused code, and a code no event uses looks like one too.
   val failed = result as? ScanResult.Failed
   val unknownCode = failed?.error == JoinEventError.UNKNOWN_CODE
+  // Once per failure: rebuilt after a rotation, the screen still shows it without feeling it again.
+  var failureSignalled by rememberSaveable { mutableStateOf(false) }
   LaunchedEffect(failed) {
-    if (failed != null) {
+    if (failed == null) {
+      failureSignalled = false
+    } else if (!failureSignalled) {
+      failureSignalled = true
       if (unknownCode) refusals++
       haptics.performHapticFeedback(HapticFeedbackType.Reject)
     }
