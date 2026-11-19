@@ -141,7 +141,7 @@ fun DayStrip(
 /**
  * A day around a short event: fainter than a day of the event without missions, so the event's
  * first and last days stand out, and neither tappable nor read out. Today keeps its name, as when
- * the event starts tomorrow.
+ * the event starts tomorrow, in a faded primary so it can still be found.
  */
 @Composable
 private fun OutsideDayChip(day: LocalDate, isToday: Boolean) {
@@ -157,7 +157,9 @@ private fun OutsideDayChip(day: LocalDate, isToday: Boolean) {
     Text(
         text = if (isToday) stringResource(R.string.day_strip_today) else day.formatDayOfWeek(),
         style = MaterialTheme.typography.labelSmall,
-        color = OUTSIDE_DAY_COLOR,
+        color =
+            if (isToday) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+            else OUTSIDE_DAY_COLOR,
         maxLines = 1,
     )
     Text(
