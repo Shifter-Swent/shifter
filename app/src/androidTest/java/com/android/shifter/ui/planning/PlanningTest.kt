@@ -2,7 +2,9 @@
 package com.swent.shifter.ui.planning
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeWithVelocity
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -89,6 +92,13 @@ class PlanningTest {
           .fetchSemanticsNode()
           .boundsInRoot
           .top
+
+  private fun leftOf(missionId: String): Float =
+      compose
+          .onNodeWithTag(PlanningTestTags.mission(missionId))
+          .fetchSemanticsNode()
+          .boundsInRoot
+          .left
 
   @Test
   fun planning_withUnsortedMissions_showsThemChronologically() {
@@ -251,6 +261,23 @@ class PlanningTest {
 
     missionShown("sun")
     daySelected(SUNDAY)
+  }
+
+  @Test
+  fun rightToLeft_theNextDayComesFromTheLeft() {
+    compose.setContent {
+      CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        PlanningUnderTest(weekend, festival, SATURDAY)
+      }
+    }
+    compose.mainClock.autoAdvance = false
+
+    // Right to left, swiping right shows the next day.
+    swipeRightOn(PlanningTestTags.mission("sat"))
+    compose.mainClock.advanceTimeBy(100)
+
+    // A few frames into the slide, both days are on screen, the next one on the finger's side.
+    assertTrue(leftOf("sun") < leftOf("sat"))
   }
 
   @Test

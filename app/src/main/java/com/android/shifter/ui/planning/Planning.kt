@@ -193,11 +193,13 @@ fun Planning(
           },
       )
     }
-    // The day's missions slide in from the side of the day they come from.
+    // The day's missions slide in from the side of the day they come from: the left for an earlier
+    // day, the right for a later one, the other way round right to left, as in the strip.
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     AnimatedContent(
         targetState = selected,
         transitionSpec = {
-          val towards = if (targetState > initialState) 1 else -1
+          val towards = if ((targetState > initialState) != rtl) 1 else -1
           (slideInHorizontally { it * towards } togetherWith slideOutHorizontally { -it * towards })
               .using(SizeTransform(clip = true))
         },
