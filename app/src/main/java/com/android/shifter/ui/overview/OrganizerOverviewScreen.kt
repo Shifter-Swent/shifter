@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
@@ -52,13 +51,10 @@ import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.time.rememberNow
 import com.swent.shifter.ui.mission.AssigneePicker
-import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.ZoneOffset
 import kotlin.math.roundToInt
 
 object OrganizerOverviewScreenTestTags {
@@ -607,36 +603,5 @@ private fun OverviewCard(content: @Composable () -> Unit) {
               .padding(16.dp)
   ) {
     content()
-  }
-}
-
-@Preview
-@Composable
-private fun OrganizerOverviewContentPreview() {
-  val start = Instant.parse("2027-06-19T08:00:00Z")
-  ShifterTheme {
-    OrganizerOverviewContent(
-        state =
-            OrganizerOverviewUiState(
-                isLoading = false,
-                teams = listOf(OverviewTeam("logistics", "Logistics"), OverviewTeam("bar", "Bar")),
-                missions =
-                    listOf(
-                        OverviewMission("1", "Set up the collection", "logistics", true, start),
-                        OverviewMission("2", "Prepare the counter", "bar", false, start),
-                        OverviewMission(
-                            "3",
-                            "Welcome the volunteers",
-                            null,
-                            false,
-                            start.plus(Duration.ofDays(1)),
-                        ),
-                    ),
-                eventPeriod = start..start.plus(Duration.ofDays(2)),
-            ),
-        actions = OrganizerOverviewActions(),
-        now = start,
-        zone = ZoneOffset.UTC,
-    )
   }
 }
