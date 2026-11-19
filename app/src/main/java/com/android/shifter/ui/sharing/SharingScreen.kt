@@ -42,16 +42,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.JOIN_CODE_PLACEHOLDER
+import com.swent.shifter.ui.components.JoinCodeCard
+import com.swent.shifter.ui.components.JoinCodeCardSize
+import com.swent.shifter.ui.components.JoinCodeCardTestTags
+import com.swent.shifter.ui.components.JoinCodeUnavailableCard
 import com.swent.shifter.ui.components.QrCodeImage
+import com.swent.shifter.ui.components.rememberCopyJoinCode
 import com.swent.shifter.ui.event.EventCreatedError
 import com.swent.shifter.ui.event.EventCreatedUiState
 import com.swent.shifter.ui.event.EventCreatedViewModel
-import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
-import com.swent.shifter.ui.event.JoinCodeCard
-import com.swent.shifter.ui.event.JoinCodeCardSize
-import com.swent.shifter.ui.event.JoinCodeCardTestTags
-import com.swent.shifter.ui.event.JoinCodeUnavailableCard
-import com.swent.shifter.ui.event.rememberCopyJoinCode
 import com.swent.shifter.ui.theme.shifter_qrLight
 
 object SharingScreenTestTags {

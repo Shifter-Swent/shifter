@@ -528,7 +528,6 @@ private fun ShifterNavGraph(
                                   repositories.membershipRequestRepository,
                                   repositories.userRepository,
                               ),
-                              repositories.eventRepository,
                           )
                   )
               // Shows the missions added while the creation form was on top.

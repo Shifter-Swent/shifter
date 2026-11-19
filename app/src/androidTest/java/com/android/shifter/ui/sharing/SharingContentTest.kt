@@ -3,12 +3,17 @@ package com.swent.shifter.ui.sharing
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -16,9 +21,9 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.FakeClipboard
 import com.swent.shifter.ui.event.EventCreatedError
 import com.swent.shifter.ui.event.EventCreatedUiState
-import com.swent.shifter.ui.event.FakeClipboard
 import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -65,6 +70,7 @@ class SharingContentTest {
 
     node(SharingScreenTestTags.QR_CODE).assertIsDisplayed()
     node(SharingScreenTestTags.JOIN_CODE).assertTextEquals("ABC234")
+    composeTestRule.onNodeWithText(string(R.string.event_join_code_label_short)).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.sharing_hint)).assertIsDisplayed()
   }
 
@@ -105,6 +111,23 @@ class SharingContentTest {
   }
 
   @Test
+  fun copy_whenTheClipboardRefuses_saysTheCopyFailed() {
+    clipboard.failure = SecurityException("Clipboard access denied")
+    setContent(loaded)
+
+    node(SharingScreenTestTags.COPY_BUTTON).performScrollTo().performClick()
+
+    composeTestRule.waitUntil {
+      composeTestRule
+          .onAllNodesWithText(string(R.string.event_join_code_copy_failed))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    composeTestRule.onNodeWithText(string(R.string.event_join_code_copied)).assertDoesNotExist()
+    assertEquals(null, clipboard.text)
+  }
+
+  @Test
   fun share_sendsTheEventAndItsCode() {
     setContent(loaded)
 
@@ -135,6 +158,15 @@ class SharingContentTest {
   }
 
   @Test
+  fun loading_readsTheCodeAsLoadingRatherThanAsDots() {
+    setContent(EventCreatedUiState())
+
+    node(SharingScreenTestTags.JOIN_CODE)
+        .assertContentDescriptionEquals(string(R.string.event_join_code_loading))
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Text))
+  }
+
+  @Test
   fun error_offersToRetry() {
     var retried = false
     setContent(
@@ -143,7 +175,9 @@ class SharingContentTest {
     )
 
     node(SharingScreenTestTags.QR_CODE).assertDoesNotExist()
-    node(SharingScreenTestTags.UNAVAILABLE).assertIsDisplayed()
+    node(SharingScreenTestTags.UNAVAILABLE)
+        .assertIsDisplayed()
+        .assertTextEquals(string(R.string.event_join_code_unavailable))
     node(SharingScreenTestTags.LOAD_ERROR)
         .assertTextEquals(string(R.string.event_created_error_offline))
     node(SharingScreenTestTags.SHARE_BUTTON).performScrollTo().assertIsNotEnabled()
