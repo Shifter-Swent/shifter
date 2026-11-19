@@ -8,6 +8,8 @@
     <string name="planning_hours">%1$s–%2$s</string>
     <!-- A mission after midnight, shown with the evening before, e.g. "Sun 02:00–04:00" -->
     <string name="planning_hours_on_day">%1$s %2$s–%3$s</string>
+    <!-- A mission of a one-day event that is not today, e.g. "14 Jun, 08:00–09:00" -->
+    <string name="planning_hours_on_date">%1$s, %2$s–%3$s</string>
     <!-- Between the address and the check-in time, kept apart so the address is cut first -->
     <string name="planning_separator">" · "</string>
     <string name="planning_checked_in_at">Checked in at %1$s</string>

@@ -2,13 +2,26 @@
 package com.swent.shifter.ui.planning
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeWithVelocity
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -64,6 +77,15 @@ class PlanningTest {
 
   private fun pick(day: LocalDate) = compose.onNodeWithTag(DayStripTestTags.day(day)).performClick()
 
+  private fun swipeLeftOn(tag: String) =
+      compose.onNodeWithTag(tag).performTouchInput { swipeLeft() }
+
+  private fun swipeRightOn(tag: String) =
+      compose.onNodeWithTag(tag).performTouchInput { swipeRight() }
+
+  private fun daySelected(day: LocalDate) =
+      compose.onNodeWithTag(DayStripTestTags.day(day)).assertIsSelected()
+
   /** Friday 13 to Monday 16, with a mission on Saturday and one on Sunday. */
   private val festival = at("08:00", FRIDAY)..at("22:00", MONDAY)
   private val weekend = listOf(mission("sat", date = SATURDAY), mission("sun", date = SUNDAY))
@@ -74,6 +96,13 @@ class PlanningTest {
           .fetchSemanticsNode()
           .boundsInRoot
           .top
+
+  private fun leftOf(missionId: String): Float =
+      compose
+          .onNodeWithTag(PlanningTestTags.mission(missionId))
+          .fetchSemanticsNode()
+          .boundsInRoot
+          .left
 
   @Test
   fun planning_withUnsortedMissions_showsThemChronologically() {
@@ -185,6 +214,163 @@ class PlanningTest {
   }
 
   @Test
+  fun swipingLeft_showsTheNextDay() {
+    show(weekend, festival)
+
+    swipeLeftOn(PlanningTestTags.mission("sat"))
+
+    missionShown("sun")
+    missionHidden("sat")
+    daySelected(SUNDAY)
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertIsDisplayed()
+  }
+
+  @Test
+  fun swipingRight_showsThePreviousDay() {
+    show(weekend, festival)
+
+    swipeRightOn(PlanningTestTags.mission("sat"))
+
+    compose
+        .onNodeWithTag(PlanningTestTags.EMPTY_DAY)
+        .assertTextEquals("Nothing planned on Friday 13 June")
+    daySelected(FRIDAY)
+  }
+
+  @Test
+  fun aShortSwipe_staysOnTheDay() {
+    show(weekend, festival)
+
+    // A quarter of the row, slowly: less than the half that changes the day, and no flick.
+    compose.onNodeWithTag(PlanningTestTags.mission("sat")).performTouchInput {
+      swipeLeft(startX = centerX, endX = centerX - width / 4f, durationMillis = 2_000)
+    }
+
+    missionShown("sat")
+    daySelected(SATURDAY)
+  }
+
+  @Test
+  fun aShortFlick_showsTheNextDay() {
+    show(weekend, festival)
+
+    // A quarter of the row, but twice as fast as a flick, in pixels on any screen.
+    compose.onNodeWithTag(PlanningTestTags.mission("sat")).performTouchInput {
+      swipeWithVelocity(
+          start = center,
+          end = center - Offset(width / 4f, 0f),
+          endVelocity = 800.dp.toPx(),
+      )
+    }
+
+    missionShown("sun")
+    daySelected(SUNDAY)
+  }
+
+  @Test
+  fun pastHalfTheWidth_theDayLeavesFromUnderTheFinger() {
+    show(weekend, festival)
+    val start = leftOf("sat")
+    val row = compose.onNodeWithTag(PlanningTestTags.mission("sat"))
+    val width = row.fetchSemanticsNode().size.width
+    compose.mainClock.autoAdvance = false
+
+    // Seven tenths of the row, then held still so it is no flick.
+    row.performTouchInput {
+      down(center)
+      repeat(7) { moveBy(Offset(-width / 10f, 0f)) }
+      advanceEventTime(200)
+      up()
+    }
+    compose.mainClock.advanceTimeByFrame()
+
+    // Sunday is on its way, and Saturday leaves from where it was let go, not from its place.
+    assertTrue(leftOf("sat") < start - width / 4f)
+  }
+
+  @Test
+  fun caughtAgainWhileGoingBack_staysUnderTheFinger() {
+    show(weekend, festival)
+    val start = leftOf("sat")
+    val row = compose.onNodeWithTag(PlanningTestTags.mission("sat"))
+    val width = row.fetchSemanticsNode().size.width
+    compose.mainClock.autoAdvance = false
+
+    // A third of the row, let go: it goes back to its place.
+    row.performTouchInput {
+      down(center)
+      repeat(3) { moveBy(Offset(-width / 10f, 0f)) }
+      advanceEventTime(200)
+      up()
+    }
+    compose.mainClock.advanceTimeBy(50)
+    // Caught again on its way, and held.
+    row.performTouchInput {
+      down(center)
+      repeat(2) { moveBy(Offset(-width / 10f, 0f)) }
+    }
+    compose.mainClock.advanceTimeBy(1_000)
+
+    // The animation stopped: it stays under the finger instead of going back.
+    assertTrue(leftOf("sat") < start - width / 10f)
+    row.performTouchInput { up() }
+  }
+
+  @Test
+  fun rightToLeft_theNextDayComesFromTheLeft() {
+    compose.setContent {
+      CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        PlanningUnderTest(weekend, festival, SATURDAY)
+      }
+    }
+    compose.mainClock.autoAdvance = false
+
+    // Right to left, swiping right shows the next day.
+    swipeRightOn(PlanningTestTags.mission("sat"))
+    compose.mainClock.advanceTimeBy(100)
+
+    // A few frames into the slide, both days are on screen, the next one on the finger's side.
+    assertTrue(leftOf("sun") < leftOf("sat"))
+  }
+
+  @Test
+  fun tappingTodayInTheStrip_followsTodayAgain() {
+    var today by mutableStateOf(SATURDAY)
+    compose.setContent { PlanningUnderTest(weekend, festival, today) }
+    pick(SUNDAY)
+
+    pick(SATURDAY)
+    // The night goes past 04:00.
+    today = SUNDAY
+
+    daySelected(SUNDAY)
+  }
+
+  @Test
+  fun swipingBackToToday_hidesBackToToday() {
+    show(weekend, festival)
+    pick(SUNDAY)
+
+    swipeRightOn(PlanningTestTags.mission("sun"))
+
+    missionShown("sat")
+    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun swiping_stopsAtTheEndsOfTheEvent() {
+    show(weekend, festival)
+    pick(MONDAY)
+
+    swipeLeftOn(PlanningTestTags.EMPTY_DAY)
+    daySelected(MONDAY)
+
+    pick(FRIDAY)
+    swipeRightOn(PlanningTestTags.EMPTY_DAY)
+    daySelected(FRIDAY)
+  }
+
+  @Test
   fun aDayWithoutMissions_saysNothingIsPlanned() {
     show(weekend, festival)
 
@@ -224,6 +410,21 @@ class PlanningTest {
 
     compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
     missionShown("sat")
+  }
+
+  @Test
+  fun aOneDayEvent_onAnotherDay_datesItsMissions() {
+    // The day before, with no strip to say the mission is not today.
+    show(weekend.take(1), eventPeriod = at("08:00")..at("22:00"), today = FRIDAY)
+
+    compose.onNodeWithText("14 Jun, 08:00–09:00").assertIsDisplayed()
+  }
+
+  @Test
+  fun aOneDayEvent_onItsDay_leavesTheDateOut() {
+    show(weekend.take(1), eventPeriod = at("08:00")..at("22:00"))
+
+    compose.onNodeWithText("08:00–09:00").assertIsDisplayed()
   }
 
   @Test

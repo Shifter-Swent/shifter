@@ -49,9 +49,26 @@ internal constructor(
   val awayFromToday: Boolean
     get() = today in days && selected != today
 
+  /** The day before the one shown, or null on the first day. */
+  val previousDay: LocalDate?
+    get() = besideSelected(-1)
+
+  /** The day after the one shown, or null on the last day. */
+  val nextDay: LocalDate?
+    get() = besideSelected(1)
+
+  private fun besideSelected(step: Int): LocalDate? = selected?.let {
+    days.getOrNull(days.indexOf(it) + step)
+  }
+
   /** Shows [day], and keeps showing it when today changes. */
   fun pick(day: LocalDate) {
     picked.value = day.toEpochDay()
+  }
+
+  /** Shows [day], following today again when [day] is today, as [backToToday] does. */
+  fun show(day: LocalDate) {
+    if (day == today) backToToday() else pick(day)
   }
 
   /** Shows today again, and follows it from then on, e.g. when the night goes past 04:00. */
