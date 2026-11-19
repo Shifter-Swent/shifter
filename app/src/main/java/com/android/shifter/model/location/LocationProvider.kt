@@ -33,6 +33,9 @@ interface LocationProvider {
    * collection is cancelled. It follows [status]: updates run only while it is
    * [LocationStatus.GRANTED] and resume when it becomes so again, so the flow never completes and
    * emits nothing while the location is denied or turned off.
+   *
+   * Each position comes with its accuracy, so a consumer can tell a reliable measure from a noisy
+   * one.
    */
-  fun positions(): Flow<GeoPosition>
+  fun positions(): Flow<MeasuredPosition>
 }

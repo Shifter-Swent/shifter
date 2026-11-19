@@ -44,6 +44,7 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
@@ -1696,7 +1697,7 @@ class ShifterNavHostTest {
     val volunteer = checkNotNull(repositories.authRepository.currentUser())
     val teamId = teamIds.getValue(event.id)
 
-    val locationProvider = FakeLocationProvider().apply { setPosition(GENEVA) }
+    val locationProvider = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     try {
       composeTestRule.setContent {
         ShifterTheme {
@@ -1734,7 +1735,7 @@ class ShifterNavHostTest {
   @Test
   fun locationSharingIndicator_whileThePositionIsShared_showsOnEveryScreenAndLeadsToSettings() {
     val event = consentingVolunteerInOngoingEvent()
-    val locationProvider = FakeLocationProvider().apply { setPosition(GENEVA) }
+    val locationProvider = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     try {
       composeTestRule.setContent {
         ShifterTheme {
@@ -1919,7 +1920,7 @@ class ShifterNavHostTest {
   ): FakeLocationProvider {
     signIn(googleCredential())
     saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
-    val location = FakeLocationProvider().apply { setPosition(GENEVA) }
+    val location = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     lateinit var navController: NavHostController
     composeTestRule.setContent {
       navController = rememberNavController()

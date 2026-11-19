@@ -32,6 +32,7 @@ import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -269,7 +270,7 @@ class VolunteerOverviewTest {
     val location = FakeLocationProvider()
     show(location = location)
 
-    runBlocking { location.emit(GeoPosition(46.0, 6.0)) }
+    runBlocking { location.emit(accurate(GeoPosition(46.0, 6.0))) }
     compose.waitForIdle()
 
     compose.onNodeWithText("Not checked in").assertIsDisplayed()

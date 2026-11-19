@@ -19,6 +19,7 @@ import com.swent.shifter.e2e.EndToEndDriver.GoogleAccount
 import com.swent.shifter.model.checkin.CheckIn
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.ManagerOverviewTestTags
@@ -76,7 +77,7 @@ class EventDayEndToEndTest {
   private val volunteer = GoogleAccount("Victor")
 
   /** The volunteer's phone, far from the mission at first. */
-  private val location = MovableLocationProvider(start = AWAY)
+  private val location = MovableLocationProvider(start = accurate(AWAY))
 
   @After
   fun tearDown() {
@@ -194,7 +195,7 @@ class EventDayEndToEndTest {
     assertEquals(emptyList<CheckIn>(), checkInsOf(event.id, volunteerId))
 
     // At the desk, they are checked in on their own, and the Planning and the now card say so.
-    location.position = DESK.position
+    location.position = accurate(DESK.position)
     app.waitForNode(PlanningTestTags.checkIn(mission.id), useUnmergedTree = true)
     val checkedInAt = context.getString(R.string.now_card_checked_in_at, "").trim()
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {

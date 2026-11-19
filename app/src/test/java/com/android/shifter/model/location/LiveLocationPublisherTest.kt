@@ -46,7 +46,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         startSession()
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
       }
@@ -61,7 +61,7 @@ class LiveLocationPublisherTest {
 
         startSession(MutableStateFlow(false))
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(emptyList<LiveLocation>(), shared())
         // And the GPS is not even read while the consent is off.
@@ -85,7 +85,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
         startSession(sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         sharing.value = false
 
@@ -100,11 +100,11 @@ class LiveLocationPublisherTest {
         startSession(sharing)
 
         // Off at the start: the GPS is not even read.
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(emptyList<LiveLocation>(), shared())
 
         sharing.value = true
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
 
         sharing.value = false
@@ -115,7 +115,7 @@ class LiveLocationPublisherTest {
         // start over with it, so the first position of the new session needs no waiting.
         sharing.value = true
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
 
         val resumedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
         assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, resumedAt)), shared())
@@ -127,12 +127,12 @@ class LiveLocationPublisherTest {
         provider.setStatus(LocationStatus.DENIED)
         startSession()
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(emptyList<LiveLocation>(), shared())
 
         // The provider resumes on its own once the permission is back, and so does the sharing.
         provider.setStatus(LocationStatus.GRANTED)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
       }
@@ -144,15 +144,15 @@ class LiveLocationPublisherTest {
         // here instead of moving this test with it.
         assertEquals(Duration.ofSeconds(30), LiveLocationPublisher.MIN_INTERVAL)
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         elapse(29)
-        provider.emit(LAUSANNE)
+        provider.emit(accurate(LAUSANNE))
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
 
         // The thirtieth second is enough, so the bound is where it says it is.
         elapse(1)
-        provider.emit(LAUSANNE)
+        provider.emit(accurate(LAUSANNE))
         assertEquals(listOf(LiveLocation(VOLUNTEER, LAUSANNE, START.plusSeconds(30))), shared())
       }
 
@@ -160,12 +160,12 @@ class LiveLocationPublisherTest {
   fun publish_afterTheIntervalWithoutMoving_skipsThePosition() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         // Six metres is below the threshold: a volunteer standing still costs no write until the
         // refresh falls due, so their position is left as it was.
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(A_FEW_METRES_AWAY)
+        provider.emit(accurate(A_FEW_METRES_AWAY))
 
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
       }
@@ -174,12 +174,12 @@ class LiveLocationPublisherTest {
   fun publish_whenStandingStillPastTheRefresh_sharesThePositionAgain() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         // Still six metres, so the distance gate still refuses, but a volunteer who is there and
         // sharing must not look stale to their manager for want of having moved.
         elapse(REFRESH_SECONDS)
-        provider.emit(A_FEW_METRES_AWAY)
+        provider.emit(accurate(A_FEW_METRES_AWAY))
 
         val refreshedAt = START.plusSeconds(REFRESH_SECONDS)
         assertEquals(
@@ -192,10 +192,10 @@ class LiveLocationPublisherTest {
   fun publish_afterTheIntervalAndAMove_sharesTheNewPosition() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
 
         val sharedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
         assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, sharedAt)), shared())
@@ -205,14 +205,14 @@ class LiveLocationPublisherTest {
   fun publish_whenCancelled_stopsTheGpsAndSharesNothingMore() =
       runTest(UnconfinedTestDispatcher()) {
         val session = startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         session.cancel()
 
         assertEquals(0, provider.activeCollectors)
         // The position shared before stays: a session ending is not the volunteer withdrawing.
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
       }
 
@@ -220,20 +220,20 @@ class LiveLocationPublisherTest {
   fun publish_whenAWriteIsRefused_keepsThePositionAndGoesOn() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         // A refusal does not necessarily mean consent was revoked: an older measurement
         // can also be rejected. Never delete the stored position based on a refusal alone.
         repository.failure = LiveLocationRepositoryException.PermissionDenied()
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         repository.failure = null
 
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, START)), shared())
 
         // And the session is still running: the next position that passes the gates goes through.
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         val sharedAt = START.plusSeconds(2 * MIN_INTERVAL_SECONDS)
         assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, sharedAt)), shared())
       }
@@ -245,14 +245,14 @@ class LiveLocationPublisherTest {
         // waiting for one would leave the manager with no position at all.
         repository.failure = LiveLocationRepositoryException.Unavailable()
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         repository.failure = null
 
         assertEquals(emptyList<LiveLocation>(), shared())
 
         // Six metres, below the distance gate, and shared all the same.
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(A_FEW_METRES_AWAY)
+        provider.emit(accurate(A_FEW_METRES_AWAY))
 
         val retriedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
         assertEquals(listOf(LiveLocation(VOLUNTEER, A_FEW_METRES_AWAY, retriedAt)), shared())
@@ -269,7 +269,7 @@ class LiveLocationPublisherTest {
         }
 
         val before = Instant.now()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         val after = Instant.now()
 
         val shared = shared().single()
@@ -289,7 +289,7 @@ class LiveLocationPublisherTest {
         val session = backgroundScope.launch {
           thrown = runCatching { publisher.publish(EVENT, TEAM, sharing) {} }.exceptionOrNull()
         }
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         repository.failure = LiveLocationRepositoryException.Unavailable()
         sharing.value = false
@@ -311,7 +311,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
         startSession(sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         repository.failure = LiveLocationRepositoryException.Unavailable()
         sharing.value = false
@@ -324,7 +324,7 @@ class LiveLocationPublisherTest {
 
         // Sharing again replaces the position, so the retries have nothing left to do.
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(DOWN_THE_STREET)
+        provider.emit(accurate(DOWN_THE_STREET))
         val sharedAt = START.plusSeconds(MIN_INTERVAL_SECONDS)
         assertEquals(listOf(LiveLocation(VOLUNTEER, DOWN_THE_STREET, sharedAt)), shared())
 
@@ -338,7 +338,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
         val session = startSession(sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         repository.failure = LiveLocationRepositoryException.Unavailable()
         sharing.value = false
@@ -367,7 +367,7 @@ class LiveLocationPublisherTest {
         val sharing = MutableStateFlow(true)
         val session = backgroundScope.launch { publisher.publish(EVENT, TEAM, sharing) {} }
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(1, unanswering.writes)
         assertEquals(0, unanswering.removals)
 
@@ -400,7 +400,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
         startSession(sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         repository.failure = LiveLocationRepositoryException.Unavailable()
         sharing.value = false
@@ -414,7 +414,7 @@ class LiveLocationPublisherTest {
         startSession()
         assertEquals(listOf(WAITING), states)
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(listOf(WAITING, SHARED), states)
       }
@@ -429,7 +429,7 @@ class LiveLocationPublisherTest {
         provider.setStatus(LocationStatus.GRANTED)
         assertEquals(listOf(NO_LOCATION_ACCESS, WAITING), states)
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(listOf(NO_LOCATION_ACCESS, WAITING, SHARED), states)
       }
 
@@ -441,7 +441,7 @@ class LiveLocationPublisherTest {
   fun publish_whenTheAccessIsLostAfterSharing_reportsItInsteadOfShared() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         provider.setStatus(LocationStatus.LOCATION_OFF)
         assertEquals(listOf(WAITING, SHARED, NO_LOCATION_ACCESS), states)
@@ -459,14 +459,14 @@ class LiveLocationPublisherTest {
   fun publish_whenTheAccessComesBack_sharesTheNextPositionAtOnce() =
       runTest(UnconfinedTestDispatcher()) {
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         provider.setStatus(LocationStatus.LOCATION_OFF)
         provider.setStatus(LocationStatus.GRANTED)
 
         // Past the minimum interval but not the refresh one, and not moved: a write the gates
         // would hold back if the attempt before the loss still counted.
         elapse(MIN_INTERVAL_SECONDS * 3)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         val sharedAt = clock
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, sharedAt)), shared())
@@ -474,7 +474,7 @@ class LiveLocationPublisherTest {
 
         // Only that one: the next position waits for the minimum interval again, however far.
         elapse(MIN_INTERVAL_SECONDS - 1)
-        provider.emit(LAUSANNE)
+        provider.emit(accurate(LAUSANNE))
         assertEquals(listOf(LiveLocation(VOLUNTEER, GENEVA, sharedAt)), shared())
       }
 
@@ -504,7 +504,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val answer = CompletableDeferred<Unit>()
         startSessionAnsweringWhen(answer)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         provider.setStatus(LocationStatus.DENIED)
         answer.complete(Unit)
@@ -525,14 +525,14 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val answer = CompletableDeferred<Unit>()
         startSessionAnsweringWhen(answer)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         provider.setStatus(LocationStatus.DENIED)
         provider.setStatus(LocationStatus.GRANTED)
         answer.complete(Unit)
         assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING), states)
 
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(listOf(WAITING, NO_LOCATION_ACCESS, WAITING, SHARED), states)
       }
 
@@ -541,12 +541,12 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         repository.failure = LiveLocationRepositoryException.PermissionDenied()
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(listOf(WAITING, REFUSED), states)
 
         repository.failure = null
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(listOf(WAITING, REFUSED, SHARED), states)
       }
@@ -557,12 +557,12 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         repository.failure = LiveLocationRepositoryException.Unavailable()
         startSession()
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
         assertEquals(listOf(WAITING), states)
 
         repository.failure = null
         elapse(MIN_INTERVAL_SECONDS)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         assertEquals(listOf(WAITING, SHARED), states)
       }
@@ -572,7 +572,7 @@ class LiveLocationPublisherTest {
       runTest(UnconfinedTestDispatcher()) {
         val sharing = MutableStateFlow(true)
         startSession(sharing)
-        provider.emit(GENEVA)
+        provider.emit(accurate(GENEVA))
 
         sharing.value = false
         // Off means the GPS is not used: losing access to it changes nothing for the volunteer.
@@ -603,9 +603,9 @@ class LiveLocationPublisherTest {
           .publish(EVENT, TEAM, MutableStateFlow(true), states::add)
     }
 
-    provider.emit(GENEVA)
+    provider.emit(accurate(GENEVA))
     elapse(MIN_INTERVAL_SECONDS - 1)
-    provider.emit(LAUSANNE)
+    provider.emit(accurate(LAUSANNE))
 
     assertEquals(1, attempts)
   }

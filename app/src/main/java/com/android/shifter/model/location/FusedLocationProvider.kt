@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.Location
 import android.location.LocationManager
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -59,7 +60,7 @@ class FusedLocationProvider(
    * UI's refresh. Conflated: a slow collector only needs the latest position, not a backlog.
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  override fun positions(): Flow<GeoPosition> = channelFlow {
+  override fun positions(): Flow<MeasuredPosition> = channelFlow {
     val modeReceiver =
         object : BroadcastReceiver() {
           override fun onReceive(context: Context, intent: Intent) = refreshStatus()
@@ -83,11 +84,11 @@ class FusedLocationProvider(
 
   // Only collected while the status is GRANTED, which readStatus checked just before.
   @SuppressLint("MissingPermission")
-  private fun updates(): Flow<GeoPosition> = callbackFlow {
+  private fun updates(): Flow<MeasuredPosition> = callbackFlow {
     val callback =
         object : LocationCallback() {
           override fun onLocationResult(result: LocationResult) {
-            result.lastLocation?.let { trySend(GeoPosition(it.latitude, it.longitude)) }
+            result.lastLocation?.let { trySend(it.toMeasuredPosition()) }
           }
         }
     val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis).build()
@@ -96,6 +97,13 @@ class FusedLocationProvider(
     }
     awaitClose { client.removeLocationUpdates(callback) }
   }
+
+  /** A location without an accuracy can be anywhere, so it is given an infinite one. */
+  private fun Location.toMeasuredPosition() =
+      MeasuredPosition(
+          GeoPosition(latitude, longitude),
+          if (hasAccuracy()) accuracy.toDouble() else Double.POSITIVE_INFINITY,
+      )
 
   private fun readStatus(): LocationStatus {
     val granted =

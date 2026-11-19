@@ -13,6 +13,7 @@ import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
@@ -81,7 +82,7 @@ class AutoCheckInViewModelTest {
             { userId },
             { mission, time, at ->
               eligibleAt += time
-              if (isEligible(mission, time, at)) CheckInEligibility.Eligible
+              if (isEligible(mission, time, at.position)) CheckInEligibility.Eligible
               else CheckInEligibility.Ineligible(ineligibleReason)
             },
             { clock },
@@ -98,7 +99,7 @@ class AutoCheckInViewModelTest {
       checkIns.checkIns.any { it.eventId == mission.eventId && it.missionId == mission.id }
 
   private suspend fun TestScope.moveTo(position: GeoPosition) {
-    location.emit(position)
+    location.emit(accurate(position))
     runCurrent()
   }
 

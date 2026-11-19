@@ -289,8 +289,8 @@ class MapViewModel(
    */
   private fun LocationProvider.positionWhileGranted(): Flow<GeoPosition?> =
       merge(
-              positions().map { position ->
-                position.takeIf { status.value == LocationStatus.GRANTED }
+              positions().map { measured ->
+                measured.position.takeIf { status.value == LocationStatus.GRANTED }
               },
               status.filter { it != LocationStatus.GRANTED }.map { null },
           )

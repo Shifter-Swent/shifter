@@ -5,6 +5,8 @@ import com.swent.shifter.model.checkin.CheckInEligibility.Eligible
 import com.swent.shifter.model.checkin.CheckInEligibility.Ineligible
 import com.swent.shifter.model.checkin.CheckInEligibility.Reason
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.MeasuredPosition
+import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import java.time.Duration
@@ -37,36 +39,36 @@ class CheckInEligibilityTest {
 
   @Test
   fun checkInEligibility_inTheZoneDuringTheMission_isEligible() {
-    assertEquals(Eligible, checkInEligibility(mission, start, place))
+    assertEquals(Eligible, checkInEligibility(mission, start, accurate(place)))
   }
 
   @Test
   fun checkInEligibility_withoutLocation_isNoLocation() {
-    val result = checkInEligibility(mission.copy(location = null), start, place)
+    val result = checkInEligibility(mission.copy(location = null), start, accurate(place))
 
     assertEquals(Ineligible(Reason.NO_LOCATION), result)
   }
 
   @Test
   fun checkInEligibility_exactlyWhenTheWindowOpens_isEligible() {
-    assertEquals(Eligible, checkInEligibility(mission, opening, place))
+    assertEquals(Eligible, checkInEligibility(mission, opening, accurate(place)))
   }
 
   @Test
   fun checkInEligibility_justBeforeTheWindowOpens_isTooEarly() {
-    val result = checkInEligibility(mission, opening - Duration.ofSeconds(1), place)
+    val result = checkInEligibility(mission, opening - Duration.ofSeconds(1), accurate(place))
 
     assertEquals(Ineligible(Reason.TOO_EARLY), result)
   }
 
   @Test
   fun checkInEligibility_exactlyAtTheEnd_isEligible() {
-    assertEquals(Eligible, checkInEligibility(mission, end, place))
+    assertEquals(Eligible, checkInEligibility(mission, end, accurate(place)))
   }
 
   @Test
   fun checkInEligibility_justAfterTheEnd_isTooLate() {
-    val result = checkInEligibility(mission, end + Duration.ofSeconds(1), place)
+    val result = checkInEligibility(mission, end + Duration.ofSeconds(1), accurate(place))
 
     assertEquals(Ineligible(Reason.TOO_LATE), result)
   }
@@ -80,7 +82,7 @@ class CheckInEligibilityTest {
   fun checkInEligibility_justInsideTheRadius_isEligible() {
     assertEquals(
         Eligible,
-        checkInEligibility(mission, start, northOfPlace(CheckInRules.RADIUS_METERS - 1)),
+        checkInEligibility(mission, start, accurate(northOfPlace(CheckInRules.RADIUS_METERS - 1))),
     )
   }
 
@@ -90,26 +92,66 @@ class CheckInEligibilityTest {
     // Guards the test itself: the point must really be on the edge for the boundary to be tested.
     assertEquals(CheckInRules.RADIUS_METERS, edge.distanceTo(place), 1e-6)
 
-    assertEquals(Eligible, checkInEligibility(mission, start, edge))
+    assertEquals(Eligible, checkInEligibility(mission, start, accurate(edge)))
   }
 
   @Test
   fun checkInEligibility_justOutsideTheRadius_isTooFar() {
-    val result = checkInEligibility(mission, start, northOfPlace(CheckInRules.RADIUS_METERS + 1))
+    val result =
+        checkInEligibility(mission, start, accurate(northOfPlace(CheckInRules.RADIUS_METERS + 1)))
 
     assertEquals(Ineligible(Reason.TOO_FAR), result)
   }
 
   @Test
   fun checkInEligibility_atTheFormer200Meters_isTooFar() {
-    val result = checkInEligibility(mission, start, northOfPlace(200.0))
+    val result = checkInEligibility(mission, start, accurate(northOfPlace(200.0)))
 
     assertEquals(Ineligible(Reason.TOO_FAR), result)
   }
 
   @Test
+  fun checkInEligibility_atTheMaximumAccuracyOnTheEdge_isEligible() {
+    val position =
+        MeasuredPosition(northOfPlace(CheckInRules.RADIUS_METERS), CheckInRules.MAX_ACCURACY_METERS)
+
+    assertEquals(Eligible, checkInEligibility(mission, start, position))
+  }
+
+  @Test
+  fun checkInEligibility_justLessPreciseThanTheMaximum_isNoPosition() {
+    val position = MeasuredPosition(place, CheckInRules.MAX_ACCURACY_METERS + 1)
+
+    assertEquals(Ineligible(Reason.NO_POSITION), checkInEligibility(mission, start, position))
+  }
+
+  @Test
+  fun checkInEligibility_impreciseIndoorsInTheZone_isNoPosition() {
+    // The measured point is on the place, but the volunteer may be 120 m away: not trusted.
+    val position = MeasuredPosition(place, 120.0)
+
+    assertEquals(Ineligible(Reason.NO_POSITION), checkInEligibility(mission, start, position))
+  }
+
+  @Test
+  fun checkInEligibility_impreciseOutsideTheZone_isNoPositionRatherThanTooFar() {
+    // The volunteer may be on the spot: they are not told they are outside the zone.
+    val position = MeasuredPosition(northOfPlace(100.0), 120.0)
+
+    assertEquals(Ineligible(Reason.NO_POSITION), checkInEligibility(mission, start, position))
+  }
+
+  @Test
+  fun checkInEligibility_withoutAccuracy_isNoPosition() {
+    val position = MeasuredPosition(place, Double.POSITIVE_INFINITY)
+
+    assertEquals(Ineligible(Reason.NO_POSITION), checkInEligibility(mission, start, position))
+  }
+
+  @Test
   fun checkInEligibility_tooEarlyAndTooFar_isTooEarly() {
-    val result = checkInEligibility(mission, opening - Duration.ofHours(1), northOfPlace(5_000.0))
+    val result =
+        checkInEligibility(mission, opening - Duration.ofHours(1), accurate(northOfPlace(5_000.0)))
 
     assertEquals(Ineligible(Reason.TOO_EARLY), result)
   }
