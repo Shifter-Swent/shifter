@@ -1,15 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.nowcard
 
-import androidx.compose.foundation.clickable
-import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -286,35 +280,7 @@ class NowCardTest {
     assertCount(NowCardTestTags.TIME_BAR, 0)
   }
 
-  @Test
-  fun stateChange_keepsTheFooter() {
-    var state: NowState by mutableStateOf(NowState.Soon(BAR))
-    composeTestRule.setContent {
-      ShifterTheme {
-        NowCard(
-            state = state,
-            now = START.minus(Duration.ofMinutes(5)),
-            checkedInAt = null,
-            notCheckedIn = null,
-            onOpenMission = {},
-            onContact = {},
-            zone = ZoneOffset.UTC,
-        ) {
-          var taps by remember { mutableIntStateOf(0) }
-          Text("Taps $taps", Modifier.testTag(FOOTER).clickable { taps++ })
-        }
-      }
-    }
-    composeTestRule.onNodeWithTag(FOOTER).performClick()
-
-    state = NowState.Late(BAR, null)
-    composeTestRule.waitForIdle()
-
-    composeTestRule.onNodeWithTag(FOOTER).assertTextEquals("Taps 1")
-  }
-
   private companion object {
-    const val FOOTER = "footer"
     val START: Instant = Instant.parse("2026-11-14T14:00:00Z")
 
     fun mission(

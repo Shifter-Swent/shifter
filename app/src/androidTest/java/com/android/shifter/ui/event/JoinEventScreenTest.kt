@@ -171,6 +171,15 @@ class JoinEventScreenTest {
   }
 
   @Test
+  fun loading_disablesTheScanButton() {
+    composeTestRule.setContent {
+      content(uiState = JoinEventUiState(joinCode = "ABC234", isLoading = true))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
   fun keyboardDone_withACompleteCode_findsTheEvent() {
     var findClicks = 0
     composeTestRule.setContent {

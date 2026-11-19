@@ -32,7 +32,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
@@ -75,6 +74,9 @@ data class NextMission(
  * @property center where the camera opens: the venue when it has coordinates, else the first
  *   mission. Null keeps the map's default position.
  * @property selected the marker of the mission tapped last, shown in a card over the map.
+ * @property focus where the camera moves once, for a mission opened from elsewhere with
+ *   [MapViewModel.openMission]; a tap on a marker already centres it. Cleared by
+ *   [MapViewModel.focusShown].
  * @property next the signed-in user's next mission on the map, highlighted; null when they have
  *   none left.
  */
@@ -83,6 +85,7 @@ data class MapUiState(
     val center: GeoPosition? = null,
     val markers: List<MapMarker> = emptyList(),
     val selected: MapMarker? = null,
+    val focus: GeoPosition? = null,
     val next: NextMission? = null,
     val isLoading: Boolean = true,
     val error: MapError? = null,
@@ -143,6 +146,9 @@ class MapViewModel(
 
   private val _uiState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+  /** The mission [openMission] asked for while its marker was not loaded, opened once it is. */
+  private var missionToOpen: String? = null
 
   /**
    * Where the user is, or null when unknown: no provider, no access, a failed GPS, or no position
@@ -216,12 +222,15 @@ class MapViewModel(
                   )
                 }
         val center = event.location.position ?: markers.firstOrNull()?.position
+        val opened = missionToOpen?.let { id -> markers.firstOrNull { it.id == id } }
+        missionToOpen = null
         _uiState.update {
           it.copy(
               venue = event.location.address,
               center = center,
               markers = markers,
-              selected = null,
+              selected = opened,
+              focus = opened?.position,
               next = next,
           )
         }
@@ -240,13 +249,43 @@ class MapViewModel(
   /** Shows the card of the mission behind [marker]. */
   fun selectMarker(marker: MapMarker) = _uiState.update { it.copy(selected = marker) }
 
+  /**
+   * Shows the card of the mission [missionId] and moves the camera to it, as if its marker were
+   * tapped, e.g. from the now card's "View on map". Without its marker yet, it is opened once the
+   * markers are loaded: they are read again unless a load is running, since the mission may have
+   * got its place after they were read. A mission still without a marker, without a place or of
+   * another event, opens nothing. A request whose load fails is kept, and opens with the next
+   * successful one, such as the user's retry.
+   */
+  fun openMission(missionId: String) {
+    val marker = _uiState.value.markers.firstOrNull { it.id == missionId }
+    if (marker != null) {
+      // A load still running would otherwise end with another selection: it opens this one again.
+      missionToOpen = missionId.takeIf { _uiState.value.isLoading }
+      // The markers shown are still valid: the card shows over a previous error.
+      _uiState.update { it.copy(selected = marker, focus = marker.position, error = null) }
+      return
+    }
+    missionToOpen = missionId
+    if (!_uiState.value.isLoading) load()
+  }
+
+  /**
+   * Called once the camera was sent to [MapUiState.focus], so it is not sent there again; the move
+   * itself may wait for the map to be ready.
+   */
+  fun focusShown() = _uiState.update { it.copy(focus = null) }
+
   /** Closes the card of the selected mission. */
   fun clearSelection() = _uiState.update { it.copy(selected = null) }
 
   /**
-   * The provider's positions, null once access is lost or if the GPS fails: the map still works.
+   * The provider's positions, null once access is lost or while the GPS fails: the map still works.
    * Merged rather than combined, so that getting access back waits for a new position instead of
    * showing the last one. A position is checked when it arrives, as access may be lost by then.
+   *
+   * A failure clears the position and the provider is followed again after [RETRY_DELAY_MILLIS]:
+   * `catch` would end the flow, and the position would not come back until the map is left.
    */
   private fun LocationProvider.positionWhileGranted(): Flow<GeoPosition?> =
       merge(
@@ -255,7 +294,14 @@ class MapViewModel(
               },
               status.filter { it != LocationStatus.GRANTED }.map { null },
           )
-          .catch { emit(null) }
+          .retryWhen { cause, _ ->
+            val retry = cause is Exception
+            if (retry) {
+              emit(null)
+              delay(RETRY_DELAY_MILLIS)
+            }
+            retry
+          }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   private fun volunteerPins(): Flow<List<VolunteerPin>> {

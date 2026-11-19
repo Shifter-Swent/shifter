@@ -17,15 +17,13 @@ import com.swent.shifter.model.location.LocationProvider
 import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
-import com.swent.shifter.model.mission.MissionRepositoryException
-import com.swent.shifter.ui.components.time.formatTime
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -43,16 +41,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
-
-/** Why the automatic check-in shows an error. The screen turns each into a translated message. */
-enum class AutoCheckInError {
-  /** The backend refused the check-in: it is not tried again while the mission stays assigned. */
-  NOT_ALLOWED,
-
-  /** The backend could not be reached in time: the check-in is tried again on the next position. */
-  OFFLINE,
-  UNEXPECTED,
-}
 
 /**
  * Why the volunteer is not checked in to one mission yet, as far as the automatic check-in knows.
@@ -73,9 +61,6 @@ enum class NotCheckedIn {
   UNEXPECTED,
 }
 
-/** A check-in this ViewModel just recorded, for the confirmation ("Checked in: Bar, 18:02"). */
-data class AutoCheckedIn(val missionTitle: String, val time: String)
-
 /** Which mission a check-in is for: mission ids are only unique within their event. */
 data class MissionKey(val eventId: String, val missionId: String)
 
@@ -87,23 +72,22 @@ private val Mission.key
  *
  * @property locationStatus whether positions can be read; the screen asks for the permission or for
  *   the location services when it is not [LocationStatus.GRANTED].
- * @property checkedIn the last check-in recorded, or null when none was recorded yet.
- * @property error the last failure, cleared by the next check-in recorded.
  * @property notCheckedIn why each open mission is not checked in yet, by its [MissionKey]; read it
  *   with [whyNotCheckedIn]. A mission checked in, or no longer open, has no entry.
+ * @property missionsUnavailable the missions could not be followed: no check-in is tried until
+ *   [AutoCheckInViewModel.retry].
  */
 data class AutoCheckInUiState(
     val locationStatus: LocationStatus = LocationStatus.GRANTED,
-    val checkedIn: AutoCheckedIn? = null,
-    val error: AutoCheckInError? = null,
     val notCheckedIn: Map<MissionKey, NotCheckedIn> = emptyMap(),
+    val missionsUnavailable: Boolean = false,
 )
 
 /**
  * Why the volunteer is not checked in to [mission] yet, or null when the automatic check-in knows
  * no reason. Null also covers what it cannot see, for the screen to tell: a mission without a
- * place, the location off or denied, no position yet, or the missions no longer followed after a
- * failure ([AutoCheckInUiState.error]).
+ * place, the location off or denied, no position yet, or the missions no longer followed
+ * ([AutoCheckInUiState.missionsUnavailable]).
  */
 fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? = notCheckedIn[mission.key]
 
@@ -122,7 +106,6 @@ fun AutoCheckInUiState.whyNotCheckedIn(mission: Mission): NotCheckedIn? = notChe
  * @param eligibility whether a volunteer at the given position can check in to the mission at the
  *   given time, or why not.
  * @param now the clock, replaceable in tests.
- * @param zone the time zone the confirmation's time is shown in, replaceable in tests.
  */
 class AutoCheckInViewModel(
     private val missionRepository: MissionRepository,
@@ -131,7 +114,6 @@ class AutoCheckInViewModel(
     private val currentUserId: () -> String?,
     private val eligibility: (Mission, Instant, GeoPosition) -> CheckInEligibility,
     private val now: () -> Instant = Instant::now,
-    private val zone: ZoneId = ZoneId.systemDefault(),
 ) : ViewModel() {
 
   private val _uiState = MutableStateFlow(AutoCheckInUiState(locationProvider.status.value))
@@ -151,8 +133,16 @@ class AutoCheckInViewModel(
               _uiState.value,
           )
 
+  /** Asks [watch] to follow the missions again after they could not be. */
+  private val retries = Channel<Unit>(Channel.CONFLATED)
+
   /** Reads the permission and the location services again, e.g. after the permission dialog. */
   fun refreshLocation() = locationProvider.refreshStatus()
+
+  /** Follows the missions again after [AutoCheckInUiState.missionsUnavailable]. */
+  fun retry() {
+    retries.trySend(Unit)
+  }
 
   private suspend fun watch() {
     coroutineScope {
@@ -167,17 +157,20 @@ class AutoCheckInViewModel(
           }
         }
       }
-      try {
-        checkInWhenEligible()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: Exception) {
-        val offline =
-            e is MissionRepositoryException.Unavailable ||
-                e is CheckInRepositoryException.Unavailable
-        // Nothing is evaluated any more: the reasons would no longer follow the volunteer.
-        _uiState.update { it.copy(notCheckedIn = emptyMap()) }
-        showError(if (offline) AutoCheckInError.OFFLINE else AutoCheckInError.UNEXPECTED)
+      while (true) {
+        _uiState.update { it.copy(missionsUnavailable = false) }
+        try {
+          checkInWhenEligible()
+          break
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          // Nothing is evaluated any more: the reasons would no longer follow the volunteer.
+          _uiState.update { it.copy(notCheckedIn = emptyMap(), missionsUnavailable = true) }
+        }
+        // A retry asked while the missions were followed is not one for this failure.
+        retries.tryReceive()
+        retries.receive()
       }
     }
   }
@@ -290,19 +283,15 @@ class AutoCheckInViewModel(
       withTimeout(CHECK_IN_TIMEOUT_MILLIS) {
         checkInRepository.checkIn(mission.eventId, mission.id, userId, CheckInMethod.SELF)
       }
-      val time = now().formatTime(zone)
       report(mission, null)
-      _uiState.update { it.copy(checkedIn = AutoCheckedIn(mission.title, time), error = null) }
     } catch (_: CheckInRepositoryException.AlreadyCheckedIn) {
       // Checked in from elsewhere in the meantime: nothing left to do.
       report(mission, null)
     } catch (_: CheckInRepositoryException.NotAllowed) {
       reportFailure(mission, NotCheckedIn.REFUSED, known)
-      showError(AutoCheckInError.NOT_ALLOWED)
     } catch (_: TimeoutCancellationException) {
       reportFailure(mission, NotCheckedIn.OFFLINE, known)
       tried -= mission.key
-      showError(AutoCheckInError.OFFLINE)
     } catch (e: CancellationException) {
       // The screen left before the answer: the next collection tries again, and a write that went
       // through is skipped as checked in.
@@ -312,11 +301,8 @@ class AutoCheckInViewModel(
       val offline = e is CheckInRepositoryException.Unavailable
       reportFailure(mission, if (offline) NotCheckedIn.OFFLINE else NotCheckedIn.UNEXPECTED, known)
       tried -= mission.key
-      showError(if (offline) AutoCheckInError.OFFLINE else AutoCheckInError.UNEXPECTED)
     }
   }
-
-  private fun showError(error: AutoCheckInError) = _uiState.update { it.copy(error = error) }
 
   /** Records why [mission] is not checked in yet, or that nothing keeps it from it when null. */
   private fun report(mission: Mission, reason: NotCheckedIn?) = _uiState.update {

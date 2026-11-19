@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.navigation
 
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,8 +27,10 @@ import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.firestore.Source
+import com.swent.shifter.R
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
@@ -46,6 +49,8 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.scan.TestQrScanner
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
@@ -55,7 +60,7 @@ import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
-import com.swent.shifter.ui.checkin.AutoCheckInTestTags
+import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -66,13 +71,17 @@ import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.planning.PlanningTestTags
+import com.swent.shifter.ui.scan.ScanScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
+import com.swent.shifter.ui.sharing.EventSharer
+import com.swent.shifter.ui.sharing.SharingScreenTestTags
 import com.swent.shifter.ui.team.CreateTeamFormTestTags
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.team.TeamSetupScreenTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -85,6 +94,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -104,6 +114,9 @@ class ShifterNavHostTest {
   fun setUp() {
     AuthEmulator.auth.signOut()
   }
+
+  /** The camera of the scan screen, read by hand, so no test opens the real one. */
+  private val qrScanner = TestQrScanner()
 
   /** Documents written by a test, deleted afterwards so the next tests start from a clean state. */
   private val createdPaths = mutableListOf<String>()
@@ -289,13 +302,49 @@ class ShifterNavHostTest {
         .assertIsEnabled()
         .performClick()
 
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    waitForRequestSent(event.title)
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
     val request = runBlocking {
       repositories.membershipRequestRepository.getMembershipRequest(event.id, volunteer.uid)
     }
     assertEquals(teamId, request?.teamId)
+  }
+
+  @Test
+  fun joinEvent_scanningItsCodeShowsTheEventWithTheCodeFilledIn() {
+    val event = createEvent(signIn())
+    signIn()
+    openScanScreen()
+
+    composeTestRule.runOnIdle { qrScanner.read(event.joinCode) }
+    waitForNode(ScanScreenTestTags.CONTINUE)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.CONTINUE).performClick()
+
+    waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
+    // The screen's Back returns to the code, filled in with the one read.
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
+        .assertTextContains(event.joinCode)
+  }
+
+  @Test
+  fun joinEvent_scanningACodeNoEventUsesLetsScanAgain() {
+    val event = createEvent(signIn())
+    signIn()
+    openScanScreen()
+
+    composeTestRule.runOnIdle { qrScanner.read("ZZZZ22") }
+    waitForNode(ScanScreenTestTags.RETRY)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.RETRY).performClick()
+    composeTestRule.runOnIdle { qrScanner.read(event.joinCode) }
+    waitForNode(ScanScreenTestTags.CONTINUE)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.CONTINUE).performClick()
+
+    waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
   }
 
   @Test
@@ -487,17 +536,6 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun organizerEvent_overviewShowsTheEventsInvitationCode() {
-    val event = createEvent(signIn())
-    openOrganizerEvent(event)
-
-    waitForNode(OrganizerOverviewScreenTestTags.JOIN_CODE)
-    composeTestRule
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.JOIN_CODE)
-        .assertTextEquals(event.joinCode)
-  }
-
-  @Test
   fun organizerEvent_teamManagementListsTheTeamsTheEventAlreadyHas() {
     val event = createEvent(signIn())
     val bar = createTeam(event, "Bar")
@@ -584,7 +622,7 @@ class ShifterNavHostTest {
         .performClick()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).performClick()
-    waitForNode(JoinEventScreenTestTags.APPLIED_MESSAGE)
+    waitForRequestSent(event.title)
 
     // Deleted before its event, as Firestore does not cascade the deletion.
     createdPaths.add(0, "events/${event.id}/membershipRequests/${volunteer.uid}")
@@ -620,14 +658,14 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun volunteerOverview_showsTheAutomaticCheckIn() {
+  fun volunteerOverview_showsTheNowCard() {
     val event = acceptedEvent(asManager = false)
     showApp()
 
     openEvent(event)
 
-    waitForNode(AutoCheckInTestTags.CARD)
-    composeTestRule.onNodeWithTag(AutoCheckInTestTags.CARD).assertIsDisplayed()
+    waitForNode(NowCardTestTags.CARD)
+    composeTestRule.onNodeWithTag(NowCardTestTags.CARD).assertIsDisplayed()
   }
 
   @Test
@@ -660,7 +698,55 @@ class ShifterNavHostTest {
     openEvent(event)
 
     waitForNode(PlanningTestTags.mission(mission.id))
-    composeTestRule.onNodeWithText("Pick up the litter").assertIsDisplayed()
+    // Under the now card, the location gate and the day strip: below the fold on a small screen.
+    composeTestRule.onNodeWithText("Pick up the litter").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun viewOnMap_onTheNowCard_opensTheMapOnTheMission() {
+    // Near the start of an event day (DAY_STARTS_AT_HOUR), the mission falls on the next day and
+    // the card has nothing to show for it.
+    assumeFalse(LocalTime.now() in LocalTime.of(3, 30)..LocalTime.of(4, 0))
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount, running = true)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    // Starting soon, within the running event, so the card offers to show it on the map.
+    val startAt = Instant.now().plus(Duration.ofMinutes(20))
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = "Pick up the litter",
+              description = "Along the shore.",
+              teamId = teamIds.getValue(event.id),
+              volunteersNeeded = 1,
+              startAt = startAt,
+              endAt = startAt.plus(Duration.ofMinutes(30)),
+              location = MissionLocation("Beach", GeoPosition(46.51, 6.63)),
+              assigneeIds = listOf(volunteer.uid),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    signIn(volunteerAccount)
+    showApp()
+    openEvent(event)
+    waitForNode(NowCardTestTags.ACTION)
+
+    composeTestRule.onNodeWithTag(NowCardTestTags.ACTION).performClick()
+
+    waitForNode(MapScreenTestTags.MISSION_CARD)
+    composeTestRule
+        .onNode(
+            hasText("Pick up the litter") and
+                hasAnyAncestor(hasTestTag(MapScreenTestTags.MISSION_CARD)),
+            useUnmergedTree = true,
+        )
+        .assertIsDisplayed()
   }
 
   @Test
@@ -672,6 +758,73 @@ class ShifterNavHostTest {
     assertTabsReachable(OrganizerTabs)
     pressBack()
     composeTestRule.onNodeWithTag(MyEventsTestTags.ORGANIZER_SCREEN).assertIsDisplayed()
+  }
+
+  /**
+   * The hand-off of the location provider in ShifterNavHost (#442): the volunteer's map follows the
+   * user's GPS. Each map is unit tested, but if the provider stopped being passed on, the dot would
+   * simply never show. The dot is drawn inside the native map, out of reach of Compose tests, so
+   * the GPS being followed is what is checked.
+   */
+  @Test
+  fun volunteerMap_followsTheUsersPosition() {
+    val location =
+        openMapWithAKnownPosition(
+            UserMode.VOLUNTEER,
+            VolunteerEvent("event-1", EVENT_TITLE),
+            VolunteerTabs.Map,
+        )
+
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
+  }
+
+  /** The organizer's map is given no location provider, so it never shows where they are. */
+  @Test
+  fun organizerMap_doesNotFollowTheUsersPosition() {
+    val location =
+        openMapWithAKnownPosition(
+            UserMode.ORGANIZER,
+            OrganizerEvent("event-1", EVENT_TITLE),
+            OrganizerTabs.Map,
+        )
+
+    composeTestRule.waitForIdle()
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun organizerSharing_showsTheCodeOfTheEventAndSharesIt() {
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    val shared = mutableListOf<Pair<String, String>>()
+    val nav =
+        NavigationActions(
+            showSignedInApp(
+                UserMode.ORGANIZER,
+                EventSharer { title, code -> shared += title to code },
+            )
+        )
+    composeTestRule.runOnUiThread { nav.enterEvent(OrganizerEvent(event.id, event.title)) }
+
+    composeTestRule.onNodeWithTag(OrganizerTabs.Sharing.testTag).performClick()
+
+    waitForNode(SharingScreenTestTags.QR_CODE)
+    composeTestRule.onNodeWithTag(SharingScreenTestTags.JOIN_CODE).assertTextEquals(event.joinCode)
+    composeTestRule
+        .onNodeWithTag(SharingScreenTestTags.SHARE_BUTTON)
+        .performScrollTo()
+        .performClick()
+    assertEquals(listOf(event.title to event.joinCode), shared)
+  }
+
+  @Test
+  fun volunteerEvent_hasNoSharingTab() {
+    val nav = setAppAndGetNavigation()
+
+    composeTestRule.runOnUiThread { nav.enterEvent(VolunteerEvent("event-1", EVENT_TITLE)) }
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NavigationTestTags.SHARING_TAB).assertDoesNotExist()
   }
 
   @Test
@@ -1409,6 +1562,10 @@ class ShifterNavHostTest {
   private fun assertTabShown(tab: Tab) {
     when (tab) {
       OrganizerTabs.People -> assertPeopleScreenShown()
+      OrganizerTabs.Sharing -> {
+        composeTestRule.onNodeWithTag(SharingScreenTestTags.SCREEN).assertIsDisplayed()
+        assertEventTabSelected(tab)
+      }
       VolunteerTabs.Map,
       OrganizerTabs.Map -> {
         composeTestRule.onNodeWithTag(MapScreenTestTags.SCREEN).assertIsDisplayed()
@@ -1658,9 +1815,13 @@ class ShifterNavHostTest {
 
   /**
    * Launches the app with the session already open, its profile saved in [mode], and waits for the
-   * events of that mode; returns its controller.
+   * events of that mode; returns its controller. A fake [eventSharer] by default, so no test opens
+   * the system share sheet.
    */
-  private fun showSignedInApp(mode: UserMode = UserMode.VOLUNTEER): NavHostController {
+  private fun showSignedInApp(
+      mode: UserMode = UserMode.VOLUNTEER,
+      eventSharer: EventSharer = EventSharer { _, _ -> },
+  ): NavHostController {
     // Without a profile, the app would ask for the mode instead.
     saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
     lateinit var navController: NavHostController
@@ -1671,6 +1832,8 @@ class ShifterNavHostTest {
             isSignedIn = true,
             repositories = repositories,
             navController = navController,
+            eventSharer = eventSharer,
+            qrScanner = qrScanner,
         )
       }
     }
@@ -1679,6 +1842,43 @@ class ShifterNavHostTest {
         else MyEventsTestTags.STAFF_SCREEN
     )
     return navController
+  }
+
+  /**
+   * Shows the app in [mode] to a fresh account, with a GPS that knows where the user is, and opens
+   * [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map opens, so
+   * whatever follows it afterwards is the map.
+   */
+  private fun openMapWithAKnownPosition(
+      mode: UserMode,
+      event: EventMode,
+      mapTab: Tab,
+  ): FakeLocationProvider {
+    signIn(googleCredential())
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
+    val location = FakeLocationProvider().apply { setPosition(GENEVA) }
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+            locationProvider = location,
+        )
+      }
+    }
+    waitForNode(
+        if (mode == UserMode.ORGANIZER) MyEventsTestTags.ORGANIZER_SCREEN
+        else MyEventsTestTags.STAFF_SCREEN
+    )
+    composeTestRule.runOnUiThread { NavigationActions(navController).enterEvent(event) }
+    composeTestRule.waitForIdle()
+    assertEquals(0, location.activeCollectors)
+    composeTestRule.onNodeWithTag(mapTab.testTag).performClick()
+    waitForNode(MapScreenTestTags.SCREEN)
+    return location
   }
 
   /**
@@ -1822,9 +2022,35 @@ class ShifterNavHostTest {
   /** How the 24-hour time picker describes [hour] on its dial, in English. */
   private fun dialHour(hour: Int): String = "${hour % 24} hours"
 
+  /** Opens the scan from the events list, through Join Event, and waits until it reads codes. */
+  private fun openScanScreen() {
+    // The scan screen opens the camera only once allowed, as it would ask the volunteer.
+    InstrumentationRegistry.getInstrumentation()
+        .uiAutomation
+        .grantRuntimePermission(composeTestRule.activity.packageName, Manifest.permission.CAMERA)
+    showSignedInApp()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON)
+        .performScrollTo()
+        .performClick()
+    waitForNode(ScanScreenTestTags.HINT)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { qrScanner.isListening }
+  }
+
   private fun waitForNode(tag: String) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
+  }
+
+  /** Waits for the events list, where the app goes back once a request is sent, to confirm it. */
+  private fun waitForRequestSent(eventTitle: String) {
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    val confirmation =
+        composeTestRule.activity.getString(R.string.join_event_request_sent, eventTitle)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText(confirmation).fetchSemanticsNodes().isNotEmpty()
     }
   }
 

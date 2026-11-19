@@ -70,4 +70,36 @@ class FakeTeamRepositoryTest {
 
     assertEquals(listOf("user-1"), repository.getTeam(team.eventId, team.id)?.memberIds)
   }
+
+  @Test
+  fun deleteTeam_removesOnlyThatTeam() = runTest {
+    val other = team.copy(id = "team-2")
+    // The same id in another event is another team.
+    val elsewhere = team.copy(eventId = "event-2")
+    repository.teams += listOf(other, elsewhere)
+
+    repository.deleteTeam(team.eventId, team.id)
+
+    assertEquals(null, repository.getTeam(team.eventId, team.id))
+    assertEquals(listOf(other, elsewhere), repository.teams)
+  }
+
+  @Test
+  fun deleteTeam_whenTheBackendFails_throwsAndKeepsTheTeam() = runTest {
+    val failure = TeamRepositoryException.Unavailable()
+    repository.failure = failure
+
+    val thrown = runCatching { repository.deleteTeam(team.eventId, team.id) }.exceptionOrNull()
+
+    assertEquals(failure, thrown)
+    assertEquals(listOf(team), repository.teams)
+  }
+
+  /** Deleting twice is what completes an interrupted deletion, so it must not fail. */
+  @Test
+  fun deleteTeam_ofAMissingTeam_hasNoEffect() = runTest {
+    repository.deleteTeam(team.eventId, "absent")
+
+    assertEquals(listOf(team), repository.teams)
+  }
 }

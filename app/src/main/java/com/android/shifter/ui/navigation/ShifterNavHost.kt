@@ -9,9 +9,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
@@ -40,6 +40,8 @@ import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.scan.CameraQrScanner
+import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.attendance.AttendanceViewModel
 import com.swent.shifter.ui.attendance.EventOverviewScreen
@@ -53,7 +55,6 @@ import com.swent.shifter.ui.chat.ChatChannelsScreen
 import com.swent.shifter.ui.chat.ChatChannelsViewModel
 import com.swent.shifter.ui.chat.TeamChatScreen
 import com.swent.shifter.ui.chat.TeamChatViewModel
-import com.swent.shifter.ui.checkin.AutoCheckInRoute
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.components.ShifterNavigationBar
 import com.swent.shifter.ui.components.ShifterTopBar
@@ -63,6 +64,8 @@ import com.swent.shifter.ui.event.EventCreatedScreen
 import com.swent.shifter.ui.event.EventCreatedViewModel
 import com.swent.shifter.ui.event.JoinEventScreen
 import com.swent.shifter.ui.event.JoinEventViewModel
+import com.swent.shifter.ui.event.RequestSentSnackbar
+import com.swent.shifter.ui.event.putRequestSent
 import com.swent.shifter.ui.events.MembershipEventWithdrawer
 import com.swent.shifter.ui.events.MyEventsViewModel
 import com.swent.shifter.ui.events.OrganizerEventsLoader
@@ -84,12 +87,17 @@ import com.swent.shifter.ui.mission.AddMissionViewModel
 import com.swent.shifter.ui.mission.RepositoryAssigneeCandidates
 import com.swent.shifter.ui.overview.OrganizerOverviewScreen
 import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
+import com.swent.shifter.ui.overview.VolunteerOverview
 import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
-import com.swent.shifter.ui.planning.PlanningScreen
 import com.swent.shifter.ui.planning.PlanningViewModel
+import com.swent.shifter.ui.scan.ScanScreen
+import com.swent.shifter.ui.scan.toScanResult
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
+import com.swent.shifter.ui.sharing.AndroidEventSharer
+import com.swent.shifter.ui.sharing.EventSharer
+import com.swent.shifter.ui.sharing.SharingScreen
 import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
@@ -106,6 +114,9 @@ import kotlinx.coroutines.flow.filter
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
  *   passes one that answers with a fake account, as the system picker cannot be driven.
  * @param locationProvider The volunteer's position, for the automatic check-in and their map.
+ * @param eventSharer What sends an event's join code to another app from its Sharing tab. A test
+ *   passes a fake, as the system share sheet cannot be driven.
+ * @param qrScanner The camera that reads the event's QR code to join it. A test passes a fake one.
  */
 @Composable
 fun ShifterNavHost(
@@ -120,6 +131,12 @@ fun ShifterNavHost(
     locationProvider: LocationProvider =
         LocalContext.current.let { context ->
           remember(context) { FusedLocationProvider(context) }
+        },
+    eventSharer: EventSharer =
+        LocalContext.current.let { context -> remember(context) { AndroidEventSharer(context) } },
+    qrScanner: QrScanner =
+        LocalContext.current.let { context ->
+          remember(context) { CameraQrScanner(context.applicationContext) }
         },
 ) {
   val nav = rememberNavigationActions(navController)
@@ -153,6 +170,8 @@ fun ShifterNavHost(
         nav,
         credentialManager,
         locationProvider,
+        eventSharer,
+        qrScanner,
     )
   }
 }
@@ -167,6 +186,8 @@ private fun ShifterNavGraph(
     nav: NavigationActions,
     credentialManager: CredentialManager,
     locationProvider: LocationProvider,
+    eventSharer: EventSharer,
+    qrScanner: QrScanner,
 ) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
@@ -213,7 +234,7 @@ private fun ShifterNavGraph(
     }
 
     navigation<Volunteer>(startDestination = Volunteer.Events) {
-      composable<Volunteer.Events> {
+      composable<Volunteer.Events> { entry ->
         val viewModel: StaffEventsViewModel =
             viewModel(
                 factory =
@@ -233,12 +254,15 @@ private fun ShifterNavGraph(
                     )
             )
         RefreshOnReturn(viewModel)
+        val snackbarHostState = remember { SnackbarHostState() }
+        RequestSentSnackbar(entry.savedStateHandle, snackbarHostState)
         StaffEventsScreen(
             viewModel = viewModel,
             avatarInitial = remember { avatarInitial(auth.currentUser()) },
             onOpenEvent = { card -> nav.enterEvent(VolunteerEvent(card.id, card.title)) },
             onScanQrClick = { nav.navigateTo(Volunteer.QrApply) },
             onAvatarClick = { nav.navigateTo(Volunteer.ProfileSettings) },
+            snackbarHostState = snackbarHostState,
         )
       }
       composable<Volunteer.ProfileSettings> {
@@ -251,20 +275,46 @@ private fun ShifterNavGraph(
             credentialManager = credentialManager,
         )
       }
-      composable<Volunteer.QrApply> {
+      composable<Volunteer.QrApply> { entry ->
         // The screen's own Back returns from the event to the code; the device Back on the code
-        // leaves it, back to the events list.
+        // leaves it, back to the events list. Once a request is sent, the list confirms it.
+        val joinEvent = joinEventViewModel(entry, repositories, currentUserId)
         JoinEventScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        JoinEventViewModel.factory(
-                            repositories.eventRepository,
-                            repositories.membershipRequestRepository,
-                            repositories.teamRepository,
-                            currentUserId,
-                        )
-                )
+            viewModel = joinEvent,
+            onScanQrCode = {
+              // The error of a code typed before would show as the result of the scan.
+              joinEvent.changeCode()
+              nav.navigateTo(Volunteer.Scan)
+            },
+            onRequestSent = { eventTitle ->
+              navController
+                  .getBackStackEntry<Volunteer.Events>()
+                  .savedStateHandle
+                  .putRequestSent(eventTitle)
+              nav.backTo(Volunteer.Events)
+            },
+        )
+      }
+      composable<Volunteer.Scan> { entry ->
+        // A code read fills in the join screen under it, which looks its event up, as typed. The
+        // scan shows what it found: Continue goes back to the join screen, showing the event.
+        val joinEntry = remember(entry) { navController.getBackStackEntry<Volunteer.QrApply>() }
+        val joinEvent = joinEventViewModel(joinEntry, repositories, currentUserId)
+        val joinState by joinEvent.uiState.collectAsState()
+        // Leaving any other way, the system Back included, drops the result, even one still looked
+        // up: the join screen keeps the code read, filled in.
+        val leave = {
+          joinEvent.cancelLookup()
+          nav.goBack()
+        }
+        ScanScreen(
+            scanner = qrScanner,
+            onCodeScanned = joinEvent::onCodeScanned,
+            onEnterCode = leave,
+            onBack = leave,
+            result = joinState.toScanResult(),
+            onContinue = nav::goBack,
+            onScanAgain = joinEvent::changeCode,
         )
       }
       navigation<VolunteerEvent>(startDestination = VolunteerTabs.home) {
@@ -307,38 +357,38 @@ private fun ShifterNavGraph(
                       }
                     },
                     volunteerOverview = {
-                      // Scrolls as one page, the card and the Planning together.
-                      Column(
-                          modifier =
-                              Modifier.fillMaxSize()
-                                  .verticalScroll(rememberScrollState())
-                                  .padding(16.dp)
-                      ) {
-                        AutoCheckInRoute(
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        AutoCheckInViewModel.factory(
-                                            repositories.missionRepository,
-                                            repositories.checkInRepository,
-                                            locationProvider,
-                                            currentUserId,
-                                        )
-                                )
-                        )
-                        PlanningScreen(
-                            viewModel =
-                                viewModel(
-                                    factory =
-                                        PlanningViewModel.factory(
-                                            eventId,
-                                            repositories.missionRepository,
-                                            repositories.checkInRepository,
-                                            currentUserId,
-                                        )
-                                )
-                        )
-                      }
+                      VolunteerOverview(
+                          planning =
+                              viewModel(
+                                  factory =
+                                      PlanningViewModel.factory(
+                                          eventId,
+                                          repositories.missionRepository,
+                                          repositories.checkInRepository,
+                                          repositories.eventRepository,
+                                          repositories.minuteClock,
+                                          currentUserId,
+                                      )
+                              ),
+                          autoCheckIn =
+                              viewModel(
+                                  factory =
+                                      AutoCheckInViewModel.factory(
+                                          repositories.missionRepository,
+                                          repositories.checkInRepository,
+                                          locationProvider,
+                                          currentUserId,
+                                      )
+                              ),
+                          clock = repositories.minuteClock,
+                          onOpenOnMap = { mission ->
+                            navController
+                                .getBackStackEntry<VolunteerEvent>()
+                                .savedStateHandle[OPEN_MISSION_KEY] = mission.id
+                            nav.switchTab(VolunteerTabs.Map)
+                          },
+                          onOpenDiscussions = { nav.switchTab(VolunteerTabs.Discussions) },
+                      )
                     },
                 )
               }
@@ -488,7 +538,6 @@ private fun ShifterNavGraph(
                                   repositories.membershipRequestRepository,
                                   repositories.userRepository,
                               ),
-                              repositories.eventRepository,
                           )
                   )
               // Shows the missions added while the creation form was on top.
@@ -613,6 +662,25 @@ private fun ShifterNavGraph(
             currentUserId,
             channel = OrganizerEventScreen::Channel,
         )
+        tab<OrganizerTabs.Sharing, OrganizerEventScreen.Sharing, OrganizerEvent>(
+            OrganizerTabs.Sharing,
+            nav,
+            navController,
+            built = true,
+            content = { _, event ->
+              SharingScreen(
+                  viewModel =
+                      viewModel(
+                          factory =
+                              EventCreatedViewModel.factory(
+                                  repositories.eventRepository,
+                                  event.eventId,
+                              )
+                      ),
+                  sharer = eventSharer,
+              )
+            },
+        )
       }
     }
   }
@@ -647,6 +715,12 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 }
 
 /**
+ * The key, in the saved state of an event's graph, of the mission its Map tab is asked to open: the
+ * tabs share no ViewModel, and the Map's route takes no argument as the home of its tab.
+ */
+private const val OPEN_MISSION_KEY = "openMission"
+
+/**
  * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, and
  * the user's position when given a [locationProvider], and the volunteers of [watchedTeams] who
  * share their position. Without [watchedTeams], the map shows no volunteer.
@@ -664,25 +738,33 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
   navigation<T>(startDestination = tab.home) {
     composable<S> { entry ->
       val event = eventRoute<E>(navController, entry)
+      val viewModel: MapViewModel =
+          viewModel(
+              factory =
+                  MapViewModel.factory(
+                      event.eventId,
+                      repositories.eventRepository,
+                      repositories.missionRepository,
+                      currentUserId,
+                      repositories.minuteClock,
+                      locationProvider,
+                      liveLocations = repositories.liveLocationRepository,
+                      watchedTeams = watchedTeams,
+                      userRepository = repositories.userRepository,
+                  )
+          )
+      // A mission another tab asked to show, such as the now card's "View on map": read once, so
+      // coming back to the map later does not open it again.
+      val handle = remember(entry) { navController.getBackStackEntry<E>().savedStateHandle }
+      val missionToOpen by handle.getStateFlow<String?>(OPEN_MISSION_KEY, null).collectAsState()
+      LaunchedEffect(missionToOpen) {
+        missionToOpen?.let {
+          viewModel.openMission(it)
+          handle[OPEN_MISSION_KEY] = null
+        }
+      }
       TabPage(tab, nav, event.eventTitle) { padding ->
-        MapScreen(
-            viewModel =
-                viewModel(
-                    factory =
-                        MapViewModel.factory(
-                            event.eventId,
-                            repositories.eventRepository,
-                            repositories.missionRepository,
-                            currentUserId,
-                            repositories.minuteClock,
-                            locationProvider,
-                            liveLocations = repositories.liveLocationRepository,
-                            watchedTeams = watchedTeams,
-                            userRepository = repositories.userRepository,
-                        )
-                ),
-            contentPadding = padding,
-        )
+        MapScreen(viewModel = viewModel, contentPadding = padding)
       }
     }
   }
@@ -859,3 +941,23 @@ private fun appOfMode(mode: UserMode): App =
       UserMode.VOLUNTEER -> Volunteer
       UserMode.ORGANIZER -> Organizer
     }
+
+/**
+ * The join screen's ViewModel, kept in [owner], the join screen's entry, which the scan fills too.
+ */
+@Composable
+private fun joinEventViewModel(
+    owner: ViewModelStoreOwner,
+    repositories: RepositoryProvider,
+    currentUserId: () -> String?,
+): JoinEventViewModel =
+    viewModel(
+        viewModelStoreOwner = owner,
+        factory =
+            JoinEventViewModel.factory(
+                repositories.eventRepository,
+                repositories.membershipRequestRepository,
+                repositories.teamRepository,
+                currentUserId,
+            ),
+    )

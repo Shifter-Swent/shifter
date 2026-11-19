@@ -6,14 +6,28 @@ import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.CheckInRepository
 import com.swent.shifter.model.checkin.CheckInRepositoryException
 import com.swent.shifter.model.checkin.FakeCheckInRepository
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionRepositoryException
+import com.swent.shifter.model.time.FakeMinuteClock
+import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.utils.MainDispatcherRule
+import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,25 +42,53 @@ class PlanningViewModelTest {
 
   private val missions = FakeMissionRepository()
   private val checkIns = FakeCheckInRepository(currentUserId = USER)
+  private val events = FakeEventRepository()
+
+  private val clock = FakeMinuteClock(START.minus(Duration.ofHours(1)))
 
   private var userId: String? = USER
 
-  private fun viewModel() = PlanningViewModel(EVENT, missions, checkIns) { userId }
+  private fun viewModel() =
+      PlanningViewModel(EVENT, missions, checkIns, events, clock, ZoneOffset.UTC) { userId }
+
+  /** Collects the state as the screen would, which makes the ViewModel follow the clock. */
+  private fun TestScope.collect(viewModel: PlanningViewModel) =
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+        viewModel.uiState.collect {}
+      }
+
+  private suspend fun createEvent(startAt: Instant, endAt: Instant) =
+      events.createEvent(
+          Event(
+              id = EVENT,
+              organizerId = "organizer",
+              title = "City Marathon",
+              description = "",
+              type = EventType.MUSIC,
+              startAt = startAt,
+              endAt = endAt,
+              location = EventLocation("Lyon"),
+              createdAt = startAt,
+          )
+      )
 
   private suspend fun create(
       title: String,
       eventId: String = EVENT,
       assignees: List<String> = listOf(USER),
       location: MissionLocation? = null,
+      startAt: Instant = START,
+      endAt: Instant = startAt.plusSeconds(3600),
+      description: String = "",
   ): Mission =
       missions.createMission(
           Mission(
               eventId = eventId,
               title = title,
-              description = "",
+              description = description,
               volunteersNeeded = 2,
-              startAt = START,
-              endAt = START.plusSeconds(3600),
+              startAt = startAt,
+              endAt = endAt,
               location = location,
               assigneeIds = assignees,
               createdAt = START,
@@ -91,6 +133,16 @@ class PlanningViewModelTest {
     assertEquals(
         PlanningMission(unlocated.id, "Break", START, unlocated.endAt, null, null),
         shown[unlocated.id],
+    )
+  }
+
+  @Test
+  fun load_mapsTheDescription() = runTest {
+    create("Hand out water", description = "Fill the cups at the stand")
+
+    assertEquals(
+        "Fill the cups at the stand",
+        viewModel().uiState.value.missions.single().description,
     )
   }
 
@@ -188,10 +240,17 @@ class PlanningViewModelTest {
           }
         }
 
-    val state = PlanningViewModel(EVENT, missions, failingAfterAStatus) { userId }.uiState.value
+    clock.set(START.plusSeconds(60))
+    val viewModel =
+        PlanningViewModel(EVENT, missions, failingAfterAStatus, events, clock, ZoneOffset.UTC) {
+          userId
+        }
+    collect(viewModel)
 
+    val state = viewModel.uiState.value
     assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
     assertTrue(state.checkInsUnavailable)
+    assertEquals(NowState.Ongoing(mission, null), state.now)
   }
 
   @Test
@@ -206,10 +265,229 @@ class PlanningViewModelTest {
     assertFalse(viewModel.uiState.value.checkInsUnavailable)
   }
 
+  @Test
+  fun now_whileCollected_followsTheClock() = runTest {
+    val mission = create("Hand out water")
+    val viewModel = viewModel()
+    collect(viewModel)
+    assertEquals(NowState.Later(mission), viewModel.uiState.value.now)
+
+    clock.set(START.minus(Duration.ofMinutes(20)))
+    assertEquals(NowState.Soon(mission), viewModel.uiState.value.now)
+
+    clock.set(START.plusSeconds(60))
+    assertEquals(NowState.Late(mission, null), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_whenTheVolunteerChecksIn_isOngoing() = runTest {
+    val mission = create("Hand out water")
+    clock.set(START.plusSeconds(60))
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    checkIn(mission, CHECKED_IN_AT)
+
+    assertEquals(NowState.Ongoing(mission, null), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_withoutMissions_isDoneForToday() = runTest {
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertEquals(NowState.DoneForToday, viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_onlyWhileCollected_followsTheClock() = runTest {
+    create("Hand out water")
+    val viewModel = viewModel()
+    assertEquals(0, clock.subscriptionCount.value)
+    assertNull(viewModel.uiState.value.now)
+
+    val screen = collect(viewModel)
+    assertTrue(clock.subscriptionCount.value > 0)
+
+    screen.cancel()
+    assertEquals(0, clock.subscriptionCount.value)
+  }
+
+  @Test
+  fun now_whenTheCheckInsFail_isUnknown() = runTest {
+    create("Hand out water")
+    checkIns.failure = CheckInRepositoryException.Unavailable()
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertNull(viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_whenTheMissionsFail_isUnknown() = runTest {
+    missions.failure = MissionRepositoryException.Unavailable()
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertNull(viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun load_afterAnError_showsTheNowState() = runTest {
+    val mission = create("Hand out water")
+    missions.failure = MissionRepositoryException.Unavailable()
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    missions.failure = null
+    viewModel.load()
+
+    assertEquals(NowState.Later(mission), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun load_afterASuccess_showsTheNowStateAgain() = runTest {
+    val mission = create("Hand out water")
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    viewModel.load()
+
+    assertEquals(NowState.Later(mission), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun load_whenAReloadFails_keepsTheNowStateUnknown() = runTest {
+    create("Hand out water")
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    viewModel.load()
+    clock.set(START.plusSeconds(60))
+
+    assertNull(viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_leavesOutTheMissionsOfAnotherDay() = runTest {
+    create("Tomorrow", startAt = START.plus(Duration.ofDays(1)))
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertEquals(NowState.DoneForToday, viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_beforeMidnight_showsTheNightMissionOfTheSameDay() = runTest {
+    val night =
+        create(
+            "Night shift",
+            startAt = Instant.parse("2025-06-15T02:00:00Z"),
+            endAt = Instant.parse("2025-06-15T04:00:00Z"),
+        )
+    clock.set(Instant.parse("2025-06-14T23:00:00Z"))
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertEquals(NowState.Later(night), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_atFourInTheMorning_showsTheMissionsOfTheNewDay() = runTest {
+    val tomorrow = create("Tomorrow", startAt = START.plus(Duration.ofDays(1)))
+    clock.set(Instant.parse("2025-06-15T03:59:00Z"))
+    val viewModel = viewModel()
+    collect(viewModel)
+    assertEquals(NowState.DoneForToday, viewModel.uiState.value.now)
+
+    clock.set(Instant.parse("2025-06-15T04:00:00Z"))
+
+    assertEquals(NowState.Later(tomorrow), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun now_afterFourInTheMorning_keepsTheMissionRunningAcrossIt() = runTest {
+    val night =
+        create(
+            "Night shift",
+            startAt = Instant.parse("2025-06-15T02:00:00Z"),
+            endAt = Instant.parse("2025-06-15T06:00:00Z"),
+        )
+    clock.set(Instant.parse("2025-06-15T05:00:00Z"))
+    val viewModel = viewModel()
+    collect(viewModel)
+
+    assertEquals(NowState.Late(night, null), viewModel.uiState.value.now)
+  }
+
+  @Test
+  fun load_showsWhenTheEventStartsAndEnds() = runTest {
+    createEvent(EVENT_START, EVENT_END)
+
+    assertEquals(EVENT_START..EVENT_END, viewModel().uiState.value.eventPeriod)
+  }
+
+  @Test
+  fun load_whenTheEventFails_stillShowsTheMissions() = runTest {
+    val mission = create("Hand out water")
+    createEvent(EVENT_START, EVENT_END)
+    events.failure = EventRepositoryException.Unavailable()
+
+    val state = viewModel().uiState.value
+
+    assertEquals(listOf(mission.id), state.missions.map { it.id })
+    assertNull(state.eventPeriod)
+    assertNull(state.error)
+    assertFalse(state.isLoading)
+  }
+
+  @Test
+  fun load_whileTheEventIsStillRead_showsTheMissionsAndTheirCheckIns() = runTest {
+    val mission = create("Hand out water")
+    val event = createEvent(EVENT_START, EVENT_END)
+    // Answers only once completed, as a read stuck on a slow network would.
+    val read = CompletableDeferred<Event?>()
+    val slowEvents =
+        object : EventRepository by events {
+          override suspend fun getEvent(eventId: String) = read.await()
+        }
+    val viewModel =
+        PlanningViewModel(EVENT, missions, checkIns, slowEvents, clock, ZoneOffset.UTC) { userId }
+
+    checkIn(mission, CHECKED_IN_AT)
+
+    val state = viewModel.uiState.value
+    assertFalse(state.isLoading)
+    assertEquals(CHECKED_IN_AT, state.missions.single().checkedInAt)
+    assertNull(state.eventPeriod)
+
+    read.complete(event)
+
+    assertEquals(EVENT_START..EVENT_END, viewModel.uiState.value.eventPeriod)
+  }
+
+  @Test
+  fun retry_afterBothFailed_showsTheEventDates() = runTest {
+    create("Hand out water")
+    createEvent(EVENT_START, EVENT_END)
+    missions.failure = MissionRepositoryException.Unavailable()
+    events.failure = EventRepositoryException.Unavailable()
+    val viewModel = viewModel()
+
+    missions.failure = null
+    events.failure = null
+    viewModel.load()
+
+    assertEquals(EVENT_START..EVENT_END, viewModel.uiState.value.eventPeriod)
+  }
+
   private companion object {
     const val EVENT = "event-1"
     const val USER = "volunteer-1"
     val START: Instant = Instant.parse("2025-06-14T08:30:00Z")
+    val EVENT_START: Instant = Instant.parse("2025-06-13T08:00:00Z")
+    val EVENT_END: Instant = Instant.parse("2025-06-19T22:00:00Z")
     val CHECKED_IN_AT: Instant = Instant.parse("2025-06-14T08:31:00Z")
     val STATION = MissionLocation("Hydration station A", GeoPosition(45.75, 4.83))
   }

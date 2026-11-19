@@ -20,6 +20,7 @@ class NavigationRoutesTest {
           Volunteer.Events,
           Volunteer.ProfileSettings,
           Volunteer.QrApply,
+          Volunteer.Scan,
           Organizer.Events,
           Organizer.ProfileSettings,
           Organizer.CreateEvent,
@@ -62,6 +63,7 @@ class NavigationRoutesTest {
             OrganizerTabs.People,
             OrganizerTabs.Map,
             OrganizerTabs.Discussions,
+            OrganizerTabs.Sharing,
         ),
         OrganizerTabs.all,
     )

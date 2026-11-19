@@ -19,6 +19,8 @@
     <string name="join_event_error_offline">You are offline, try again later</string>
     <string name="join_event_error_permission_denied">You cannot apply to this event</string>
     <string name="join_event_error_unexpected">Something went wrong, try again</string>
+    <string name="join_event_request_sent">Request sent to %1$s</string>
+    <string name="join_event_scan_qr_code">Scan a QR code</string>
     <string name="event_details_title">Event details</string>
     <string name="event_details_opened_from_code">Opened from your join code</string>
     <string name="event_details_date_time">Date &amp; time</string>
@@ -26,6 +28,18 @@
     <string name="event_details_about">About this event</string>
     <string name="event_details_approval_notice">Participation requires the organizer\'s approval. Your join code is not a confirmed place.</string>
     <string name="event_details_apply_hint">Send a participation request for organizer review.</string>
+    <!-- Scan a QR code -->
+    <string name="scan_title">Scan a QR code</string>
+    <string name="scan_hint">Point your camera at the event\'s QR code</string>
+    <string name="scan_invalid_code">This QR code is not a Shifter event</string>
+    <string name="scan_code_read">Code read</string>
+    <string name="scan_enter_code_instead">Enter the code instead</string>
+    <string name="scan_torch">Torch</string>
+    <!-- Scan a QR code: the result of the code read -->
+    <string name="scan_result_code">Code</string>
+    <string name="scan_continue">Continue</string>
+    <string name="scan_again">Scan again</string>
+    <string name="scan_unknown_code_help">Ask the organizer for the event\'s QR code, or type its code.</string>
     <!-- Scan a QR code: the camera fallback -->
     <string name="scan_fallback_refused_title">Shifter can\'t use the camera</string>
     <string name="scan_fallback_refused_message">You can still join with the event\'s code. To scan, allow the camera.</string>

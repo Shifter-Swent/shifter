@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -799,66 +798,20 @@ private fun People(
       )
     }
     people.forEach { volunteer ->
-      // An id is not a name, so someone whose profile could not be read stays unnamed.
-      val name =
-          volunteer.displayName?.takeIf { it.isNotBlank() }
-              ?: stringResource(R.string.attendance_volunteer_unknown)
-      Row(
-          modifier =
-              Modifier.fillMaxWidth()
-                  .then(
-                      if (onCheckIn == null) Modifier
-                      // 48 dp tall at least, since one tap writes a check-in that cannot be
-                      // changed: a hurried tap must not land on the next name.
-                      else
-                          Modifier.heightIn(min = 48.dp)
-                              .clip(RoundedCornerShape(8.dp))
-                              .clickable(
-                                  onClickLabel =
-                                      stringResource(R.string.attendance_check_in_action, name),
-                                  role = Role.Button,
-                              ) {
-                                onCheckIn(volunteer.userId)
-                              }
-                              .testTag(ManagerOverviewTestTags.checkIn(missionId, volunteer.userId))
-                  ),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
+      AttendanceVolunteerRow(
+          volunteer = volunteer,
+          checkInTestTag = ManagerOverviewTestTags.checkIn(missionId, volunteer.userId),
+          leading = {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+          },
+          onCheckIn = onCheckIn?.let { checkIn -> { checkIn(volunteer.userId) } },
       ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
+        AttendanceCheckInDetails(
+            volunteer = volunteer,
+            zone = zone,
+            manualTestTag = ManagerOverviewTestTags.manual(missionId, volunteer.userId),
+            pendingTestTag = ManagerOverviewTestTags.pending(missionId, volunteer.userId),
         )
-        if (volunteer.checkedInManually) {
-          Text(
-              text = stringResource(R.string.attendance_manual),
-              style = MaterialTheme.typography.labelSmall,
-              color = shifter_mutedText,
-              modifier =
-                  Modifier.testTag(ManagerOverviewTestTags.manual(missionId, volunteer.userId)),
-          )
-        }
-        if (volunteer.checkInPending) {
-          // Not confirmed yet: in its undo window, or waiting for the network.
-          Icon(
-              Icons.Filled.CloudOff,
-              contentDescription = stringResource(R.string.attendance_not_synced),
-              tint = shifter_mutedText,
-              modifier =
-                  Modifier.size(14.dp)
-                      .testTag(ManagerOverviewTestTags.pending(missionId, volunteer.userId)),
-          )
-        }
-        volunteer.checkedInAt?.let {
-          Text(
-              text = it.formatTime(zone),
-              style = MaterialTheme.typography.labelSmall,
-              color = shifter_mutedText,
-          )
-        }
       }
     }
   }

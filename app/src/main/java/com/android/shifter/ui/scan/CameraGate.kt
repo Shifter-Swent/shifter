@@ -35,6 +35,7 @@ import com.swent.shifter.ui.permission.openAppSettings
  *
  * @param error the scanner's `QrScanner.error`, collected by the screen.
  * @param onEnterCode goes back to the typed code.
+ * @param overlay drawn over what the gate shows, e.g. a top bar, told whether the camera is shown.
  * @param camera the camera preview, e.g. `QrScanner.Preview`.
  */
 @Composable
@@ -42,6 +43,7 @@ fun CameraGate(
     error: ScanError?,
     onEnterCode: () -> Unit,
     modifier: Modifier = Modifier,
+    overlay: @Composable (cameraShown: Boolean) -> Unit = {},
     camera: @Composable () -> Unit,
 ) {
   val context = LocalContext.current
@@ -72,27 +74,29 @@ fun CameraGate(
                       Manifest.permission.CAMERA,
                   ),
       )
-  when {
-    // The system dialog is open: nothing to show yet, and no fallback that flashes.
-    access == CameraAccess.NOT_REQUESTED ->
-        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
-    access != CameraAccess.GRANTED ->
-        ScanFallback(
-            reason = ScanFallbackReason.PERMISSION_REFUSED,
-            onEnterCode = onEnterCode,
-            onAllowCamera = {
-              if (access == CameraAccess.DENIED) launcher.launch(Manifest.permission.CAMERA)
-              else context.openAppSettings()
-            },
-            modifier = modifier,
-        )
-    cameraFailed || error != null ->
-        ScanFallback(
-            reason = ScanFallbackReason.CAMERA_ERROR,
-            onEnterCode = onEnterCode,
-            onAllowCamera = {},
-            modifier = modifier,
-        )
-    else -> Box(modifier.fillMaxSize()) { camera() }
+  val cameraShown = access == CameraAccess.GRANTED && !cameraFailed && error == null
+  Box(modifier.fillMaxSize()) {
+    when {
+      // The system dialog is open: nothing to show yet, and no fallback that flashes.
+      access == CameraAccess.NOT_REQUESTED ->
+          Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
+      access != CameraAccess.GRANTED ->
+          ScanFallback(
+              reason = ScanFallbackReason.PERMISSION_REFUSED,
+              onEnterCode = onEnterCode,
+              onAllowCamera = {
+                if (access == CameraAccess.DENIED) launcher.launch(Manifest.permission.CAMERA)
+                else context.openAppSettings()
+              },
+          )
+      !cameraShown ->
+          ScanFallback(
+              reason = ScanFallbackReason.CAMERA_ERROR,
+              onEnterCode = onEnterCode,
+              onAllowCamera = {},
+          )
+      else -> Box(Modifier.fillMaxSize()) { camera() }
+    }
+    overlay(cameraShown)
   }
 }

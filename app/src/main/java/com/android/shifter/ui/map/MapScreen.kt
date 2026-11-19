@@ -91,6 +91,7 @@ fun MapScreen(
       onMarkerClick = viewModel::selectMarker,
       onCloseCard = viewModel::clearSelection,
       onRetry = viewModel::load,
+      onFocusShown = viewModel::focusShown,
       myPosition = myPosition,
       volunteers = volunteers,
       contentPadding = contentPadding,
@@ -102,6 +103,9 @@ fun MapScreen(
  *
  * @param myPosition where the user is, shown on the map and where the recenter button goes; null
  *   shows nothing, and the button goes back to the event.
+ * @param onFocusShown called once the camera was sent to [MapUiState.focus]; the move itself may
+ *   wait for the map to be ready.
+ * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
@@ -114,6 +118,7 @@ fun MapContent(
     onMarkerClick: (MapMarker) -> Unit,
     onCloseCard: () -> Unit,
     onRetry: () -> Unit,
+    onFocusShown: () -> Unit = {},
     myPosition: GeoPosition? = null,
     volunteers: List<VolunteerPin> = emptyList(),
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
@@ -150,6 +155,16 @@ fun MapContent(
       LaunchedEffect(uiState.center) {
         uiState.center?.let {
           cameraPositionState.position = CameraPosition.fromLatLngZoom(it.toLatLng(), EVENT_ZOOM)
+        }
+      }
+      // A mission opened from elsewhere, such as the now card, is brought to the middle once. A
+      // move rather than an animation: the Map tab often opens at that moment, before the map is
+      // ready, and an animation can then be cancelled and leave the camera where it was. A move
+      // waits for the map. Declared after the effect of the center, so it comes last.
+      LaunchedEffect(uiState.focus) {
+        uiState.focus?.let {
+          cameraPositionState.move(CameraUpdateFactory.newLatLng(it.toLatLng()))
+          onFocusShown()
         }
       }
       val next = uiState.next

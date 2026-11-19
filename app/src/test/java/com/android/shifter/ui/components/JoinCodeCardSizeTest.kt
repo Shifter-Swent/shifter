@@ -1,5 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
-package com.swent.shifter.ui.event
+package com.swent.shifter.ui.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
@@ -20,8 +20,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The compact join code card keeps the same size in every state, so nothing on the Overview moves
- * when the code arrives or turns out to be unavailable.
+ * The compact join code card keeps the same size in every state, so nothing on the Sharing tab
+ * moves when the code arrives or turns out to be unavailable.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinCodeCardSizeTest {

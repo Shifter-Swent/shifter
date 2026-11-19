@@ -28,14 +28,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,12 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
-import com.swent.shifter.ui.event.JOIN_CODE_PLACEHOLDER
-import com.swent.shifter.ui.event.JoinCodeCard
-import com.swent.shifter.ui.event.JoinCodeCardSize
-import com.swent.shifter.ui.event.JoinCodeCardTestTags
-import com.swent.shifter.ui.event.JoinCodeUnavailableCard
-import com.swent.shifter.ui.event.rememberCopyJoinCode
 import com.swent.shifter.ui.mission.AssigneePicker
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -76,11 +67,6 @@ object OrganizerOverviewScreenTestTags {
   const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
   const val ASSIGN_CANCEL = "OrganizerOverviewAssignCancel"
   const val ASSIGN_ERROR = "OrganizerOverviewAssignError"
-  const val JOIN_CODE = JoinCodeCardTestTags.CODE
-  const val COPY_JOIN_CODE_BUTTON = JoinCodeCardTestTags.COPY_BUTTON
-  const val JOIN_CODE_UNAVAILABLE = JoinCodeCardTestTags.UNAVAILABLE
-  const val RETRY_JOIN_CODE_BUTTON = JoinCodeCardTestTags.RETRY_BUTTON
-  const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
 
@@ -94,8 +80,8 @@ object OrganizerOverviewScreenTestTags {
 }
 
 /**
- * The organizer's management screen of an event: its invitation code, the progress of its missions,
- * then its missions, filtered by team.
+ * The organizer's management screen of an event: the progress of its missions, then its missions,
+ * filtered by team. Its join code is in the Sharing tab.
  *
  * @param onAddMission called to open the mission creation form.
  * @param onManageTeams called to open the teams of the event.
@@ -118,7 +104,6 @@ fun OrganizerOverviewScreen(
               onEditMission = onEditMission,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
-              onRetryJoinCode = viewModel::retryJoinCode,
               onAssign = viewModel::openAssign,
               onToggleAssignee = viewModel::toggleAssignee,
               onRetryAssignees = viewModel::retryAssignees,
@@ -135,7 +120,6 @@ data class OrganizerOverviewActions(
     val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
-    val onRetryJoinCode: () -> Unit = {},
     // TODO: open the notification composer once notifications exist.
     val onSendNotification: () -> Unit = {},
     val onAssign: (String) -> Unit = {},
@@ -145,32 +129,15 @@ data class OrganizerOverviewActions(
     val onDismissAssign: () -> Unit = {},
 )
 
-/**
- * Stateless form of [OrganizerOverviewScreen]: renders [state] and reports every interaction. Only
- * the copy of the invitation code is done here, as it concerns the clipboard and no ViewModel.
- */
+/** Stateless form of [OrganizerOverviewScreen]: renders [state] and reports every interaction. */
 @Composable
 fun OrganizerOverviewContent(state: OrganizerOverviewUiState, actions: OrganizerOverviewActions) {
-  val snackbarHostState = remember { SnackbarHostState() }
-  val copyJoinCode = rememberCopyJoinCode(snackbarHostState)
-  Box(modifier = Modifier.fillMaxSize()) {
-    OverviewColumn(state, actions, onCopyJoinCode = copyJoinCode)
-    SnackbarHost(
-        snackbarHostState,
-        modifier =
-            Modifier.align(Alignment.BottomCenter)
-                .testTag(OrganizerOverviewScreenTestTags.SNACKBAR),
-    )
-  }
+  OverviewColumn(state, actions)
   state.assigning?.let { AssignDialog(it, actions) }
 }
 
 @Composable
-private fun OverviewColumn(
-    state: OrganizerOverviewUiState,
-    actions: OrganizerOverviewActions,
-    onCopyJoinCode: (String) -> Unit,
-) {
+private fun OverviewColumn(state: OrganizerOverviewUiState, actions: OrganizerOverviewActions) {
   Column(
       modifier =
           Modifier.fillMaxSize()
@@ -179,7 +146,6 @@ private fun OverviewColumn(
               .testTag(OrganizerOverviewScreenTestTags.SCREEN),
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    JoinCode(state.joinCode, onCopyJoinCode, actions.onRetryJoinCode)
     AddMissionButton(actions.onAddMission)
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
@@ -187,34 +153,6 @@ private fun OverviewColumn(
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
     Missions(state, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
-  }
-}
-
-/**
- * The join code card, there from the start so the buttons below never move when the code arrives: a
- * placeholder with nothing to copy while it is read, then the code, or a retry when unavailable.
- */
-@Composable
-private fun JoinCode(
-    joinCode: JoinCodeState,
-    onCopy: (String) -> Unit,
-    onRetry: () -> Unit,
-) {
-  when (joinCode) {
-    JoinCodeState.Loading ->
-        JoinCodeCard(
-            joinCode = JOIN_CODE_PLACEHOLDER,
-            onCopy = {},
-            size = JoinCodeCardSize.Compact,
-            copyEnabled = false,
-        )
-    is JoinCodeState.Ready ->
-        JoinCodeCard(
-            joinCode = joinCode.code,
-            onCopy = { onCopy(joinCode.code) },
-            size = JoinCodeCardSize.Compact,
-        )
-    JoinCodeState.Unavailable -> JoinCodeUnavailableCard(onRetry)
   }
 }
 
@@ -627,7 +565,6 @@ private fun OrganizerOverviewContentPreview() {
                         OverviewMission("2", "Prepare the counter", "bar", false),
                         OverviewMission("3", "Welcome the volunteers", null, false),
                     ),
-                joinCode = JoinCodeState.Ready("ABC234"),
             ),
         actions = OrganizerOverviewActions(),
     )

@@ -12,8 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -22,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_mutedText
+import java.time.LocalDate
 
 object PlanningScreenTestTags {
   const val LOADING = "planningLoading"
@@ -30,19 +29,24 @@ object PlanningScreenTestTags {
   const val CHECK_INS_UNAVAILABLE = "planningCheckInsUnavailable"
 }
 
-/** The volunteer's Planning in the event overview, loaded by [viewModel]. */
-@Composable
-fun PlanningScreen(viewModel: PlanningViewModel, modifier: Modifier = Modifier) {
-  val uiState by viewModel.uiState.collectAsState()
-  PlanningContent(state = uiState, onRetry = viewModel::load, modifier = modifier)
-}
-
 /**
- * The Planning once loaded, or what replaces it while loading and after an error. It does not
- * scroll: the Overview page that hosts it, with the automatic check-in card, does.
+ * The Planning once loaded from [PlanningViewModel], or what replaces it while loading and after an
+ * error. It does not scroll: the volunteer's Overview that hosts it, under the now card, does.
+ *
+ * @param expandedMissionId the mission whose row shows its description, none when null.
+ * @param onMissionClick called with the id of a row tapped; the rows cannot be tapped when null.
+ * @param revealRequest a new value brings the expanded row into view again.
  */
 @Composable
-fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun PlanningContent(
+    state: PlanningUiState,
+    today: LocalDate,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    expandedMissionId: String? = null,
+    onMissionClick: ((String) -> Unit)? = null,
+    revealRequest: Int = 0,
+) {
   Column(modifier = modifier.fillMaxWidth().padding(top = 16.dp)) {
     when {
       state.isLoading ->
@@ -63,7 +67,14 @@ fun PlanningContent(state: PlanningUiState, onRetry: () -> Unit, modifier: Modif
               modifier = Modifier.testTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE),
           )
         }
-        Planning(missions = state.missions)
+        Planning(
+            missions = state.missions,
+            eventPeriod = state.eventPeriod,
+            today = today,
+            expandedMissionId = expandedMissionId,
+            onMissionClick = onMissionClick,
+            revealRequest = revealRequest,
+        )
       }
     }
   }

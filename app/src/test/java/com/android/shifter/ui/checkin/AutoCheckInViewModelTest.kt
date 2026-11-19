@@ -21,7 +21,6 @@ import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneOffset.UTC
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -36,6 +35,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -85,7 +85,6 @@ class AutoCheckInViewModelTest {
               else CheckInEligibility.Ineligible(ineligibleReason)
             },
             { clock },
-            UTC,
         )
     screen =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -93,6 +92,10 @@ class AutoCheckInViewModelTest {
         }
     runCurrent()
   }
+
+  /** Whether the volunteer is checked in to [mission]. */
+  private fun isCheckedIn(mission: Mission): Boolean =
+      checkIns.checkIns.any { it.eventId == mission.eventId && it.missionId == mission.id }
 
   private suspend fun TestScope.moveTo(position: GeoPosition) {
     location.emit(position)
@@ -122,7 +125,7 @@ class AutoCheckInViewModelTest {
       )
 
   @Test
-  fun eligiblePosition_checksInAndConfirms() = runTest {
+  fun eligiblePosition_checksIn() = runTest {
     val mission = addMission()
     open()
 
@@ -134,8 +137,7 @@ class AutoCheckInViewModelTest {
         listOf(checkIn.eventId, checkIn.missionId, checkIn.userId),
     )
     assertEquals(CheckInMethod.SELF, checkIn.method)
-    assertEquals(AutoCheckedIn("Bar", "18:02"), state.checkedIn)
-    assertNull(state.error)
+    assertNull(state.whyNotCheckedIn(mission))
   }
 
   @Test
@@ -168,7 +170,6 @@ class AutoCheckInViewModelTest {
     moveTo(FAR)
 
     assertTrue(checkIns.checkIns.isEmpty())
-    assertNull(state.checkedIn)
   }
 
   @Test
@@ -181,7 +182,6 @@ class AutoCheckInViewModelTest {
     moveTo(NEAR)
 
     assertEquals(0, counting.calls)
-    assertNull(state.checkedIn)
   }
 
   @Test
@@ -248,12 +248,12 @@ class AutoCheckInViewModelTest {
     advanceTimeBy(Duration.between(NOW, clock).toMillis() + 1)
     assertEquals(0, location.activeCollectors)
 
-    addMission("Stage", eventId = "other-event")
+    val stage = addMission("Stage", eventId = "other-event")
     runCurrent()
 
     assertTrue(checkIns.checkIns.isEmpty())
     moveTo(NEAR)
-    assertEquals("Stage", state.checkedIn?.missionTitle)
+    assertTrue(isCheckedIn(stage))
   }
 
   @Test
@@ -272,8 +272,8 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
-  fun notAllowed_showsTheErrorAndDoesNotRetry() = runTest {
-    addMission()
+  fun notAllowed_isWhyAndDoesNotRetry() = runTest {
+    val mission = addMission()
     open()
     checkIns.failure = CheckInRepositoryException.NotAllowed()
 
@@ -281,23 +281,23 @@ class AutoCheckInViewModelTest {
     checkIns.failure = null
     moveTo(NEAR)
 
-    assertEquals(AutoCheckInError.NOT_ALLOWED, state.error)
+    assertEquals(NotCheckedIn.REFUSED, state.whyNotCheckedIn(mission))
     assertTrue(checkIns.checkIns.isEmpty())
   }
 
   @Test
-  fun offline_showsTheErrorAndRetriesOnTheNextPosition() = runTest {
-    addMission()
+  fun offline_isWhyAndRetriesOnTheNextPosition() = runTest {
+    val mission = addMission()
     open()
     checkIns.failure = CheckInRepositoryException.Unavailable()
 
     moveTo(NEAR)
-    assertEquals(AutoCheckInError.OFFLINE, state.error)
+    assertEquals(NotCheckedIn.OFFLINE, state.whyNotCheckedIn(mission))
     checkIns.failure = null
     moveTo(NEAR)
 
     assertEquals(1, checkIns.checkIns.size)
-    assertNull(state.error)
+    assertNull(state.whyNotCheckedIn(mission))
   }
 
   @Test
@@ -306,10 +306,9 @@ class AutoCheckInViewModelTest {
     open(NeverAnswers(checkIns))
 
     moveTo(NEAR)
-    assertNull(state.error)
+    assertNull(state.whyNotCheckedIn(mission))
     advanceTimeBy(AutoCheckInViewModel.CHECK_IN_TIMEOUT_MILLIS + 1)
 
-    assertEquals(AutoCheckInError.OFFLINE, state.error)
     assertEquals(NotCheckedIn.OFFLINE, state.whyNotCheckedIn(mission))
   }
 
@@ -524,13 +523,12 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
-  fun missionsLoadFailure_showsTheError() = runTest {
+  fun missionsLoadFailure_readsNoPosition() = runTest {
     addMission()
     missions.failure = MissionRepositoryException.Unavailable()
 
     open()
 
-    assertEquals(AutoCheckInError.OFFLINE, state.error)
     assertEquals(0, location.activeCollectors)
   }
 
@@ -543,7 +541,6 @@ class AutoCheckInViewModelTest {
     moveTo(NEAR)
 
     assertEquals(1, checkIns.checkIns.size)
-    assertEquals(AutoCheckedIn("Bar", "18:02"), state.checkedIn)
   }
 
   @Test
@@ -559,7 +556,7 @@ class AutoCheckInViewModelTest {
 
   @Test
   fun missionOfANewEventAlreadyCheckedIn_isNotTriedAgain() = runTest {
-    addMission("Bar")
+    val bar = addMission("Bar")
     val stage = addMission("Stage", eventId = "other-event", assignees = emptyList())
     checkIns.add(CheckIn("other-event", stage.id, USER, NOW, CheckInMethod.MANAGER, "manager"))
     val counting = CountsCalls(checkIns)
@@ -571,12 +568,12 @@ class AutoCheckInViewModelTest {
 
     // Only Bar is tried: the check-ins of the new event were read before the position.
     assertEquals(1, counting.calls)
-    assertEquals("Bar", state.checkedIn?.missionTitle)
+    assertTrue(isCheckedIn(bar))
   }
 
   @Test
   fun missionOfANewEvent_waitsForItsCheckIns() = runTest {
-    addMission("Bar")
+    val bar = addMission("Bar")
     val counting = CountsCalls(SilentEvent(checkIns, "other-event"))
     open(counting)
 
@@ -586,12 +583,12 @@ class AutoCheckInViewModelTest {
 
     // Stage could already be checked in to: it is not tried before its check-ins are known.
     assertEquals(1, counting.calls)
-    assertEquals("Bar", state.checkedIn?.missionTitle)
+    assertTrue(isCheckedIn(bar))
   }
 
   @Test
   fun positionBeforeTheCheckInsAreKnown_checksInWhenTheyArrive() = runTest {
-    addMission()
+    val mission = addMission()
     val late = LateCheckIns(checkIns)
     open(late)
 
@@ -602,7 +599,7 @@ class AutoCheckInViewModelTest {
 
     // Checked in without waiting for the next position.
     assertEquals(1, checkIns.checkIns.size)
-    assertEquals("Bar", state.checkedIn?.missionTitle)
+    assertTrue(isCheckedIn(mission))
   }
 
   @Test
@@ -621,7 +618,7 @@ class AutoCheckInViewModelTest {
     moveTo(NEAR)
 
     assertEquals(1, checkIns.checkIns.size)
-    assertEquals("Bar", state.checkedIn?.missionTitle)
+    assertTrue(isCheckedIn(mission))
   }
 
   @Test
@@ -638,7 +635,7 @@ class AutoCheckInViewModelTest {
   }
 
   @Test
-  fun missionsUpdateFailure_showsTheError() = runTest {
+  fun missionsUpdateFailure_stopsReadingPositions() = runTest {
     addMission()
     open()
     assertEquals(1, location.activeCollectors)
@@ -647,7 +644,48 @@ class AutoCheckInViewModelTest {
     missions.failure = MissionRepositoryException.Unavailable()
     runCurrent()
 
-    assertEquals(AutoCheckInError.OFFLINE, state.error)
+    assertEquals(0, location.activeCollectors)
+  }
+
+  @Test
+  fun missionsUpdateFailure_saysTheMissionsAreUnavailable() = runTest {
+    addMission()
+    open()
+    assertFalse(state.missionsUnavailable)
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    assertTrue(state.missionsUnavailable)
+  }
+
+  @Test
+  fun retry_afterAFailure_followsTheMissionsAndChecksIn() = runTest {
+    addMission()
+    open()
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    missions.failure = null
+    viewModel.retry()
+    runCurrent()
+    moveTo(NEAR)
+
+    assertFalse(state.missionsUnavailable)
+    assertEquals(1, checkIns.checkIns.size)
+  }
+
+  @Test
+  fun retry_beforeAFailure_doesNotRestartAfterIt() = runTest {
+    addMission()
+    open()
+    viewModel.retry()
+    runCurrent()
+
+    missions.failure = MissionRepositoryException.Unavailable()
+    runCurrent()
+
+    assertTrue(state.missionsUnavailable)
     assertEquals(0, location.activeCollectors)
   }
 
