@@ -54,8 +54,9 @@ fun DayHeader(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        // As tall with a filter as without, so the strip does not move when one shows.
-        modifier = Modifier.heightIn(min = 32.dp),
+        // The height of the filter's touch target, so the strip stays put when the filter shows
+        // or goes, as when the manager is down to one team.
+        modifier = Modifier.heightIn(min = 48.dp),
     ) {
       Text(
           text = title,

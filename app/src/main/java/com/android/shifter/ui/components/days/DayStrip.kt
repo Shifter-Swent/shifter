@@ -56,6 +56,9 @@ object DayStripTestTags {
 private val CHIP_WIDTH = 44.dp
 private val CHIP_GAP = 6.dp
 
+/** A day around a short event: half as visible as a day of the event without missions. */
+private val OUTSIDE_DAY_COLOR = shifter_dimmedText.copy(alpha = 0.5f)
+
 /**
  * [days] widened with the days just before and after them until [fit] days, the days of the event
  * in the middle (one more after than before when the count is odd); [days] as they are when they
@@ -128,16 +131,20 @@ fun DayStrip(
               onClick = { onSelect(day) },
           )
         } else {
-          OutsideDayChip(day)
+          OutsideDayChip(day, isToday = day == today)
         }
       }
     }
   }
 }
 
-/** A day around a short event: dimmed, and neither tappable nor read out. */
+/**
+ * A day around a short event: fainter than a day of the event without missions, so the event's
+ * first and last days stand out, and neither tappable nor read out. Today keeps its name, as when
+ * the event starts tomorrow.
+ */
 @Composable
-private fun OutsideDayChip(day: LocalDate) {
+private fun OutsideDayChip(day: LocalDate, isToday: Boolean) {
   Column(
       horizontalAlignment = Alignment.CenterHorizontally,
       verticalArrangement = Arrangement.spacedBy(1.dp),
@@ -148,16 +155,16 @@ private fun OutsideDayChip(day: LocalDate) {
               .testTag(DayStripTestTags.outsideDay(day)),
   ) {
     Text(
-        text = day.formatDayOfWeek(),
+        text = if (isToday) stringResource(R.string.day_strip_today) else day.formatDayOfWeek(),
         style = MaterialTheme.typography.labelSmall,
-        color = shifter_dimmedText,
+        color = OUTSIDE_DAY_COLOR,
         maxLines = 1,
     )
     Text(
         text = day.dayOfMonth.toString(),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
-        color = shifter_dimmedText,
+        color = OUTSIDE_DAY_COLOR,
     )
     // The room of the missions dot, so it is as tall as the other chips.
     Box(modifier = Modifier.size(4.dp))

@@ -83,7 +83,7 @@ class OrganizerOverviewScreenTest {
   fun selectingAll_listsEveryMissionWithItsTeam() {
     show(loaded)
 
-    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions · All teams (4)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (4)")
     missions.forEach {
       compose
           .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(it.id))
@@ -110,7 +110,7 @@ class OrganizerOverviewScreenTest {
   fun selectingATeam_listsOnlyItsMissions() {
     show(loaded.copy(selectedTeamId = "bar"))
 
-    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions · Bar (2)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (2)")
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m4")).assertIsDisplayed()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m1")).assertDoesNotExist()
@@ -355,7 +355,7 @@ class OrganizerOverviewScreenTest {
     compose.onNodeWithText("Unload the trucks").assertDoesNotExist()
     compose.onNodeWithText("Close the bar").assertDoesNotExist()
     // The missions of the day shown are counted, not those of the event.
-    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions · All teams (2)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (2)")
     compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
@@ -367,7 +367,7 @@ class OrganizerOverviewScreenTest {
 
     compose.onNodeWithText("Close the bar").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Serve drinks").assertDoesNotExist()
-    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions · Bar (1)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (1)")
   }
 
   @Test

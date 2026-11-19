@@ -326,18 +326,19 @@ private fun LoadError(onRetry: () -> Unit) {
   }
 }
 
-/** "Missions · All teams (4)", or of the team picked, counting the missions of the day shown. */
+/**
+ * "Missions (4)": the missions of the team picked on the day shown. The team is left to the menu
+ * next to it, which already names it.
+ */
 @Composable
 private fun missionsTitle(state: OrganizerOverviewUiState, dayPicker: EventDayPicker): String {
   val count = state.visibleMissions.count { dayPicker.isShown(it.startAt) }
-  val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
-  return if (selectedTeam == null) stringResource(R.string.overview_missions_all, count)
-  else stringResource(R.string.overview_missions_team, selectedTeam.name, count)
+  return stringResource(R.string.overview_missions_count, count)
 }
 
 /**
- * The missions of the selected team on the day [dayPicker] shows, under a header naming the team
- * and counting them, with "Back to today" while another day is shown.
+ * The missions of the selected team on the day [dayPicker] shows, under the [DayHeader] that counts
+ * them; or why there are none.
  */
 @Composable
 private fun Missions(

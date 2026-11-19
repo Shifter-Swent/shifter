@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -73,7 +74,9 @@ fun TeamFilterMenu(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier =
-            Modifier.widthIn(max = MAX_WIDTH)
+            // Tappable over 48 dp, more than the pill shows.
+            Modifier.minimumInteractiveComponentSize()
+                .widthIn(max = MAX_WIDTH)
                 .clip(CircleShape)
                 .background(colors.surfaceContainer)
                 .clickable(

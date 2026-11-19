@@ -62,8 +62,8 @@ class DayStripTest {
 
   private fun outsideDay(date: LocalDate) = compose.onNodeWithTag(DayStripTestTags.outsideDay(date))
 
-  /** Room for exactly 7 chips of 44 dp with 6 dp between them. */
-  private val sevenDaysWide = Modifier.width(344.dp)
+  /** Room for 7 chips of 44 dp with 6 dp between them, and some to spare: never 6 by rounding. */
+  private val sevenDaysWide = Modifier.width(360.dp)
 
   @Test
   fun aShortEvent_isPaddedWithTheDaysAroundIt_untilTheStripIsFull() {
@@ -96,6 +96,14 @@ class DayStripTest {
             useUnmergedTree = true,
         )
         .assertDoesNotExist()
+  }
+
+  @Test
+  fun aPaddedDay_thatIsToday_isNamedSo() {
+    // The event starts tomorrow, Friday: today is the Thursday added before it.
+    show(selected = friday, today = friday.minusDays(1), modifier = sevenDaysWide)
+
+    outsideDay(friday.minusDays(1)).assert(hasAnyChild(hasText("Today")))
   }
 
   @Test

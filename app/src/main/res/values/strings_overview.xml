@@ -9,8 +9,8 @@
     <string name="overview_mission_completed">✓ Completed</string>
     <string name="overview_progress_percent">%1$d%%</string>
     <string name="overview_progress_scope">All teams · Overall total</string>
-    <string name="overview_missions_all">Missions · All teams (%1$d)</string>
-    <string name="overview_missions_team">Missions · %1$s (%2$d)</string>
+    <!-- The missions of the day shown, of the team picked in the menu next to it -->
+    <string name="overview_missions_count">Missions (%1$d)</string>
     <string name="overview_team_general">General</string>
     <string name="overview_team_unknown">Unknown team</string>
     <string name="overview_no_missions">No missions yet. Add the first one above.</string>
