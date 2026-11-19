@@ -38,6 +38,7 @@ import com.swent.shifter.ui.components.time.rememberNow
  *   stand-in until #204 puts the volunteer's planning there, and the only place to change for it.
  * @param clock moves the attendance on each minute, so a check-in window opens on its own without
  *   an arrival to announce it.
+ * @param onViewOnMap shows the team on the map, the now card's one action.
  * @param onAddMission opens the mission creation form, offered to a manager only.
  * @param onEditMission opens the edit form of a mission, offered to a manager only, and none when
  *   null.
@@ -48,6 +49,7 @@ fun EventOverviewScreen(
     volunteerOverview: @Composable () -> Unit,
     clock: MinuteClock,
     modifier: Modifier = Modifier,
+    onViewOnMap: () -> Unit = {},
     onAddMission: () -> Unit = {},
     onEditMission: ((String) -> Unit)? = null,
 ) {
@@ -69,6 +71,7 @@ fun EventOverviewScreen(
             onRetry = viewModel::refresh,
             modifier = modifier,
             onCheckIn = viewModel::checkIn,
+            onViewOnMap = onViewOnMap,
             onUndoCheckIn = viewModel::undoCheckIn,
             onUndoWindowOver = viewModel::sendUndoableCheckIn,
             onCheckInErrorShown = viewModel::onCheckInErrorShown,

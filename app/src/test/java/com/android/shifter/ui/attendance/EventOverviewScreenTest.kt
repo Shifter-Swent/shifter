@@ -7,11 +7,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.model.checkin.CheckInMethod
 import com.swent.shifter.model.checkin.FakeCheckInRepository
@@ -94,6 +97,7 @@ class EventOverviewScreenTest {
       userId: String,
       onAddMission: () -> Unit = {},
       onEditMission: ((String) -> Unit)? = null,
+      onViewOnMap: () -> Unit = {},
   ) {
     // Unconfined, so the load the ViewModel starts has answered by the time the screen is read.
     Dispatchers.setMain(UnconfinedTestDispatcher())
@@ -104,6 +108,7 @@ class EventOverviewScreenTest {
             viewModel = viewModel,
             volunteerOverview = { Text("Volunteer planning") },
             clock = clock,
+            onViewOnMap = onViewOnMap,
             onAddMission = onAddMission,
             onEditMission = onEditMission,
         )
@@ -116,7 +121,9 @@ class EventOverviewScreenTest {
     show("manager")
 
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertIsDisplayed()
+    // Theirs rather than the organizer's: they are offered the mission form, and no subtitle.
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertDoesNotExist()
     compose.onNodeWithText("Volunteer planning").assertDoesNotExist()
   }
 
@@ -221,8 +228,9 @@ class EventOverviewScreenTest {
         if (shown) EventOverviewScreen(viewModel = viewModel, volunteerOverview = {}, clock = clock)
       }
     }
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
     compose.waitForIdle()
+    scrollTo(ManagerOverviewTestTags.checkIn(mission.id, "ann"))
     // Held, so the "Undo" snackbar cannot time out and send the check-in on its own.
     compose.mainClock.autoAdvance = false
 
@@ -245,8 +253,9 @@ class EventOverviewScreenTest {
   fun undoTappedWhileShown_sendsNothing() {
     val mission = runningMissionWithAnn()
     show("manager")
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
     compose.waitForIdle()
+    scrollTo(ManagerOverviewTestTags.checkIn(mission.id, "ann"))
     compose.mainClock.autoAdvance = false
 
     compose.onNodeWithTag(ManagerOverviewTestTags.checkIn(mission.id, "ann")).performClick()
@@ -255,7 +264,9 @@ class EventOverviewScreenTest {
     compose.mainClock.advanceTimeBy(AttendanceViewModel.UNDO_TIMEOUT_MILLIS)
 
     assertTrue(checkIns.checkIns.isEmpty())
-    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
+    // The clock runs again: scrolling her row back into view is an animation of its own.
+    compose.mainClock.autoAdvance = true
+    scrollTo(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
   }
 
   @Test
@@ -263,14 +274,56 @@ class EventOverviewScreenTest {
     // Its check-in opens 15 min before the start, so 5 min from now.
     val mission = missionWithAnnStartingIn(Duration.ofMinutes(20))
     show("manager")
+    scrollTo(ManagerOverviewTestTags.mission(mission.id))
     compose.onNodeWithText("Check-in not open yet").assertIsDisplayed()
 
     clock.advance(Duration.ofMinutes(6))
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.mission(mission.id)).assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.mission(mission.id)).assertIsDisplayed()
     compose.onNodeWithText("Check-in not open yet").assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
-    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.missionHeader(mission.id)).performClick()
+    scrollTo(ManagerOverviewTestTags.checkIn(mission.id, "ann")).assertIsDisplayed()
+  }
+
+  @Test
+  fun nowCard_checkIn_goesThroughTheSameUndoAsTheMissionList() {
+    // Ten minutes in, past its grace period: the card reports Ann missing, with the one tap that
+    // checks her in. It is the screen's one check-in path, so it is the same "Undo" as below.
+    val mission = runningMissionWithAnn()
+    show("manager")
+    compose.mainClock.autoAdvance = false
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn(mission.id, "ann")).performClick()
+    compose.mainClock.advanceTimeBy(SNACKBAR_SHOWN_MILLIS)
+
+    // Shown at once, kept a moment in green on the card, and not written while it can be undone.
+    compose.onNodeWithText("Ann checked in").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn(mission.id, "ann")).assertExists()
+    assertTrue("nothing is sent while it can be undone", checkIns.checkIns.isEmpty())
+
+    compose.onNodeWithText("Undo").performClick()
+    compose.mainClock.advanceTimeBy(AttendanceViewModel.UNDO_TIMEOUT_MILLIS)
+
+    // Undone: nothing was written, and the card reports her missing again.
+    assertTrue(checkIns.checkIns.isEmpty())
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn(mission.id, "ann")).assertExists()
+  }
+
+  @Test
+  fun nowCard_viewOnMap_opensTheMap() {
+    runningMissionWithAnn()
+    var opened = 0
+    show("manager", onViewOnMap = { opened++ })
+
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).performClick()
+
+    assertEquals(1, opened)
+  }
+
+  /** Brings [tag] into the lazy list: the now card at the top can push a mission below the fold. */
+  private fun scrollTo(tag: String): SemanticsNodeInteraction {
+    compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performScrollToNode(hasTestTag(tag))
+    return compose.onNodeWithTag(tag)
   }
 
   private companion object {

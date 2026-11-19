@@ -1,8 +1,11 @@
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
+import com.swent.shifter.ui.components.days.eventDay
+import com.swent.shifter.ui.components.days.runsOnEventDay
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 
 /**
  * The delays the team's now state is read with, in one place so they are easy to change.
@@ -173,6 +176,22 @@ fun teamNowState(missions: List<AttendanceMission>, now: Instant): TeamNowState 
   if (next.isNotEmpty()) return TeamNowState.Arriving(emptyList(), next)
   val soonest = upcoming.firstOrNull() ?: return TeamNowState.Done
   return TeamNowState.Quiet(upcoming.takeWhile { it.startAt == soonest.startAt })
+}
+
+/**
+ * The missions of [this] the now card speaks for at [now]: those of the event day it falls on,
+ * which runs from 04:00 to 04:00 ([eventDay]) as the Planning groups them. A mission running across
+ * 04:00 belongs to both days, so one still under way at the turn of the day stays on the card.
+ *
+ * [TeamNowState.Quiet] leaves this span to its caller, so this is what a screen passes to
+ * [teamNowState]: without it the card would announce tomorrow's mission as if it were today's.
+ */
+internal fun List<AttendanceMission>.onEventDayOf(
+    now: Instant,
+    zone: ZoneId,
+): List<AttendanceMission> {
+  val day = now.eventDay(zone)
+  return filter { runsOnEventDay(day, it.startAt, it.endAt, zone) }
 }
 
 /** Whether this mission started more than its [grace period][TeamNowRules.gracePeriod] ago. */
