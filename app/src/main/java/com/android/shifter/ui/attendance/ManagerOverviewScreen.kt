@@ -69,11 +69,9 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.days.BackToToday
-import com.swent.shifter.ui.components.days.DayStrip
 import com.swent.shifter.ui.components.days.DayWithoutMissions
-import com.swent.shifter.ui.components.days.eventDay
-import com.swent.shifter.ui.components.days.eventDays
-import com.swent.shifter.ui.components.days.rememberDaySelection
+import com.swent.shifter.ui.components.days.EventDayStrip
+import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
@@ -212,17 +210,10 @@ fun ManagerOverviewContent(
   // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
   val selectedTeamId = pickedTeamId?.takeIf { id -> teams.any { it.first == id } }
   val teamMissions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
-  val today = now.eventDay(zone)
   // From all the missions, not the filtered ones: the strip stays the same when a team is picked.
-  val days =
-      remember(state.missions, state.eventPeriod, zone) {
-        eventDays(state.eventPeriod, state.missions.map { it.startAt.eventDay(zone) }.toSet(), zone)
-      }
-  val daySelection = rememberDaySelection(days, today)
-  // Today when there are no days at all, which leaves no mission to show anyway.
-  val selectedDay = daySelection.selected ?: today
-  val showsDayStrip = state.missions.isNotEmpty() && days.size > 1
-  val missions = teamMissions.filter { it.startAt.eventDay(zone) == selectedDay }
+  val dayPicker =
+      rememberEventDayPicker(state.eventPeriod, state.missions.map { it.startAt }, now, zone)
+  val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
   // By id, so the question survives a configuration change.
   var confirmingMissionId by rememberSaveable { mutableStateOf<String?>(null) }
   // One host for every message of the screen, so they are shown one after the other rather than
@@ -286,24 +277,15 @@ fun ManagerOverviewContent(
       if (state.loadFailed) item { LoadError(onRetry) }
       if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
       item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
-      if (showsDayStrip) {
-        item {
-          DayStrip(
-              days = days,
-              // The days of the team picked, so a dimmed day is one where it has nothing to do.
-              daysWithMissions = teamMissions.map { it.startAt.eventDay(zone) }.toSet(),
-              selected = selectedDay,
-              today = today,
-              onSelect = daySelection::pick,
-          )
-        }
+      if (dayPicker.showsStrip) {
+        // The days of the team picked get a dot.
+        item { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
       }
       item {
         MissionsHeader(
             // Never "0 missions" before there is an answer: that reads as having none.
             count = missions.size.takeUnless { it == 0 && !state.isLoaded },
-            onBackToToday =
-                daySelection::backToToday.takeIf { showsDayStrip && daySelection.awayFromToday },
+            onBackToToday = dayPicker.onBackToToday,
         )
       }
       items(missions, key = { it.id }) { mission ->
@@ -314,7 +296,7 @@ fun ManagerOverviewContent(
             canMarkCompleted = !state.isOrganizer && mission.canBeMarkedCompleted(now),
             isMarkingCompleted = mission.id in state.markingCompletedIds,
             now = now,
-            day = selectedDay,
+            day = dayPicker.shown,
             zone = zone,
             // Each card on its own: opening one leaves the others as they are.
             onToggle = {
@@ -341,7 +323,7 @@ fun ManagerOverviewContent(
             // Other days, or other teams on other days, have missions: only this one has none.
             teamMissions.isNotEmpty() ->
                 DayWithoutMissions(
-                    selectedDay,
+                    dayPicker.shown,
                     Modifier.testTag(ManagerOverviewTestTags.EMPTY_DAY),
                 )
             // A reload keeps the cards already shown instead of replacing them with the spinner.
