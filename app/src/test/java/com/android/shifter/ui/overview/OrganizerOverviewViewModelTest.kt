@@ -4,6 +4,7 @@ package com.swent.shifter.ui.overview
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
@@ -46,6 +47,7 @@ class OrganizerOverviewViewModelTest {
   private lateinit var repository: SlowMissionRepository
   private lateinit var teams: FakeTeamRepository
   private lateinit var events: FakeEventRepository
+  private lateinit var eventReads: SlowEventRepository
   private lateinit var viewModel: OrganizerOverviewViewModel
 
   /** Who may be assigned to a mission of each team; null is "General". */
@@ -73,6 +75,7 @@ class OrganizerOverviewViewModelTest {
             listOf(team("logistics", "Logistics"), team("bar", "Bar"), team("other", "Other", "x"))
         )
     events = FakeEventRepository().apply { this.events += event() }
+    eventReads = SlowEventRepository(events)
   }
 
   @After
@@ -132,7 +135,14 @@ class OrganizerOverviewViewModelTest {
 
   private fun TestScope.open() {
     viewModel =
-        OrganizerOverviewViewModel(eventId, repository, teams, candidates, events, now = { clock })
+        OrganizerOverviewViewModel(
+            eventId,
+            repository,
+            teams,
+            candidates,
+            eventReads,
+            now = { clock },
+        )
     advanceUntilIdle()
   }
 
@@ -643,6 +653,64 @@ class OrganizerOverviewViewModelTest {
     assertNull(viewModel.uiState.value.eventPeriod)
     assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
     assertFalse(viewModel.uiState.value.loadFailed)
+  }
+
+  @Test
+  fun eventPeriod_whenTheMissionsFail_isKept() = runTest {
+    missions.failure = IllegalStateException("offline")
+
+    open()
+
+    assertTrue(viewModel.uiState.value.loadFailed)
+    assertEquals(start..start.plus(Duration.ofDays(1)), viewModel.uiState.value.eventPeriod)
+  }
+
+  @Test
+  fun missions_doNotWaitForTheEventToBeRead() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    eventReads.read = CompletableDeferred()
+
+    open()
+
+    assertFalse(viewModel.uiState.value.isLoading)
+    assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
+    assertNull(viewModel.uiState.value.eventPeriod)
+
+    eventReads.read!!.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(start..start.plus(Duration.ofDays(1)), viewModel.uiState.value.eventPeriod)
+  }
+
+  @Test
+  fun refresh_whileAnotherRuns_isNotOverwrittenByIt() = runTest {
+    open()
+    // The older load reads the teams with "bar", then waits for the missions.
+    val olderLoad = CompletableDeferred<Unit>()
+    repository.reload = olderLoad
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    teams.teams.removeAll { it.id == "bar" }
+    repository.reload = null
+    viewModel.refresh()
+    advanceUntilIdle()
+    olderLoad.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf("logistics"), viewModel.uiState.value.teams.map { it.id })
+  }
+}
+
+/** Delegates to [events], and lets a test hold the read of the event, as a slow network would. */
+private class SlowEventRepository(private val events: FakeEventRepository) :
+    EventRepository by events {
+
+  var read: CompletableDeferred<Unit>? = null
+
+  override suspend fun getEvent(eventId: String): Event? {
+    read?.await()
+    return events.getEvent(eventId)
   }
 }
 

@@ -115,24 +115,23 @@ class OrganizerOverviewViewModel(
 
   private var candidatesJob: Job? = null
 
+  // The load running, cancelled by the next one so an older answer never overwrites a newer one.
+  private var loadJob: Job? = null
+
   init {
     refresh()
   }
 
   /** Loads the missions and teams again, e.g. after a mission was added or a load failed. */
   fun refresh() {
+    loadJob?.cancel()
     _uiState.update { it.copy(isLoading = true, loadFailed = false) }
-    viewModelScope.launch {
-      // Read apart from the missions, so a failure hides none of them: the days then run from the
-      // first mission to the last, and a period already known is kept.
-      val period =
-          try {
-            eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
-          } catch (e: CancellationException) {
-            throw e
-          } catch (_: Exception) {
-            null
-          }
+    loadJob = viewModelScope.launch {
+      // Alongside the missions, which never wait for it, and kept as soon as it is read, even if
+      // the missions fail.
+      launch {
+        readEventPeriod()?.let { period -> _uiState.update { it.copy(eventPeriod = period) } }
+      }
       try {
         val teams = teamRepository.getTeamsByEvent(eventId).map { OverviewTeam(it.id, it.name) }
         val missions =
@@ -155,7 +154,6 @@ class OrganizerOverviewViewModel(
               isLoading = false,
               teams = teams,
               missions = missions,
-              eventPeriod = period ?: state.eventPeriod,
               // A team removed since it was selected leaves nothing to filter on.
               selectedTeamId = state.selectedTeamId?.takeIf { id -> teams.any { it.id == id } },
           )
@@ -167,6 +165,19 @@ class OrganizerOverviewViewModel(
       }
     }
   }
+
+  /**
+   * When the event starts and ends, or null when it cannot be read: the days then run from the
+   * first mission to the last, and a period already known is kept.
+   */
+  private suspend fun readEventPeriod(): ClosedRange<Instant>? =
+      try {
+        eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        null
+      }
 
   /** Lists the missions of the team [teamId] only, or all of them when null. Unknown: ignored. */
   fun selectTeam(teamId: String?) {
