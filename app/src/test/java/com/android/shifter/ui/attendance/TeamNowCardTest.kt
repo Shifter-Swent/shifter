@@ -650,6 +650,8 @@ class TeamNowCardTest {
     compose.onNodeWithText("Expected").assertIsDisplayed()
     // Those not there yet are expected, not missing: nothing is short before the start.
     compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+    // The mission shown is the first one to come: no strip repeats it underneath the card.
+    compose.onNodeWithTag(TeamNowCardTestTags.NEXT).assertDoesNotExist()
     // The team is on its way, so the map is still worth offering.
     compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertIsDisplayed()
   }
@@ -672,6 +674,37 @@ class TeamNowCardTest {
     compose.onNodeWithText("Arrived").assertIsDisplayed()
     compose.onNodeWithText("Expected").assertIsDisplayed()
     compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_atTheHandover_keepsTheStripOfTheNextMission() {
+    // A mission starts with one volunteer still on their way while another is coming in 10 min:
+    // the handover does not take away what the team does next, as the card at work shows it.
+    val handover =
+        sorting.copy(
+            startAt = now.minus(Duration.ofMinutes(2)),
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel),
+        )
+    show(teamNowState(listOf(handover, briefing), now))
+
+    compose.onNodeWithText("Food sorting has started").assertIsDisplayed()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.NEXT).assertCountEquals(1)
+    compose.onNodeWithText("Then, in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("Briefing · 2 of 3 arrived").assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_withTheAttendanceWaiting_saysNeitherArrivedNorExpected() {
+    // Its check-ins have not arrived, so nobody is shown present: calling its assignees expected
+    // would report an absence nobody has seen, early arrivals included.
+    val waiting = briefing.copy(attendanceKnown = false, assignees = listOf(chloe, daniel, noah))
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(waiting)))
+
+    compose.onNodeWithText("Briefing in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
+    compose.onNodeWithText("Noah Favre").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertDoesNotExist()
+    compose.onNodeWithText("Arrived").assertDoesNotExist()
   }
 
   @Test

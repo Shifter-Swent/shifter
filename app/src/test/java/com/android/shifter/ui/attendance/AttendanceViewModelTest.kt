@@ -16,8 +16,10 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
@@ -110,6 +112,7 @@ class AttendanceViewModelTest {
       hour: Long,
       assigneeIds: List<String> = emptyList(),
       eventId: String = "event-1",
+      location: MissionLocation? = null,
   ) =
       missions.createMission(
           Mission(
@@ -121,6 +124,7 @@ class AttendanceViewModelTest {
               startAt = start.plus(Duration.ofHours(hour)),
               endAt = start.plus(Duration.ofHours(hour + 1)),
               assigneeIds = assigneeIds,
+              location = location,
               createdAt = start,
           )
       )
@@ -201,6 +205,23 @@ class AttendanceViewModelTest {
         setUp.assignees,
     )
     assertEquals(3, setUp.volunteersNeeded)
+  }
+
+  @Test
+  fun load_readsTheAddressOfTheMissionsThatHaveOne() = runTest {
+    // The now card names where the team is expected, which is the mission's own address and not
+    // its team; a mission with no fixed place has none to name.
+    addMission(
+        "Set up",
+        "logistics",
+        hour = 1,
+        location = MissionLocation("Hall B", GeoPosition(46.52, 6.57)),
+    )
+    addMission("Welcome", "logistics", hour = 2)
+
+    open("manager")
+
+    assertEquals(listOf("Hall B", null), viewModel.uiState.value.missions.map { it.address })
   }
 
   @Test

@@ -95,8 +95,9 @@ internal const val JUST_CHECKED_IN_MILLIS = 5_000L
  * its own, apart from who was just checked in, whom the state stops reporting as soon as the write
  * is pending: a volunteer it goes on reporting is drawn as missing, so a check-in that did not
  * happen is never confirmed in green. Checking the last one in turns the team's state to
- * [TeamNowState.Running], which the card moves to with their confirmation still on it. Missions
- * whose attendance is not known are said to be unknown rather than counted as nobody there.
+ * [TeamNowState.Running], or to [TeamNowState.Arriving] when another mission is at its handover,
+ * and the card moves to it with their confirmation still on it. Missions whose attendance is not
+ * known are said to be unknown rather than counted as nobody there.
  *
  * @param now the clock's tick, which the lateness, the time bars and the countdown are read at.
  * @param onCheckIn checks a volunteer in by hand, on the mission their row belongs to.
@@ -179,7 +180,7 @@ fun TeamNowCard(
       }
     }
     body.rows.forEach { row -> VolunteerRow(row, body.now, checkIn) }
-    body.assignees.forEach { AssigneeRow(it) }
+    body.assignees.forEach { AssigneeRow(it, body.attendanceKnown) }
     if (body.short > 0) {
       Detail(
           pluralStringResource(R.plurals.attendance_now_short_of, body.short, body.short),
@@ -297,7 +298,8 @@ private fun teamNowCardBody(
       }
       is TeamNowState.Arriving -> {
         // The mission people are expected on: the handover, or the soonest one to come.
-        val mission = state.handovers.firstOrNull() ?: state.next.first()
+        val handover = state.handovers.firstOrNull()
+        val mission = handover ?: state.next.first()
         val started = mission.startAt <= now
         TeamNowCardBody(
             tone = NowTone.SOON,
@@ -332,6 +334,14 @@ private fun teamNowCardBody(
                   mission.volunteersNeeded - mission.presentCount
                 } else 0,
             attendanceUnknown = state.attendanceUnknown,
+            // At a handover the missions to come are still to come, so the strip keeps the first
+            // of them, as the card of a team at work does. Before a start, the mission shown is
+            // that first one, which no strip repeats underneath it.
+            next = if (handover != null) state.next.firstOrNull() else null,
+            // Who is there is only known once the check-ins of the mission have arrived: while
+            // they have not, nobody is shown present, so an assignee is neither said to have
+            // arrived nor to be expected.
+            attendanceKnown = mission.attendanceKnown,
             now = now,
         )
       }
@@ -407,6 +417,8 @@ private data class TeamNowCardBody(
     val assignees: List<AttendanceVolunteer> = emptyList(),
     /** How many volunteers that mission is short of, 0 when it has them all. */
     val short: Int = 0,
+    /** Whether the check-ins of the mission the [assignees] belong to have arrived. */
+    val attendanceKnown: Boolean = false,
     /** A line under the headline: a mission's hours and place, or how many are assigned. */
     val detail: String? = null,
 )
@@ -528,9 +540,14 @@ private fun Avatar(volunteer: AttendanceVolunteer) {
 private fun AttendanceMission.andPlace(text: String): String =
     address?.let { stringResource(R.string.attendance_mission_subtitle, text, it) } ?: text
 
-/** An assignee of the mission at hand: there already, or still expected. */
+/**
+ * An assignee of the mission at hand: there already, or still expected. Neither is said while the
+ * mission's attendance is not [known][AttendanceMission.attendanceKnown], as on the first load or
+ * when the check-ins could not be observed: nobody is shown present then, so "Expected" would
+ * report an absence nobody has seen.
+ */
 @Composable
-private fun AssigneeRow(volunteer: AttendanceVolunteer) {
+private fun AssigneeRow(volunteer: AttendanceVolunteer, attendanceKnown: Boolean) {
   val arrived = volunteer.checkedInAt != null
   AttendanceVolunteerRow(
       volunteer = volunteer,
@@ -540,13 +557,15 @@ private fun AssigneeRow(volunteer: AttendanceVolunteer) {
       gap = 12.dp,
       nameStyle = NAME,
   ) {
-    Detail(
-        stringResource(
-            if (arrived) R.string.attendance_now_volunteer_arrived
-            else R.string.attendance_now_volunteer_expected
-        ),
-        if (arrived) shifter_success else MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    if (attendanceKnown) {
+      Detail(
+          stringResource(
+              if (arrived) R.string.attendance_now_volunteer_arrived
+              else R.string.attendance_now_volunteer_expected
+          ),
+          if (arrived) shifter_success else MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
   }
 }
 
