@@ -192,7 +192,7 @@ fun Planning(
           selected = selected,
           today = today,
           onSelect = {
-            selection.pick(it)
+            selection.show(it)
             revealOnShow = null
           },
       )

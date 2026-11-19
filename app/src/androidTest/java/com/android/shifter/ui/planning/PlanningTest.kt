@@ -3,6 +3,9 @@ package com.swent.shifter.ui.planning
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.assertIsDisplayed
@@ -328,6 +331,19 @@ class PlanningTest {
 
     // A few frames into the slide, both days are on screen, the next one on the finger's side.
     assertTrue(leftOf("sun") < leftOf("sat"))
+  }
+
+  @Test
+  fun tappingTodayInTheStrip_followsTodayAgain() {
+    var today by mutableStateOf(SATURDAY)
+    compose.setContent { PlanningUnderTest(weekend, festival, today) }
+    pick(SUNDAY)
+
+    pick(SATURDAY)
+    // The night goes past 04:00.
+    today = SUNDAY
+
+    daySelected(SUNDAY)
   }
 
   @Test
