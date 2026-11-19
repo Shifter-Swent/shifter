@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -38,7 +39,11 @@ class MapScreenTest {
   private var closes = 0
   private var retries = 0
 
-  private fun setContent(uiState: MapUiState, volunteers: List<VolunteerPin> = emptyList()) {
+  private fun setContent(
+      uiState: MapUiState,
+      volunteers: List<VolunteerPin> = emptyList(),
+      myPosition: GeoPosition? = null,
+  ) {
     compose.setContent {
       ShifterTheme {
         MapContent(
@@ -46,6 +51,7 @@ class MapScreenTest {
             onMarkerClick = {},
             onCloseCard = { closes++ },
             onRetry = { retries++ },
+            myPosition = myPosition,
             volunteers = volunteers,
         )
       }
@@ -92,7 +98,59 @@ class MapScreenTest {
   }
 
   @Test
-  fun recenterButton_movesTheCameraBackToTheCenter() {
+  fun loading_withMyPosition_waitsForTheEventToOfferTheButtons() {
+    setContent(MapUiState(), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOADING).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun eventNotFound_withMyPosition_offersNoButton() {
+    setContent(MapUiState(isLoading = false, error = MapError.EVENT_NOT_FOUND), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun centerOnMeButton_centersOnTheUser() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    compose
+        .onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON)
+        .assertContentDescriptionEquals("Center on your position")
+        .performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(ME) }
+  }
+
+  @Test
+  fun recenterButton_withMyPosition_stillGoesBackToTheEvent() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    compose
+        .onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON)
+        .assertContentDescriptionEquals("Center on the event")
+        .performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+  }
+
+  @Test
+  fun recenterButton_withoutMyPosition_centersOnTheEventAlone() {
+    val camera = setContentWithCamera(myPosition = null)
+
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+  }
+
+  /** Shows the loaded map with [myPosition], its camera moved away from where the button goes. */
+  private fun setContentWithCamera(myPosition: GeoPosition?): CameraPositionState {
     lateinit var camera: CameraPositionState
     compose.setContent {
       ShifterTheme {
@@ -102,16 +160,14 @@ class MapScreenTest {
             onMarkerClick = {},
             onCloseCard = {},
             onRetry = {},
+            myPosition = myPosition,
             cameraPositionState = camera,
         )
       }
     }
-    // Moved away first, since the camera already opens on the center.
+    // Moved away first, since the camera already opens on the event.
     compose.runOnIdle { camera.position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 15f) }
-
-    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertIsDisplayed().performClick()
-
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    return camera
   }
 
   @Test
@@ -283,6 +339,8 @@ class MapScreenTest {
 
   private companion object {
     val HERE = GeoPosition(46.52, 6.57)
+    /** The user, far enough from the event for the camera to tell them apart. */
+    val ME = GeoPosition(46.53, 6.60)
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     /** Away from the center the camera opens on. */
     val FOCUS = GeoPosition(46.53, 6.58)

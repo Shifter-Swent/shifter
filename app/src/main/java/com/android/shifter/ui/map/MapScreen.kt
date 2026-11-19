@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -61,6 +63,7 @@ object MapScreenTestTags {
   const val MISSION_CARD = "MapMissionCard"
   const val CLOSE_CARD_BUTTON = "MapCloseCardButton"
   const val RECENTER_BUTTON = "MapRecenterButton"
+  const val CENTER_ON_ME_BUTTON = "MapCenterOnMeButton"
   const val VOLUNTEER = "MapVolunteer"
   const val STALE_VOLUNTEER = "MapStaleVolunteer"
 }
@@ -100,9 +103,10 @@ fun MapScreen(
 /**
  * Stateless map screen: the event's venue above a map of its missions.
  *
+ * @param myPosition where the user is, shown on the map with a button that centers on them; null
+ *   shows neither.
  * @param onFocusShown called once the camera was sent to [MapUiState.focus]; the move itself may
  *   wait for the map to be ready.
- * @param myPosition where the user is, shown on the map; null shows nothing.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
@@ -216,15 +220,30 @@ fun MapContent(
           verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         val scope = rememberCoroutineScope()
+        val goTo = { target: GeoPosition ->
+          scope.launch {
+            cameraPositionState.animate(
+                CameraUpdateFactory.newLatLngZoom(target.toLatLng(), EVENT_ZOOM)
+            )
+          }
+        }
+        // Only once the event is loaded: before, the opening move to the venue would undo a tap,
+        // and an event that failed to load leaves nothing to center on. The user when the map
+        // knows where they are, and the event in any case, to come back to it from anywhere.
         uiState.center?.let { center ->
-          RecenterButton(
-              onClick = {
-                scope.launch {
-                  cameraPositionState.animate(
-                      CameraUpdateFactory.newLatLngZoom(center.toLatLng(), EVENT_ZOOM)
-                  )
-                }
-              }
+          myPosition?.let {
+            MapButton(
+                icon = Icons.Outlined.MyLocation,
+                description = stringResource(R.string.map_center_on_me),
+                testTag = MapScreenTestTags.CENTER_ON_ME_BUTTON,
+                onClick = { goTo(it) },
+            )
+          }
+          MapButton(
+              icon = Icons.Outlined.Place,
+              description = stringResource(R.string.map_recenter),
+              testTag = MapScreenTestTags.RECENTER_BUTTON,
+              onClick = { goTo(center) },
           )
         }
         val overlay = Modifier.fillMaxWidth()
@@ -360,22 +379,27 @@ internal fun VolunteerLabel(marker: MapMarker, isStale: Boolean) {
   }
 }
 
-/** Moves the camera back to where the map opened, the venue or the first mission. */
+/**
+ * Moves the camera to the user when [onUser], with the "my location" icon; otherwise back to where
+ * the map opened, the venue or the first mission, with a pin, so the icon never promises the user's
+ * position the map does not know.
+ */
 @Composable
-private fun RecenterButton(onClick: () -> Unit) {
+private fun MapButton(
+    icon: ImageVector,
+    description: String,
+    testTag: String,
+    onClick: () -> Unit,
+) {
   Surface(
       onClick = onClick,
       shape = MaterialTheme.shapes.medium,
       color = MaterialTheme.colorScheme.surfaceContainer,
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-      modifier = Modifier.size(48.dp).testTag(MapScreenTestTags.RECENTER_BUTTON),
+      modifier = Modifier.size(48.dp).testTag(testTag),
   ) {
     Box(contentAlignment = Alignment.Center) {
-      Icon(
-          Icons.Outlined.MyLocation,
-          contentDescription = stringResource(R.string.map_recenter),
-          tint = MaterialTheme.colorScheme.primary,
-      )
+      Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.primary)
     }
   }
 }
