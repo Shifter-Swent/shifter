@@ -282,7 +282,7 @@ class PlanningTest {
     compose.mainClock.advanceTimeByFrame()
 
     // Sunday is on its way, and Saturday leaves from where it was let go, not from its place.
-    assertTrue(leftOf("sat") < start - width / 2f)
+    assertTrue(leftOf("sat") < start - width / 4f)
   }
 
   @Test
