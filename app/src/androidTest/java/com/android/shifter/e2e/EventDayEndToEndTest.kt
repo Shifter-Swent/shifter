@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.R
 import com.swent.shifter.e2e.EndToEndDriver.Companion.TIMEOUT_MILLIS
@@ -224,6 +225,12 @@ class EventDayEndToEndTest {
     app.signInAs(manager)
     app.click(MyEventsTestTags.eventCard(event.id))
     app.waitForNode(ManagerOverviewTestTags.SCREEN)
+    // The now card, drawn above the missions as soon as they arrive, leaves the mission below the
+    // fold, where the lazy list has not composed it: its counter is read once scrolled to.
+    app.waitForNode(NowCardTestTags.CARD)
+    composeTestRule
+        .onNodeWithTag(ManagerOverviewTestTags.SCREEN)
+        .performScrollToNode(hasTestTag(ManagerOverviewTestTags.missionHeader(mission.id)))
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       // The card's header merges its counter into itself.
       app.textOrNull(ManagerOverviewTestTags.counter(mission.id), useUnmergedTree = true) ==
