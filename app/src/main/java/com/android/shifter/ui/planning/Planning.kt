@@ -25,7 +25,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,13 +37,14 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.days.BackToToday
 import com.swent.shifter.ui.components.days.DayStrip
+import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.eventDays
 import com.swent.shifter.ui.components.days.groupByDay
+import com.swent.shifter.ui.components.days.rememberDaySelection
 import com.swent.shifter.ui.components.time.formatDayOfWeek
-import com.swent.shifter.ui.components.time.formatFullDate
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
@@ -126,11 +126,8 @@ fun Planning(
         groupByDay(missions.chronological(), { it.startAt }, zone).toMap()
       }
   val days = remember(byDay, eventPeriod, zone) { eventDays(eventPeriod, byDay.keys, zone) }
-  // The day the volunteer picked, kept through a rotation; null follows today.
-  var picked by rememberSaveable { mutableStateOf<Long?>(null) }
-  val selected =
-      picked?.let(LocalDate::ofEpochDay)?.takeIf { it in days }
-          ?: days.firstOrNull()?.let { today.coerceIn(it, days.last()) }
+  val selection = rememberDaySelection(days, today)
+  val selected = selection.selected
   val showsStrip = missions.isNotEmpty() && days.size > 1
   // The row asked by revealRequest while on another day: shown on its day, then brought into view.
   // Not saved: after a rotation, nothing is asked again.
@@ -141,7 +138,7 @@ fun Planning(
     handledRequest.intValue = revealRequest
     val day = byDay.entries.firstOrNull { (_, ms) -> ms.any { it.id == expandedMissionId } }?.key
     if (day != null && day != selected) {
-      picked = if (day == today) null else day.toEpochDay()
+      if (day == today) selection.backToToday() else selection.pick(day)
       revealOnShow = expandedMissionId
     }
   }
@@ -150,9 +147,9 @@ fun Planning(
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Header(
-        awayFromToday = showsStrip && today in days && selected != today,
+        awayFromToday = showsStrip && selection.awayFromToday,
         onBackToToday = {
-          picked = null
+          selection.backToToday()
           revealOnShow = null
         },
     )
@@ -172,13 +169,15 @@ fun Planning(
           selected = selected,
           today = today,
           onSelect = {
-            picked = it.toEpochDay()
+            selection.pick(it)
             revealOnShow = null
           },
       )
     }
     val shown = byDay[selected].orEmpty()
-    if (shown.isEmpty()) EmptyDay(selected)
+    if (shown.isEmpty()) {
+      DayWithoutMissions(selected, Modifier.testTag(PlanningTestTags.EMPTY_DAY))
+    }
     // Keyed by mission, so a row keeps its own state when the missions before it change.
     shown.forEach {
       key(it.id) {
@@ -208,15 +207,7 @@ private fun Header(awayFromToday: Boolean, onBackToToday: () -> Unit) {
         modifier = Modifier.weight(1f),
     )
     if (awayFromToday) {
-      Text(
-          text = stringResource(R.string.planning_back_to_today),
-          fontSize = 13.sp,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.primary,
-          modifier =
-              Modifier.clickable(role = Role.Button, onClick = onBackToToday)
-                  .testTag(PlanningTestTags.BACK_TO_TODAY),
-      )
+      BackToToday(onBackToToday, Modifier.testTag(PlanningTestTags.BACK_TO_TODAY))
     } else {
       Text(
           text = stringResource(R.string.planning_subtitle),
@@ -225,23 +216,6 @@ private fun Header(awayFromToday: Boolean, onBackToToday: () -> Unit) {
       )
     }
   }
-}
-
-/** Says that nothing is planned on [day], where its missions would be. */
-@Composable
-private fun EmptyDay(day: LocalDate) {
-  Text(
-      text = stringResource(R.string.planning_nothing_planned, day.formatFullDate()),
-      fontSize = 13.sp,
-      fontWeight = FontWeight.Medium,
-      color = MaterialTheme.colorScheme.onSurfaceVariant,
-      modifier =
-          Modifier.fillMaxWidth()
-              .clip(MaterialTheme.shapes.medium)
-              .background(MaterialTheme.colorScheme.surfaceContainer)
-              .padding(horizontal = 14.dp, vertical = 16.dp)
-              .testTag(PlanningTestTags.EMPTY_DAY),
-  )
 }
 
 /**

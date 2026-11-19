@@ -41,13 +41,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DayWithoutMissions
+import com.swent.shifter.ui.components.days.EventDayPicker
+import com.swent.shifter.ui.components.days.EventDayStrip
+import com.swent.shifter.ui.components.days.rememberEventDayPicker
+import com.swent.shifter.ui.components.time.rememberNow
 import com.swent.shifter.ui.mission.AssigneePicker
-import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
+import java.time.Instant
+import java.time.ZoneId
 import kotlin.math.roundToInt
 
 object OrganizerOverviewScreenTestTags {
@@ -62,6 +69,8 @@ object OrganizerOverviewScreenTestTags {
   const val LOAD_ERROR = "OrganizerOverviewLoadError"
   const val RETRY_BUTTON = "OrganizerOverviewRetryButton"
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
+  const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
+  const val BACK_TO_TODAY = "OrganizerOverviewBackToToday"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
   const val ASSIGN_DIALOG = "OrganizerOverviewAssignDialog"
   const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
@@ -81,8 +90,9 @@ object OrganizerOverviewScreenTestTags {
 
 /**
  * The organizer's management screen of an event: the progress of its missions, then its missions,
- * filtered by team. Its join code is in the Sharing tab.
+ * filtered by team and shown one day of the event at a time. Its join code is in the Sharing tab.
  *
+ * @param clock moves today on, so the screen opens on the right day and passes 04:00 by itself.
  * @param onAddMission called to open the mission creation form.
  * @param onManageTeams called to open the teams of the event.
  * @param onEditMission called with the id of a mission to open its edit form.
@@ -90,6 +100,7 @@ object OrganizerOverviewScreenTestTags {
 @Composable
 fun OrganizerOverviewScreen(
     viewModel: OrganizerOverviewViewModel,
+    clock: MinuteClock,
     onAddMission: () -> Unit,
     onManageTeams: () -> Unit = {},
     onEditMission: (String) -> Unit = {},
@@ -97,6 +108,7 @@ fun OrganizerOverviewScreen(
   val uiState by viewModel.uiState.collectAsState()
   OrganizerOverviewContent(
       state = uiState,
+      now = rememberNow(clock),
       actions =
           OrganizerOverviewActions(
               onAddMission = onAddMission,
@@ -129,15 +141,38 @@ data class OrganizerOverviewActions(
     val onDismissAssign: () -> Unit = {},
 )
 
-/** Stateless form of [OrganizerOverviewScreen]: renders [state] and reports every interaction. */
+/**
+ * Stateless form of [OrganizerOverviewScreen]: renders [state] and reports every interaction. Only
+ * the day shown is kept here, across a configuration change.
+ *
+ * The days are picked from a strip, as in the volunteer's Planning and the manager's Overview: it
+ * opens on today (the first day before the event, the last one after it), and an event of one day
+ * has no strip.
+ *
+ * @param now when the screen is read, which decides which day is today.
+ * @param zone the time zone the days are counted in, the device's one in the app.
+ */
 @Composable
-fun OrganizerOverviewContent(state: OrganizerOverviewUiState, actions: OrganizerOverviewActions) {
-  OverviewColumn(state, actions)
+fun OrganizerOverviewContent(
+    state: OrganizerOverviewUiState,
+    actions: OrganizerOverviewActions,
+    now: Instant,
+    zone: ZoneId = ZoneId.systemDefault(),
+) {
+  OverviewColumn(state, actions, now, zone)
   state.assigning?.let { AssignDialog(it, actions) }
 }
 
 @Composable
-private fun OverviewColumn(state: OrganizerOverviewUiState, actions: OrganizerOverviewActions) {
+private fun OverviewColumn(
+    state: OrganizerOverviewUiState,
+    actions: OrganizerOverviewActions,
+    now: Instant,
+    zone: ZoneId,
+) {
+  // From all the missions, not the filtered ones: the strip stays the same when a team is picked.
+  val dayPicker =
+      rememberEventDayPicker(state.eventPeriod, state.missions.map { it.startAt }, now, zone)
   Column(
       modifier =
           Modifier.fillMaxSize()
@@ -151,7 +186,11 @@ private fun OverviewColumn(state: OrganizerOverviewUiState, actions: OrganizerOv
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
     TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
-    Missions(state, actions.onAssign, actions.onEditMission)
+    if (dayPicker.showsStrip) {
+      // The days of the team picked get a dot.
+      EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
+    }
+    Missions(state, dayPicker, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
   }
 }
@@ -327,28 +366,39 @@ private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, test
   }
 }
 
-/** The missions of the selected team, under a header naming it and counting them. */
+/**
+ * The missions of the selected team on the day [dayPicker] shows, under a header naming the team
+ * and counting them, with "Back to today" while another day is shown.
+ */
 @Composable
 private fun Missions(
     state: OrganizerOverviewUiState,
+    dayPicker: EventDayPicker,
     onAssign: (String) -> Unit,
     onEdit: (String) -> Unit,
 ) {
-  val missions = state.visibleMissions
+  val teamMissions = state.visibleMissions
+  val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
+  val onBackToToday = dayPicker.onBackToToday
   val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Text(
-        text =
-            if (selectedTeam == null) {
-              stringResource(R.string.overview_missions_all, missions.size)
-            } else {
-              stringResource(R.string.overview_missions_team, selectedTeam.name, missions.size)
-            },
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER),
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      Text(
+          text =
+              if (selectedTeam == null) {
+                stringResource(R.string.overview_missions_all, missions.size)
+              } else {
+                stringResource(R.string.overview_missions_team, selectedTeam.name, missions.size)
+              },
+          style = MaterialTheme.typography.bodyMedium,
+          fontWeight = FontWeight.SemiBold,
+          color = MaterialTheme.colorScheme.onBackground,
+          modifier = Modifier.weight(1f).testTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER),
+      )
+      if (onBackToToday != null) {
+        BackToToday(onBackToToday, Modifier.testTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY))
+      }
+    }
     when {
       missions.isNotEmpty() ->
           missions.forEach { mission ->
@@ -359,6 +409,12 @@ private fun Missions(
                 onEdit = { onEdit(mission.id) },
             )
           }
+      // Other days have missions of this team: only this one has none.
+      teamMissions.isNotEmpty() ->
+          DayWithoutMissions(
+              dayPicker.shown,
+              Modifier.testTag(OrganizerOverviewScreenTestTags.EMPTY_DAY),
+          )
       state.isLoading ->
           CircularProgressIndicator(
               modifier =
@@ -547,26 +603,5 @@ private fun OverviewCard(content: @Composable () -> Unit) {
               .padding(16.dp)
   ) {
     content()
-  }
-}
-
-@Preview
-@Composable
-private fun OrganizerOverviewContentPreview() {
-  ShifterTheme {
-    OrganizerOverviewContent(
-        state =
-            OrganizerOverviewUiState(
-                isLoading = false,
-                teams = listOf(OverviewTeam("logistics", "Logistics"), OverviewTeam("bar", "Bar")),
-                missions =
-                    listOf(
-                        OverviewMission("1", "Set up the collection", "logistics", true),
-                        OverviewMission("2", "Prepare the counter", "bar", false),
-                        OverviewMission("3", "Welcome the volunteers", null, false),
-                    ),
-            ),
-        actions = OrganizerOverviewActions(),
-    )
   }
 }

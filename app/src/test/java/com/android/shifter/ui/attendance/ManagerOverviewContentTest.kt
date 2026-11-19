@@ -37,10 +37,12 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.isIndeterminateSpinner
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -127,6 +129,8 @@ class ManagerOverviewContentTest {
     }
   }
 
+  private fun pick(day: LocalDate) = compose.onNodeWithTag(DayStripTestTags.day(day)).performClick()
+
   /** Brings [tag] into the lazy list, so a card below the fold can be read and tapped. */
   private fun scrollTo(tag: String): SemanticsNodeInteraction {
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performScrollToNode(hasTestTag(tag))
@@ -162,20 +166,30 @@ class ManagerOverviewContentTest {
   }
 
   @Test
-  fun missionOnAnotherDayOrAcrossMidnight_showsEnoughOfItsDates() {
-    val nextDay = setUpRunning("next", Duration.ofDays(1), Duration.ofDays(1).plusHours(2))
+  fun missionAfterMidnightOrAcrossIt_showsEnoughOfItsDates() {
     val overnight =
         setUp.copy(
             id = "night",
             startAt = Instant.parse("2027-06-20T22:00:00Z"),
             endAt = Instant.parse("2027-06-21T02:00:00Z"),
         )
-    show(loaded.copy(missions = listOf(nextDay, overnight)))
+    // Still the evening of the 20th, which is where the manager looks for it.
+    val afterMidnight =
+        setUp.copy(
+            id = "late",
+            startAt = Instant.parse("2027-06-21T02:00:00Z"),
+            endAt = Instant.parse("2027-06-21T03:00:00Z"),
+        )
+    val nextDay = setUpRunning("next", Duration.ofDays(1), Duration.ofDays(1).plusHours(2))
+    show(loaded.copy(missions = listOf(overnight, afterMidnight, nextDay)))
 
-    // A mission of another day is told apart from one of today, and one crossing midnight reads
-    // as the two days it spans rather than "22:00–02:00".
-    compose.onNodeWithText("Logistics · 21 Jun, 09:05–11:05").assertIsDisplayed()
+    // Crossing midnight reads as the two days it spans rather than "22:00–02:00", and after
+    // midnight names its date.
     compose.onNodeWithText("Logistics · 20 Jun 22:00 – 21 Jun 02:00").assertIsDisplayed()
+    compose.onNodeWithText("Logistics · 21 Jun, 02:00–03:00").assertIsDisplayed()
+    // On its own day, a mission needs no date: the strip says which day it is.
+    pick(LocalDate.of(2027, 6, 21))
+    compose.onNodeWithText("Logistics · 09:05–11:05").assertIsDisplayed()
   }
 
   @Test
@@ -1016,5 +1030,112 @@ class ManagerOverviewContentTest {
   private companion object {
     /** Longer than a short snackbar without accessibility settings, which is 4 s. */
     const val SHORT_SNACKBAR_MILLIS = 5_000L
+  }
+
+  // The event runs from the 19th to the night of the 21st; today is the 20th.
+  private val eventPeriod =
+      Instant.parse("2027-06-19T08:00:00Z")..Instant.parse("2027-06-22T02:00:00Z")
+  private val today = LocalDate.of(2027, 6, 20)
+  private val tomorrow = today.plusDays(1)
+  private val barTomorrow =
+      drinks.copy(id = "m3", title = "Close the bar", startAt = start.plus(Duration.ofDays(1)))
+  private val threeDays =
+      loaded.copy(missions = listOf(setUp, drinks, barTomorrow), eventPeriod = eventPeriod)
+
+  @Test
+  fun eventOfSeveralDays_opensOnTodayWithItsMissionsOnly() {
+    show(threeDays)
+
+    compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
+    compose.onNodeWithText("Set up equipment").assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
+    compose.onNodeWithText("Close the bar").assertDoesNotExist()
+    // The missions of the day shown, not of the event.
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
+    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun pickingADay_showsItsMissions_withTheTeamFilterOnAndOff() {
+    show(threeDays)
+
+    pick(tomorrow)
+    compose.onNodeWithText("Close the bar").assertIsDisplayed()
+    compose.onNodeWithText("Set up equipment").assertDoesNotExist()
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("bar")).performClick()
+    compose.onNodeWithText("Close the bar").assertIsDisplayed()
+    // The day stays picked when the team changes, and the other way round.
+    compose.onNodeWithTag(DayStripTestTags.day(tomorrow)).assertIsSelected()
+    pick(today)
+    compose.onNodeWithText("Serve drinks").assertIsDisplayed()
+    compose.onNodeWithText("Set up equipment").assertDoesNotExist()
+    compose.onNodeWithText("Close the bar").assertDoesNotExist()
+  }
+
+  @Test
+  fun dayTheFilterLeavesEmpty_saysSo_andKeepsEveryDay() {
+    show(threeDays)
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("logistics")).performClick()
+    pick(tomorrow)
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY_DAY).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY).assertDoesNotExist()
+    compose.onNodeWithText("Close the bar").assertDoesNotExist()
+    // The strip is the event's, whatever the team: the 19th, without missions, is still there.
+    compose.onNodeWithTag(DayStripTestTags.day(today.minusDays(1))).assertExists()
+  }
+
+  @Test
+  fun backToToday_takesTheCountsPlaceOnAnotherDay_andShowsTodayAgain() {
+    show(threeDays)
+    pick(today.minusDays(1))
+
+    compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY_DAY).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).performClick()
+
+    compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
+    compose.onNodeWithText("Set up equipment").assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun eventOfOneDay_showsItsMissionsWithoutTheStrip() {
+    show(loaded.copy(eventPeriod = start..start.plus(Duration.ofHours(10))))
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    compose.onNodeWithText("Set up equipment").assertIsDisplayed()
+  }
+
+  @Test
+  fun eventOfOneDay_onAnotherDay_datesItsMissions() {
+    // Two days from now, with no strip to say the mission is not today.
+    val later = setUpRunning("later", Duration.ofDays(2), Duration.ofDays(2).plusHours(2))
+    show(
+        loaded.copy(
+            missions = listOf(later),
+            eventPeriod = later.startAt..later.endAt,
+        )
+    )
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    compose.onNodeWithText("Logistics · 22 Jun, 09:05–11:05").assertIsDisplayed()
+  }
+
+  @Test
+  fun eventNotStartedYet_opensOnItsFirstDay() {
+    val later = barTomorrow.copy(startAt = start.plus(Duration.ofDays(3)))
+    show(
+        loaded.copy(
+            missions = listOf(later),
+            eventPeriod = later.startAt..later.startAt.plus(Duration.ofDays(2)),
+        )
+    )
+
+    compose.onNodeWithTag(DayStripTestTags.day(today.plusDays(3))).assertIsSelected()
+    compose.onNodeWithText("Close the bar").assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 }

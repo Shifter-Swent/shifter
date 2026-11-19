@@ -80,6 +80,20 @@ private fun ManagerOverviewUnknownPreview() {
   )
 }
 
+/** An event of three days, read on its second one: the strip offers the two others. */
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 916)
+@Composable
+private fun ManagerOverviewSeveralDaysPreview() {
+  PreviewHost(
+      AttendanceUiState(
+          isLoading = false,
+          missions =
+              listOf(SET_UP, DRINKS, DRINKS.copy(id = "m3", startAt = START + Duration.ofDays(1))),
+          eventPeriod = START - Duration.ofDays(1)..START + Duration.ofDays(1),
+      )
+  )
+}
+
 @Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 916)
 @Composable
 private fun ManagerOverviewLoadFailedPreview() {

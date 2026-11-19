@@ -7,6 +7,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Instant
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -18,13 +20,26 @@ class OrganizerOverviewEditMissionTest {
 
   @get:Rule val compose = createComposeRule()
 
+  private val now = Instant.parse("2027-06-19T10:00:00Z")
   private val state =
       OrganizerOverviewUiState(
           isLoading = false,
           missions =
               listOf(
-                  OverviewMission(id = "m1", title = "Set up", teamId = null, isCompleted = false),
-                  OverviewMission(id = "m2", title = "Clean up", teamId = null, isCompleted = true),
+                  OverviewMission(
+                      id = "m1",
+                      title = "Set up",
+                      teamId = null,
+                      isCompleted = false,
+                      startAt = now,
+                  ),
+                  OverviewMission(
+                      id = "m2",
+                      title = "Clean up",
+                      teamId = null,
+                      isCompleted = true,
+                      startAt = now,
+                  ),
               ),
       )
 
@@ -33,7 +48,12 @@ class OrganizerOverviewEditMissionTest {
     val edited = mutableListOf<String>()
     compose.setContent {
       ShifterTheme {
-        OrganizerOverviewContent(state, OrganizerOverviewActions(onEditMission = { edited += it }))
+        OrganizerOverviewContent(
+            state,
+            OrganizerOverviewActions(onEditMission = { edited += it }),
+            now = now,
+            zone = ZoneOffset.UTC,
+        )
       }
     }
 
@@ -47,7 +67,12 @@ class OrganizerOverviewEditMissionTest {
     val edited = mutableListOf<String>()
     compose.setContent {
       ShifterTheme {
-        OrganizerOverviewContent(state, OrganizerOverviewActions(onEditMission = { edited += it }))
+        OrganizerOverviewContent(
+            state,
+            OrganizerOverviewActions(onEditMission = { edited += it }),
+            now = now,
+            zone = ZoneOffset.UTC,
+        )
       }
     }
 

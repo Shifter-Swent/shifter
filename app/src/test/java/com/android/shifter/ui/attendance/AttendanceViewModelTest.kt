@@ -225,6 +225,14 @@ class AttendanceViewModelTest {
   }
 
   @Test
+  fun load_keepsTheEventPeriod_forTheDaysOfTheScreen() = runTest {
+    open("manager")
+
+    // From the event already read to decide the role, so the strip offers its days.
+    assertEquals(start..start.plus(Duration.ofDays(1)), viewModel.uiState.value.eventPeriod)
+  }
+
+  @Test
   fun load_asManager_listsOnlyTheMissionsOfTheirTeams() = runTest {
     addMission("Set up", "logistics", hour = 1)
     addMission("Serve drinks", "bar", hour = 2)

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.mission.isCompleted
@@ -29,6 +30,7 @@ data class OverviewTeam(val id: String, val name: String)
  * A mission as the management screen lists it.
  *
  * @property teamId id of the team the mission belongs to, or null for "General", no team.
+ * @property startAt when the mission starts, which decides the day of the event it is listed on.
  * @property volunteersNeeded how many people the mission needs, the most that can be assigned.
  * @property assigneeIds ids of the people assigned to the mission.
  */
@@ -37,6 +39,7 @@ data class OverviewMission(
     val title: String,
     val teamId: String?,
     val isCompleted: Boolean,
+    val startAt: Instant,
     val volunteersNeeded: Int = 1,
     val assigneeIds: List<String> = emptyList(),
 )
@@ -64,6 +67,8 @@ data class AssignState(
  * @property selectedTeamId the team whose missions are listed, or null to list them all.
  * @property loadFailed whether the last load failed. Data from an earlier load is kept and shown.
  * @property assigning the assignees being edited, or null when no mission is being assigned.
+ * @property eventPeriod when the event starts and ends, so the screen can offer each of its days,
+ *   or null until the event has been read.
  */
 data class OrganizerOverviewUiState(
     val isLoading: Boolean = true,
@@ -72,6 +77,7 @@ data class OrganizerOverviewUiState(
     val missions: List<OverviewMission> = emptyList(),
     val selectedTeamId: String? = null,
     val assigning: AssignState? = null,
+    val eventPeriod: ClosedRange<Instant>? = null,
 ) {
   /** The missions of the selected team, or all of them when none is selected. */
   val visibleMissions: List<OverviewMission>
@@ -92,13 +98,15 @@ data class OrganizerOverviewUiState(
 
 /**
  * Loads the missions and teams of the event [eventId] for its management screen, filters the
- * missions by team, and assigns people to a mission.
+ * missions by team, and assigns people to a mission. Also reads the event's period from
+ * [eventRepository], for the days the screen offers.
  */
 class OrganizerOverviewViewModel(
     private val eventId: String,
     private val missionRepository: MissionRepository,
     private val teamRepository: TeamRepository,
     private val assigneeCandidates: AssigneeCandidates,
+    private val eventRepository: EventRepository,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
 
@@ -107,14 +115,23 @@ class OrganizerOverviewViewModel(
 
   private var candidatesJob: Job? = null
 
+  // The load running, cancelled by the next one so an older answer never overwrites a newer one.
+  private var loadJob: Job? = null
+
   init {
     refresh()
   }
 
   /** Loads the missions and teams again, e.g. after a mission was added or a load failed. */
   fun refresh() {
+    loadJob?.cancel()
     _uiState.update { it.copy(isLoading = true, loadFailed = false) }
-    viewModelScope.launch {
+    loadJob = viewModelScope.launch {
+      // Alongside the missions, which never wait for it, and kept as soon as it is read, even if
+      // the missions fail.
+      launch {
+        readEventPeriod()?.let { period -> _uiState.update { it.copy(eventPeriod = period) } }
+      }
       try {
         val teams = teamRepository.getTeamsByEvent(eventId).map { OverviewTeam(it.id, it.name) }
         val missions =
@@ -127,6 +144,7 @@ class OrganizerOverviewViewModel(
                       title = it.title,
                       teamId = it.teamId,
                       isCompleted = isCompleted(it.completed, it.endAt, now()),
+                      startAt = it.startAt,
                       volunteersNeeded = it.volunteersNeeded,
                       assigneeIds = it.assigneeIds,
                   )
@@ -147,6 +165,19 @@ class OrganizerOverviewViewModel(
       }
     }
   }
+
+  /**
+   * When the event starts and ends, or null when it cannot be read: the days then run from the
+   * first mission to the last, and a period already known is kept.
+   */
+  private suspend fun readEventPeriod(): ClosedRange<Instant>? =
+      try {
+        eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        null
+      }
 
   /** Lists the missions of the team [teamId] only, or all of them when null. Unknown: ignored. */
   fun selectTeam(teamId: String?) {
@@ -302,6 +333,7 @@ class OrganizerOverviewViewModel(
         missionRepository: MissionRepository,
         teamRepository: TeamRepository,
         assigneeCandidates: AssigneeCandidates,
+        eventRepository: EventRepository,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
         OrganizerOverviewViewModel(
@@ -309,6 +341,7 @@ class OrganizerOverviewViewModel(
             missionRepository,
             teamRepository,
             assigneeCandidates,
+            eventRepository,
         )
       }
     }

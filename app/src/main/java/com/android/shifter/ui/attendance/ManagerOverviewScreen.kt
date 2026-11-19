@@ -68,6 +68,10 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.RefreshableList
+import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DayWithoutMissions
+import com.swent.shifter.ui.components.days.EventDayStrip
+import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.components.time.formatDay
 import com.swent.shifter.ui.components.time.formatTime
@@ -75,6 +79,7 @@ import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 object ManagerOverviewTestTags {
@@ -86,6 +91,8 @@ object ManagerOverviewTestTags {
   const val LOAD_ERROR = "managerOverviewLoadError"
   const val RETRY = "managerOverviewRetry"
   const val EMPTY = "managerOverviewEmpty"
+  const val EMPTY_DAY = "managerOverviewEmptyDay"
+  const val BACK_TO_TODAY = "managerOverviewBackToToday"
   const val MARK_COMPLETED_DIALOG = "managerOverviewMarkCompletedDialog"
   const val MARK_COMPLETED_CONFIRM = "managerOverviewMarkCompletedConfirm"
   const val MARK_COMPLETED_CANCEL = "managerOverviewMarkCompletedCancel"
@@ -132,14 +139,17 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
     Saver(save = { ArrayList(it) }, restore = { it.toSet() })
 
 /**
- * The manager's overview of an event: the missions of the teams they manage, by start time, each
- * with who is present. Stateless but for which team is filtered on and which cards are expanded,
- * both kept across a configuration change.
+ * The manager's overview of an event: the missions of the teams they manage, one day of the event
+ * at a time, by start time, each with who is present. Stateless but for which team is filtered on,
+ * which day is shown and which cards are expanded, all kept across a configuration change.
  *
- * @param now when the screen is read, which decides whose check-in is open and who is late. Nothing
- *   ticks here: the caller must pass a [Instant] it refreshes regularly, every minute or so, or a
- *   mission will stay "Check-in not open yet" long after it has opened.
- * @param zone the time zone the times are shown in, the device's one in the app.
+ * The days are picked from a strip, as in the volunteer's Planning: it opens on today (the first
+ * day before the event, the last one after it), and an event of one day has no strip.
+ *
+ * @param now when the screen is read, which decides whose check-in is open, who is late, and which
+ *   day is today. Nothing ticks here: the caller must pass a [Instant] it refreshes regularly,
+ *   every minute or so, or a mission will stay "Check-in not open yet" long after it has opened.
+ * @param zone the time zone the times and days are counted in, the device's one in the app.
  * @param onCheckIn checks a missing assignee in by hand, when their name is tapped, from a mission
  *   card or from the now card at the top.
  * @param onViewOnMap shows the team on the map, the one action of the now card at the top, which is
@@ -199,7 +209,11 @@ fun ManagerOverviewContent(
       rememberSaveable(stateSaver = ExpandedIdsSaver) { mutableStateOf(emptySet<String>()) }
   // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
   val selectedTeamId = pickedTeamId?.takeIf { id -> teams.any { it.first == id } }
-  val missions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
+  val teamMissions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
+  // From all the missions, not the filtered ones: the strip stays the same when a team is picked.
+  val dayPicker =
+      rememberEventDayPicker(state.eventPeriod, state.missions.map { it.startAt }, now, zone)
+  val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
   // By id, so the question survives a configuration change.
   var confirmingMissionId by rememberSaveable { mutableStateOf<String?>(null) }
   // One host for every message of the screen, so they are shown one after the other rather than
@@ -230,7 +244,7 @@ fun ManagerOverviewContent(
   RefreshableList(
       isLoading = state.isLoading,
       // The list's own spinner says it while there are no missions to keep.
-      hasContent = missions.isNotEmpty(),
+      hasContent = teamMissions.isNotEmpty(),
       onRefresh = onRetry,
       modifier = modifier.fillMaxSize(),
   ) {
@@ -263,9 +277,16 @@ fun ManagerOverviewContent(
       if (state.loadFailed) item { LoadError(onRetry) }
       if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
       item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
+      if (dayPicker.showsStrip) {
+        // The days of the team picked get a dot.
+        item { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
+      }
       item {
-        // Never "0 missions" before there is an answer: that reads as having none.
-        MissionsHeader(missions.size.takeUnless { it == 0 && !state.isLoaded })
+        MissionsHeader(
+            // Never "0 missions" before there is an answer: that reads as having none.
+            count = missions.size.takeUnless { it == 0 && !state.isLoaded },
+            onBackToToday = dayPicker.onBackToToday,
+        )
       }
       items(missions, key = { it.id }) { mission ->
         MissionCard(
@@ -275,6 +296,9 @@ fun ManagerOverviewContent(
             canMarkCompleted = !state.isOrganizer && mission.canBeMarkedCompleted(now),
             isMarkingCompleted = mission.id in state.markingCompletedIds,
             now = now,
+            // Without a strip nothing says which day is shown: the date then goes on the cards
+            // of any other day than today.
+            day = if (dayPicker.showsStrip) dayPicker.shown else dayPicker.today,
             zone = zone,
             // Each card on its own: opening one leaves the others as they are.
             onToggle = {
@@ -298,6 +322,12 @@ fun ManagerOverviewContent(
       if (missions.isEmpty()) {
         item {
           when {
+            // Other days, or other teams on other days, have missions: only this one has none.
+            teamMissions.isNotEmpty() ->
+                DayWithoutMissions(
+                    dayPicker.shown,
+                    Modifier.testTag(ManagerOverviewTestTags.EMPTY_DAY),
+                )
             // A reload keeps the cards already shown instead of replacing them with the spinner.
             state.isLoading ->
                 CircularProgressIndicator(
@@ -305,8 +335,7 @@ fun ManagerOverviewContent(
                     strokeWidth = 2.dp,
                 )
             // Already "loaded, did not fail, nothing there". A team that was picked always has
-            // a mission, since the chips come from the missions, so it alone never empties the
-            // list.
+            // a mission, since the chips come from the missions: what it leaves empty is a day.
             state.isEmpty -> EmptyMessage(R.string.attendance_no_missions)
           }
         }
@@ -531,9 +560,14 @@ private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, test
   }
 }
 
-/** The missions listed, counted when there is an answer to count; [count] is null until then. */
+/**
+ * The missions listed, counted when there is an answer to count; [count] is null until then.
+ *
+ * @param onBackToToday shows today again, offered in place of the count while another day is shown;
+ *   none when null.
+ */
 @Composable
-private fun MissionsHeader(count: Int?) {
+private fun MissionsHeader(count: Int?, onBackToToday: (() -> Unit)?) {
   Row(verticalAlignment = Alignment.CenterVertically) {
     Text(
         text = stringResource(R.string.attendance_missions_title),
@@ -543,7 +577,9 @@ private fun MissionsHeader(count: Int?) {
         // Always there, so screen readers can refresh with no mission listed too.
         modifier = Modifier.weight(1f).refreshAction(),
     )
-    if (count != null) {
+    if (onBackToToday != null) {
+      BackToToday(onBackToToday, Modifier.testTag(ManagerOverviewTestTags.BACK_TO_TODAY))
+    } else if (count != null) {
       Text(
           text = pluralStringResource(R.plurals.attendance_mission_count, count, count),
           style = MaterialTheme.typography.labelSmall,
@@ -559,6 +595,7 @@ private fun MissionsHeader(count: Int?) {
  * keep their own accessibility nodes instead of being merged into the card; and it is tappable only
  * when there is something under it, so the arrow never flips on an empty card.
  *
+ * @param day the day the schedule leaves out: the one picked in the strip, or today without one.
  * @param onEdit opens the mission's edit form from a pencil in the header, none when null.
  */
 @Composable
@@ -569,6 +606,7 @@ private fun MissionCard(
     canMarkCompleted: Boolean,
     isMarkingCompleted: Boolean,
     now: Instant,
+    day: LocalDate,
     zone: ZoneId,
     onToggle: () -> Unit,
     onMarkCompleted: () -> Unit,
@@ -625,7 +663,7 @@ private fun MissionCard(
                       mission.teamId == null -> stringResource(R.string.attendance_team_general)
                       else -> mission.teamName ?: stringResource(R.string.attendance_team_unknown)
                     },
-                    schedule(mission, now, zone),
+                    schedule(mission, day, zone),
                 ),
             style = MaterialTheme.typography.labelSmall,
             color = shifter_mutedText,
@@ -845,11 +883,12 @@ private fun People(
 }
 
 /**
- * When the mission runs: its times alone on the day being read, the day added on any other, and
- * both days when it crosses midnight, so two missions of a long event never read the same.
+ * When the mission runs: its times alone on the [day] shown, as in the Planning. The date is added
+ * for one starting after midnight, which belongs to the evening before, and both dates for one
+ * crossing midnight, rather than "22:00–02:00".
  */
 @Composable
-private fun schedule(mission: AttendanceMission, now: Instant, zone: ZoneId): String {
+private fun schedule(mission: AttendanceMission, day: LocalDate, zone: ZoneId): String {
   val startDay = mission.startAt.atZone(zone).toLocalDate()
   val endDay = mission.endAt.atZone(zone).toLocalDate()
   return when {
@@ -861,7 +900,7 @@ private fun schedule(mission: AttendanceMission, now: Instant, zone: ZoneId): St
             endDay.formatDay(),
             mission.endAt.formatTime(zone),
         )
-    startDay != now.atZone(zone).toLocalDate() ->
+    startDay != day ->
         stringResource(
             R.string.attendance_schedule_on_day,
             startDay.formatDay(),
