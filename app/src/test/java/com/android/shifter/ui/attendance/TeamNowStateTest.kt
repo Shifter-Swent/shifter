@@ -8,12 +8,14 @@ import com.swent.shifter.ui.attendance.TeamNowState.Quiet
 import com.swent.shifter.ui.attendance.TeamNowState.Running
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TeamNowStateTest {
 
   private val now = Instant.parse("2027-06-20T10:00:00Z")
+  private val utc = ZoneId.of("UTC")
   private val second = Duration.ofSeconds(1)
   private val window = TeamNowRules.UPCOMING_WINDOW
   private val shortGrace = TeamNowRules.SHORT_GRACE_PERIOD
@@ -555,5 +557,54 @@ class TeamNowStateTest {
     val later = mission("later", inMinutes(120), assignees = listOf(emma))
 
     assertEquals(Quiet(listOf(later)), teamNowState(listOf(closed, later), now))
+  }
+
+  // The event day the card speaks for
+
+  @Test
+  fun onEventDayOf_keepsTheDaysMissionsAndLeavesTheNextDaysOut() {
+    // 20:00 on the first day: one mission is left tonight, the next is at 09:00 tomorrow.
+    val evening = Instant.parse("2027-06-20T20:00:00Z")
+    val tonight = mission("tonight", Instant.parse("2027-06-20T22:00:00Z"))
+    val tomorrow = mission("tomorrow", Instant.parse("2027-06-21T09:00:00Z"))
+
+    val day = listOf(tonight, tomorrow).onEventDayOf(evening, utc)
+
+    assertEquals(listOf(tonight), day)
+    assertEquals(Quiet(listOf(tonight)), teamNowState(day, evening))
+    // With nothing left tonight, the filter is what keeps the card from announcing tomorrow's
+    // mission as if it were tonight's: it says the day is over instead.
+    assertEquals(Quiet(listOf(tomorrow)), teamNowState(listOf(tomorrow), evening))
+    assertEquals(Done, teamNowState(listOf(tomorrow).onEventDayOf(evening, utc), evening))
+  }
+
+  @Test
+  fun onEventDayOf_beforeFourInTheMorning_isStillTheEveningsDay() {
+    // The day runs from 04:00 to 04:00, so at 03:00 the evening's missions are still the day's
+    // and the morning's are not.
+    val tonight = mission("tonight", Instant.parse("2027-06-20T21:00:00Z"))
+    val morning = mission("morning", Instant.parse("2027-06-21T09:00:00Z"))
+    val threeInTheMorning = Instant.parse("2027-06-21T03:00:00Z")
+
+    assertEquals(
+        listOf(tonight),
+        listOf(tonight, morning).onEventDayOf(threeInTheMorning, utc),
+    )
+  }
+
+  @Test
+  fun onEventDayOf_keepsAMissionRunningAcrossTheTurnOfTheDay() {
+    // A night shift from 02:00 to 05:00 belongs to the evening before and to the day it ends on,
+    // so a team at work at 04:00 keeps its mission on the card.
+    val night = mission("night", Instant.parse("2027-06-21T02:00:00Z"), lasts = Duration.ofHours(3))
+
+    assertEquals(
+        listOf(night),
+        listOf(night).onEventDayOf(Instant.parse("2027-06-21T03:00:00Z"), utc),
+    )
+    assertEquals(
+        listOf(night),
+        listOf(night).onEventDayOf(Instant.parse("2027-06-21T04:30:00Z"), utc),
+    )
   }
 }
