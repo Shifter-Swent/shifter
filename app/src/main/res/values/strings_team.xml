@@ -4,7 +4,7 @@
 <resources>
     <!-- Team creation -->
     <string name="create_team_field_name">Team name</string>
-    <string name="create_team_field_icon">Icon</string>
+    <string name="create_team_field_team">Team</string>
     <string name="create_team_field_description">Short description</string>
     <string name="create_team_icon_selected">Team icon · %1$s</string>
     <string name="create_team_icon_none">Choose a team icon</string>
@@ -29,6 +29,13 @@
     <string name="team_setup_load_error">Could not load the teams of the event.</string>
     <string name="team_setup_retry">Retry</string>
     <string name="team_setup_save_failed">Couldn\'t save the team.</string>
+    <!-- Deleting a team from its card (#399). -->
+    <string name="team_setup_delete">Delete %1$s</string>
+    <string name="team_setup_delete_title">Delete %1$s?</string>
+    <string name="team_setup_delete_message">Its missions and messages will be deleted too. Its volunteers stay in your event, and you can move them to another team from People.</string>
+    <string name="team_setup_delete_confirm">Delete</string>
+    <string name="team_setup_delete_cancel">Cancel</string>
+    <string name="team_setup_delete_failed">Couldn\'t delete the team.</string>
     <!-- Shared by the name and the description: both only carry their own limit. -->
     <plurals name="create_team_error_too_long">
         <item quantity="one">Use at most %1$d character</item>

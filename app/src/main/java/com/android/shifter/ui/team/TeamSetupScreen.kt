@@ -15,14 +15,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,6 +69,10 @@ object TeamSetupScreenTestTags {
   const val PROCEED_BUTTON = "TeamSetupProceedButton"
 
   fun savedTeam(teamId: String) = "TeamSetupSavedTeam_$teamId"
+
+  fun deleteButton(teamId: String) = "TeamSetupDeleteTeam_$teamId"
+
+  fun deletingIndicator(teamId: String) = "TeamSetupDeletingTeam_$teamId"
 }
 
 /**
@@ -124,18 +135,34 @@ fun TeamSetupScreen(
     navigate()
   }
   BackHandler { leave(onBack) }
+  val deleteFailed = stringResource(R.string.team_setup_delete_failed)
+  val retry = stringResource(R.string.team_setup_retry)
+  LaunchedEffect(viewModel) {
+    viewModel.deleteFailures.collect { team ->
+      val result =
+          snackbarHostState.showSnackbar(
+              deleteFailed,
+              actionLabel = retry,
+              duration = SnackbarDuration.Long,
+          )
+      if (result == SnackbarResult.ActionPerformed) viewModel.deleteTeam(team)
+    }
+  }
 
   TeamSetupContent(
       state = state,
       mode = mode,
       snackbarHostState = snackbarHostState,
-      teamCard = { team ->
+      teamCard = { team, enabled, deleteAction ->
         EditableTeamCard(
             team = team,
             factory = remember(team.id) { viewModel.editTeamFactory(team) },
             snackbarHostState = snackbarHostState,
+            enabled = enabled,
+            deleteAction = deleteAction,
         )
       },
+      onDeleteTeam = viewModel::deleteTeam,
       onBack = { leave(onBack) },
       onProceed = { leave(onProceed) },
       onRetry = viewModel::refresh,
@@ -165,14 +192,23 @@ fun TeamSetupScreen(
  *
  * @param form the creation form to show under the teams, or null while none is open. A slot, so
  *   this stays free of the [CreateTeamViewModel] one needs.
- * @param teamCard draws one of the teams; read-only by default, editable in [TeamSetupScreen].
+ * @param teamCard draws one of the teams with its delete button, deleteAction. Its fields are
+ *   read-only by default and editable in [TeamSetupScreen]; enabled is false while its deletion
+ *   runs.
+ * @param onDeleteTeam called once the organizer has confirmed the deletion of a team.
  */
 @Composable
 fun TeamSetupContent(
     state: TeamSetupUiState,
     mode: TeamSetupMode = TeamSetupMode.CREATION,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    teamCard: @Composable (Team) -> Unit = { SavedTeamCard(it) },
+    teamCard:
+        @Composable
+        (team: Team, enabled: Boolean, deleteAction: @Composable () -> Unit) -> Unit =
+        { team, _, deleteAction ->
+          SavedTeamCard(team, deleteAction)
+        },
+    onDeleteTeam: (Team) -> Unit = {},
     onBack: () -> Unit,
     onProceed: () -> Unit,
     onRetry: () -> Unit,
@@ -181,6 +217,14 @@ fun TeamSetupContent(
 ) {
   // The first load failed and left nothing to show: the error takes the place of the teams.
   val teamsUnknown = state.loadFailed && state.teams.isEmpty()
+  // The id of the team whose deletion waits for the organizer to confirm it.
+  var teamToDelete by rememberSaveable { mutableStateOf<String?>(null) }
+  // A team gone from the list, e.g. after a reload, is forgotten, so its dialog never comes back
+  // by itself. Not while a first load runs, which lists nothing yet.
+  LaunchedEffect(state.teams, state.isLoading) {
+    if (!state.isLoading && state.teams.none { it.id == teamToDelete }) teamToDelete = null
+  }
+  val focusManager = LocalFocusManager.current
   Scaffold(
       snackbarHost = { SnackbarHost(snackbarHostState) },
       topBar = {
@@ -219,7 +263,22 @@ fun TeamSetupContent(
         teamsUnknown -> LoadError(onRetry)
         else -> {
           SectionHeading()
-          state.teams.forEach { team -> key(team.id) { teamCard(team) } }
+          state.teams.forEach { team ->
+            key(team.id) {
+              val deleting = team.id in state.deletingTeamIds
+              teamCard(team, !deleting) {
+                DeleteTeamAction(
+                    team = team,
+                    deleting = deleting,
+                    onClick = {
+                      // Saves the field being edited before the dialog takes over.
+                      focusManager.clearFocus(force = true)
+                      teamToDelete = team.id
+                    },
+                )
+              }
+            }
+          }
           form?.let { Box(Modifier.testTag(TeamSetupScreenTestTags.ACTIVE_FORM)) { it() } }
           // A refresh that failed over teams an earlier load brought in: they stay listed above.
           if (state.loadFailed) LoadError(onRetry)
@@ -227,6 +286,18 @@ fun TeamSetupContent(
       }
     }
   }
+  state.teams
+      .find { it.id == teamToDelete }
+      ?.let { team ->
+        DeleteTeamDialog(
+            team = team,
+            onConfirm = {
+              teamToDelete = null
+              onDeleteTeam(team)
+            },
+            onDismiss = { teamToDelete = null },
+        )
+      }
 }
 
 /** The heading of the step, over what it is for. */
@@ -251,11 +322,11 @@ private fun SectionHeading() {
 }
 
 /**
- * A team the event already has, in the very card the form draws, read-only: what [TeamSetupContent]
- * shows when it is not given a way to edit the teams.
+ * A team the event already has, in the very card the form draws, with its fields read-only and its
+ * [deleteAction]: what [TeamSetupContent] shows when it is not given a way to edit the teams.
  */
 @Composable
-private fun SavedTeamCard(team: Team) {
+private fun SavedTeamCard(team: Team, deleteAction: @Composable () -> Unit) {
   Box(modifier = Modifier.testTag(TeamSetupScreenTestTags.savedTeam(team.id))) {
     CreateTeamContent(
         state =
@@ -266,6 +337,7 @@ private fun SavedTeamCard(team: Team) {
                 createdTeam = team,
             ),
         actions = CreateTeamActions(),
+        headerAction = deleteAction,
     )
   }
 }
@@ -283,6 +355,8 @@ private fun EditableTeamCard(
     team: Team,
     factory: ViewModelProvider.Factory,
     snackbarHostState: SnackbarHostState,
+    enabled: Boolean,
+    deleteAction: @Composable () -> Unit,
 ) {
   val form: CreateTeamViewModel =
       viewModel(key = "$EDIT_TEAM_FORM_KEY${team.id}", factory = factory)
@@ -302,6 +376,8 @@ private fun EditableTeamCard(
                 onDescriptionChange = form::onDescriptionChange,
                 onFieldDone = form::saveChanges,
             ),
+        enabled = enabled,
+        headerAction = deleteAction,
     )
   }
 }
@@ -324,6 +400,35 @@ private fun NewTeamForm(
       onTeamCreated = onTeamCreated,
       onCancel = onCancel,
   )
+}
+
+/**
+ * The red bin in the top right corner of a saved team's card, which asks to delete it, or a spinner
+ * in its place while the deletion runs.
+ */
+@Composable
+private fun DeleteTeamAction(team: Team, deleting: Boolean, onClick: () -> Unit) {
+  if (deleting) {
+    CircularProgressIndicator(
+        strokeWidth = 2.dp,
+        // In the 48dp of the button it replaces, so it sits where the bin was.
+        modifier =
+            Modifier.padding(12.dp)
+                .size(24.dp)
+                .testTag(TeamSetupScreenTestTags.deletingIndicator(team.id)),
+    )
+  } else {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.testTag(TeamSetupScreenTestTags.deleteButton(team.id)),
+    ) {
+      Icon(
+          imageVector = Icons.Outlined.Delete,
+          contentDescription = stringResource(R.string.team_setup_delete, team.name),
+          tint = MaterialTheme.colorScheme.error,
+      )
+    }
+  }
 }
 
 /** Why the teams could not be loaded, and the way to ask for them again. */

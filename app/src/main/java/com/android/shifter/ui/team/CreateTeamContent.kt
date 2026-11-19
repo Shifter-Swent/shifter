@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,72 +68,85 @@ data class CreateTeamActions(
 )
 
 /**
- * The team creation form of the designs: the name of the team and its icon on one row, a short
- * description below, in a single card.
+ * The team creation form of the designs: under a single label, the icon of the team and its name on
+ * one row, then a short description, in a single card.
  *
  * Stateless, and only the form: it renders [state] and reports every edit through [actions], so the
  * screen that hosts it keeps its own header and its own buttons and stays the one that talks to
  * [CreateTeamViewModel].
+ *
+ * @param enabled false keeps every field read-only, e.g. while the team is being deleted.
+ * @param headerAction drawn in the top right corner, at the height of the first label, e.g. the
+ *   button that deletes a saved team.
  */
 @Composable
 fun CreateTeamContent(
     state: CreateTeamUiState,
     actions: CreateTeamActions,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    headerAction: (@Composable () -> Unit)? = null,
 ) {
   val colorScheme = MaterialTheme.colorScheme
   // 16dp in the designs, as `large` is; the fields inside use `small`, which is their 8dp.
   val shape = MaterialTheme.shapes.large
   // Nothing is edited while the team is being saved, so the form cannot drift from what is sent,
   // nor once it has been created, when the form is only waiting to be dismissed.
-  val editable = state.isEditable
-  Column(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .clip(shape)
-              .background(colorScheme.surfaceVariant)
-              .border(1.dp, colorScheme.outlineVariant, shape)
-              .padding(12.dp)
-              .testTag(CreateTeamFormTestTags.FORM),
-      verticalArrangement = Arrangement.spacedBy(7.dp),
-  ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      LabeledField(R.string.create_team_field_name, modifier = Modifier.weight(1f)) {
-        FormTextField(
-            value = state.name,
-            onValueChange = actions.onNameChange,
-            label = R.string.create_team_field_name,
-            imeAction = ImeAction.Next,
-            testTag = CreateTeamFormTestTags.NAME_FIELD,
-            error = state.errorFor(TeamFormField.NAME),
-            enabled = editable,
-            onFocusLost = actions.onFieldDone,
-        )
-      }
-      LabeledField(R.string.create_team_field_icon) {
+  val editable = state.isEditable && enabled
+  Box(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(shape)
+                .background(colorScheme.surfaceVariant)
+                .border(1.dp, colorScheme.outlineVariant, shape)
+                .padding(12.dp)
+                .testTag(CreateTeamFormTestTags.FORM),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+      FieldLabel(R.string.create_team_field_team)
+      // The icon first, at the left of the name it stands for.
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         IconSelector(
             selected = TeamIcon.fromId(state.icon),
             onIconChange = actions.onIconChange,
             error = state.errorFor(TeamFormField.ICON),
             enabled = editable,
         )
+        Box(modifier = Modifier.weight(1f)) {
+          FormTextField(
+              value = state.name,
+              onValueChange = actions.onNameChange,
+              label = R.string.create_team_field_name,
+              imeAction = ImeAction.Next,
+              testTag = CreateTeamFormTestTags.NAME_FIELD,
+              error = state.errorFor(TeamFormField.NAME),
+              enabled = editable,
+              onFocusLost = actions.onFieldDone,
+          )
+        }
+      }
+      // Under the row rather than under the selector, which is too narrow for the message.
+      FieldError(state.errorFor(TeamFormField.ICON))
+      Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FieldLabel(R.string.create_team_field_description)
+        FormTextField(
+            value = state.description,
+            onValueChange = actions.onDescriptionChange,
+            label = R.string.create_team_field_description,
+            imeAction = ImeAction.Default,
+            testTag = CreateTeamFormTestTags.DESCRIPTION_FIELD,
+            error = state.errorFor(TeamFormField.DESCRIPTION),
+            enabled = editable,
+            singleLine = false,
+            onFocusLost = actions.onFieldDone,
+        )
       }
     }
-    // Under the row rather than under the selector: its 72dp are too narrow for the message.
-    FieldError(state.errorFor(TeamFormField.ICON))
-    LabeledField(R.string.create_team_field_description) {
-      FormTextField(
-          value = state.description,
-          onValueChange = actions.onDescriptionChange,
-          label = R.string.create_team_field_description,
-          imeAction = ImeAction.Default,
-          testTag = CreateTeamFormTestTags.DESCRIPTION_FIELD,
-          error = state.errorFor(TeamFormField.DESCRIPTION),
-          enabled = editable,
-          singleLine = false,
-          onFocusLost = actions.onFieldDone,
-      )
+    headerAction?.let {
+      // Over the card rather than in its first line, whose bounds would cut the 48dp touch
+      // target of a button down to the line: centered on the label, in the corner.
+      Box(modifier = Modifier.align(Alignment.TopEnd).offset(y = HEADER_ACTION_OFFSET)) { it() }
     }
   }
 }
@@ -170,22 +184,22 @@ private fun errorMessage(error: TeamFormError): String =
 private fun tooLongMessage(limit: Int): String =
     pluralStringResource(R.plurals.create_team_error_too_long, limit, limit)
 
-/** A field of the form: its label, then the field itself. */
+/** The label over a field, or over the card's first line. */
 @Composable
-private fun LabeledField(
-    @StringRes label: Int,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-  Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(
-        text = stringResource(label),
-        style = FORM_LABEL_STYLE,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    content()
-  }
+private fun FieldLabel(@StringRes label: Int, modifier: Modifier = Modifier) {
+  Text(
+      text = stringResource(label),
+      style = FORM_LABEL_STYLE,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
+      modifier = modifier,
+  )
 }
+
+/**
+ * Lifts a 48dp header action so that its center meets the first label's: the card's 12dp padding
+ * plus half the label's line, minus half the 48dp.
+ */
+private val HEADER_ACTION_OFFSET = (-5).dp
 
 /**
  * The 11sp regular of the designs, which labels the fields and, in red, says what is wrong with
