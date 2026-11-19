@@ -1,12 +1,10 @@
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
-import com.swent.shifter.ui.components.days.DAY_STARTS_AT_HOUR
 import com.swent.shifter.ui.components.days.eventDay
+import com.swent.shifter.ui.components.days.runsOnEventDay
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -193,14 +191,8 @@ internal fun List<AttendanceMission>.onEventDayOf(
     zone: ZoneId,
 ): List<AttendanceMission> {
   val day = now.eventDay(zone)
-  val from = day.eventDayStart(zone)
-  val to = day.plusDays(1).eventDayStart(zone)
-  return filter { it.endAt > from && it.startAt < to }
+  return filter { runsOnEventDay(day, it.startAt, it.endAt, zone) }
 }
-
-/** When the event day [this] starts: at 04:00 local time, also on a day the clock changes. */
-private fun LocalDate.eventDayStart(zone: ZoneId): Instant =
-    atTime(LocalTime.of(DAY_STARTS_AT_HOUR.toInt(), 0)).atZone(zone).toInstant()
 
 /** Whether this mission started more than its [grace period][TeamNowRules.gracePeriod] ago. */
 private fun AttendanceMission.isPastGrace(now: Instant): Boolean =

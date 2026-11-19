@@ -13,13 +13,12 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.time.MinuteClock
-import com.swent.shifter.ui.components.days.DAY_STARTS_AT_HOUR
 import com.swent.shifter.ui.components.days.eventDay
+import com.swent.shifter.ui.components.days.runsOnEventDay
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.components.nowcard.nowStates
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -187,12 +186,7 @@ class PlanningViewModel(
         all.filter { it.isOn(day) }
       }
 
-  private fun Mission.isOn(day: LocalDate): Boolean =
-      endAt > day.start() && startAt < day.plusDays(1).start()
-
-  /** When the event day [this] starts: at 04:00 local time, also on a DST day, as [eventDay]. */
-  private fun LocalDate.start(): Instant =
-      atTime(LocalTime.of(DAY_STARTS_AT_HOUR.toInt(), 0)).atZone(zone).toInstant()
+  private fun Mission.isOn(day: LocalDate): Boolean = runsOnEventDay(day, startAt, endAt, zone)
 
   /**
    * Follows the missions and their check-ins, again after an error. The Planning shows once both
