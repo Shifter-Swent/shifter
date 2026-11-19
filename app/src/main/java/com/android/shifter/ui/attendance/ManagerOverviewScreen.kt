@@ -140,7 +140,10 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  *   ticks here: the caller must pass a [Instant] it refreshes regularly, every minute or so, or a
  *   mission will stay "Check-in not open yet" long after it has opened.
  * @param zone the time zone the times are shown in, the device's one in the app.
- * @param onCheckIn checks a missing assignee in by hand, when their name is tapped.
+ * @param onCheckIn checks a missing assignee in by hand, when their name is tapped, from a mission
+ *   card or from the now card at the top.
+ * @param onViewOnMap shows the team on the map, the one action of the now card at the top, which is
+ *   drawn for a manager only: the organizer watches every team of the event, not one.
  * @param onUndoCheckIn takes back the manual check-in of [AttendanceUiState.undoableCheckIn].
  * @param onUndoWindowOver called once its "Undo" is gone unused, which sends that check-in.
  * @param onCheckInErrorShown called once the oldest of [AttendanceUiState.checkInErrors] has been
@@ -161,6 +164,7 @@ fun ManagerOverviewContent(
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
     onCheckIn: (missionId: String, userId: String) -> Unit = { _, _ -> },
+    onViewOnMap: () -> Unit = {},
     onUndoCheckIn: () -> Unit = {},
     onUndoWindowOver: () -> Unit = {},
     onCheckInErrorShown: () -> Unit = {},
@@ -175,6 +179,19 @@ fun ManagerOverviewContent(
         state.missions
             .mapNotNull { mission -> mission.teamId?.let { it to mission.teamName } }
             .distinctBy { it.first }
+      }
+  // What the now card says, and null where no card is drawn. It is the manager's own, speaking
+  // for their team: the organizer watches every team of the event, which "your team" is not, so
+  // they keep the missions and their attendance without it. It reads every mission the screen
+  // may watch, not the team filtered on, and the current event day alone, which
+  // TeamNowState.Quiet leaves to its caller. Nothing before a mission has arrived either: an
+  // empty list reads as a day over, which a first load, a failed one and an event with no
+  // mission at all are not.
+  val teamNow =
+      remember(state.missions, state.isOrganizer, now, zone) {
+        state.missions
+            .takeIf { it.isNotEmpty() && !state.isOrganizer }
+            ?.let { teamNowState(it.onEventDayOf(now, zone), now) }
       }
   var pickedTeamId by rememberSaveable { mutableStateOf<String?>(null) }
   // By id, so filtering a team out and back leaves the cards opened as they were.
@@ -222,6 +239,17 @@ fun ManagerOverviewContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      teamNow?.let {
+        item {
+          TeamNowCard(
+              state = it,
+              now = now,
+              onCheckIn = onCheckIn,
+              onViewOnMap = onViewOnMap,
+              zone = zone,
+          )
+        }
+      }
       item { Header(state.isOrganizer) }
       if (onAddMission != null && !state.isOrganizer) {
         item {

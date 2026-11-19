@@ -351,6 +351,9 @@ private fun ShifterNavGraph(
                 EventOverviewScreen(
                     viewModel = viewModel,
                     clock = repositories.minuteClock,
+                    // The now card shows the whole team, so the Map opens as its tab, with no
+                    // mission of its own to center on.
+                    onViewOnMap = { nav.switchTab(VolunteerTabs.Map) },
                     onAddMission = { nav.navigateTo(VolunteerEventScreen.AddMission) },
                     onEditMission = {
                       // A second pencil tapped before the form opens would reuse its entry, with

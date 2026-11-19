@@ -22,7 +22,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -94,6 +96,8 @@ class ManagerOverviewContentTest {
       state: AttendanceUiState,
       onRetry: () -> Unit = {},
       onCheckIn: (String, String) -> Unit = { _, _ -> },
+      onViewOnMap: () -> Unit = {},
+      now: Instant = this.now,
       onUndoCheckIn: () -> Unit = {},
       onUndoWindowOver: () -> Unit = {},
       onCheckInErrorShown: () -> Unit = {},
@@ -110,6 +114,7 @@ class ManagerOverviewContentTest {
             onRetry = onRetry,
             zone = utc,
             onCheckIn = onCheckIn,
+            onViewOnMap = onViewOnMap,
             onUndoCheckIn = onUndoCheckIn,
             onUndoWindowOver = onUndoWindowOver,
             onCheckInErrorShown = onCheckInErrorShown,
@@ -127,6 +132,13 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performScrollToNode(hasTestTag(tag))
     return compose.onNodeWithTag(tag)
   }
+
+  /**
+   * [text] inside the section [tag] of a mission card: the now card at the top of the screen lists
+   * the volunteers of the mission it speaks for, so a name alone no longer picks one node.
+   */
+  private fun inSection(tag: String, text: String) =
+      compose.onNode(hasText(text) and hasAnyAncestor(hasTestTag(tag)))
 
   @Test
   fun collapsedCard_showsTheMissionItsTeamScheduleAndLiveCount() {
@@ -171,27 +183,32 @@ class ManagerOverviewContentTest {
     val gone = setUp.copy(id = "gone", teamId = "deleted", teamName = null)
     show(loaded.copy(missions = listOf(general, gone)))
 
+    scrollTo(ManagerOverviewTestTags.mission("general"))
     compose.onNodeWithText("General · 09:00–11:00").assertIsDisplayed()
     // A team that no longer exists is not shown as General, which means no team at all.
+    scrollTo(ManagerOverviewTestTags.mission("gone"))
     compose.onNodeWithText("Unknown team · 09:00–11:00").assertIsDisplayed()
     // It keeps a chip of its own, so its missions stay filterable; a mission of no team has none.
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("deleted")).assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.teamChip("deleted")).assertIsDisplayed()
   }
 
   @Test
   fun expandingAMission_showsWhoIsPresentWithTheirTimeAndWhoIsMissing() {
     show(loaded)
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.present("m1")).assertIsDisplayed()
+    val present = ManagerOverviewTestTags.present("m1")
+    scrollTo(present).assertIsDisplayed()
     compose.onNodeWithText("PRESENT (2)").assertIsDisplayed()
-    compose.onNodeWithText("Alice Martin").assertIsDisplayed()
+    inSection(present, "Alice Martin").assertIsDisplayed()
     compose.onNodeWithText("08:52").assertIsDisplayed()
-    compose.onNodeWithText("Thomas Petit").assertIsDisplayed()
+    inSection(present, "Thomas Petit").assertIsDisplayed()
     compose.onNodeWithText("09:03").assertIsDisplayed()
+    val missing = ManagerOverviewTestTags.missing("m1")
+    scrollTo(missing)
     compose.onNodeWithText("MISSING (1)").assertIsDisplayed()
-    compose.onNodeWithText("Emma Dubois").assertIsDisplayed()
+    inSection(missing, "Emma Dubois").assertIsDisplayed()
 
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
@@ -202,9 +219,9 @@ class ManagerOverviewContentTest {
   fun tappingAMissingVolunteer_checksThemInToThatMission() {
     var checkedIn: Pair<String, String>? = null
     show(loaded, onCheckIn = { missionId, userId -> checkedIn = missionId to userId })
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3")).performClick()
+    scrollTo(ManagerOverviewTestTags.checkIn("m1", "u3")).performClick()
 
     assertEquals("m1" to "u3", checkedIn)
   }
@@ -212,10 +229,9 @@ class ManagerOverviewContentTest {
   @Test
   fun missingVolunteer_tellsScreenReadersWhatATapDoes() {
     show(loaded)
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
-    compose
-        .onNodeWithTag(ManagerOverviewTestTags.checkIn("m1", "u3"))
+    scrollTo(ManagerOverviewTestTags.checkIn("m1", "u3"))
         .assert(
             SemanticsMatcher("clicks to check Emma in") {
               it.config.getOrNull(SemanticsActions.OnClick)?.label == "Check in Emma Dubois"
@@ -268,9 +284,9 @@ class ManagerOverviewContentTest {
   fun pendingCheckIn_isMarkedAndCountedInTheBanner() {
     val pending = alice.copy(checkInPending = true, checkedInManually = true)
     show(loaded.copy(missions = listOf(setUp.copy(assignees = listOf(pending, thomas, emma)))))
-    compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
+    scrollTo(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.pending("m1", "u1")).assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.pending("m1", "u1")).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.manual("m1", "u1")).assertTextEquals("Manual")
     compose.onNodeWithTag(ManagerOverviewTestTags.pending("m1", "u2")).assertDoesNotExist()
     compose
@@ -498,10 +514,14 @@ class ManagerOverviewContentTest {
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("soon")).performClick()
 
     // Those already there still show, the others are awaited rather than reported late.
+    val present = ManagerOverviewTestTags.present("soon")
+    scrollTo(present)
     compose.onNodeWithText("PRESENT (2)").assertIsDisplayed()
-    compose.onNodeWithText("Alice Martin").assertIsDisplayed()
+    inSection(present, "Alice Martin").assertIsDisplayed()
+    val expected = ManagerOverviewTestTags.expected("soon")
+    scrollTo(expected)
     compose.onNodeWithText("EXPECTED (1)").assertIsDisplayed()
-    compose.onNodeWithText("Emma Dubois").assertIsDisplayed()
+    inSection(expected, "Emma Dubois").assertIsDisplayed()
     compose.onNodeWithText("MISSING (1)").assertDoesNotExist()
     compose.onNodeWithTag(ManagerOverviewTestTags.missing("soon")).assertDoesNotExist()
   }
@@ -839,7 +859,7 @@ class ManagerOverviewContentTest {
     show(loaded.copy(markingCompletedIds = setOf("m1")), onEditMission = {})
 
     compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.edit("m2")).assertIsDisplayed()
+    scrollTo(ManagerOverviewTestTags.edit("m2")).assertIsDisplayed()
   }
 
   @Test
@@ -854,6 +874,141 @@ class ManagerOverviewContentTest {
     show(loaded, onEditMission = {})
 
     compose.onNodeWithTag(ManagerOverviewTestTags.edit("m1")).assertHeightIsAtLeast(48.dp)
+  }
+
+  // The now card at the top of the screen
+
+  @Test
+  fun nowCard_sitsAboveTheTeamFiltersAndTheMissions() {
+    show(loaded)
+
+    val card = compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertIsDisplayed()
+    assertTrue(
+        "the card comes before the team filters",
+        card.getBoundsInRoot().top <
+            compose.onNodeWithTag(ManagerOverviewTestTags.ALL_TEAMS_CHIP).getBoundsInRoot().top,
+    )
+    assertTrue(
+        "and before the missions",
+        card.getBoundsInRoot().top <
+            compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).getBoundsInRoot().top,
+    )
+  }
+
+  @Test
+  fun nowCard_readsTheAttendanceOfTheMissionsWatched() {
+    // "Set up" started five minutes ago, inside its grace period, with Emma still on her way.
+    show(loaded)
+
+    compose.onNodeWithText("Starting now").assertIsDisplayed()
+    compose.onNodeWithText("Set up equipment has started").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
+  }
+
+  @Test
+  fun nowCard_checkIn_checksThatVolunteerInToThatMission() {
+    // Half an hour in, past its grace period: Emma is reported missing, on a row that checks her
+    // in through the same callback as the mission list lower down.
+    val late = setUpRunning("late", Duration.ofMinutes(-30), Duration.ofHours(2))
+    var checkedIn: Pair<String, String>? = null
+    show(
+        loaded.copy(missions = listOf(late)),
+        onCheckIn = { missionId, userId -> checkedIn = missionId to userId },
+    )
+    compose.onNodeWithText("1 volunteer missing").assertIsDisplayed()
+
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("late", "u3")).performClick()
+
+    assertEquals("late" to "u3", checkedIn)
+  }
+
+  @Test
+  fun nowCard_withTheLastMissingVolunteerCheckedIn_saysTheTeamIsAllOnDuty() {
+    val late = setUpRunning("late", Duration.ofMinutes(-30), Duration.ofHours(2))
+    // What the view model reports once her check-in is in: nobody is missing any more.
+    var missions by mutableStateOf(listOf(late))
+    compose.setContent {
+      ShifterTheme {
+        ManagerOverviewContent(
+            state = loaded.copy(missions = missions),
+            now = now,
+            onRetry = {},
+            zone = utc,
+        )
+      }
+    }
+    compose.onNodeWithText("1 volunteer missing").assertIsDisplayed()
+
+    missions = listOf(late.copy(assignees = listOf(alice, thomas, emma.copy(checkedInAt = now))))
+
+    compose.onNodeWithText("All on duty").assertIsDisplayed()
+    compose.onNodeWithText("3 at work").assertIsDisplayed()
+    compose.onNodeWithText("1 volunteer missing").assertDoesNotExist()
+  }
+
+  @Test
+  fun nowCard_withTheNextMissionOnAnotherDay_leavesItToThatDayAndKeepsTheList() {
+    // 20:00 on the first day, the next mission at 09:00 on the second: the event day runs to
+    // 04:00, so tomorrow's mission is not tonight's and the card does not announce it.
+    val evening = Instant.parse("2027-06-20T20:00:00Z")
+    val tomorrow =
+        setUp.copy(
+            id = "tomorrow",
+            startAt = evening.plus(Duration.ofHours(13)),
+            endAt = evening.plus(Duration.ofHours(15)),
+        )
+    show(loaded.copy(missions = listOf(tomorrow)), now = evening)
+
+    compose.onNodeWithText("Your team is done").assertIsDisplayed()
+    compose.onNodeWithText("Set up equipment at 09:00").assertDoesNotExist()
+    // Only the card reads the day: the list still holds every mission the manager watches.
+    scrollTo(ManagerOverviewTestTags.mission("tomorrow")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
+  }
+
+  @Test
+  fun nowCard_isDrawnOnlyOnceThereIsAMissionToSpeakFor() {
+    // No mission reads as a day over, which a first load, a failed one and an event with none at
+    // all are not: the card waits rather than announcing one.
+    var state by mutableStateOf(AttendanceUiState(isLoading = true))
+    compose.setContent {
+      ShifterTheme { ManagerOverviewContent(state = state, now = now, onRetry = {}, zone = utc) }
+    }
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertIsDisplayed()
+
+    state = AttendanceUiState(isLoading = false, loadFailed = true)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.LOAD_ERROR).assertIsDisplayed()
+
+    state = AttendanceUiState(isLoading = false)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY).assertIsDisplayed()
+
+    state = loaded
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertIsDisplayed()
+  }
+
+  @Test
+  fun nowCard_isTheManagersOwn_andIsNotDrawnForTheOrganizer() {
+    // The card speaks of "your team", which the organizer watching every team of the event has
+    // none of; their missions and their attendance are untouched. Same state, the one flag apart.
+    var state by mutableStateOf(loaded.copy(isOrganizer = true))
+    compose.setContent {
+      ShifterTheme { ManagerOverviewContent(state = state, now = now, onRetry = {}, zone = utc) }
+    }
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
+
+    state = loaded
+
+    compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertIsDisplayed()
   }
 
   private companion object {
