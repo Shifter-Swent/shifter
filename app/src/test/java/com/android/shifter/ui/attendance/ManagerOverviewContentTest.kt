@@ -510,6 +510,23 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun teamPicked_downToOneTeam_stopsFiltering() {
+    val general = setUp.copy(id = "general", title = "Brief the volunteers", teamId = null)
+    var state by mutableStateOf(loaded.copy(missions = listOf(setUp, drinks, general)))
+    compose.setContent {
+      ShifterTheme { ManagerOverviewContent(state = state, now = now, onRetry = {}, zone = utc) }
+    }
+    pickTeam(ManagerOverviewTestTags.teamChip("bar"))
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("general")).assertDoesNotExist()
+
+    // Logistics is gone after a refresh: no menu is left to undo the filter, so it stops.
+    state = loaded.copy(missions = listOf(drinks, general))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertDoesNotExist()
+    scrollTo(ManagerOverviewTestTags.mission("general")).assertIsDisplayed()
+  }
+
+  @Test
   fun filteringATeamOutAndBack_leavesTheCardsOpenedAsTheyWere() {
     show(loaded)
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()

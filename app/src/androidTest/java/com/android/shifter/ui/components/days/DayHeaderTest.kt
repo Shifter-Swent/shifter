@@ -58,7 +58,7 @@ class DayHeaderTest {
   }
 
   @Test
-  fun showsTheFilterWhenGiven_andNoneOtherwise() {
+  fun withAFilter_showsItInPlaceOfTheHint() {
     show(filter = filter, hint = hint)
 
     node(FILTER).assertIsDisplayed()
@@ -93,7 +93,7 @@ class DayHeaderTest {
   }
 
   @Test
-  fun showsTheStripWhenGiven_andNoneOtherwise() {
+  fun withAStrip_showsIt() {
     show(strip = strip)
     node(STRIP).assertIsDisplayed()
   }
