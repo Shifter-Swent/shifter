@@ -18,6 +18,7 @@ import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeWithVelocity
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -250,12 +251,12 @@ class PlanningTest {
   fun aShortFlick_showsTheNextDay() {
     show(weekend, festival)
 
-    // A quarter of the row, but fast.
+    // A quarter of the row, but twice as fast as a flick, in pixels on any screen.
     compose.onNodeWithTag(PlanningTestTags.mission("sat")).performTouchInput {
       swipeWithVelocity(
           start = center,
           end = center - Offset(width / 4f, 0f),
-          endVelocity = 2_000f,
+          endVelocity = 800.dp.toPx(),
       )
     }
 
