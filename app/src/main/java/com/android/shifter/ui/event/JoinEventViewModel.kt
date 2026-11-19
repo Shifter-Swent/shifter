@@ -19,10 +19,12 @@ import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** Why the join screen shows an error. The screen turns each into a translated message. */
@@ -85,6 +87,9 @@ class JoinEventViewModel(
   private val _uiState = MutableStateFlow(JoinEventUiState())
   val uiState: StateFlow<JoinEventUiState> = _uiState.asStateFlow()
 
+  /** The last lookup of a code, so that [cancelLookup] can stop it. */
+  private var lookup: Job? = null
+
   /**
    * Keeps the code typed or pasted so far, upper-cased and cut to [JoinCode.LENGTH], since join
    * codes are upper-case and the screen shows one box per character.
@@ -101,7 +106,7 @@ class JoinEventViewModel(
   fun findEvent() {
     val joinCode = _uiState.value.joinCode
     if (!JoinCode.isValid(joinCode) || _uiState.value.isLoading) return
-    launchLoading {
+    lookup = launchLoading {
       val event = eventRepository.getEventByJoinCode(joinCode)
       val userId = currentUserId()
       val request =
@@ -125,8 +130,7 @@ class JoinEventViewModel(
    * Leaves the event details and goes back to typing a code, keeping the code typed so far. Ignored
    * while a request is being sent, so its result cannot land on the code step.
    *
-   * Also drops what was found for a code, or the error it gave: the scan does so to scan again, or
-   * when the volunteer leaves it without going on to the event.
+   * Also drops what was found for a code, or the error it gave: the scan does so to scan again.
    */
   fun changeCode() {
     if (_uiState.value.isLoading) return
@@ -140,6 +144,21 @@ class JoinEventViewModel(
           hasEnded = false,
       )
     }
+  }
+
+  /**
+   * Stops the lookup of the code if it still runs, then drops what was found, as [changeCode] does,
+   * keeping the code: the scan does so when the volunteer leaves it without going on to the event,
+   * so that a lookup ending after they left shows neither its event nor its error. A request being
+   * sent is not stopped.
+   */
+  fun cancelLookup() {
+    val running = lookup
+    if (running != null && running.isActive) {
+      running.cancel()
+      _uiState.update { it.copy(isLoading = false) }
+    }
+    changeCode()
   }
 
   /**
@@ -196,9 +215,9 @@ class JoinEventViewModel(
   fun onRequestSentHandled() = _uiState.update { it.copy(requestSentTo = null) }
 
   /** Runs [block] with the loading flag set, turning failures into an error. */
-  private fun launchLoading(block: suspend () -> Unit) {
+  private fun launchLoading(block: suspend () -> Unit): Job {
     _uiState.update { it.copy(isLoading = true, error = null) }
-    viewModelScope.launch {
+    return viewModelScope.launch {
       try {
         block()
       } catch (e: CancellationException) {
@@ -212,7 +231,8 @@ class JoinEventViewModel(
       } catch (e: Exception) {
         showError(JoinEventError.UNEXPECTED)
       } finally {
-        _uiState.update { it.copy(isLoading = false) }
+        // Once cancelled, the loading flag was already lowered, and another lookup may run by now.
+        if (isActive) _uiState.update { it.copy(isLoading = false) }
       }
     }
   }

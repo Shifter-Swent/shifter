@@ -301,9 +301,10 @@ private fun ShifterNavGraph(
         val joinEntry = remember(entry) { navController.getBackStackEntry<Volunteer.QrApply>() }
         val joinEvent = joinEventViewModel(joinEntry, repositories, currentUserId)
         val joinState by joinEvent.uiState.collectAsState()
-        // Leaving any other way drops the result: the join screen keeps the code read, filled in.
+        // Leaving any other way drops the result, even one still looked up: the join screen keeps
+        // the code read, filled in.
         val leave = {
-          joinEvent.changeCode()
+          joinEvent.cancelLookup()
           nav.goBack()
         }
         BackHandler(onBack = leave)
