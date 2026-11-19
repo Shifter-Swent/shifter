@@ -61,6 +61,7 @@ import com.swent.shifter.ui.authentication.ChooseModeTestTags
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
+import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -568,6 +569,7 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.PROCEED_BUTTON).performClick()
 
     waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
+    composeTestRule.onNodeWithTag(TeamFilterMenuTestTags.MENU).performClick()
     waitForNode(OrganizerOverviewScreenTestTags.teamChip(teamId))
   }
 
@@ -1320,6 +1322,7 @@ class ShifterNavHostTest {
     }
     composeTestRule.onNodeWithText("Welcome the volunteers").performScrollTo().assertIsDisplayed()
 
+    composeTestRule.onNodeWithTag(TeamFilterMenuTestTags.MENU).performClick()
     composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip(bar.id)).performClick()
     composeTestRule.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
     composeTestRule.onNodeWithText("Welcome the volunteers").assertDoesNotExist()

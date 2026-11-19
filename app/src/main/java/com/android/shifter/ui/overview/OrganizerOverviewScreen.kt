@@ -4,7 +4,6 @@ package com.swent.shifter.ui.overview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.BackToToday
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayPicker
@@ -185,7 +184,13 @@ private fun OverviewColumn(
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
-    TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
+    TeamFilterMenu(
+        teams = state.teams.map { it.id to it.name },
+        selectedTeamId = state.selectedTeamId,
+        onSelectTeam = actions.onSelectTeam,
+        allTestTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
+        teamTestTag = OrganizerOverviewScreenTestTags::teamChip,
+    )
     if (dayPicker.showsStrip) {
       // The days of the team picked get a dot.
       EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
@@ -311,58 +316,6 @@ private fun LoadError(onRetry: () -> Unit) {
     ) {
       Text(stringResource(R.string.overview_retry))
     }
-  }
-}
-
-/** "All" followed by the teams of the event; exactly one is selected. */
-@Composable
-private fun TeamFilters(
-    teams: List<OverviewTeam>,
-    selectedId: String?,
-    onSelectTeam: (String?) -> Unit,
-) {
-  Row(
-      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    TeamChip(
-        label = stringResource(R.string.overview_filter_all),
-        selected = selectedId == null,
-        onClick = { onSelectTeam(null) },
-        testTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
-    )
-    teams.forEach { team ->
-      TeamChip(
-          label = team.name,
-          selected = team.id == selectedId,
-          onClick = { onSelectTeam(team.id) },
-          testTag = OrganizerOverviewScreenTestTags.teamChip(team.id),
-      )
-    }
-  }
-}
-
-@Composable
-private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, testTag: String) {
-  val colorScheme = MaterialTheme.colorScheme
-  val shape = RoundedCornerShape(20.dp)
-  Box(
-      modifier =
-          Modifier.clip(shape)
-              .background(
-                  if (selected) colorScheme.primaryContainer else colorScheme.surfaceVariant
-              )
-              .border(1.dp, if (selected) colorScheme.primary else colorScheme.outline, shape)
-              .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-              .padding(horizontal = 12.dp, vertical = 7.dp)
-              .testTag(testTag)
-  ) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = if (selected) colorScheme.primary else colorScheme.onSurfaceVariant,
-    )
   }
 }
 

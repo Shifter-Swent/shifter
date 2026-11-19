@@ -3,6 +3,7 @@ package com.swent.shifter.ui.overview
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
@@ -80,7 +82,6 @@ class OrganizerOverviewScreenTest {
   fun selectingAll_listsEveryMissionWithItsTeam() {
     show(loaded)
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).assertIsSelected()
     compose
         .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
         .assertTextEquals("Missions · All teams (4)")
@@ -110,7 +111,6 @@ class OrganizerOverviewScreenTest {
   fun selectingATeam_listsOnlyItsMissions() {
     show(loaded.copy(selectedTeamId = "bar"))
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("bar")).assertIsSelected()
     compose
         .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
         .assertTextEquals("Missions · Bar (2)")
@@ -121,11 +121,23 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun chips_reportTheSelectedTeam() {
+  fun teamMenu_marksTheTeamPicked() {
+    show(loaded.copy(selectedTeamId = "bar"))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar").performClick()
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("bar")).assertIsSelected()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).assertIsNotSelected()
+  }
+
+  @Test
+  fun teamMenu_reportsTheTeamPicked() {
     val selected = mutableListOf<String?>()
     show(loaded, OrganizerOverviewActions(onSelectTeam = { selected += it }))
 
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("All teams").performClick()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("logistics")).performClick()
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).performClick()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).performClick()
 
     compose.runOnIdle { assertEquals(listOf("logistics", null), selected) }

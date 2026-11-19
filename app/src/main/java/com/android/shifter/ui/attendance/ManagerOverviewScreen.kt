@@ -7,9 +7,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,9 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -59,7 +54,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.RefreshableList
+import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.BackToToday
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayStrip
@@ -208,7 +203,10 @@ fun ManagerOverviewContent(
   var expandedMissionIds by
       rememberSaveable(stateSaver = ExpandedIdsSaver) { mutableStateOf(emptySet<String>()) }
   // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
-  val selectedTeamId = pickedTeamId?.takeIf { id -> teams.any { it.first == id } }
+  // Nor does it filter once the menu is gone, down to one team.
+  val selectedTeamId = pickedTeamId?.takeIf { id -> teams.size > 1 && teams.any { it.first == id } }
+  // A team that no longer exists keeps its missions filterable, under no name of its own.
+  val unknownTeam = stringResource(R.string.attendance_team_unknown)
   val teamMissions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
   // From all the missions, not the filtered ones: the strip stays the same when a team is picked.
   val dayPicker =
@@ -276,7 +274,18 @@ fun ManagerOverviewContent(
       }
       if (state.loadFailed) item { LoadError(onRetry) }
       if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
-      item { TeamFilters(teams, selectedTeamId) { pickedTeamId = it } }
+      // Offered from two teams on: with one, it would filter nothing away.
+      if (teams.size > 1) {
+        item {
+          TeamFilterMenu(
+              teams = teams.map { (id, name) -> id to (name ?: unknownTeam) },
+              selectedTeamId = selectedTeamId,
+              onSelectTeam = { pickedTeamId = it },
+              allTestTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
+              teamTestTag = ManagerOverviewTestTags::teamChip,
+          )
+        }
+      }
       if (dayPicker.showsStrip) {
         // The days of the team picked get a dot.
         item { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
@@ -505,58 +514,6 @@ private fun LoadError(onRetry: () -> Unit) {
     TextButton(onClick = onRetry, modifier = Modifier.testTag(ManagerOverviewTestTags.RETRY)) {
       Text(stringResource(R.string.attendance_retry))
     }
-  }
-}
-
-/** "All" followed by the teams of the listed missions, by id; exactly one is selected. */
-@Composable
-private fun TeamFilters(
-    teams: List<Pair<String, String?>>,
-    selectedTeamId: String?,
-    onSelectTeam: (String?) -> Unit,
-) {
-  Row(
-      // One group of choices, so a screen reader announces them as such.
-      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).selectableGroup(),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    TeamChip(
-        label = stringResource(R.string.attendance_filter_all),
-        selected = selectedTeamId == null,
-        onClick = { onSelectTeam(null) },
-        testTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
-    )
-    teams.forEach { (teamId, teamName) ->
-      TeamChip(
-          // A team that no longer exists keeps its missions filterable, under no name of its own.
-          label = teamName ?: stringResource(R.string.attendance_team_unknown),
-          selected = teamId == selectedTeamId,
-          onClick = { onSelectTeam(teamId) },
-          testTag = ManagerOverviewTestTags.teamChip(teamId),
-      )
-    }
-  }
-}
-
-@Composable
-private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, testTag: String) {
-  val colors = MaterialTheme.colorScheme
-  val shape = RoundedCornerShape(20.dp)
-  Box(
-      modifier =
-          Modifier.clip(shape)
-              .background(if (selected) colors.primaryContainer else colors.surfaceVariant)
-              .border(1.dp, if (selected) colors.primary else colors.outline, shape)
-              .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-              .padding(horizontal = 12.dp, vertical = 7.dp)
-              .testTag(testTag)
-  ) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = if (selected) colors.primary else colors.onSurfaceVariant,
-    )
   }
 }
 

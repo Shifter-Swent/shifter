@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The menu that picks the team whose missions an Overview lists -->
+    <string name="team_filter_all">All teams</string>
+    <!-- Read out when the menu's button is focused -->
+    <string name="team_filter_choose">Choose a team</string>
+</resources>
