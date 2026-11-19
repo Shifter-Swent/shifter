@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.scan
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
@@ -70,7 +71,9 @@ import kotlinx.coroutines.flow.filter
  * `JoinCode.normalize`, which would turn a URL into a code made of its first letters.
  *
  * What became of a code reported is the [result], shown in a [ScanResultSheet] under the frame. The
- * scan pauses while it shows, until the volunteer continues or scans again.
+ * scan pauses while it shows, until the volunteer continues or scans again. It stops once they
+ * leave, by Back, the system Back included, or the typed code: a code read while the screen goes
+ * away is not reported.
  *
  * @param onCodeScanned called with the join code read, e.g. to look its event up.
  * @param onEnterCode goes back to the typed code.
@@ -94,12 +97,23 @@ fun ScanScreen(
   val haptics by rememberUpdatedState(LocalHapticFeedback.current)
   var viewfinder by remember { mutableStateOf(ViewfinderState.SEARCHING) }
   var refusals by remember { mutableIntStateOf(0) }
+  var leaving by remember { mutableStateOf(false) }
+  val leaveBack = {
+    leaving = true
+    onBack()
+  }
+  val leaveForCode = {
+    leaving = true
+    onEnterCode()
+  }
+  BackHandler(onBack = leaveBack)
   LaunchedEffect(scanner) {
     // The scanner cannot tell when a code leaves the frame, so a refused one is only said for a
     // while. The next code cancels the wait: another refused one says it again, a valid one at
-    // once. A code seen while a result shows is dropped before, so it cancels nothing.
+    // once. A code seen while a result shows, or once leaving, is dropped before, so it cancels
+    // nothing.
     scanner.codes
-        .filter { currentResult == null }
+        .filter { currentResult == null && !leaving }
         .collectLatest { text ->
           val code = text.trim().uppercase()
           if (JoinCode.isValid(code)) {
@@ -143,7 +157,7 @@ fun ScanScreen(
   ) {
     CameraGate(
         error = error,
-        onEnterCode = onEnterCode,
+        onEnterCode = leaveForCode,
         // The title and the torch only go with the camera: the fallback keeps nothing but Back.
         overlay = { cameraShown ->
           ScanTopBar(
@@ -151,14 +165,14 @@ fun ScanScreen(
               showTorch = cameraShown && hasTorch,
               torchOn = torchOn,
               onTorchChange = scanner::torch,
-              onBack = onBack,
+              onBack = leaveBack,
           )
         },
     ) {
       ScanCamera(
           viewfinder = shown,
           refusals = refusals,
-          onEnterCode = onEnterCode,
+          onEnterCode = leaveForCode,
           result = result,
           onContinue = onContinue,
           onScanAgain = {
