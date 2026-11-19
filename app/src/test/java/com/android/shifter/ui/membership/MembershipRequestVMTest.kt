@@ -238,6 +238,7 @@ class MembershipRequestVMTest {
         vm.accept("alice")
         advanceUntilIdle()
         assertTrue(vm.uiState.value.errorMsg!!.contains("unavailable"))
+        assertFalse(vm.uiState.value.isLoading)
         coVerify(exactly = 2) { repository.getMembershipRequestsByEId("event") }
 
         coEvery { repository.accept("event", "alice") } returns Unit
@@ -246,6 +247,71 @@ class MembershipRequestVMTest {
         advanceUntilIdle()
         assertNull(vm.uiState.value.errorMsg)
         coVerify(exactly = 3) { repository.getMembershipRequestsByEId("event") }
+      }
+
+  @Test
+  fun decision_duringALoad_isLoadingUntilTheReloadEnds() =
+      runTest(dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val stale = CompletableDeferred<List<MembershipRequest>>()
+        coEvery { repository.getMembershipRequestsByEId("event") } coAnswers { stale.await() }
+        vm.loadRequests()
+        runCurrent()
+        val written = CompletableDeferred<Unit>()
+        coEvery { repository.accept("event", "alice") } coAnswers { written.await() }
+
+        vm.accept("alice")
+        runCurrent()
+        assertTrue(vm.uiState.value.isLoading)
+
+        coEvery { repository.getMembershipRequestsByEId("event") } returns requests
+        written.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoading)
+      }
+
+  @Test
+  fun loadRequests_duringADecision_isLoadingUntilTheReloadEnds() =
+      runTest(dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val written = CompletableDeferred<Unit>()
+        coEvery { repository.accept("event", "alice") } coAnswers { written.await() }
+        vm.accept("alice")
+        runCurrent()
+
+        vm.loadRequests()
+        assertTrue(vm.uiState.value.isLoading)
+
+        written.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoading)
+        coVerify(exactly = 2) { repository.getMembershipRequestsByEId("event") }
+      }
+
+  @Test
+  fun loadRequests_duringADecisionThatFails_stopsLoadingAndKeepsTheError() =
+      runTest(dispatcher) {
+        val vm = vm()
+        advanceUntilIdle()
+        val written = CompletableDeferred<Unit>()
+        coEvery { repository.accept("event", "alice") } coAnswers
+            {
+              written.await()
+              throw MembershipRequestRepositoryException.Unavailable()
+            }
+        vm.accept("alice")
+        runCurrent()
+
+        vm.loadRequests()
+        assertTrue(vm.uiState.value.isLoading)
+
+        written.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoading)
+        assertTrue(vm.uiState.value.errorMsg!!.contains("unavailable"))
+        coVerify(exactly = 1) { repository.getMembershipRequestsByEId("event") }
       }
 
   @Test

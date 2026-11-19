@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
@@ -134,7 +135,8 @@ class ParticipantsViewModel(
       } catch (e: Exception) {
         showError(ParticipantsError.UNEXPECTED)
       } finally {
-        _uiState.update { it.copy(isLoading = false) }
+        // A load cancelled by a change runs again once it is written: it is still loading.
+        if (isActive) _uiState.update { it.copy(isLoading = false) }
       }
     }
   }

@@ -15,11 +15,14 @@ import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepositoryException
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -490,6 +493,50 @@ class ParticipantsViewModelTest {
 
     assertEquals(listOf("ann"), viewModel.userIdsOf("bar"))
     assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun load_duringAChange_isLoadingUntilTheReloadEnds() = runTest {
+    request("ann", MembershipRequestStatus.ACCEPTED)
+    team("bar", memberIds = listOf("ann"))
+    val slowRequests =
+        object : MembershipRequestRepository by requests {
+          override suspend fun getMembershipRequestsByEId(
+              eventId: String
+          ): List<MembershipRequest> {
+            delay(1_000)
+            return requests.getMembershipRequestsByEId(eventId)
+          }
+        }
+    val written = CompletableDeferred<Unit>()
+    val slowWrite =
+        object : TeamRepository by teams {
+          override suspend fun setManager(eventId: String, teamId: String, managerId: String?) {
+            written.await()
+            teams.setManager(eventId, teamId, managerId)
+          }
+        }
+    val viewModel = ParticipantsViewModel(EVENT_ID, slowRequests, slowWrite, users)
+    advanceUntilIdle()
+    viewModel.appointManager("bar", "ann")
+    runCurrent()
+    val loading = mutableListOf<Boolean>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.uiState.collect { loading += it.isLoading }
+    }
+
+    // A pull during the change starts a load, which the change replaces once written.
+    viewModel.load()
+    written.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf(false, true, false), loading.distinctUntilChanged())
+    assertTrue(viewModel.uiState.value.groups.single().participants.single().isManager)
+  }
+
+  /** The values in order, without the repeats in a row. */
+  private fun <T> List<T>.distinctUntilChanged() = filterIndexed { i, v ->
+    i == 0 || v != this[i - 1]
   }
 
   @Test
