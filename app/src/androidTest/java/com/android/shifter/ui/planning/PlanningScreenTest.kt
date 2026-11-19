@@ -67,10 +67,19 @@ class PlanningScreenTest {
   }
 
   @Test
-  fun loaded_hidesTheCheckInsMessage() {
+  fun loaded_hidesTheMessages() {
     show(PlanningUiState(isLoading = false))
 
     compose.onNodeWithTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE).assertDoesNotExist()
+    compose.onNodeWithTag(PlanningScreenTestTags.MISSIONS_OUTDATED).assertDoesNotExist()
+  }
+
+  @Test
+  fun missionsOutdated_showsTheMessageAboveThePlanning() {
+    show(PlanningUiState(isLoading = false, missionsOutdated = true))
+
+    compose.onNodeWithTag(PlanningScreenTestTags.MISSIONS_OUTDATED).assertIsDisplayed()
+    compose.onNodeWithTag(PlanningTestTags.PLANNING).assertIsDisplayed()
   }
 
   @Test

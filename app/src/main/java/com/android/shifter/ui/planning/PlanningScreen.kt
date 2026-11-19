@@ -27,6 +27,7 @@ object PlanningScreenTestTags {
   const val ERROR = "planningError"
   const val RETRY_BUTTON = "planningRetryButton"
   const val CHECK_INS_UNAVAILABLE = "planningCheckInsUnavailable"
+  const val MISSIONS_OUTDATED = "planningMissionsOutdated"
 }
 
 /**
@@ -65,6 +66,14 @@ fun PlanningContent(
               style = MaterialTheme.typography.bodySmall,
               color = shifter_mutedText,
               modifier = Modifier.testTag(PlanningScreenTestTags.CHECK_INS_UNAVAILABLE),
+          )
+        }
+        if (state.missionsOutdated) {
+          Text(
+              text = stringResource(R.string.planning_missions_outdated),
+              style = MaterialTheme.typography.bodySmall,
+              color = shifter_mutedText,
+              modifier = Modifier.testTag(PlanningScreenTestTags.MISSIONS_OUTDATED),
           )
         }
         Planning(
