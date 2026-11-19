@@ -24,6 +24,7 @@ import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -54,7 +57,8 @@ enum class PlanningError {
  * @property checkInsUnavailable whether the check-ins could not be read, so the statuses shown may
  *   be missing or outdated. Cleared by the next [PlanningViewModel.load].
  * @property missionsOutdated whether the missions stopped being followed after they were shown, so
- *   a change made since may be missing. Cleared by the next [PlanningViewModel.load].
+ *   a change made since may be missing. They are followed again every
+ *   [PlanningViewModel.RETRY_DELAY_MILLIS], and the flag is cleared by the next list read.
  * @property now what the volunteer should do now, for the now card, from the missions of the
  *   current event day (04:00 to 04:00, as the Planning groups them). Null while it is not known:
  *   before the missions and the check-ins are loaded, after they failed to load, and until the
@@ -82,6 +86,9 @@ data class PlanningUiState(
  * Follows the missions the signed-in user is assigned to in the event [eventId], and their check-in
  * status: a mission completed, rescheduled, assigned or unassigned, or a check-in recorded, while
  * the Planning is open shows without reload, in the list and in the now state.
+ *
+ * When the missions fail once shown, the last ones stay and are followed again after
+ * [RETRY_DELAY_MILLIS]: the ViewModel outlives a tab switch, so it cannot wait for a reload.
  *
  * When the check-ins or the event cannot be read, the missions stay shown without their status or
  * the event's dates, so the volunteer still knows where to be and when.
@@ -220,6 +227,17 @@ class PlanningViewModel(
         missionRepository
             .observeMissionsAssignedTo(userId)
             .map { all -> all.filter { it.eventId == eventId } }
+            .retryWhen { cause, _ ->
+              // A failure before the first list shows the error screen and its Retry instead.
+              val retry = cause is Exception && missions != null
+              if (retry) {
+                _uiState.update { it.copy(missionsOutdated = true) }
+                delay(RETRY_DELAY_MILLIS)
+              }
+              retry
+            }
+            // Before distinctUntilChanged, so the same list read again still clears the notice.
+            .onEach { _uiState.update { it.copy(missionsOutdated = false) } }
             .distinctUntilChanged()
             .collect { latest ->
               val first = missions == null
@@ -240,16 +258,12 @@ class PlanningViewModel(
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        if (missions == null) {
-          nowInputs.value = null
-          val error =
-              if (e is MissionRepositoryException.Unavailable) PlanningError.OFFLINE
-              else PlanningError.UNEXPECTED
-          _uiState.update { it.copy(isLoading = false, error = error) }
-        } else {
-          // Keeps the last missions, which the check-ins still follow.
-          _uiState.update { it.copy(missionsOutdated = true) }
-        }
+        // Only before the first list: later failures are retried.
+        nowInputs.value = null
+        val error =
+            if (e is MissionRepositoryException.Unavailable) PlanningError.OFFLINE
+            else PlanningError.UNEXPECTED
+        _uiState.update { it.copy(isLoading = false, error = error) }
       }
     }
   }
@@ -310,6 +324,9 @@ class PlanningViewModel(
   }
 
   companion object {
+    /** How long the missions wait before being followed again after a failure. */
+    const val RETRY_DELAY_MILLIS = 10_000L
+
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor
      * arguments.

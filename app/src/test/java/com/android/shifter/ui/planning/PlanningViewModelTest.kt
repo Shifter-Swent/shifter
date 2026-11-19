@@ -33,8 +33,9 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -58,6 +59,19 @@ class PlanningViewModelTest {
 
   private fun viewModel() =
       PlanningViewModel(EVENT, missions, checkIns, events, clock, ZoneOffset.UTC) { userId }
+
+  /**
+   * Runs [body] like [kotlinx.coroutines.test.runTest], then lets the missions be read again: while
+   * they fail, the ViewModel retries them forever, and the test would never become idle.
+   */
+  private fun runTest(body: suspend TestScope.() -> Unit) =
+      kotlinx.coroutines.test.runTest {
+        try {
+          body()
+        } finally {
+          missions.failure = null
+        }
+      }
 
   /** Collects the state as the screen would, which makes the ViewModel follow the clock. */
   private fun TestScope.collect(viewModel: PlanningViewModel) =
@@ -564,16 +578,43 @@ class PlanningViewModelTest {
   }
 
   @Test
-  fun load_afterTheMissionsStopped_clearsTheMessage() = runTest {
-    create("Hand out water")
+  fun missions_whenTheyFailOnce_showTheNextListAndClearTheMessage() = runTest {
+    val mission = create("Hand out water")
     val viewModel = viewModel()
+    collect(viewModel)
     missions.failure = MissionRepositoryException.Unavailable()
     assertTrue(viewModel.uiState.value.missionsOutdated)
 
     missions.failure = null
-    viewModel.load()
+    val other = create("Guide the runners", startAt = START.plusSeconds(7200))
+    advanceTimeBy(PlanningViewModel.RETRY_DELAY_MILLIS + 1)
+
+    val state = viewModel.uiState.value
+    assertFalse(state.missionsOutdated)
+    assertEquals(listOf(mission.id, other.id), state.missions.map { it.id })
+  }
+
+  @Test
+  fun missions_whenTheSameListIsReadAgain_clearTheMessage() = runTest {
+    create("Hand out water")
+    val viewModel = viewModel()
+    missions.failure = MissionRepositoryException.Unavailable()
+
+    missions.failure = null
+    advanceTimeBy(PlanningViewModel.RETRY_DELAY_MILLIS + 1)
 
     assertFalse(viewModel.uiState.value.missionsOutdated)
+  }
+
+  @Test
+  fun missions_whileTheyStillFail_keepTheMessage() = runTest {
+    create("Hand out water")
+    val viewModel = viewModel()
+    missions.failure = MissionRepositoryException.Unavailable()
+
+    advanceTimeBy(3 * PlanningViewModel.RETRY_DELAY_MILLIS)
+
+    assertTrue(viewModel.uiState.value.missionsOutdated)
   }
 
   @Test
@@ -588,7 +629,8 @@ class PlanningViewModelTest {
                   .onStart { followers++ }
                   .onCompletion { followers-- }
         }
-    val viewModel = PlanningViewModel(EVENT, counted, checkIns, events, clock, ZoneOffset.UTC) { userId }
+    val viewModel =
+        PlanningViewModel(EVENT, counted, checkIns, events, clock, ZoneOffset.UTC) { userId }
 
     viewModel.load()
     viewModel.load()
@@ -604,7 +646,8 @@ class PlanningViewModelTest {
           override fun observeMyCheckIns(eventId: String, userId: String) =
               flow<List<CheckIn>> { awaitCancellation() }
         }
-    val viewModel = PlanningViewModel(EVENT, missions, silent, events, clock, ZoneOffset.UTC) { userId }
+    val viewModel =
+        PlanningViewModel(EVENT, missions, silent, events, clock, ZoneOffset.UTC) { userId }
 
     missions.markCompleted(EVENT, mission.id)
 
@@ -639,7 +682,8 @@ class PlanningViewModelTest {
                   .onStart { followers++ }
                   .onCompletion { followers-- }
         }
-    val viewModel = PlanningViewModel(EVENT, missions, counted, events, clock, ZoneOffset.UTC) { userId }
+    val viewModel =
+        PlanningViewModel(EVENT, missions, counted, events, clock, ZoneOffset.UTC) { userId }
 
     viewModel.load()
     viewModel.load()
@@ -675,7 +719,9 @@ class PlanningViewModelTest {
     val mission = create("Hand out water")
     val gate = CompletableDeferred<Unit>()
     val viewModel =
-        PlanningViewModel(EVENT, missions, checkInsAfter(gate), events, clock, ZoneOffset.UTC) { userId }
+        PlanningViewModel(EVENT, missions, checkInsAfter(gate), events, clock, ZoneOffset.UTC) {
+          userId
+        }
     collect(viewModel)
     missions.updateAssignees(EVENT, mission.id, emptyList())
 
@@ -693,12 +739,14 @@ class PlanningViewModelTest {
     val mission = create("Hand out water")
     val gate = CompletableDeferred<Unit>()
     val failing = checkInsAfter(gate, CheckInRepositoryException.Unavailable())
-    val viewModel = PlanningViewModel(EVENT, missions, failing, events, clock, ZoneOffset.UTC) { userId }
+    val viewModel =
+        PlanningViewModel(EVENT, missions, failing, events, clock, ZoneOffset.UTC) { userId }
     collect(viewModel)
     missions.failure = MissionRepositoryException.Unavailable()
 
     gate.complete(Unit)
-    advanceUntilIdle()
+    // Not advanceUntilIdle: the failing missions are retried for as long as the test runs.
+    runCurrent()
 
     val state = viewModel.uiState.value
     assertFalse(state.isLoading)
