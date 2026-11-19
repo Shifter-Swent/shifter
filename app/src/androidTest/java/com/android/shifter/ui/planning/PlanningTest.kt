@@ -264,6 +264,55 @@ class PlanningTest {
   }
 
   @Test
+  fun pastHalfTheWidth_theDayLeavesFromUnderTheFinger() {
+    show(weekend, festival)
+    val start = leftOf("sat")
+    val row = compose.onNodeWithTag(PlanningTestTags.mission("sat"))
+    val width = row.fetchSemanticsNode().size.width
+    compose.mainClock.autoAdvance = false
+
+    // Seven tenths of the row, then held still so it is no flick.
+    row.performTouchInput {
+      down(center)
+      repeat(7) { moveBy(Offset(-width / 10f, 0f)) }
+      advanceEventTime(200)
+      up()
+    }
+    compose.mainClock.advanceTimeByFrame()
+
+    // Sunday is on its way, and Saturday leaves from where it was let go, not from its place.
+    assertTrue(leftOf("sat") < start - width / 2f)
+  }
+
+  @Test
+  fun caughtAgainWhileGoingBack_staysUnderTheFinger() {
+    show(weekend, festival)
+    val start = leftOf("sat")
+    val row = compose.onNodeWithTag(PlanningTestTags.mission("sat"))
+    val width = row.fetchSemanticsNode().size.width
+    compose.mainClock.autoAdvance = false
+
+    // A third of the row, let go: it goes back to its place.
+    row.performTouchInput {
+      down(center)
+      repeat(3) { moveBy(Offset(-width / 10f, 0f)) }
+      advanceEventTime(200)
+      up()
+    }
+    compose.mainClock.advanceTimeBy(50)
+    // Caught again on its way, and held.
+    row.performTouchInput {
+      down(center)
+      repeat(2) { moveBy(Offset(-width / 10f, 0f)) }
+    }
+    compose.mainClock.advanceTimeBy(1_000)
+
+    // The animation stopped: it stays under the finger instead of going back.
+    assertTrue(leftOf("sat") < start - width / 10f)
+    row.performTouchInput { up() }
+  }
+
+  @Test
   fun rightToLeft_theNextDayComesFromTheLeft() {
     compose.setContent {
       CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {

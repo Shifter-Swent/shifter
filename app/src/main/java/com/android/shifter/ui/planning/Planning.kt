@@ -3,7 +3,9 @@ package com.swent.shifter.ui.planning
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -31,10 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +71,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 
 /**
  * A mission as the Planning shows it: one the signed-in user is personally assigned to.
@@ -200,7 +204,8 @@ fun Planning(
         targetState = selected,
         transitionSpec = {
           val towards = if ((targetState > initialState) != rtl) 1 else -1
-          (slideInHorizontally { it * towards } togetherWith slideOutHorizontally { -it * towards })
+          (slideInHorizontally(daySlide()) { it * towards } togetherWith
+                  slideOutHorizontally(daySlide()) { -it * towards })
               .using(SizeTransform(clip = true))
         },
         label = "planningDay",
@@ -240,6 +245,9 @@ fun Planning(
  * dragged past half its width, whatever the phone, or when flung faster than [FLING_SPEED]; let go
  * before, it slides back. At either end of the event, it stays in place. Then [onSwiped].
  *
+ * Once the day changes, the content goes back from where it was let go at the pace of the slide
+ * between days: the old day leaves from under the finger, the new one comes in right next to it.
+ *
  * The day strip does the same with a tap, and is the way to change days with TalkBack.
  */
 @Composable
@@ -250,8 +258,9 @@ private fun Modifier.swipeBetweenDays(
 ): Modifier {
   val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
   val flingSpeed = with(LocalDensity.current) { FLING_SPEED.toPx() }
-  var offset by remember { mutableFloatStateOf(0f) }
+  val offset = remember { Animatable(0f) }
   var width by remember { mutableIntStateOf(0) }
+  val scope = rememberCoroutineScope()
   // The day the content is dragged towards, or null when there is none that way.
   fun dayTowards(drag: Float): LocalDate? =
       when {
@@ -260,31 +269,35 @@ private fun Modifier.swipeBetweenDays(
         else -> selection.previousDay
       }
   return onSizeChanged { width = it.width }
-      .graphicsLayer { translationX = offset }
+      .graphicsLayer { translationX = offset.value }
       .draggable(
           state =
               rememberDraggableState { delta ->
-                val dragged = offset + delta
-                offset = if (dayTowards(dragged) != null) dragged else 0f
+                val dragged = offset.value + delta
+                // Undispatched, so the next delta already adds to this one. Caught again while
+                // going back, the finger takes over: snapTo stops the animation.
+                scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                  offset.snapTo(if (dayTowards(dragged) != null) dragged else 0f)
+                }
               },
           orientation = Orientation.Horizontal,
           enabled = enabled,
           onDragStopped = { velocity ->
             // Past half the width, or flung the way it was dragged.
-            val far = abs(offset) >= width / 2f
-            val flung = abs(velocity) >= flingSpeed && (velocity < 0) == (offset < 0)
-            val day = dayTowards(offset)?.takeIf { far || flung }
+            val far = abs(offset.value) >= width / 2f
+            val flung = abs(velocity) >= flingSpeed && (velocity < 0) == (offset.value < 0)
+            val day = dayTowards(offset.value)?.takeIf { far || flung }
             if (day != null) {
               selection.show(day)
               onSwiped()
-              // The new day slides in from that side, see the AnimatedContent.
-              offset = 0f
-            } else {
-              animate(offset, 0f) { value, _ -> offset = value }
             }
+            offset.animateTo(0f, daySlide())
           },
       )
 }
+
+/** How the content moves to another day, the same for the slide and for the drag it follows. */
+private fun <T> daySlide() = tween<T>(durationMillis = 300, easing = FastOutSlowInEasing)
 
 /** Per second: a flick this fast changes the day however short it is, as in Compose's pagers. */
 private val FLING_SPEED = 400.dp
