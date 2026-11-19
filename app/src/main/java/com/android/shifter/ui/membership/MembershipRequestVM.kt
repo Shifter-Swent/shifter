@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** A request enriched with the public profile name needed by its card. */
@@ -31,14 +32,16 @@ data class MembershipRequestItemUIState(
 /**
  * State of the organizer's requests list.
  *
- * @property isLoading whether there is no list to show yet because it is being read, which shows
- *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
- *   it.
+ * @property isLoading whether the list is being read, or is to be once the decisions being written
+ *   are. A list already loaded stays on screen until the answer replaces it.
+ * @property hasLoaded whether a load has succeeded: until then, a load shows the spinner instead of
+ *   the list, or of the message that there is no request.
  * @property hasEnded whether the event has ended: a request can then only be rejected (#409).
  */
 data class MembershipRequestUIState(
     val requests: List<MembershipRequestItemUIState> = emptyList(),
     val isLoading: Boolean = true,
+    val hasLoaded: Boolean = false,
     val processingRequestIds: Set<String> = emptySet(),
     val errorMsg: String? = null,
     val hasEnded: Boolean = false,
@@ -57,9 +60,6 @@ class MembershipRequestVM(
   /** The load running, if any: a decision cancels it, as it may predate the write. */
   private var loadJob: Job? = null
 
-  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
-  private var loaded = false
-
   /** A load was cancelled or refused by a decision: it runs once no decision is being written. */
   private var reloadPending = false
 
@@ -72,10 +72,11 @@ class MembershipRequestVM(
     // A read started now could answer before the decision is written and bring the old status back.
     if (_uiState.value.processingRequestIds.isNotEmpty()) {
       reloadPending = true
+      _uiState.update { it.copy(isLoading = true) }
       return
     }
     reloadPending = false
-    _uiState.update { it.copy(isLoading = !loaded, errorMsg = null) }
+    _uiState.update { it.copy(isLoading = true, errorMsg = null) }
     loadJob = viewModelScope.launch {
       try {
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
@@ -88,13 +89,18 @@ class MembershipRequestVM(
                 "Some applicant names could not be loaded. Please try again."
             else null
         _uiState.update {
-          it.copy(requests = items, errorMsg = profileError, hasEnded = hasEnded())
+          it.copy(
+              requests = items,
+              hasLoaded = true,
+              errorMsg = profileError,
+              hasEnded = hasEnded(),
+          )
         }
-        loaded = true
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
       } finally {
-        _uiState.update { it.copy(isLoading = false) }
+        // A load cancelled by a decision runs again once it is written: it is still loading.
+        if (isActive) _uiState.update { it.copy(isLoading = false) }
       }
     }
   }
@@ -161,8 +167,15 @@ class MembershipRequestVM(
       } finally {
         _uiState.update { it.copy(processingRequestIds = it.processingRequestIds - request.id) }
         // Only the last decision to finish gets past the check in loadRequests. After a failed
-        // one, the reload waits for the next call, so that it does not clear the error.
-        if (reloadPending && _uiState.value.errorMsg == null) loadRequests()
+        // one, the reload waits for the next call, so that it does not clear the error, and the
+        // list stops loading.
+        if (reloadPending) {
+          val state = _uiState.value
+          if (state.errorMsg == null) loadRequests()
+          else if (state.processingRequestIds.isEmpty()) {
+            _uiState.update { it.copy(isLoading = false) }
+          }
+        }
       }
     }
   }

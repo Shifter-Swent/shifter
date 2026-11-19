@@ -41,7 +41,9 @@ import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.ui.components.Pill
+import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.membershipStatusColors
+import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 
@@ -52,6 +54,9 @@ object MembershipRequestsTestTags {
   fun acceptButton(userId: String) = "MembershipRequestAccept_$userId"
 }
 
+/**
+ * The requests to join the event, one card each. Pulling the list down reloads it with [onRetry].
+ */
 @Composable
 fun MembershipRequestsScreen(
     uiState: MembershipRequestUIState,
@@ -61,56 +66,64 @@ fun MembershipRequestsScreen(
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
-  LazyColumn(
-      modifier = modifier.fillMaxSize().background(colors.background),
-      contentPadding = PaddingValues(16.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
+  // Until a first answer, there is nothing to keep: the spinner takes the place of the list.
+  val firstLoad = uiState.isLoading && !uiState.hasLoaded
+  RefreshableList(
+      isLoading = uiState.isLoading,
+      hasContent = !firstLoad,
+      onRefresh = onRetry,
+      modifier = modifier.fillMaxSize(),
   ) {
-    if (uiState.isLoading) {
-      item { CircularProgressIndicator(color = colors.primary) }
-    }
-    uiState.errorMsg?.let { message ->
-      item {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-          Text(
-              text = message,
-              color = colors.error,
-              fontSize = 14.sp,
-              textAlign = TextAlign.Center,
-          )
-          TextButton(
-              onClick = onRetry,
-              enabled = !uiState.isLoading && uiState.processingRequestIds.isEmpty(),
-          ) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(colors.background),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      if (firstLoad) {
+        item { CircularProgressIndicator(color = colors.primary) }
+      }
+      uiState.errorMsg?.let { message ->
+        item {
+          Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = stringResource(R.string.membership_requests_retry),
-                fontWeight = FontWeight.SemiBold,
+                text = message,
+                color = colors.error,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
             )
+            TextButton(
+                onClick = onRetry,
+                enabled = !uiState.isLoading && uiState.processingRequestIds.isEmpty(),
+            ) {
+              Text(
+                  text = stringResource(R.string.membership_requests_retry),
+                  fontWeight = FontWeight.SemiBold,
+              )
+            }
           }
         }
       }
-    }
-    if (!uiState.isLoading && uiState.errorMsg == null && uiState.requests.isEmpty()) {
-      item {
-        Text(
-            text = stringResource(R.string.membership_requests_empty),
-            color = colors.onSurfaceVariant,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(24.dp),
+      if (!firstLoad && uiState.errorMsg == null && uiState.requests.isEmpty()) {
+        item {
+          Text(
+              text = stringResource(R.string.membership_requests_empty),
+              color = colors.onSurfaceVariant,
+              fontSize = 14.sp,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.padding(24.dp),
+          )
+        }
+      }
+      items(uiState.requests, key = { it.request.userId }) { item ->
+        MembershipRequestCard(
+            item = item,
+            isProcessing = item.request.id in uiState.processingRequestIds,
+            onAccept = { onAccept(item.request.userId) },
+            onReject = { onReject(item.request.userId) },
+            canAccept = !uiState.hasEnded,
         )
       }
-    }
-    items(uiState.requests, key = { it.request.userId }) { item ->
-      MembershipRequestCard(
-          item = item,
-          isProcessing = item.request.id in uiState.processingRequestIds,
-          onAccept = { onAccept(item.request.userId) },
-          onReject = { onReject(item.request.userId) },
-          enabled = !uiState.isLoading,
-          canAccept = !uiState.hasEnded,
-      )
     }
   }
 }
@@ -123,7 +136,6 @@ fun MembershipRequestCard(
     onAccept: () -> Unit,
     onReject: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true,
     canAccept: Boolean,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -150,7 +162,8 @@ fun MembershipRequestCard(
           fontWeight = FontWeight.Bold,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
-          modifier = Modifier.weight(1f),
+          // TalkBack focuses the name: it offers the list's Refresh there.
+          modifier = Modifier.weight(1f).refreshAction(),
       )
       RequestStatusPill(
           item.request.status,
@@ -164,7 +177,7 @@ fun MembershipRequestCard(
         if (canAccept) {
           Button(
               onClick = onAccept,
-              enabled = enabled && !isProcessing,
+              enabled = !isProcessing,
               shape = buttonShape,
               colors =
                   ButtonDefaults.buttonColors(
@@ -181,7 +194,7 @@ fun MembershipRequestCard(
         }
         OutlinedButton(
             onClick = onReject,
-            enabled = enabled && !isProcessing,
+            enabled = !isProcessing,
             shape = buttonShape,
             border = BorderStroke(1.dp, colors.outline),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.onSurface),

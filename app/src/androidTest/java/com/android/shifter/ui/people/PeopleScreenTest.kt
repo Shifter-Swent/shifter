@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -626,6 +627,57 @@ class PeopleScreenTest {
   }
 
   @Test
+  fun reload_keepsTheRequestsActionableWithoutTheSpinner() {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(requests = listOf(item), isLoading = true, hasLoaded = true),
+            {},
+            {},
+            {},
+        )
+      }
+    }
+    compose.onNodeWithText("Accept").assertIsEnabled()
+    compose.onNodeWithText("Reject").assertIsEnabled()
+    compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
+  }
+
+  private fun setRequests(onRetry: () -> Unit) {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(requests = listOf(item), isLoading = false),
+            {},
+            {},
+            onRetry,
+        )
+      }
+    }
+  }
+
+  @Test
+  fun pull_reloadsTheRequests() {
+    var retries = 0
+    setRequests { retries++ }
+
+    compose.onRoot().performTouchInput { swipeDown() }
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  @OptIn(ExperimentalTestApi::class)
+  fun refreshAction_onARequestsName_reloadsTheRequests() {
+    var retries = 0
+    setRequests { retries++ }
+
+    compose.onNodeWithText("Alice Martin").performCustomAccessibilityActionWithLabel("Refresh")
+
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
   fun decidedRequests_remainVisibleWithTheirStatus() {
     compose.setContent {
       MaterialTheme {
@@ -688,5 +740,21 @@ class PeopleScreenTest {
       }
     }
     compose.onNodeWithText("No membership requests yet.").assertIsDisplayed()
+  }
+
+  @Test
+  fun reload_ofNoRequests_keepsTheEmptyMessageWithoutTheSpinner() {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(isLoading = true, hasLoaded = true),
+            {},
+            {},
+            {},
+        )
+      }
+    }
+    compose.onNodeWithText("No membership requests yet.").assertIsDisplayed()
+    compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
   }
 }

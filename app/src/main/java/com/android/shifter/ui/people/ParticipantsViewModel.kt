@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 
@@ -67,9 +68,10 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  *
  * @property groups one group per team of the event, in the order the repository returns them and
  *   including the teams nobody has joined yet, then the participants of no team when there are any.
- * @property isLoading whether there is no list to show yet because it is being read, which shows
- *   the spinner. It stays false during a reload: the list stays on screen until the answer replaces
- *   it.
+ * @property isLoading whether the list is being read. A list already loaded stays on screen until
+ *   the answer replaces it.
+ * @property hasLoaded whether a load has succeeded: until then, a load shows the spinner instead of
+ *   the list, or of the message that there is nobody.
  * @property isUpdating whether a team's manager is being changed, or a volunteer moved.
  * @property managerChangeFailure the last change of manager that failed, until it has been shown.
  *   Loading the list does not clear it, so the reload that follows the failure cannot hide it.
@@ -77,6 +79,7 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
 data class ParticipantsUiState(
     val groups: List<ParticipantGroup> = emptyList(),
     val isLoading: Boolean = false,
+    val hasLoaded: Boolean = false,
     val error: ParticipantsError? = null,
     val isUpdating: Boolean = false,
     val managerChangeFailure: ManagerChangeFailure? = null,
@@ -105,9 +108,6 @@ class ParticipantsViewModel(
   /** The load running, if any: a change of manager replaces it, as it may predate the write. */
   private var loadJob: Job? = null
 
-  /** Whether a load succeeded, so there is a list to keep on screen during the next ones. */
-  private var loaded = false
-
   init {
     load()
   }
@@ -115,7 +115,7 @@ class ParticipantsViewModel(
   /** Loads the participants again, e.g. to retry after an error. Ignored while loading. */
   fun load() {
     if (loadJob?.isActive == true) return
-    _uiState.update { it.copy(isLoading = !loaded, error = null) }
+    _uiState.update { it.copy(isLoading = true, error = null) }
     loadJob = viewModelScope.launch {
       try {
         val participantIds =
@@ -125,8 +125,7 @@ class ParticipantsViewModel(
                 .map { it.userId }
         val teams = teamRepository.getTeamsByEvent(eventId)
         val names = userRepository.displayNames(participantIds)
-        _uiState.update { it.copy(groups = group(participantIds, teams, names)) }
-        loaded = true
+        _uiState.update { it.copy(groups = group(participantIds, teams, names), hasLoaded = true) }
       } catch (e: CancellationException) {
         throw e
       } catch (e: MembershipRequestRepositoryException.Unavailable) {
@@ -136,7 +135,8 @@ class ParticipantsViewModel(
       } catch (e: Exception) {
         showError(ParticipantsError.UNEXPECTED)
       } finally {
-        _uiState.update { it.copy(isLoading = false) }
+        // A load cancelled by a change runs again once it is written: it is still loading.
+        if (isActive) _uiState.update { it.copy(isLoading = false) }
       }
     }
   }
