@@ -387,10 +387,22 @@ class ParticipantsListTest {
   @Test
   fun reload_keepsTheCardsWithoutTheIndicator() {
     setList(
-        ParticipantsUiState(groups = listOf(ParticipantGroup(bar, listOf(bob))), isLoading = true)
+        ParticipantsUiState(
+            groups = listOf(ParticipantGroup(bar, listOf(bob))),
+            isLoading = true,
+            hasLoaded = true,
+        )
     )
 
     card("bob").assertIsDisplayed()
+    node(ParticipantsListTestTags.LOADING).assertDoesNotExist()
+  }
+
+  @Test
+  fun reload_ofAnEmptyList_keepsTheEmptyMessageWithoutTheIndicator() {
+    setList(ParticipantsUiState(isLoading = true, hasLoaded = true))
+
+    node(ParticipantsListTestTags.EMPTY).assertIsDisplayed()
     node(ParticipantsListTestTags.LOADING).assertDoesNotExist()
   }
 

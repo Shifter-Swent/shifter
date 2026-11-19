@@ -68,7 +68,9 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
  * @property groups one group per team of the event, in the order the repository returns them and
  *   including the teams nobody has joined yet, then the participants of no team when there are any.
  * @property isLoading whether the list is being read. A list already loaded stays on screen until
- *   the answer replaces it; the spinner is for a screen with nothing to show yet.
+ *   the answer replaces it.
+ * @property hasLoaded whether a load has succeeded: until then, a load shows the spinner instead of
+ *   the list, or of the message that there is nobody.
  * @property isUpdating whether a team's manager is being changed, or a volunteer moved.
  * @property managerChangeFailure the last change of manager that failed, until it has been shown.
  *   Loading the list does not clear it, so the reload that follows the failure cannot hide it.
@@ -76,6 +78,7 @@ data class ParticipantGroup(val team: Team?, val participants: List<ParticipantI
 data class ParticipantsUiState(
     val groups: List<ParticipantGroup> = emptyList(),
     val isLoading: Boolean = false,
+    val hasLoaded: Boolean = false,
     val error: ParticipantsError? = null,
     val isUpdating: Boolean = false,
     val managerChangeFailure: ManagerChangeFailure? = null,
@@ -121,7 +124,7 @@ class ParticipantsViewModel(
                 .map { it.userId }
         val teams = teamRepository.getTeamsByEvent(eventId)
         val names = userRepository.displayNames(participantIds)
-        _uiState.update { it.copy(groups = group(participantIds, teams, names)) }
+        _uiState.update { it.copy(groups = group(participantIds, teams, names), hasLoaded = true) }
       } catch (e: CancellationException) {
         throw e
       } catch (e: MembershipRequestRepositoryException.Unavailable) {

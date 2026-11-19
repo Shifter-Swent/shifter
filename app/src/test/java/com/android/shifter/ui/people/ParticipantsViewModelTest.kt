@@ -169,8 +169,21 @@ class ParticipantsViewModelTest {
     requests.failure = null
     viewModel.load()
     assertTrue(viewModel.uiState.value.isLoading)
+    assertFalse(viewModel.uiState.value.hasLoaded)
     advanceUntilIdle()
     assertFalse(viewModel.uiState.value.isLoading)
+    assertTrue(viewModel.uiState.value.hasLoaded)
+  }
+
+  @Test
+  fun load_afterAnEmptyList_isStillLoaded() = runTest {
+    val viewModel = viewModel()
+    advanceUntilIdle()
+
+    viewModel.load()
+    assertTrue(viewModel.uiState.value.isLoading)
+    assertTrue(viewModel.uiState.value.hasLoaded)
+    advanceUntilIdle()
   }
 
   @Test

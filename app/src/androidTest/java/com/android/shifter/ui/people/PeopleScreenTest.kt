@@ -631,7 +631,7 @@ class PeopleScreenTest {
     compose.setContent {
       MaterialTheme {
         MembershipRequestsScreen(
-            MembershipRequestUIState(requests = listOf(item), isLoading = true),
+            MembershipRequestUIState(requests = listOf(item), isLoading = true, hasLoaded = true),
             {},
             {},
             {},
@@ -740,5 +740,21 @@ class PeopleScreenTest {
       }
     }
     compose.onNodeWithText("No membership requests yet.").assertIsDisplayed()
+  }
+
+  @Test
+  fun reload_ofNoRequests_keepsTheEmptyMessageWithoutTheSpinner() {
+    compose.setContent {
+      MaterialTheme {
+        MembershipRequestsScreen(
+            MembershipRequestUIState(isLoading = true, hasLoaded = true),
+            {},
+            {},
+            {},
+        )
+      }
+    }
+    compose.onNodeWithText("No membership requests yet.").assertIsDisplayed()
+    compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
   }
 }

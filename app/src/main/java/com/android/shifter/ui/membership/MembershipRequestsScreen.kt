@@ -66,9 +66,11 @@ fun MembershipRequestsScreen(
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
+  // Until a first answer, there is nothing to keep: the spinner takes the place of the list.
+  val firstLoad = uiState.isLoading && !uiState.hasLoaded
   RefreshableList(
       isLoading = uiState.isLoading,
-      hasContent = uiState.requests.isNotEmpty(),
+      hasContent = !firstLoad,
       onRefresh = onRetry,
       modifier = modifier.fillMaxSize(),
   ) {
@@ -78,8 +80,7 @@ fun MembershipRequestsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      // A reload keeps the list already shown instead of replacing it with the spinner.
-      if (uiState.isLoading && uiState.requests.isEmpty()) {
+      if (firstLoad) {
         item { CircularProgressIndicator(color = colors.primary) }
       }
       uiState.errorMsg?.let { message ->
@@ -103,7 +104,7 @@ fun MembershipRequestsScreen(
           }
         }
       }
-      if (!uiState.isLoading && uiState.errorMsg == null && uiState.requests.isEmpty()) {
+      if (!firstLoad && uiState.errorMsg == null && uiState.requests.isEmpty()) {
         item {
           Text(
               text = stringResource(R.string.membership_requests_empty),

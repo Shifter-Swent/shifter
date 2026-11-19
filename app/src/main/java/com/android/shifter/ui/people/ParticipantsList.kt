@@ -135,9 +135,11 @@ fun ParticipantsList(
       expanded = null
     }
   }
+  // Until a first answer, there is nothing to keep: the spinner takes the place of the list.
+  val firstLoad = state.isLoading && !state.hasLoaded
   RefreshableList(
       isLoading = state.isLoading,
-      hasContent = state.groups.isNotEmpty(),
+      hasContent = !firstLoad,
       onRefresh = onRetry,
       modifier = modifier.fillMaxSize(),
   ) {
@@ -147,8 +149,7 @@ fun ParticipantsList(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      // A reload keeps the list already shown instead of replacing it with the spinner.
-      if (state.isLoading && state.groups.isEmpty()) {
+      if (firstLoad) {
         item {
           CircularProgressIndicator(
               color = colors.primary,
@@ -159,7 +160,7 @@ fun ParticipantsList(
       state.error?.let { error ->
         item { ErrorMessage(error, enabled = !state.isLoading, onRetry = onRetry) }
       }
-      if (!state.isLoading && state.error == null && state.groups.isEmpty()) {
+      if (!firstLoad && state.error == null && state.groups.isEmpty()) {
         item {
           Text(
               text = stringResource(R.string.participants_empty),

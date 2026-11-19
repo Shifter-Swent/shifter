@@ -278,9 +278,24 @@ class MembershipRequestVMTest {
 
         vm.loadRequests()
         assertTrue(vm.uiState.value.isLoading)
+        assertFalse(vm.uiState.value.hasLoaded)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.isLoading)
+        assertTrue(vm.uiState.value.hasLoaded)
         assertEquals(items(requests), vm.uiState.value.requests)
+      }
+
+  @Test
+  fun loadRequests_afterAnEmptyList_isStillLoaded() =
+      runTest(dispatcher) {
+        coEvery { repository.getMembershipRequestsByEId("event") } returns emptyList()
+        val vm = vm()
+        advanceUntilIdle()
+
+        vm.loadRequests()
+        assertTrue(vm.uiState.value.isLoading)
+        assertTrue(vm.uiState.value.hasLoaded)
+        advanceUntilIdle()
       }
 
   @Test

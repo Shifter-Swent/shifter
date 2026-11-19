@@ -32,12 +32,15 @@ data class MembershipRequestItemUIState(
  * State of the organizer's requests list.
  *
  * @property isLoading whether the list is being read. A list already loaded stays on screen until
- *   the answer replaces it; the spinner is for a screen with nothing to show yet.
+ *   the answer replaces it.
+ * @property hasLoaded whether a load has succeeded: until then, a load shows the spinner instead of
+ *   the list, or of the message that there is no request.
  * @property hasEnded whether the event has ended: a request can then only be rejected (#409).
  */
 data class MembershipRequestUIState(
     val requests: List<MembershipRequestItemUIState> = emptyList(),
     val isLoading: Boolean = true,
+    val hasLoaded: Boolean = false,
     val processingRequestIds: Set<String> = emptySet(),
     val errorMsg: String? = null,
     val hasEnded: Boolean = false,
@@ -84,7 +87,12 @@ class MembershipRequestVM(
                 "Some applicant names could not be loaded. Please try again."
             else null
         _uiState.update {
-          it.copy(requests = items, errorMsg = profileError, hasEnded = hasEnded())
+          it.copy(
+              requests = items,
+              hasLoaded = true,
+              errorMsg = profileError,
+              hasEnded = hasEnded(),
+          )
         }
       } catch (e: MembershipRequestRepositoryException) {
         _uiState.update { it.copy(errorMsg = e.toMessage()) }
