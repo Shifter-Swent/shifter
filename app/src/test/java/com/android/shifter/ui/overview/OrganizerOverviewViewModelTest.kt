@@ -2,6 +2,11 @@
 package com.swent.shifter.ui.overview
 
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepositoryException
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.mission.FakeMissionRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
@@ -40,6 +45,7 @@ class OrganizerOverviewViewModelTest {
   private lateinit var missions: FakeMissionRepository
   private lateinit var repository: SlowMissionRepository
   private lateinit var teams: FakeTeamRepository
+  private lateinit var events: FakeEventRepository
   private lateinit var viewModel: OrganizerOverviewViewModel
 
   /** Who may be assigned to a mission of each team; null is "General". */
@@ -66,6 +72,7 @@ class OrganizerOverviewViewModelTest {
         FakeTeamRepository(
             listOf(team("logistics", "Logistics"), team("bar", "Bar"), team("other", "Other", "x"))
         )
+    events = FakeEventRepository().apply { this.events += event() }
   }
 
   @After
@@ -80,6 +87,20 @@ class OrganizerOverviewViewModelTest {
           name = name,
           description = "",
           icon = "truck",
+          createdAt = start,
+      )
+
+  private fun event() =
+      Event(
+          id = eventId,
+          organizerId = "organizer-1",
+          title = "Paléo Festival",
+          description = "",
+          type = EventType.MUSIC,
+          startAt = start,
+          endAt = start.plus(Duration.ofDays(1)),
+          location = EventLocation("Nyon"),
+          joinCode = "ABC234",
           createdAt = start,
       )
 
@@ -110,13 +131,14 @@ class OrganizerOverviewViewModelTest {
     get() = viewModel.uiState.value.assigning
 
   private fun TestScope.open() {
-    viewModel = OrganizerOverviewViewModel(eventId, repository, teams, candidates, now = { clock })
+    viewModel =
+        OrganizerOverviewViewModel(eventId, repository, teams, candidates, events, now = { clock })
     advanceUntilIdle()
   }
 
   @Test
   fun init_startsLoading() {
-    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates)
+    viewModel = OrganizerOverviewViewModel(eventId, missions, teams, candidates, events)
 
     assertTrue(viewModel.uiState.value.isLoading)
   }
@@ -230,10 +252,10 @@ class OrganizerOverviewViewModelTest {
         OrganizerOverviewUiState(
             missions =
                 listOf(
-                    OverviewMission("1", "A", null, isCompleted = true),
-                    OverviewMission("2", "B", null, isCompleted = false),
-                    OverviewMission("3", "C", null, isCompleted = true),
-                    OverviewMission("4", "D", null, isCompleted = false),
+                    OverviewMission("1", "A", null, isCompleted = true, startAt = start),
+                    OverviewMission("2", "B", null, isCompleted = false, startAt = start),
+                    OverviewMission("3", "C", null, isCompleted = true, startAt = start),
+                    OverviewMission("4", "D", null, isCompleted = false, startAt = start),
                 )
         )
 
@@ -593,11 +615,34 @@ class OrganizerOverviewViewModelTest {
     addMission("Set up", "logistics", hour = 1)
 
     viewModel =
-        OrganizerOverviewViewModel.factory(eventId, missions, teams, candidates)
+        OrganizerOverviewViewModel.factory(eventId, missions, teams, candidates, events)
             .create(OrganizerOverviewViewModel::class.java, CreationExtras.Empty)
     advanceUntilIdle()
 
     assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
+  }
+
+  @Test
+  fun init_keepsTheEventPeriodAndTheMissionsStarts_forTheDaysOfTheScreen() = runTest {
+    addMission("Set up", "logistics", hour = 26)
+
+    open()
+
+    val state = viewModel.uiState.value
+    assertEquals(start..start.plus(Duration.ofDays(1)), state.eventPeriod)
+    assertEquals(listOf(start.plus(Duration.ofHours(26))), state.missions.map { it.startAt })
+  }
+
+  @Test
+  fun eventPeriod_whenTheEventCannotBeRead_isUnknownAndTheMissionsStillLoad() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    events.failure = EventRepositoryException.Unavailable()
+
+    open()
+
+    assertNull(viewModel.uiState.value.eventPeriod)
+    assertEquals(listOf("Set up"), viewModel.uiState.value.missions.map { it.title })
+    assertFalse(viewModel.uiState.value.loadFailed)
   }
 }
 

@@ -12,10 +12,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
 import com.swent.shifter.ui.theme.ShifterTheme
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -28,12 +33,14 @@ class OrganizerOverviewScreenTest {
   @get:Rule val compose = createComposeRule()
 
   private val teams = listOf(OverviewTeam("logistics", "Logistics"), OverviewTeam("bar", "Bar"))
+  // Sunday 20 June 2027 at noon, counted in UTC.
+  private val now = Instant.parse("2027-06-20T12:00:00Z")
   private val missions =
       listOf(
-          OverviewMission("m1", "Set up the collection", "logistics", true),
-          OverviewMission("m2", "Serve drinks", "bar", false),
-          OverviewMission("m3", "Welcome the volunteers", null, false),
-          OverviewMission("m4", "Prepare the counter", "bar", true),
+          OverviewMission("m1", "Set up the collection", "logistics", true, now),
+          OverviewMission("m2", "Serve drinks", "bar", false, now),
+          OverviewMission("m3", "Welcome the volunteers", null, false, now),
+          OverviewMission("m4", "Prepare the counter", "bar", true, now),
       )
   private val loaded =
       OrganizerOverviewUiState(isLoading = false, teams = teams, missions = missions)
@@ -42,7 +49,9 @@ class OrganizerOverviewScreenTest {
       state: OrganizerOverviewUiState,
       actions: OrganizerOverviewActions = OrganizerOverviewActions(),
   ) {
-    compose.setContent { ShifterTheme { OrganizerOverviewContent(state, actions) } }
+    compose.setContent {
+      ShifterTheme { OrganizerOverviewContent(state, actions, now = now, zone = ZoneOffset.UTC) }
+    }
   }
 
   @Test
@@ -89,7 +98,7 @@ class OrganizerOverviewScreenTest {
   fun missionOfAnUnknownTeam_isNotShownAsGeneral() {
     show(
         loaded.copy(
-            missions = listOf(OverviewMission("m5", "Guard the entrance", "deleted", false))
+            missions = listOf(OverviewMission("m5", "Guard the entrance", "deleted", false, now))
         )
     )
 
@@ -218,7 +227,8 @@ class OrganizerOverviewScreenTest {
   fun missionRow_showsTheAssignedCount() {
     show(
         loaded.copy(
-            missions = listOf(OverviewMission("m1", "Set up", "logistics", false, 3, listOf("ana")))
+            missions =
+                listOf(OverviewMission("m1", "Set up", "logistics", false, now, 3, listOf("ana")))
         )
     )
 
@@ -306,4 +316,90 @@ class OrganizerOverviewScreenTest {
                   selectedIds = listOf("ana"),
               ),
       )
+
+  // An event from Saturday 19 to Monday 21 June, read on Sunday 20.
+  private val today = LocalDate.of(2027, 6, 20)
+  private val saturday = today.minusDays(1)
+  private val monday = today.plusDays(1)
+  private val threeDays =
+      loaded.copy(
+          missions =
+              listOf(
+                  OverviewMission("s1", "Unload the trucks", "logistics", false, now.minus(DAY)),
+                  OverviewMission("m2", "Serve drinks", "bar", false, now),
+                  OverviewMission("m3", "Welcome the volunteers", null, false, now),
+                  OverviewMission("t1", "Close the bar", "bar", false, now.plus(DAY)),
+              ),
+          eventPeriod = now.minus(DAY)..now.plus(DAY),
+      )
+
+  private fun pick(day: LocalDate) =
+      compose.onNodeWithTag(DayStripTestTags.day(day)).performScrollTo().performClick()
+
+  @Test
+  fun eventOfSeveralDays_opensOnTodayWithItsMissionsOnly() {
+    show(threeDays)
+
+    compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
+    compose.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Welcome the volunteers").assertExists()
+    compose.onNodeWithText("Unload the trucks").assertDoesNotExist()
+    compose.onNodeWithText("Close the bar").assertDoesNotExist()
+    // The missions of the day shown are counted, not those of the event.
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
+        .assertTextEquals("Missions · All teams (2)")
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun pickingADay_withATeamSelected_showsOnlyThatTeamsMissionsOfThatDay() {
+    show(threeDays.copy(selectedTeamId = "bar"))
+
+    pick(monday)
+
+    compose.onNodeWithText("Close the bar").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Serve drinks").assertDoesNotExist()
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
+        .assertTextEquals("Missions · Bar (1)")
+  }
+
+  @Test
+  fun dayTheTeamHasNothingOn_saysSo_andKeepsEveryDay() {
+    show(threeDays.copy(selectedTeamId = "bar"))
+
+    // The strip is the event's, whatever the team: Saturday has only logistics.
+    pick(saturday)
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.EMPTY_DAY).performScrollTo()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.EMPTY_DAY).assertIsDisplayed()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS).assertDoesNotExist()
+    compose.onNodeWithText("Unload the trucks").assertDoesNotExist()
+  }
+
+  @Test
+  fun backToToday_showsTodayAgain() {
+    show(threeDays)
+    pick(monday)
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).performScrollTo()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).performClick()
+
+    compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
+    compose.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun eventOfOneDay_showsItsMissionsWithoutTheStrip() {
+    show(loaded.copy(eventPeriod = now..now.plus(Duration.ofHours(6))))
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    compose.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
+  }
+
+  private companion object {
+    val DAY: Duration = Duration.ofDays(1)
+  }
 }

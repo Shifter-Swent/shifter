@@ -552,12 +552,14 @@ private fun ShifterNavGraph(
                                   repositories.membershipRequestRepository,
                                   repositories.userRepository,
                               ),
+                              repositories.eventRepository,
                           )
                   )
               // Shows the missions added while the creation form was on top.
               RefreshOnReturn(viewModel::refresh)
               OrganizerOverviewScreen(
                   viewModel = viewModel,
+                  clock = repositories.minuteClock,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
                   onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
                   onEditMission = {
