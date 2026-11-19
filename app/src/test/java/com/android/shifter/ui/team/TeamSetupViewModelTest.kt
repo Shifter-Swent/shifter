@@ -2,16 +2,24 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.team
 
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -56,9 +64,41 @@ class TeamSetupViewModelTest {
       )
 
   /** Opens the screen and lets its first load finish. */
-  private fun TestScope.open() {
-    viewModel = TeamSetupViewModel(eventId, teams)
+  private fun TestScope.open(repository: TeamRepository = teams) {
+    viewModel = TeamSetupViewModel(eventId, repository)
     advanceUntilIdle()
+  }
+
+  /** Collects every deletion the ViewModel reports as failed, for the rest of the test. */
+  private fun TestScope.deleteFailures(): List<Team> {
+    val failures = mutableListOf<Team>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      viewModel.deleteFailures.toList(failures)
+    }
+    return failures
+  }
+
+  /** A [FakeTeamRepository] whose loads read its teams at once but answer only after [answer]. */
+  private class SlowReads(private val teams: FakeTeamRepository) : TeamRepository by teams {
+    var answer: CompletableDeferred<Unit>? = null
+
+    override suspend fun getTeamsByEvent(eventId: String): List<Team> {
+      val read = teams.getTeamsByEvent(eventId)
+      answer?.await()
+      return read
+    }
+  }
+
+  /** A [FakeTeamRepository] whose deletions wait for [answer] to complete, and count. */
+  private class PendingDeletions(private val teams: FakeTeamRepository) : TeamRepository by teams {
+    val answer = CompletableDeferred<Unit>()
+    var deletions = 0
+
+    override suspend fun deleteTeam(eventId: String, teamId: String) {
+      deletions++
+      answer.await()
+      teams.deleteTeam(eventId, teamId)
+    }
   }
 
   @Test
@@ -195,6 +235,142 @@ class TeamSetupViewModelTest {
 
     assertTrue(state.teams.isEmpty())
     assertFalse(state.canProceed)
+  }
+
+  @Test
+  fun deleteTeam_takesTheTeamOutOfTheList() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    teams.teams += team("bar", "Bar")
+    open()
+
+    viewModel.deleteTeam(state.teams.first())
+    advanceUntilIdle()
+
+    assertEquals(listOf("Bar"), state.teams.map { it.name })
+    assertEquals(listOf("Bar"), teams.teams.map { it.name })
+    assertTrue(state.deletingTeamIds.isEmpty())
+  }
+
+  @Test
+  fun deleteTeam_whileRunning_marksTheTeamAndIsNotStartedTwice() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    val pending = PendingDeletions(teams)
+    open(pending)
+    val logistics = state.teams.single()
+
+    viewModel.deleteTeam(logistics)
+    viewModel.deleteTeam(logistics)
+    advanceUntilIdle()
+
+    assertEquals(setOf("logistics"), state.deletingTeamIds)
+    assertEquals(listOf("Logistics"), state.teams.map { it.name })
+    assertEquals(1, pending.deletions)
+
+    pending.answer.complete(Unit)
+    advanceUntilIdle()
+
+    assertTrue(state.teams.isEmpty())
+    assertTrue(state.deletingTeamIds.isEmpty())
+  }
+
+  @Test
+  fun deleteTeam_ofTheLastTeam_cannotProceedAnymore() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    open()
+
+    viewModel.deleteTeam(state.teams.single())
+    advanceUntilIdle()
+
+    assertFalse(state.canProceed)
+    assertTrue(state.isEmpty)
+  }
+
+  @Test
+  fun deleteTeam_ofTheOnlyTeam_cannotProceedWhileItRuns() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    val pending = PendingDeletions(teams)
+    open(pending)
+
+    viewModel.deleteTeam(state.teams.single())
+    runCurrent()
+
+    assertFalse(state.canProceed)
+
+    // A deletion that fails gives the team back.
+    teams.failure = IllegalStateException("denied")
+    pending.answer.complete(Unit)
+    advanceUntilIdle()
+
+    assertTrue(state.canProceed)
+  }
+
+  @Test
+  fun deleteTeam_onFailure_keepsTheTeamAndReportsIt() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    open()
+    val failures = deleteFailures()
+    val logistics = state.teams.single()
+
+    teams.failure = IllegalStateException("offline")
+    viewModel.deleteTeam(logistics)
+    advanceUntilIdle()
+
+    assertEquals(listOf(logistics), failures)
+    assertEquals(listOf("Logistics"), state.teams.map { it.name })
+    assertTrue(state.deletingTeamIds.isEmpty())
+  }
+
+  @Test
+  fun deleteTeam_onceStarted_runsToItsEndAfterTheScreenIsLeft() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    val pending = PendingDeletions(teams)
+    open(pending)
+
+    viewModel.deleteTeam(state.teams.single())
+    runCurrent()
+    // What leaving the screen does to its ViewModel.
+    viewModel.viewModelScope.cancel()
+    pending.answer.complete(Unit)
+    advanceUntilIdle()
+
+    assertTrue(teams.teams.isEmpty())
+  }
+
+  @Test
+  fun refresh_thatReadADeletedTeam_doesNotBringItBack() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    teams.teams += team("bar", "Bar")
+    val reads = SlowReads(teams)
+    open(reads)
+
+    // The load reads both teams, then answers only once Logistics is deleted.
+    val answer = CompletableDeferred<Unit>()
+    reads.answer = answer
+    viewModel.refresh()
+    runCurrent()
+    viewModel.deleteTeam(state.teams.first())
+    advanceUntilIdle()
+    answer.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(listOf("Bar"), state.teams.map { it.name })
+  }
+
+  @Test
+  fun deleteTeam_again_afterAFailure_deletesIt() = runTest {
+    teams.teams += team("logistics", "Logistics")
+    open()
+    val logistics = state.teams.single()
+    teams.failure = IllegalStateException("offline")
+    viewModel.deleteTeam(logistics)
+    advanceUntilIdle()
+
+    teams.failure = null
+    viewModel.deleteTeam(logistics)
+    advanceUntilIdle()
+
+    assertTrue(state.teams.isEmpty())
+    assertTrue(teams.teams.isEmpty())
   }
 
   @Test
