@@ -45,8 +45,8 @@ internal constructor(
   /** The days of [starts], e.g. to dot those of the team picked. */
   fun daysOf(starts: List<Instant>): Set<LocalDate> = starts.map { it.eventDay(zone) }.toSet()
 
-  /** Shows [day], and keeps showing it when today changes. */
-  fun pick(day: LocalDate) = selection.pick(day)
+  /** Shows [day], following today again when [day] is today, as "Back to today" does. */
+  fun show(day: LocalDate) = selection.show(day)
 }
 
 /**
@@ -94,7 +94,7 @@ fun EventDayStrip(
       daysWithMissions = daysWithMissions,
       selected = picker.shown,
       today = picker.today,
-      onSelect = picker::pick,
+      onSelect = picker::show,
       modifier = modifier,
   )
 }

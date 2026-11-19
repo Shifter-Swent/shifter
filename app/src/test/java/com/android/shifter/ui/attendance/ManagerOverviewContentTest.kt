@@ -1178,6 +1178,24 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun tappingTodayInTheStrip_followsTodayAgain() {
+    // A filter takes the room of "Back to today": tapping today in the strip is the way back.
+    var now by mutableStateOf(this.now)
+    compose.setContent {
+      ShifterTheme {
+        ManagerOverviewContent(state = threeDays, now = now, onRetry = {}, zone = utc)
+      }
+    }
+    pick(tomorrow)
+
+    pick(today)
+    // The night goes past 04:00.
+    now = Instant.parse("2027-06-21T04:30:00Z")
+
+    compose.onNodeWithTag(DayStripTestTags.day(tomorrow)).assertIsSelected()
+  }
+
+  @Test
   fun eventOfOneDay_showsItsMissionsWithoutTheStrip() {
     show(loaded.copy(eventPeriod = start..start.plus(Duration.ofHours(10))))
 
