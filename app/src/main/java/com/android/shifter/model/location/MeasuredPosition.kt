@@ -11,6 +11,6 @@ package com.swent.shifter.model.location
  */
 data class MeasuredPosition(val position: GeoPosition, val accuracyMeters: Double) {
   init {
-    require(accuracyMeters >= 0) { "Accuracy must be positive, but was $accuracyMeters" }
+    require(accuracyMeters >= 0) { "Accuracy must not be negative, but was $accuracyMeters" }
   }
 }

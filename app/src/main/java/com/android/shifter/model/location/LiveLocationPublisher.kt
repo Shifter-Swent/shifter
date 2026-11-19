@@ -36,12 +36,10 @@ import kotlinx.coroutines.launch
  *   becomes so again, which is exactly the behaviour wanted here. [LocationProvider.status] is only
  *   read to tell the volunteer about it (see [publish]).
  *
- * [LocationProvider.positions] emits a [GeoPosition] with no time of its own, so each position is
- * stamped with [now] when it is collected rather than when the GPS measured it:
- * [LiveLocation.measuredAt] is the delivery time, a little later than the fix it describes.
- * Carrying the real fix time means emitting more than a bare [GeoPosition], a change to
- * [LocationProvider] left out of here on purpose; #276 already plans to widen that emission for the
- * accuracy, and the fix time belongs with it.
+ * [LocationProvider.positions] emits a [MeasuredPosition], with its accuracy but no time of its
+ * own, so each position is stamped with [now] when it is collected rather than when the GPS
+ * measured it: [LiveLocation.measuredAt] is the delivery time, a little later than the fix it
+ * describes. Carrying the real fix time in [MeasuredPosition] is #631.
  *
  * @param now the clock stamping each position, replaceable in tests.
  */
