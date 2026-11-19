@@ -38,6 +38,7 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.isIndeterminateSpinner
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -161,7 +162,6 @@ class ManagerOverviewContentTest {
     // The now card says whose team this is, so the manager is given no subtitle of their own.
     compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertDoesNotExist()
     compose.onNodeWithText("My Missions").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
     // Times alone, since the mission runs on the day being read.
     compose.onNodeWithText("Logistics · 09:00–11:00").assertIsDisplayed()
@@ -489,7 +489,6 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
   }
 
   @Test
@@ -760,11 +759,12 @@ class ManagerOverviewContentTest {
 
   @Test
   fun reload_withMissionsAlreadyShown_keepsThemAndTheirCount() {
-    show(loaded.copy(isLoading = true))
+    // One team, so the count is not taken over by the team menu.
+    show(loaded.copy(missions = listOf(setUp), isLoading = true))
 
     compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertDoesNotExist()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
   }
 
   @Test
@@ -1053,7 +1053,6 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
 
     state = loaded
 
@@ -1074,6 +1073,16 @@ class ManagerOverviewContentTest {
       drinks.copy(id = "m3", title = "Close the bar", startAt = start.plus(Duration.ofDays(1)))
   private val threeDays =
       loaded.copy(missions = listOf(setUp, drinks, barTomorrow), eventPeriod = eventPeriod)
+  /** Logistics alone, today and tomorrow: no team menu, so the count and "Back to today" show. */
+  private val oneTeamTwoDays =
+      loaded.copy(
+          missions =
+              listOf(
+                  setUp,
+                  setUp.copy(id = "m4", title = "Unload the trucks", startAt = barTomorrow.startAt),
+              ),
+          eventPeriod = eventPeriod,
+      )
 
   @Test
   fun eventOfSeveralDays_opensOnTodayWithItsMissionsOnly() {
@@ -1083,9 +1092,26 @@ class ManagerOverviewContentTest {
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
     scrollTo(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithText("Close the bar").assertDoesNotExist()
+  }
+
+  @Test
+  fun oneTeam_countsTheMissionsOfTheDayShown() {
+    show(oneTeamTwoDays)
+
     // The missions of the day shown, not of the event.
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun severalTeams_keepTheMenuOnAnotherDay_withoutBackToToday() {
+    show(threeDays)
+
+    pick(tomorrow)
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertIsDisplayed()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertDoesNotExist()
   }
 
   @Test
@@ -1122,16 +1148,16 @@ class ManagerOverviewContentTest {
 
   @Test
   fun backToToday_takesTheCountsPlaceOnAnotherDay_andShowsTodayAgain() {
-    show(threeDays)
+    show(oneTeamTwoDays)
     pick(today.minusDays(1))
 
     compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY_DAY).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).performClick()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).performClick()
 
     compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test
@@ -1169,6 +1195,6 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(DayStripTestTags.day(today.plusDays(3))).assertIsSelected()
     compose.onNodeWithText("Close the bar").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 }

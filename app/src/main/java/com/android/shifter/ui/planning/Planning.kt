@@ -55,7 +55,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DaySelection
 import com.swent.shifter.ui.components.days.DayStrip
 import com.swent.shifter.ui.components.days.DayWithoutMissions
@@ -97,7 +97,6 @@ data class PlanningMission(
 object PlanningTestTags {
   const val PLANNING = "planning"
   const val EMPTY = "planningEmpty"
-  const val BACK_TO_TODAY = "planningBackToToday"
   const val EMPTY_DAY = "planningEmptyDay"
 
   fun mission(missionId: String) = "planningMission_$missionId"
@@ -169,12 +168,37 @@ fun Planning(
       modifier = modifier.fillMaxWidth().testTag(PlanningTestTags.PLANNING),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    Header(
-        awayFromToday = showsStrip && selection.awayFromToday,
+    DayHeader(
+        title = stringResource(R.string.planning_title),
         onBackToToday = {
-          selection.backToToday()
-          revealOnShow = null
+              selection.backToToday()
+              revealOnShow = null
+            }
+                .takeIf { showsStrip && selection.awayFromToday },
+        hint = {
+          Text(
+              text = stringResource(R.string.planning_subtitle),
+              style = MaterialTheme.typography.labelSmall,
+              color = shifter_mutedText,
+          )
         },
+        strip =
+            selected
+                ?.takeIf { showsStrip }
+                ?.let { shown ->
+                  {
+                    DayStrip(
+                        days = days,
+                        daysWithMissions = byDay.keys,
+                        selected = shown,
+                        today = today,
+                        onSelect = {
+                          selection.show(it)
+                          revealOnShow = null
+                        },
+                    )
+                  }
+                },
     )
     if (missions.isEmpty() || selected == null) {
       Text(
@@ -184,18 +208,6 @@ fun Planning(
           modifier = Modifier.testTag(PlanningTestTags.EMPTY),
       )
       return@Column
-    }
-    if (showsStrip) {
-      DayStrip(
-          days = days,
-          daysWithMissions = byDay.keys,
-          selected = selected,
-          today = today,
-          onSelect = {
-            selection.show(it)
-            revealOnShow = null
-          },
-      )
     }
     // The day's missions slide in from the side of the day they come from: the left for an earlier
     // day, the right for a later one, the other way round right to left, as in the strip.
@@ -301,29 +313,6 @@ private fun <T> daySlide() = tween<T>(durationMillis = 300, easing = FastOutSlow
 
 /** Per second: a flick this fast changes the day however short it is, as in Compose's pagers. */
 private val FLING_SPEED = 400.dp
-
-/** The title, and "Back to today" in place of the subtitle while another day is shown. */
-@Composable
-private fun Header(awayFromToday: Boolean, onBackToToday: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.planning_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.weight(1f),
-    )
-    if (awayFromToday) {
-      BackToToday(onBackToToday, Modifier.testTag(PlanningTestTags.BACK_TO_TODAY))
-    } else {
-      Text(
-          text = stringResource(R.string.planning_subtitle),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
-      )
-    }
-  }
-}
 
 /**
  * One mission, whose hours leave out [day]. A mission starting on another calendar day names it: a

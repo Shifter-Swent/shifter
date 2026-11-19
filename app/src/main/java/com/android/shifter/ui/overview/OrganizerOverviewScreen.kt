@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.ui.components.TeamFilterMenu
-import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
@@ -63,13 +63,11 @@ object OrganizerOverviewScreenTestTags {
   const val PROGRESS_PERCENT = "OrganizerOverviewProgressPercent"
   const val PROGRESS_COUNT = "OrganizerOverviewProgressCount"
   const val ALL_TEAMS_CHIP = "OrganizerOverviewTeamChip_All"
-  const val MISSIONS_HEADER = "OrganizerOverviewMissionsHeader"
   const val LOADING_INDICATOR = "OrganizerOverviewLoadingIndicator"
   const val LOAD_ERROR = "OrganizerOverviewLoadError"
   const val RETRY_BUTTON = "OrganizerOverviewRetryButton"
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
-  const val BACK_TO_TODAY = "OrganizerOverviewBackToToday"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
   const val ASSIGN_DIALOG = "OrganizerOverviewAssignDialog"
   const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
@@ -184,17 +182,26 @@ private fun OverviewColumn(
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
-    TeamFilterMenu(
-        teams = state.teams.map { it.id to it.name },
-        selectedTeamId = state.selectedTeamId,
-        onSelectTeam = actions.onSelectTeam,
-        allTestTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
-        teamTestTag = OrganizerOverviewScreenTestTags::teamChip,
+    // No "Back to today" next to the filter: the strip's "Today" brings today back.
+    DayHeader(
+        title = missionsTitle(state, dayPicker),
+        filter = {
+          TeamFilterMenu(
+              teams = state.teams.map { it.id to it.name },
+              selectedTeamId = state.selectedTeamId,
+              onSelectTeam = actions.onSelectTeam,
+              allTestTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
+              teamTestTag = OrganizerOverviewScreenTestTags::teamChip,
+          )
+        },
+        // The days of the team picked get a dot.
+        strip =
+            if (dayPicker.showsStrip) {
+              {
+                EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
+              }
+            } else null,
     )
-    if (dayPicker.showsStrip) {
-      // The days of the team picked get a dot.
-      EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
-    }
     Missions(state, dayPicker, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
   }
@@ -319,6 +326,15 @@ private fun LoadError(onRetry: () -> Unit) {
   }
 }
 
+/** "Missions · All teams (4)", or of the team picked, counting the missions of the day shown. */
+@Composable
+private fun missionsTitle(state: OrganizerOverviewUiState, dayPicker: EventDayPicker): String {
+  val count = state.visibleMissions.count { dayPicker.isShown(it.startAt) }
+  val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
+  return if (selectedTeam == null) stringResource(R.string.overview_missions_all, count)
+  else stringResource(R.string.overview_missions_team, selectedTeam.name, count)
+}
+
 /**
  * The missions of the selected team on the day [dayPicker] shows, under a header naming the team
  * and counting them, with "Back to today" while another day is shown.
@@ -332,26 +348,7 @@ private fun Missions(
 ) {
   val teamMissions = state.visibleMissions
   val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
-  val onBackToToday = dayPicker.onBackToToday
-  val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-          text =
-              if (selectedTeam == null) {
-                stringResource(R.string.overview_missions_all, missions.size)
-              } else {
-                stringResource(R.string.overview_missions_team, selectedTeam.name, missions.size)
-              },
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.onBackground,
-          modifier = Modifier.weight(1f).testTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER),
-      )
-      if (onBackToToday != null) {
-        BackToToday(onBackToToday, Modifier.testTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY))
-      }
-    }
     when {
       missions.isNotEmpty() ->
           missions.forEach { mission ->
@@ -378,7 +375,7 @@ private fun Missions(
           Text(
               text =
                   stringResource(
-                      if (selectedTeam == null) R.string.overview_no_missions
+                      if (state.selectedTeamId == null) R.string.overview_no_missions
                       else R.string.overview_no_team_missions
                   ),
               style = MaterialTheme.typography.bodySmall,

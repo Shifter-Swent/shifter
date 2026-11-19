@@ -62,6 +62,7 @@ import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -1316,7 +1317,7 @@ class ShifterNavHostTest {
     createMission(event, "Welcome the volunteers", teamId = null)
     openOrganizerEvent(event)
 
-    waitForNode(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
+    waitForNode(DayHeaderTestTags.TITLE)
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithText("Serve drinks").fetchSemanticsNodes().isNotEmpty()
     }

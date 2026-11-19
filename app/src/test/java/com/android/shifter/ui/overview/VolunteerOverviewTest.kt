@@ -40,6 +40,7 @@ import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.time.FakeMinuteClock
 import com.swent.shifter.ui.checkin.AutoCheckInUiState
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.components.nowcard.NowState
@@ -214,7 +215,7 @@ class VolunteerOverviewTest {
 
     description(mission.id).assertIsDisplayed()
     compose.onNodeWithTag(PlanningTestTags.mission(tomorrow.id)).assertDoesNotExist()
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test

@@ -63,7 +63,7 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.TeamFilterMenu
-import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
@@ -87,7 +87,6 @@ object ManagerOverviewTestTags {
   const val RETRY = "managerOverviewRetry"
   const val EMPTY = "managerOverviewEmpty"
   const val EMPTY_DAY = "managerOverviewEmptyDay"
-  const val BACK_TO_TODAY = "managerOverviewBackToToday"
   const val MARK_COMPLETED_DIALOG = "managerOverviewMarkCompletedDialog"
   const val MARK_COMPLETED_CONFIRM = "managerOverviewMarkCompletedConfirm"
   const val MARK_COMPLETED_CANCEL = "managerOverviewMarkCompletedCancel"
@@ -274,27 +273,43 @@ fun ManagerOverviewContent(
       }
       if (state.loadFailed) item { LoadError(onRetry) }
       if (state.pendingCheckInCount > 0) item { PendingBanner(state.pendingCheckInCount) }
-      // Offered from two teams on: with one, it would filter nothing away.
-      if (teams.size > 1) {
-        item {
-          TeamFilterMenu(
-              teams = teams.map { (id, name) -> id to (name ?: unknownTeam) },
-              selectedTeamId = selectedTeamId,
-              onSelectTeam = { pickedTeamId = it },
-              allTestTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
-              teamTestTag = ManagerOverviewTestTags::teamChip,
-          )
-        }
-      }
-      if (dayPicker.showsStrip) {
-        // The days of the team picked get a dot.
-        item { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
-      }
       item {
-        MissionsHeader(
-            // Never "0 missions" before there is an answer: that reads as having none.
-            count = missions.size.takeUnless { it == 0 && !state.isLoaded },
+        // Never "0 missions" before there is an answer: that reads as having none.
+        val count = missions.size.takeUnless { it == 0 && !state.isLoaded }
+        DayHeader(
+            title = stringResource(R.string.attendance_missions_title),
+            // Always there, so screen readers can refresh with no mission listed too.
+            titleModifier = Modifier.refreshAction(),
+            // Offered from two teams on: with one, it would filter nothing away.
+            filter =
+                if (teams.size > 1) {
+                  {
+                    TeamFilterMenu(
+                        teams = teams.map { (id, name) -> id to (name ?: unknownTeam) },
+                        selectedTeamId = selectedTeamId,
+                        onSelectTeam = { pickedTeamId = it },
+                        allTestTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
+                        teamTestTag = ManagerOverviewTestTags::teamChip,
+                    )
+                  }
+                } else null,
             onBackToToday = dayPicker.onBackToToday,
+            hint =
+                count?.let {
+                  {
+                    Text(
+                        text = pluralStringResource(R.plurals.attendance_mission_count, it, it),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = shifter_mutedText,
+                        modifier = Modifier.testTag(ManagerOverviewTestTags.MISSION_COUNT),
+                    )
+                  }
+                },
+            // The days of the team picked get a dot.
+            strip =
+                if (dayPicker.showsStrip) {
+                  { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
+                } else null,
         )
       }
       items(missions, key = { it.id }) { mission ->
@@ -513,36 +528,6 @@ private fun LoadError(onRetry: () -> Unit) {
     )
     TextButton(onClick = onRetry, modifier = Modifier.testTag(ManagerOverviewTestTags.RETRY)) {
       Text(stringResource(R.string.attendance_retry))
-    }
-  }
-}
-
-/**
- * The missions listed, counted when there is an answer to count; [count] is null until then.
- *
- * @param onBackToToday shows today again, offered in place of the count while another day is shown;
- *   none when null.
- */
-@Composable
-private fun MissionsHeader(count: Int?, onBackToToday: (() -> Unit)?) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.attendance_missions_title),
-        style = MaterialTheme.typography.bodyMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onBackground,
-        // Always there, so screen readers can refresh with no mission listed too.
-        modifier = Modifier.weight(1f).refreshAction(),
-    )
-    if (onBackToToday != null) {
-      BackToToday(onBackToToday, Modifier.testTag(ManagerOverviewTestTags.BACK_TO_TODAY))
-    } else if (count != null) {
-      Text(
-          text = pluralStringResource(R.plurals.attendance_mission_count, count, count),
-          style = MaterialTheme.typography.labelSmall,
-          color = shifter_mutedText,
-          modifier = Modifier.testTag(ManagerOverviewTestTags.MISSION_COUNT),
-      )
     }
   }
 }
