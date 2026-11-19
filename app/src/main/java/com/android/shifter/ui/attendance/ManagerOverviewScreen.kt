@@ -296,7 +296,9 @@ fun ManagerOverviewContent(
             canMarkCompleted = !state.isOrganizer && mission.canBeMarkedCompleted(now),
             isMarkingCompleted = mission.id in state.markingCompletedIds,
             now = now,
-            day = dayPicker.shown,
+            // Without a strip nothing says which day is shown: the date then goes on the cards
+            // of any other day than today.
+            day = if (dayPicker.showsStrip) dayPicker.shown else dayPicker.today,
             zone = zone,
             // Each card on its own: opening one leaves the others as they are.
             onToggle = {
@@ -593,7 +595,7 @@ private fun MissionsHeader(count: Int?, onBackToToday: (() -> Unit)?) {
  * keep their own accessibility nodes instead of being merged into the card; and it is tappable only
  * when there is something under it, so the arrow never flips on an empty card.
  *
- * @param day the event day shown, which the schedule leaves out.
+ * @param day the day the schedule leaves out: the one picked in the strip, or today without one.
  * @param onEdit opens the mission's edit form from a pencil in the header, none when null.
  */
 @Composable

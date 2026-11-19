@@ -1110,6 +1110,21 @@ class ManagerOverviewContentTest {
   }
 
   @Test
+  fun eventOfOneDay_onAnotherDay_datesItsMissions() {
+    // Two days from now, with no strip to say the mission is not today.
+    val later = setUpRunning("later", Duration.ofDays(2), Duration.ofDays(2).plusHours(2))
+    show(
+        loaded.copy(
+            missions = listOf(later),
+            eventPeriod = later.startAt..later.endAt,
+        )
+    )
+
+    compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
+    compose.onNodeWithText("Logistics · 22 Jun, 09:05–11:05").assertIsDisplayed()
+  }
+
+  @Test
   fun eventNotStartedYet_opensOnItsFirstDay() {
     val later = barTomorrow.copy(startAt = start.plus(Duration.ofDays(3)))
     show(
