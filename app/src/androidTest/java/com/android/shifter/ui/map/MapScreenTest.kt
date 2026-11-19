@@ -7,12 +7,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -98,28 +98,52 @@ class MapScreenTest {
   }
 
   @Test
-  fun loading_withMyPosition_offersToCenterOnTheUser() {
+  fun loading_withMyPosition_waitsForTheEventToOfferTheButtons() {
     setContent(MapUiState(), myPosition = ME)
 
     compose.onNodeWithTag(MapScreenTestTags.LOADING).assertIsDisplayed()
-    compose.onNodeWithContentDescription("Center on your position").assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
   }
 
   @Test
-  fun recenterButton_withMyPosition_centersOnTheUser() {
+  fun eventNotFound_withMyPosition_offersNoButton() {
+    setContent(MapUiState(isLoading = false, error = MapError.EVENT_NOT_FOUND), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun centerOnMeButton_centersOnTheUser() {
     val camera = setContentWithCamera(myPosition = ME)
 
-    compose.onNodeWithContentDescription("Center on your position").assertIsDisplayed()
-    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
+    compose
+        .onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON)
+        .assertContentDescriptionEquals("Center on your position")
+        .performClick()
 
     compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(ME) }
   }
 
   @Test
-  fun recenterButton_withoutMyPosition_centersOnTheEvent() {
+  fun recenterButton_withMyPosition_stillGoesBackToTheEvent() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    compose
+        .onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON)
+        .assertContentDescriptionEquals("Center on the event")
+        .performClick()
+
+    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+  }
+
+  @Test
+  fun recenterButton_withoutMyPosition_centersOnTheEventAlone() {
     val camera = setContentWithCamera(myPosition = null)
 
-    compose.onNodeWithContentDescription("Recenter the map").assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
     compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
 
     compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }

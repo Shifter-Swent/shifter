@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -62,6 +63,7 @@ object MapScreenTestTags {
   const val MISSION_CARD = "MapMissionCard"
   const val CLOSE_CARD_BUTTON = "MapCloseCardButton"
   const val RECENTER_BUTTON = "MapRecenterButton"
+  const val CENTER_ON_ME_BUTTON = "MapCenterOnMeButton"
   const val VOLUNTEER = "MapVolunteer"
   const val STALE_VOLUNTEER = "MapStaleVolunteer"
 }
@@ -101,8 +103,8 @@ fun MapScreen(
 /**
  * Stateless map screen: the event's venue above a map of its missions.
  *
- * @param myPosition where the user is, shown on the map and where the recenter button goes; null
- *   shows nothing, and the button goes back to the event.
+ * @param myPosition where the user is, shown on the map with a button that centers on them; null
+ *   shows neither.
  * @param onFocusShown called once the camera was sent to [MapUiState.focus]; the move itself may
  *   wait for the map to be ready.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
@@ -218,17 +220,30 @@ fun MapContent(
           verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         val scope = rememberCoroutineScope()
-        // The user when the map knows where they are, as the icon promises; the event otherwise.
-        (myPosition ?: uiState.center)?.let { target ->
-          RecenterButton(
-              onUser = myPosition != null,
-              onClick = {
-                scope.launch {
-                  cameraPositionState.animate(
-                      CameraUpdateFactory.newLatLngZoom(target.toLatLng(), EVENT_ZOOM)
-                  )
-                }
-              },
+        val goTo = { target: GeoPosition ->
+          scope.launch {
+            cameraPositionState.animate(
+                CameraUpdateFactory.newLatLngZoom(target.toLatLng(), EVENT_ZOOM)
+            )
+          }
+        }
+        // Only once the event is loaded: before, the opening move to the venue would undo a tap,
+        // and an event that failed to load leaves nothing to center on. The user when the map
+        // knows where they are, and the event in any case, to come back to it from anywhere.
+        uiState.center?.let { center ->
+          myPosition?.let {
+            MapButton(
+                icon = Icons.Outlined.MyLocation,
+                description = stringResource(R.string.map_center_on_me),
+                testTag = MapScreenTestTags.CENTER_ON_ME_BUTTON,
+                onClick = { goTo(it) },
+            )
+          }
+          MapButton(
+              icon = Icons.Outlined.Place,
+              description = stringResource(R.string.map_recenter),
+              testTag = MapScreenTestTags.RECENTER_BUTTON,
+              onClick = { goTo(center) },
           )
         }
         val overlay = Modifier.fillMaxWidth()
@@ -370,21 +385,21 @@ internal fun VolunteerLabel(marker: MapMarker, isStale: Boolean) {
  * position the map does not know.
  */
 @Composable
-private fun RecenterButton(onUser: Boolean, onClick: () -> Unit) {
+private fun MapButton(
+    icon: ImageVector,
+    description: String,
+    testTag: String,
+    onClick: () -> Unit,
+) {
   Surface(
       onClick = onClick,
       shape = MaterialTheme.shapes.medium,
       color = MaterialTheme.colorScheme.surfaceContainer,
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-      modifier = Modifier.size(48.dp).testTag(MapScreenTestTags.RECENTER_BUTTON),
+      modifier = Modifier.size(48.dp).testTag(testTag),
   ) {
     Box(contentAlignment = Alignment.Center) {
-      Icon(
-          if (onUser) Icons.Outlined.MyLocation else Icons.Outlined.Place,
-          contentDescription =
-              stringResource(if (onUser) R.string.map_center_on_me else R.string.map_recenter),
-          tint = MaterialTheme.colorScheme.primary,
-      )
+      Icon(icon, contentDescription = description, tint = MaterialTheme.colorScheme.primary)
     }
   }
 }
