@@ -103,6 +103,7 @@ data class AttendanceMission(
     val startAt: Instant,
     val endAt: Instant,
     val assignees: List<AttendanceVolunteer>,
+    val address: String? = null,
     val attendanceKnown: Boolean = false,
     val attendanceFailed: Boolean = false,
     val completed: Boolean = false,
@@ -369,6 +370,7 @@ class AttendanceViewModel(
           startAt = mission.startAt,
           endAt = mission.endAt,
           assignees = mission.assigneeIds.map { AttendanceVolunteer(it, names[it]) },
+          address = mission.location?.address,
           completed = mission.completed,
       )
     }

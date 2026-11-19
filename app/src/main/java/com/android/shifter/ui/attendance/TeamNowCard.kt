@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.avatarInitials
+import com.swent.shifter.ui.components.nowcard.CountdownBar
 import com.swent.shifter.ui.components.nowcard.NowCardContainer
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.components.nowcard.NowTone
@@ -42,6 +43,7 @@ import com.swent.shifter.ui.components.nowcard.ThenStrip
 import com.swent.shifter.ui.components.nowcard.TimeBar
 import com.swent.shifter.ui.components.nowcard.accent
 import com.swent.shifter.ui.components.time.formatDuration
+import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
 import com.swent.shifter.ui.theme.shifter_avatarBackground
 import com.swent.shifter.ui.theme.shifter_success
@@ -85,15 +87,17 @@ object TeamNowCardTestTags {
 internal const val JUST_CHECKED_IN_MILLIS = 5_000L
 
 /**
- * The manager's now card while their team is at work: who is missing, how late they are and the one
- * tap that checks them in; or, with nobody missing, how many are at work and what comes next.
+ * The manager's now card, in each state of their team: who is missing and the one tap that checks
+ * them in, how many are at work and what comes next, who is expected on the mission about to start
+ * or just started, what the team does next, or that it is done.
  *
  * The card draws the state it is given and reports what the manager does. It holds no attendance of
  * its own, apart from who was just checked in, whom the state stops reporting as soon as the write
  * is pending: a volunteer it goes on reporting is drawn as missing, so a check-in that did not
  * happen is never confirmed in green. Checking the last one in turns the team's state to
- * [TeamNowState.Running], which the card moves to with their confirmation still on it. Missions
- * whose attendance is not known are said to be unknown rather than counted as nobody there.
+ * [TeamNowState.Running], or to [TeamNowState.Arriving] when another mission is at its handover,
+ * and the card moves to it with their confirmation still on it. Missions whose attendance is not
+ * known are said to be unknown rather than counted as nobody there.
  *
  * @param now the clock's tick, which the lateness, the time bars and the countdown are read at.
  * @param onCheckIn checks a volunteer in by hand, on the mission their row belongs to.
@@ -143,7 +147,7 @@ fun TeamNowCard(
       missing.map { TeamNowRow(it, justCheckedIn = false) } +
           left.map { TeamNowRow(it, justCheckedIn = true) }
 
-  val shown = teamNowCardBody(state, rows, now) ?: return
+  val shown = teamNowCardBody(state, rows, now, zone)
   NowCardContainer(
       tone = shown.tone,
       status = shown.status,
@@ -152,18 +156,37 @@ fun TeamNowCard(
       modifier = modifier,
       strip = { body -> body.next?.let { NextStrip(it, body.now) } },
   ) { body ->
+    body.detail?.let { Line(it) }
     body.missions.forEach { mission ->
-      TimeBar(
-          from = mission.startAt,
-          to = mission.endAt,
-          now = body.now,
-          // The bar says the mission is running, whatever the card's tone says of its team.
-          color = NowTone.LIVE.accent,
-          zone = zone,
-          title = mission.title,
-      )
+      if (mission.startAt > body.now) {
+        CountdownBar(
+            start = mission.startAt,
+            now = body.now,
+            window = TeamNowRules.UPCOMING_WINDOW,
+            color = NowTone.SOON.accent,
+            zone = zone,
+        )
+      } else {
+        TimeBar(
+            from = mission.startAt,
+            to = mission.endAt,
+            now = body.now,
+            // The bar says the mission is running, whatever the card's tone says of its team.
+            color = NowTone.LIVE.accent,
+            zone = zone,
+            // The headline of a card listing assignees already names their mission.
+            title = if (body.assignees.isEmpty()) mission.title else null,
+        )
+      }
     }
     body.rows.forEach { row -> VolunteerRow(row, body.now, checkIn) }
+    body.assignees.forEach { AssigneeRow(it, body.attendanceKnown) }
+    if (body.short > 0) {
+      Detail(
+          pluralStringResource(R.plurals.attendance_now_short_of, body.short, body.short),
+          shifter_warning,
+      )
+    }
     if (body.others > 0) {
       Line(pluralStringResource(R.plurals.attendance_now_others, body.others, body.others))
     }
@@ -171,35 +194,39 @@ fun TeamNowCard(
       val unknown = body.attendanceUnknown.size
       Line(pluralStringResource(R.plurals.attendance_now_unknown, unknown, unknown))
     }
-    val alert = body.tone == NowTone.ALERT
-    PrimaryButton(
-        text = stringResource(R.string.attendance_now_view_on_map),
-        onClick = onViewOnMap,
-        testTag = TeamNowCardTestTags.ACTION,
-        icon = Icons.Filled.Map,
-        colors =
-            ButtonDefaults.buttonColors(
-                // Amber while someone is missing, dark once the team is at work.
-                containerColor =
-                    if (alert) NowTone.ALERT.accent else MaterialTheme.colorScheme.surface,
-                contentColor =
-                    if (alert) MaterialTheme.colorScheme.surface
-                    else MaterialTheme.colorScheme.onSurface,
-            ),
-    )
+    // The map shows the team on its mission, so a card speaking for none leaves it out.
+    if (body.missions.isNotEmpty()) {
+      val live = body.tone == NowTone.LIVE
+      PrimaryButton(
+          text = stringResource(R.string.attendance_now_view_on_map),
+          onClick = onViewOnMap,
+          testTag = TeamNowCardTestTags.ACTION,
+          icon = Icons.Filled.Map,
+          colors =
+              ButtonDefaults.buttonColors(
+                  // The card's own color, except at work where the design draws it dark.
+                  containerColor =
+                      if (live) MaterialTheme.colorScheme.surface else body.tone.accent,
+                  contentColor =
+                      if (live) MaterialTheme.colorScheme.onSurface
+                      else MaterialTheme.colorScheme.surface,
+              ),
+      )
+    }
   }
 }
 
 /**
- * What the card says for [state], or null for the states it does not draw yet: it keeps quiet
- * rather than invent their wording. [rows] are the volunteers it draws, missing or just checked in.
+ * What the card says for [state]. [rows] are the volunteers it draws of its own, missing or just
+ * checked in; [zone] is the one the hours are read in.
  */
 @Composable
 private fun teamNowCardBody(
     state: TeamNowState,
     rows: List<TeamNowRow>,
     now: Instant,
-): TeamNowCardBody? =
+    zone: ZoneId,
+): TeamNowCardBody =
     when (state) {
       is TeamNowState.Missing -> {
         // "N volunteers missing" counts people, not rows: one volunteer missing from two missions
@@ -269,7 +296,81 @@ private fun teamNowCardBody(
             now = now,
         )
       }
-      else -> null
+      is TeamNowState.Arriving -> {
+        // The mission people are expected on: the handover, or the soonest one to come.
+        val handover = state.handovers.firstOrNull()
+        val mission = handover ?: state.next.first()
+        val started = mission.startAt <= now
+        TeamNowCardBody(
+            tone = NowTone.SOON,
+            status =
+                stringResource(
+                    if (started) R.string.attendance_now_starting_now
+                    else R.string.now_card_starting_soon
+                ),
+            headline =
+                if (started) stringResource(R.string.attendance_now_started, mission.title)
+                else
+                    stringResource(
+                        R.string.attendance_now_in,
+                        mission.title,
+                        formatDuration(minutesLeft(now, mission.startAt)),
+                    ),
+            detail =
+                mission.andPlace(
+                    stringResource(
+                        R.string.attendance_schedule,
+                        mission.startAt.formatTime(zone),
+                        mission.endAt.formatTime(zone),
+                    )
+                ),
+            rows = rows,
+            missions = listOf(mission),
+            assignees = mission.assignees,
+            // Nobody is short before the mission starts: those not there yet are expected, not
+            // missing. Once it has, only a mission whose check-ins are in can be called short.
+            short =
+                if (started && mission.isUnderstaffed && !mission.attendanceFailed) {
+                  mission.volunteersNeeded - mission.presentCount
+                } else 0,
+            attendanceUnknown = state.attendanceUnknown,
+            // At a handover the missions to come are still to come, so the strip keeps the first
+            // of them, as the card of a team at work does. Before a start, the mission shown is
+            // that first one, which no strip repeats underneath it.
+            next = if (handover != null) state.next.firstOrNull() else null,
+            // Who is there is only known once the check-ins of the mission have arrived: while
+            // they have not, nobody is shown present, so an assignee is neither said to have
+            // arrived nor to be expected.
+            attendanceKnown = mission.attendanceKnown,
+            now = now,
+        )
+      }
+      is TeamNowState.Quiet -> {
+        val mission = state.next.first()
+        val assigned = mission.assignees.size
+        TeamNowCardBody(
+            tone = NowTone.CALM,
+            status = stringResource(R.string.attendance_now_next_for_team),
+            headline =
+                stringResource(
+                    R.string.attendance_now_at_time,
+                    mission.title,
+                    mission.startAt.formatTime(zone),
+                ),
+            detail =
+                mission.andPlace(
+                    pluralStringResource(R.plurals.attendance_now_assigned, assigned, assigned)
+                ),
+            now = now,
+        )
+      }
+      TeamNowState.Done ->
+          TeamNowCardBody(
+              tone = NowTone.CALM,
+              status = stringResource(R.string.now_card_today),
+              headline = stringResource(R.string.attendance_now_done),
+              now = now,
+          )
     }
 
 /**
@@ -306,12 +407,20 @@ private data class TeamNowCardBody(
     val tone: NowTone,
     val status: String,
     val headline: String,
-    val rows: List<TeamNowRow>,
-    val missions: List<AttendanceMission>,
-    val others: Int,
-    val attendanceUnknown: List<AttendanceMission>,
-    val next: AttendanceMission?,
+    val rows: List<TeamNowRow> = emptyList(),
+    val missions: List<AttendanceMission> = emptyList(),
+    val others: Int = 0,
+    val attendanceUnknown: List<AttendanceMission> = emptyList(),
+    val next: AttendanceMission? = null,
     val now: Instant,
+    /** The assignees of a mission about to start, or just started, with whether they are there. */
+    val assignees: List<AttendanceVolunteer> = emptyList(),
+    /** How many volunteers that mission is short of, 0 when it has them all. */
+    val short: Int = 0,
+    /** Whether the check-ins of the mission the [assignees] belong to have arrived. */
+    val attendanceKnown: Boolean = false,
+    /** A line under the headline: a mission's hours and place, or how many are assigned. */
+    val detail: String? = null,
 )
 
 /** One volunteer of the card, and whether they were just checked in by hand. */
@@ -423,6 +532,40 @@ private fun Avatar(volunteer: AttendanceVolunteer) {
         fontSize = 14.sp,
         fontWeight = FontWeight.SemiBold,
     )
+  }
+}
+
+/** [text] followed by where the mission is, when it has an address: "4 assigned · Hall B". */
+@Composable
+private fun AttendanceMission.andPlace(text: String): String =
+    address?.let { stringResource(R.string.attendance_mission_subtitle, text, it) } ?: text
+
+/**
+ * An assignee of the mission at hand: there already, or still expected. Neither is said while the
+ * mission's attendance is not [known][AttendanceMission.attendanceKnown], as on the first load or
+ * when the check-ins could not be observed: nobody is shown present then, so "Expected" would
+ * report an absence nobody has seen.
+ */
+@Composable
+private fun AssigneeRow(volunteer: AttendanceVolunteer, attendanceKnown: Boolean) {
+  val arrived = volunteer.checkedInAt != null
+  AttendanceVolunteerRow(
+      volunteer = volunteer,
+      // Unused here: checking a volunteer in by hand belongs to the missing ones.
+      checkInTestTag = "",
+      leading = { Avatar(volunteer) },
+      gap = 12.dp,
+      nameStyle = NAME,
+  ) {
+    if (attendanceKnown) {
+      Detail(
+          stringResource(
+              if (arrived) R.string.attendance_now_volunteer_arrived
+              else R.string.attendance_now_volunteer_expected
+          ),
+          if (arrived) shifter_success else MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
   }
 }
 

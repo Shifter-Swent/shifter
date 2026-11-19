@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -72,6 +73,7 @@ class TeamNowCardTest {
           startAt = startAt,
           endAt = Instant.parse("2027-06-20T15:30:00Z"),
           assignees = assignees,
+          address = "Hall B",
           attendanceKnown = true,
       )
 
@@ -631,6 +633,133 @@ class TeamNowCardTest {
 
     compose.onNodeWithText("Briefing · 3 volunteers expected").assertIsDisplayed()
     compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+  }
+
+  @Test
+  fun arriving_beforeTheStart_countsDownAndSaysWhoIsThere() {
+    // Two of the three it needs have checked in early; the card names them and what is missing.
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(briefing)))
+
+    compose.onNodeWithText("Starting soon").assertIsDisplayed()
+    compose.onNodeWithText("Briefing in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("14:20–15:30 · Hall B").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.TIME_BAR).assertIsDisplayed()
+    compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
+    compose.onAllNodesWithText("Arrived").assertCountEquals(2)
+    compose.onNodeWithText("Noah Favre").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertIsDisplayed()
+    // Those not there yet are expected, not missing: nothing is short before the start.
+    compose.onNodeWithText("Short of 1 volunteer").assertDoesNotExist()
+    // The mission shown is the first one to come: no strip repeats it underneath the card.
+    compose.onNodeWithTag(TeamNowCardTestTags.NEXT).assertDoesNotExist()
+    // The team is on its way, so the map is still worth offering.
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_atTheHandover_saysTheMissionHasStarted() {
+    // The mission is under way within its grace period: those not there yet are expected, not
+    // late, and the countdown gives way to the mission's own bar.
+    val handover =
+        sorting.copy(
+            startAt = now.minus(Duration.ofMinutes(2)),
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel),
+        )
+    // Through the state the missions really give, so the handover is one teamNowState reports.
+    show(teamNowState(listOf(handover), now))
+
+    compose.onNodeWithText("Starting now").assertIsDisplayed()
+    compose.onNodeWithText("Food sorting has started").assertIsDisplayed()
+    compose.onNodeWithText("14:08–15:30 · Hall B").assertIsDisplayed()
+    compose.onNodeWithText("Arrived").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertIsDisplayed()
+    compose.onNodeWithText("Short of 1 volunteer").assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_atTheHandover_keepsTheStripOfTheNextMission() {
+    // A mission starts with one volunteer still on their way while another is coming in 10 min:
+    // the handover does not take away what the team does next, as the card at work shows it.
+    val handover =
+        sorting.copy(
+            startAt = now.minus(Duration.ofMinutes(2)),
+            assignees = listOf(chloe.copy(checkedInAt = now), daniel),
+        )
+    show(teamNowState(listOf(handover, briefing), now))
+
+    compose.onNodeWithText("Food sorting has started").assertIsDisplayed()
+    compose.onAllNodesWithTag(TeamNowCardTestTags.NEXT).assertCountEquals(1)
+    compose.onNodeWithText("Then, in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("Briefing · 2 of 3 arrived").assertIsDisplayed()
+  }
+
+  @Test
+  fun arriving_withTheAttendanceWaiting_saysNeitherArrivedNorExpected() {
+    // Its check-ins have not arrived, so nobody is shown present: calling its assignees expected
+    // would report an absence nobody has seen, early arrivals included.
+    val waiting = briefing.copy(attendanceKnown = false, assignees = listOf(chloe, daniel, noah))
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(waiting)))
+
+    compose.onNodeWithText("Briefing in 10 min").assertIsDisplayed()
+    compose.onNodeWithText("Chloé Dubois").assertIsDisplayed()
+    compose.onNodeWithText("Noah Favre").assertIsDisplayed()
+    compose.onNodeWithText("Expected").assertDoesNotExist()
+    compose.onNodeWithText("Arrived").assertDoesNotExist()
+  }
+
+  @Test
+  fun arriving_withTheCheckInNotOpen_saysNobodyIsShort() {
+    // Nobody can have arrived yet, so the mission is not short of anyone: it is only expecting.
+    show(TeamNowState.Arriving(handovers = emptyList(), next = listOf(debrief)))
+
+    compose.onNodeWithText("Debrief in 25 min").assertIsDisplayed()
+    compose.onNodeWithText("Short of 3 volunteers").assertDoesNotExist()
+    compose.onNodeWithText("Arrived").assertDoesNotExist()
+  }
+
+  @Test
+  fun quiet_saysWhatTheTeamDoesNextAndWhere() {
+    show(TeamNowState.Quiet(listOf(briefing)))
+
+    compose.onNodeWithText("Next for your team").assertIsDisplayed()
+    compose.onNodeWithText("Briefing at 14:20").assertIsDisplayed()
+    compose.onNodeWithText("3 assigned · Hall B").assertIsDisplayed()
+    // Nothing is under way: no bar of a mission, and nobody out to see on the map.
+    compose.onNodeWithTag(TeamNowCardTestTags.TIME_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun done_saysTheTeamIsDone() {
+    show(TeamNowState.Done)
+
+    compose.onNodeWithText("Today").assertIsDisplayed()
+    compose.onNodeWithText("Your team is done").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.ACTION).assertDoesNotExist()
+  }
+
+  @Test
+  fun checkIn_whenTheTeamTurnsToArriving_keepsTheConfirmationForItsMoment() {
+    // Checking the last one in can leave another mission at its handover: the card follows the
+    // state there with the confirmation still on it, as it does to a team at work.
+    val state: MutableState<TeamNowState> =
+        mutableStateOf(TeamNowState.Missing(listOf(MissingAssignee(sorting, chloe)), onDuty = 3))
+    show(state)
+    compose.mainClock.autoAdvance = false
+
+    val handover =
+        welcome.copy(startAt = now.minus(Duration.ofMinutes(2)), assignees = listOf(daniel))
+    compose.onNodeWithTag(TeamNowCardTestTags.checkIn("m1", "u1")).performClick()
+    state.value = teamNowState(listOf(handover), now)
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeBy(2_000)
+
+    compose.onNodeWithText("Welcome desk has started").assertIsDisplayed()
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertExists()
+
+    compose.mainClock.advanceTimeBy(JUST_CHECKED_IN_MILLIS)
+
+    compose.onNodeWithTag(TeamNowCardTestTags.justCheckedIn("m1", "u1")).assertDoesNotExist()
   }
 
   @Test
