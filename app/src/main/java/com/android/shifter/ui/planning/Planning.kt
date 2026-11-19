@@ -1,8 +1,17 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.planning
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -36,9 +50,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.days.DaySelection
 import com.swent.shifter.ui.components.days.DayStrip
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.eventDays
@@ -51,6 +67,7 @@ import com.swent.shifter.ui.theme.shifter_success
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.abs
 
 /**
  * A mission as the Planning shows it: one the signed-in user is personally assigned to.
@@ -92,7 +109,8 @@ object PlanningTestTags {
  * [chronological] order, with whether they checked in.
  *
  * A strip offers every day of the event, and opens on [today] (the first day before the event, the
- * last one after it). An event of one day shows its missions without the strip.
+ * last one after it); swiping the missions sideways moves to the next or previous day. An event of
+ * one day shows its missions without the strip.
  *
  * The rows are a plain column rather than a lazy list: the Planning is one section of a scrolling
  * page, and a user has a handful of missions per day.
@@ -138,7 +156,7 @@ fun Planning(
     handledRequest.intValue = revealRequest
     val day = byDay.entries.firstOrNull { (_, ms) -> ms.any { it.id == expandedMissionId } }?.key
     if (day != null && day != selected) {
-      if (day == today) selection.backToToday() else selection.pick(day)
+      selection.show(day)
       revealOnShow = expandedMissionId
     }
   }
@@ -174,26 +192,96 @@ fun Planning(
           },
       )
     }
-    val shown = byDay[selected].orEmpty()
-    if (shown.isEmpty()) {
-      DayWithoutMissions(selected, Modifier.testTag(PlanningTestTags.EMPTY_DAY))
-    }
-    // Keyed by mission, so a row keeps its own state when the missions before it change.
-    shown.forEach {
-      key(it.id) {
-        PlanningMissionRow(
-            it,
-            day = selected,
-            zone = zone,
-            expanded = it.id == expandedMissionId,
-            onClick = onMissionClick,
-            revealRequest = revealRequest,
-            revealOnShow = it.id == revealOnShow,
-        )
+    // The day's missions slide in from the side of the day they come from.
+    AnimatedContent(
+        targetState = selected,
+        transitionSpec = {
+          val towards = if (targetState > initialState) 1 else -1
+          (slideInHorizontally { it * towards } togetherWith slideOutHorizontally { -it * towards })
+              .using(SizeTransform(clip = true))
+        },
+        label = "planningDay",
+        modifier =
+            Modifier.swipeBetweenDays(selection, enabled = showsStrip) { revealOnShow = null },
+    ) { day ->
+      Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        val shown = byDay[day].orEmpty()
+        if (shown.isEmpty()) {
+          DayWithoutMissions(day, Modifier.testTag(PlanningTestTags.EMPTY_DAY))
+        }
+        // Keyed by mission, so a row keeps its own state when the missions before it change.
+        shown.forEach {
+          key(it.id) {
+            PlanningMissionRow(
+                it,
+                day = day,
+                zone = zone,
+                expanded = it.id == expandedMissionId,
+                onClick = onMissionClick,
+                revealRequest = revealRequest,
+                revealOnShow = it.id == revealOnShow,
+            )
+          }
+        }
       }
     }
   }
 }
+
+/**
+ * Swiping left shows the next day of [selection], swiping right the previous one (the other way
+ * round right to left, as in the strip). The content follows the finger, and changes day once
+ * dragged past half its width, whatever the phone, or when flung faster than [FLING_SPEED]; let go
+ * before, it slides back. At either end of the event, it stays in place. Then [onSwiped].
+ *
+ * The day strip does the same with a tap, and is the way to change days with TalkBack.
+ */
+@Composable
+private fun Modifier.swipeBetweenDays(
+    selection: DaySelection,
+    enabled: Boolean,
+    onSwiped: () -> Unit,
+): Modifier {
+  val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+  val flingSpeed = with(LocalDensity.current) { FLING_SPEED.toPx() }
+  var offset by remember { mutableFloatStateOf(0f) }
+  var width by remember { mutableIntStateOf(0) }
+  // The day the content is dragged towards, or null when there is none that way.
+  fun dayTowards(drag: Float): LocalDate? =
+      when {
+        drag == 0f -> null
+        (drag < 0) != rtl -> selection.nextDay
+        else -> selection.previousDay
+      }
+  return onSizeChanged { width = it.width }
+      .graphicsLayer { translationX = offset }
+      .draggable(
+          state =
+              rememberDraggableState { delta ->
+                val dragged = offset + delta
+                offset = if (dayTowards(dragged) != null) dragged else 0f
+              },
+          orientation = Orientation.Horizontal,
+          enabled = enabled,
+          onDragStopped = { velocity ->
+            // Past half the width, or flung the way it was dragged.
+            val far = abs(offset) >= width / 2f
+            val flung = abs(velocity) >= flingSpeed && (velocity < 0) == (offset < 0)
+            val day = dayTowards(offset)?.takeIf { far || flung }
+            if (day != null) {
+              selection.show(day)
+              onSwiped()
+              // The new day slides in from that side, see the AnimatedContent.
+              offset = 0f
+            } else {
+              animate(offset, 0f) { value, _ -> offset = value }
+            }
+          },
+      )
+}
+
+/** Per second: a flick this fast changes the day however short it is, as in Compose's pagers. */
+private val FLING_SPEED = 400.dp
 
 /** The title, and "Back to today" in place of the subtitle while another day is shown. */
 @Composable
