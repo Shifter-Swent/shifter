@@ -144,7 +144,8 @@ class ManagerOverviewContentTest {
   fun collapsedCard_showsTheMissionItsTeamScheduleAndLiveCount() {
     show(loaded)
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertTextEquals("Manager Overview")
+    // The now card says whose team this is, so the manager is given no subtitle of their own.
+    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertDoesNotExist()
     compose.onNodeWithText("My Missions").assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
@@ -757,7 +758,7 @@ class ManagerOverviewContentTest {
 
   @Test
   @OptIn(ExperimentalTestApi::class)
-  fun refreshAction_onAMissionAndTheHeader_callsOnRetry() {
+  fun refreshAction_onAMissionAndTheMissionsTitle_callsOnRetry() {
     var retries = 0
     show(AttendanceUiState(isLoading = false, missions = listOf(setUp)), onRetry = { retries++ })
 
@@ -765,8 +766,9 @@ class ManagerOverviewContentTest {
     compose
         .onNodeWithTag(ManagerOverviewTestTags.missionHeader(setUp.id), useUnmergedTree = true)
         .performCustomAccessibilityActionWithLabel("Refresh")
+    // The title of the list, the one node every reader has whether a mission is listed or not.
     compose
-        .onNodeWithTag(ManagerOverviewTestTags.SUBTITLE, useUnmergedTree = true)
+        .onNodeWithText("My Missions", useUnmergedTree = true)
         .performCustomAccessibilityActionWithLabel("Refresh")
 
     compose.runOnIdle { assertEquals(2, retries) }

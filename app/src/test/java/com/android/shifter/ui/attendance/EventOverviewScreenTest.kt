@@ -121,7 +121,9 @@ class EventOverviewScreenTest {
     show("manager")
 
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertIsDisplayed()
+    // Theirs rather than the organizer's: they are offered the mission form, and no subtitle.
+    compose.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertDoesNotExist()
     compose.onNodeWithText("Volunteer planning").assertDoesNotExist()
   }
 

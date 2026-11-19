@@ -4,7 +4,6 @@
     <!-- The manager's live attendance of the missions of their teams. These are the screen's own
          wording, not the organizer's overview_* strings: rewording one screen must not reword the
          other. -->
-    <string name="attendance_subtitle">Manager Overview</string>
     <string name="attendance_subtitle_organizer">Organizer Overview</string>
     <string name="attendance_missions_title">My Missions</string>
     <plurals name="attendance_mission_count">

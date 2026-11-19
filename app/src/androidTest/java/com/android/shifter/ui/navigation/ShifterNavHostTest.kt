@@ -1123,7 +1123,8 @@ class ShifterNavHostTest {
 
     // The manager watches the live attendance of the missions of the team they were given.
     waitForNode(ManagerOverviewTestTags.SCREEN)
-    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertIsDisplayed()
+    // The mission form is theirs: the subtitle is the organizer's, who is shown no now card.
+    composeTestRule.onNodeWithTag(ManagerOverviewTestTags.ADD_MISSION_BUTTON).assertIsDisplayed()
     // The tabs of the event are still the navigation's, under the screen.
     composeTestRule.onNodeWithTag(NavigationTestTags.BOTTOM_NAVIGATION_MENU).assertIsDisplayed()
   }

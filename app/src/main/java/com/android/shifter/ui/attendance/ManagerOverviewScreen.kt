@@ -250,7 +250,7 @@ fun ManagerOverviewContent(
           )
         }
       }
-      item { Header(state.isOrganizer) }
+      if (state.isOrganizer) item { Header() }
       if (onAddMission != null && !state.isOrganizer) {
         item {
           FormPrimaryButton(
@@ -413,20 +413,18 @@ private fun MarkCompletedDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 private val AttendanceUiState.isLoaded: Boolean
   get() = !isLoading && !loadFailed
 
-/** The part the reader has in the event watched. The event's name is in the top bar of the tab. */
+/**
+ * The part the reader has in the event watched, the organizer's alone: the manager's now card at
+ * the top already says whose team this is. The event's name is in the top bar of the tab.
+ */
 @Composable
-private fun Header(isOrganizer: Boolean) {
+private fun Header() {
   Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Text(
-        text =
-            stringResource(
-                if (isOrganizer) R.string.attendance_subtitle_organizer
-                else R.string.attendance_subtitle
-            ),
+        text = stringResource(R.string.attendance_subtitle_organizer),
         style = MaterialTheme.typography.bodySmall,
         color = shifter_mutedText,
-        // Always there, so screen readers can refresh with no mission listed too.
-        modifier = Modifier.refreshAction().testTag(ManagerOverviewTestTags.SUBTITLE),
+        modifier = Modifier.testTag(ManagerOverviewTestTags.SUBTITLE),
     )
   }
 }
@@ -542,7 +540,8 @@ private fun MissionsHeader(count: Int?) {
         style = MaterialTheme.typography.bodyMedium,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onBackground,
-        modifier = Modifier.weight(1f),
+        // Always there, so screen readers can refresh with no mission listed too.
+        modifier = Modifier.weight(1f).refreshAction(),
     )
     if (count != null) {
       Text(
