@@ -91,6 +91,16 @@ class ScanViewfinderTest {
   }
 
   @Test
+  fun hint_canTellAnotherStateThanTheCorners() {
+    compose.setContent {
+      ShifterTheme { ScanViewfinder(state = ViewfinderState.UNKNOWN, hint = ViewfinderState.FOUND) }
+    }
+
+    tag(ScanScreenTestTags.HINT).assertTextEquals(CODE_READ)
+    tag(ScanScreenTestTags.INVALID_CODE).assertDoesNotExist()
+  }
+
+  @Test
   fun hint_isALiveRegion() {
     show(ViewfinderState.SEARCHING)
 

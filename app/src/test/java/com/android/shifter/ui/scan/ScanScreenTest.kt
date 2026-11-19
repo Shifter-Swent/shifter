@@ -196,6 +196,25 @@ class ScanScreenTest {
   }
 
   @Test
+  fun systemBack_leavesTheScreen() {
+    show()
+
+    compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+
+    assertEquals(1, backClicks)
+  }
+
+  @Test
+  fun codeRead_afterLeaving_isNotReported() {
+    val scanner = show()
+
+    tag(ScanScreenTestTags.ENTER_CODE).performClick()
+    scanner.read("ABC234")
+
+    assertEquals(emptyList<String>(), scanned)
+  }
+
+  @Test
   fun torch_togglesTheCameraTorch() {
     val scanner = show()
 

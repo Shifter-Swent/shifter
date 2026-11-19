@@ -223,6 +223,46 @@ class JoinEventViewModelTest {
   }
 
   @Test
+  fun cancelLookup_whileLookingUp_dropsWhatItFindsAndKeepsTheCode() {
+    val lookup = CompletableDeferred<Event?>()
+    coEvery { events.getEventByJoinCode("ABC234") } coAnswers { lookup.await() }
+    viewModel.onCodeScanned("ABC234")
+
+    viewModel.cancelLookup()
+    lookup.complete(EVENT)
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertNull(viewModel.uiState.value.event)
+    assertNull(viewModel.uiState.value.error)
+    assertFalse(viewModel.uiState.value.isLoading)
+  }
+
+  @Test
+  fun cancelLookup_afterTheLookup_dropsItsError() {
+    coEvery { events.getEventByJoinCode(any()) } returns null
+    viewModel.onCodeScanned("ABC234")
+
+    viewModel.cancelLookup()
+
+    assertEquals("ABC234", viewModel.uiState.value.joinCode)
+    assertNull(viewModel.uiState.value.error)
+  }
+
+  @Test
+  fun cancelLookup_whileSendingARequest_keepsIt() {
+    loadEvent()
+    val sent = CompletableDeferred<MembershipRequest>()
+    coEvery { requests.apply(any(), any()) } coAnswers { sent.await() }
+    viewModel.applyToEvent()
+
+    viewModel.cancelLookup()
+    sent.complete(request(MembershipRequestStatus.PENDING))
+
+    assertEquals(EVENT, viewModel.uiState.value.event)
+    assertEquals(MembershipRequestStatus.PENDING, viewModel.uiState.value.requestStatus)
+  }
+
+  @Test
   fun findEvent_clearsTheTeamPickedInThePreviousEvent() {
     loadEvent()
 

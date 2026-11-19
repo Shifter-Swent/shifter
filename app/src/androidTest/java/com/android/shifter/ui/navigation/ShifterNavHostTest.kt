@@ -315,20 +315,11 @@ class ShifterNavHostTest {
   fun joinEvent_scanningItsCodeShowsTheEventWithTheCodeFilledIn() {
     val event = createEvent(signIn())
     signIn()
-    // The scan screen opens the camera only once allowed, as it would ask the volunteer.
-    InstrumentationRegistry.getInstrumentation()
-        .uiAutomation
-        .grantRuntimePermission(composeTestRule.activity.packageName, Manifest.permission.CAMERA)
-    showSignedInApp()
-    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
-    composeTestRule
-        .onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON)
-        .performScrollTo()
-        .performClick()
-    waitForNode(ScanScreenTestTags.HINT)
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) { qrScanner.isListening }
+    openScanScreen()
 
     composeTestRule.runOnIdle { qrScanner.read(event.joinCode) }
+    waitForNode(ScanScreenTestTags.CONTINUE)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.CONTINUE).performClick()
 
     waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
@@ -337,6 +328,23 @@ class ShifterNavHostTest {
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD)
         .assertTextContains(event.joinCode)
+  }
+
+  @Test
+  fun joinEvent_scanningACodeNoEventUsesLetsScanAgain() {
+    val event = createEvent(signIn())
+    signIn()
+    openScanScreen()
+
+    composeTestRule.runOnIdle { qrScanner.read("ZZZZ22") }
+    waitForNode(ScanScreenTestTags.RETRY)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.RETRY).performClick()
+    composeTestRule.runOnIdle { qrScanner.read(event.joinCode) }
+    waitForNode(ScanScreenTestTags.CONTINUE)
+    composeTestRule.onNodeWithTag(ScanScreenTestTags.CONTINUE).performClick()
+
+    waitForNode(JoinEventScreenTestTags.EVENT_TITLE)
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.EVENT_TITLE).assertTextEquals(event.title)
   }
 
   @Test
@@ -2013,6 +2021,22 @@ class ShifterNavHostTest {
 
   /** How the 24-hour time picker describes [hour] on its dial, in English. */
   private fun dialHour(hour: Int): String = "${hour % 24} hours"
+
+  /** Opens the scan from the events list, through Join Event, and waits until it reads codes. */
+  private fun openScanScreen() {
+    // The scan screen opens the camera only once allowed, as it would ask the volunteer.
+    InstrumentationRegistry.getInstrumentation()
+        .uiAutomation
+        .grantRuntimePermission(composeTestRule.activity.packageName, Manifest.permission.CAMERA)
+    showSignedInApp()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON)
+        .performScrollTo()
+        .performClick()
+    waitForNode(ScanScreenTestTags.HINT)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { qrScanner.isListening }
+  }
 
   private fun waitForNode(tag: String) {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {

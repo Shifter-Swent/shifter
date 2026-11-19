@@ -35,6 +35,11 @@
     <string name="scan_code_read">Code read</string>
     <string name="scan_enter_code_instead">Enter the code instead</string>
     <string name="scan_torch">Torch</string>
+    <!-- Scan a QR code: the result of the code read -->
+    <string name="scan_result_code">Code</string>
+    <string name="scan_continue">Continue</string>
+    <string name="scan_again">Scan again</string>
+    <string name="scan_unknown_code_help">Ask the organizer for the event\'s QR code, or type its code.</string>
     <!-- Scan a QR code: the camera fallback -->
     <string name="scan_fallback_refused_title">Shifter can\'t use the camera</string>
     <string name="scan_fallback_refused_message">You can still join with the event\'s code. To scan, allow the camera.</string>
