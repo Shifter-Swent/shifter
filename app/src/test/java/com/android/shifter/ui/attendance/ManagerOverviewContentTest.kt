@@ -37,6 +37,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.TeamFilterMenuTestTags
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.isIndeterminateSpinner
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -131,6 +133,15 @@ class ManagerOverviewContentTest {
 
   private fun pick(day: LocalDate) = compose.onNodeWithTag(DayStripTestTags.day(day)).performClick()
 
+  /** Opens the team menu, then picks the entry tagged [tag]. */
+  private fun pickTeam(tag: String) {
+    scrollTo(TeamFilterMenuTestTags.MENU).performClick()
+    compose.onNodeWithTag(tag).performClick()
+  }
+
+  /** Opens the team menu, to read its entries. */
+  private fun openTeamMenu() = scrollTo(TeamFilterMenuTestTags.MENU).performClick()
+
   /** Brings [tag] into the lazy list, so a card below the fold can be read and tapped. */
   private fun scrollTo(tag: String): SemanticsNodeInteraction {
     compose.onNodeWithTag(ManagerOverviewTestTags.SCREEN).performScrollToNode(hasTestTag(tag))
@@ -151,7 +162,6 @@ class ManagerOverviewContentTest {
     // The now card says whose team this is, so the manager is given no subtitle of their own.
     compose.onNodeWithTag(ManagerOverviewTestTags.SUBTITLE).assertDoesNotExist()
     compose.onNodeWithText("My Missions").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
     // Times alone, since the mission runs on the day being read.
     compose.onNodeWithText("Logistics · 09:00–11:00").assertIsDisplayed()
@@ -196,15 +206,18 @@ class ManagerOverviewContentTest {
   fun missionOfNoTeamOrOfAGoneTeam_namesThemGeneralAndUnknown() {
     val general = setUp.copy(id = "general", teamId = null, teamName = null)
     val gone = setUp.copy(id = "gone", teamId = "deleted", teamName = null)
-    show(loaded.copy(missions = listOf(general, gone)))
+    show(loaded.copy(missions = listOf(general, gone, setUp)))
 
     scrollTo(ManagerOverviewTestTags.mission("general"))
     compose.onNodeWithText("General · 09:00–11:00").assertIsDisplayed()
     // A team that no longer exists is not shown as General, which means no team at all.
     scrollTo(ManagerOverviewTestTags.mission("gone"))
     compose.onNodeWithText("Unknown team · 09:00–11:00").assertIsDisplayed()
-    // It keeps a chip of its own, so its missions stay filterable; a mission of no team has none.
-    scrollTo(ManagerOverviewTestTags.teamChip("deleted")).assertIsDisplayed()
+    // It keeps an entry of its own, so its missions stay filterable; a mission of no team has none.
+    openTeamMenu()
+    compose
+        .onNodeWithTag(ManagerOverviewTestTags.teamChip("deleted"))
+        .assertTextEquals("Unknown team")
   }
 
   @Test
@@ -469,13 +482,48 @@ class ManagerOverviewContentTest {
   @Test
   fun selectingATeam_listsOnlyItsMissions() {
     show(loaded)
+    openTeamMenu()
     compose.onNodeWithTag(ManagerOverviewTestTags.ALL_TEAMS_CHIP).assertIsSelected()
 
     compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("bar")).performClick()
 
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
+  }
+
+  @Test
+  fun teamMenu_showsTheTeamPicked() {
+    show(loaded)
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("All teams")
+
+    pickTeam(ManagerOverviewTestTags.teamChip("bar"))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar")
+  }
+
+  @Test
+  fun oneTeam_hasNoTeamMenu() {
+    show(loaded.copy(missions = listOf(setUp)))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
+  }
+
+  @Test
+  fun teamPicked_downToOneTeam_stopsFiltering() {
+    val general = setUp.copy(id = "general", title = "Brief the volunteers", teamId = null)
+    var state by mutableStateOf(loaded.copy(missions = listOf(setUp, drinks, general)))
+    compose.setContent {
+      ShifterTheme { ManagerOverviewContent(state = state, now = now, onRetry = {}, zone = utc) }
+    }
+    pickTeam(ManagerOverviewTestTags.teamChip("bar"))
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("general")).assertDoesNotExist()
+
+    // Logistics is gone after a refresh: no menu is left to undo the filter, so it stops.
+    state = loaded.copy(missions = listOf(drinks, general))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertDoesNotExist()
+    scrollTo(ManagerOverviewTestTags.mission("general")).assertIsDisplayed()
   }
 
   @Test
@@ -483,8 +531,8 @@ class ManagerOverviewContentTest {
     show(loaded)
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("bar")).performClick()
-    compose.onNodeWithTag(ManagerOverviewTestTags.ALL_TEAMS_CHIP).performClick()
+    pickTeam(ManagerOverviewTestTags.teamChip("bar"))
+    pickTeam(ManagerOverviewTestTags.ALL_TEAMS_CHIP)
 
     compose.onNodeWithTag(ManagerOverviewTestTags.present("m1")).assertExists()
   }
@@ -502,14 +550,15 @@ class ManagerOverviewContentTest {
         )
       }
     }
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("logistics")).performClick()
+    pickTeam(ManagerOverviewTestTags.teamChip("logistics"))
     compose.onNodeWithTag(ManagerOverviewTestTags.missionHeader("m1")).performClick()
 
     restorer.emulateSavedInstanceStateRestore()
 
     // Rotating the phone neither resets the filter nor closes the card opened under it.
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("logistics")).assertIsSelected()
     compose.onNodeWithTag(ManagerOverviewTestTags.present("m1")).assertExists()
+    openTeamMenu()
+    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("logistics")).assertIsSelected()
   }
 
   @Test
@@ -727,11 +776,12 @@ class ManagerOverviewContentTest {
 
   @Test
   fun reload_withMissionsAlreadyShown_keepsThemAndTheirCount() {
-    show(loaded.copy(isLoading = true))
+    // One team, so the count is not taken over by the team menu.
+    show(loaded.copy(missions = listOf(setUp), isLoading = true))
 
     compose.onNodeWithTag(ManagerOverviewTestTags.LOADING).assertDoesNotExist()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
   }
 
   @Test
@@ -902,7 +952,7 @@ class ManagerOverviewContentTest {
     assertTrue(
         "the card comes before the team filters",
         card.getBoundsInRoot().top <
-            compose.onNodeWithTag(ManagerOverviewTestTags.ALL_TEAMS_CHIP).getBoundsInRoot().top,
+            compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).getBoundsInRoot().top,
     )
     assertTrue(
         "and before the missions",
@@ -1020,7 +1070,6 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(TeamNowCardTestTags.CARD).assertDoesNotExist()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
 
     state = loaded
 
@@ -1041,6 +1090,16 @@ class ManagerOverviewContentTest {
       drinks.copy(id = "m3", title = "Close the bar", startAt = start.plus(Duration.ofDays(1)))
   private val threeDays =
       loaded.copy(missions = listOf(setUp, drinks, barTomorrow), eventPeriod = eventPeriod)
+  /** Logistics alone, today and tomorrow: no team menu, so the count and "Back to today" show. */
+  private val oneTeamTwoDays =
+      loaded.copy(
+          missions =
+              listOf(
+                  setUp,
+                  setUp.copy(id = "m4", title = "Unload the trucks", startAt = barTomorrow.startAt),
+              ),
+          eventPeriod = eventPeriod,
+      )
 
   @Test
   fun eventOfSeveralDays_opensOnTodayWithItsMissionsOnly() {
@@ -1050,9 +1109,26 @@ class ManagerOverviewContentTest {
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
     scrollTo(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithText("Close the bar").assertDoesNotExist()
+  }
+
+  @Test
+  fun oneTeam_countsTheMissionsOfTheDayShown() {
+    show(oneTeamTwoDays)
+
     // The missions of the day shown, not of the event.
-    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("2 missions")
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertTextEquals("1 mission")
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun severalTeams_keepTheMenuOnAnotherDay_withoutBackToToday() {
+    show(threeDays)
+
+    pick(tomorrow)
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertIsDisplayed()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertDoesNotExist()
   }
 
   @Test
@@ -1063,7 +1139,7 @@ class ManagerOverviewContentTest {
     compose.onNodeWithText("Close the bar").assertIsDisplayed()
     compose.onNodeWithText("Set up equipment").assertDoesNotExist()
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("bar")).performClick()
+    pickTeam(ManagerOverviewTestTags.teamChip("bar"))
     compose.onNodeWithText("Close the bar").assertIsDisplayed()
     // The day stays picked when the team changes, and the other way round.
     compose.onNodeWithTag(DayStripTestTags.day(tomorrow)).assertIsSelected()
@@ -1077,7 +1153,7 @@ class ManagerOverviewContentTest {
   fun dayTheFilterLeavesEmpty_saysSo_andKeepsEveryDay() {
     show(threeDays)
 
-    compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("logistics")).performClick()
+    pickTeam(ManagerOverviewTestTags.teamChip("logistics"))
     pick(tomorrow)
 
     compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY_DAY).assertIsDisplayed()
@@ -1089,16 +1165,34 @@ class ManagerOverviewContentTest {
 
   @Test
   fun backToToday_takesTheCountsPlaceOnAnotherDay_andShowsTodayAgain() {
-    show(threeDays)
+    show(oneTeamTwoDays)
     pick(today.minusDays(1))
 
     compose.onNodeWithTag(ManagerOverviewTestTags.EMPTY_DAY).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.MISSION_COUNT).assertDoesNotExist()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).performClick()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).performClick()
 
     compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
     compose.onNodeWithText("Set up equipment").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+  }
+
+  @Test
+  fun tappingTodayInTheStrip_followsTodayAgain() {
+    // A filter takes the room of "Back to today": tapping today in the strip is the way back.
+    var now by mutableStateOf(this.now)
+    compose.setContent {
+      ShifterTheme {
+        ManagerOverviewContent(state = threeDays, now = now, onRetry = {}, zone = utc)
+      }
+    }
+    pick(tomorrow)
+
+    pick(today)
+    // The night goes past 04:00.
+    now = Instant.parse("2027-06-21T04:30:00Z")
+
+    compose.onNodeWithTag(DayStripTestTags.day(tomorrow)).assertIsSelected()
   }
 
   @Test
@@ -1136,6 +1230,6 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(DayStripTestTags.day(today.plusDays(3))).assertIsSelected()
     compose.onNodeWithText("Close the bar").assertIsDisplayed()
-    compose.onNodeWithTag(ManagerOverviewTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 }

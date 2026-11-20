@@ -23,14 +23,22 @@ private val TODAY: LocalDate = FRIDAY.plusDays(1)
 private val WEEK: List<LocalDate> = (0L until 7L).map { FRIDAY.plusDays(it) }
 private val WEEK_WITH_MISSIONS: Set<LocalDate> = WEEK.toSet() - FRIDAY.plusDays(3)
 
+/** A weekend festival, Friday 13 to Sunday 15: too short to fill the strip. */
+private val WEEKEND: List<LocalDate> = WEEK.take(3)
+
 @Composable
-private fun PreviewHost(selected: LocalDate) {
+private fun PreviewHost(
+    selected: LocalDate,
+    days: List<LocalDate> = WEEK,
+    daysWithMissions: Set<LocalDate> = WEEK_WITH_MISSIONS,
+) {
   ShifterTheme {
-    // The width of the Planning on a phone, so the strip scrolls as it does in the app.
+    // The width of the Planning on a phone, which the week just fills: a shorter event is padded
+    // with the days around it, a longer one scrolls.
     Box(modifier = Modifier.background(MaterialTheme.colorScheme.background).padding(16.dp)) {
       DayStrip(
-          days = WEEK,
-          daysWithMissions = WEEK_WITH_MISSIONS,
+          days = days,
+          daysWithMissions = daysWithMissions,
           selected = selected,
           today = TODAY,
           onSelect = {},
@@ -51,3 +59,8 @@ private fun TomorrowSelectedPreview() = PreviewHost(selected = TODAY.plusDays(1)
 @Preview(name = "A day without missions selected")
 @Composable
 private fun EmptyDaySelectedPreview() = PreviewHost(selected = FRIDAY.plusDays(3))
+
+@Preview(name = "A short event, padded with the days around it")
+@Composable
+private fun ShortEventPreview() =
+    PreviewHost(selected = TODAY, days = WEEKEND, daysWithMissions = WEEKEND.toSet())

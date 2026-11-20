@@ -23,6 +23,7 @@ import androidx.compose.ui.test.swipeWithVelocity
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
@@ -170,7 +171,7 @@ class PlanningTest {
     compose.onNodeWithTag(DayStripTestTags.STRIP).assertIsDisplayed()
     missionShown("sat")
     missionHidden("sun")
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test
@@ -180,7 +181,7 @@ class PlanningTest {
     compose
         .onNodeWithTag(PlanningTestTags.EMPTY_DAY)
         .assertTextEquals("Nothing planned on Friday 13 June")
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test
@@ -199,7 +200,7 @@ class PlanningTest {
 
     missionShown("sun")
     missionHidden("sat")
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertIsDisplayed()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertIsDisplayed()
   }
 
   @Test
@@ -207,10 +208,10 @@ class PlanningTest {
     show(weekend, festival)
     pick(SUNDAY)
 
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).performClick()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).performClick()
 
     missionShown("sat")
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test
@@ -222,7 +223,7 @@ class PlanningTest {
     missionShown("sun")
     missionHidden("sat")
     daySelected(SUNDAY)
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertIsDisplayed()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertIsDisplayed()
   }
 
   @Test
@@ -354,7 +355,7 @@ class PlanningTest {
     swipeRightOn(PlanningTestTags.mission("sun"))
 
     missionShown("sat")
-    compose.onNodeWithTag(PlanningTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test

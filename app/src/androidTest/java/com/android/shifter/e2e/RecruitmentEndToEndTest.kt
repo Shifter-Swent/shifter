@@ -13,6 +13,7 @@ import com.swent.shifter.e2e.EndToEndDriver.Companion.TIMEOUT_MILLIS
 import com.swent.shifter.e2e.EndToEndDriver.GoogleAccount
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.user.UserMode
+import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
 import com.swent.shifter.ui.membership.MembershipRequestsTestTags
@@ -120,7 +121,9 @@ class RecruitmentEndToEndTest {
     app.click(MyEventsTestTags.eventAction(event.id))
     app.waitForNode(OrganizerOverviewScreenTestTags.EMPTY_MISSIONS)
     // The team created in Team Setup is offered as a filter of the event's missions.
+    app.click(TeamFilterMenuTestTags.MENU)
     app.waitForNode(OrganizerOverviewScreenTestTags.teamChip(team.id))
+    app.click(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP)
 
     app.click(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON)
     app.waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
@@ -152,6 +155,7 @@ class RecruitmentEndToEndTest {
         .onNodeWithTag(OrganizerOverviewScreenTestTags.PROGRESS_COUNT)
         .assertTextEquals(context.getString(R.string.overview_progress_count, 0, 1))
     // Filtering on its team still shows it.
+    app.click(TeamFilterMenuTestTags.MENU)
     app.click(OrganizerOverviewScreenTestTags.teamChip(team.id))
     app.waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
 

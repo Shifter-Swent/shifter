@@ -3,6 +3,7 @@ package com.swent.shifter.ui.overview
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -12,6 +13,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.components.TeamFilterMenuTestTags
+import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
@@ -80,10 +83,7 @@ class OrganizerOverviewScreenTest {
   fun selectingAll_listsEveryMissionWithItsTeam() {
     show(loaded)
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).assertIsSelected()
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
-        .assertTextEquals("Missions · All teams (4)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (4)")
     missions.forEach {
       compose
           .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(it.id))
@@ -110,10 +110,7 @@ class OrganizerOverviewScreenTest {
   fun selectingATeam_listsOnlyItsMissions() {
     show(loaded.copy(selectedTeamId = "bar"))
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("bar")).assertIsSelected()
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
-        .assertTextEquals("Missions · Bar (2)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (2)")
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m4")).assertIsDisplayed()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.mission("m1")).assertDoesNotExist()
@@ -121,11 +118,23 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun chips_reportTheSelectedTeam() {
+  fun teamMenu_marksTheTeamPicked() {
+    show(loaded.copy(selectedTeamId = "bar"))
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar").performClick()
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("bar")).assertIsSelected()
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).assertIsNotSelected()
+  }
+
+  @Test
+  fun teamMenu_reportsTheTeamPicked() {
     val selected = mutableListOf<String?>()
     show(loaded, OrganizerOverviewActions(onSelectTeam = { selected += it }))
 
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("All teams").performClick()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.teamChip("logistics")).performClick()
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).performClick()
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP).performClick()
 
     compose.runOnIdle { assertEquals(listOf("logistics", null), selected) }
@@ -346,10 +355,8 @@ class OrganizerOverviewScreenTest {
     compose.onNodeWithText("Unload the trucks").assertDoesNotExist()
     compose.onNodeWithText("Close the bar").assertDoesNotExist()
     // The missions of the day shown are counted, not those of the event.
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
-        .assertTextEquals("Missions · All teams (2)")
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (2)")
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test
@@ -360,9 +367,7 @@ class OrganizerOverviewScreenTest {
 
     compose.onNodeWithText("Close the bar").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Serve drinks").assertDoesNotExist()
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER)
-        .assertTextEquals("Missions · Bar (1)")
+    compose.onNodeWithTag(DayHeaderTestTags.TITLE).assertTextEquals("Missions (1)")
   }
 
   @Test
@@ -379,16 +384,15 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun backToToday_showsTodayAgain() {
+  fun anotherDay_hasTheTeamMenuInPlaceOfBackToToday_andTodaysChipBringsItBack() {
     show(threeDays)
     pick(monday)
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).performScrollTo()
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).performClick()
+    compose.onNodeWithTag(DayHeaderTestTags.BACK_TO_TODAY).assertDoesNotExist()
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertIsDisplayed()
+    pick(today)
 
-    compose.onNodeWithTag(DayStripTestTags.day(today)).assertIsSelected()
     compose.onNodeWithText("Serve drinks").performScrollTo().assertIsDisplayed()
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY).assertDoesNotExist()
   }
 
   @Test

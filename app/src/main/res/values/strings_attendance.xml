@@ -10,7 +10,6 @@
         <item quantity="one">%1$d mission</item>
         <item quantity="other">%1$d missions</item>
     </plurals>
-    <string name="attendance_filter_all">All</string>
     <string name="attendance_team_general">General</string>
     <string name="attendance_team_unknown">Unknown team</string>
     <string name="attendance_mission_subtitle">%1$s · %2$s</string>

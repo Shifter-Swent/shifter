@@ -4,7 +4,6 @@ package com.swent.shifter.ui.overview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,7 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
-import com.swent.shifter.ui.components.days.BackToToday
+import com.swent.shifter.ui.components.TeamFilterMenu
+import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
@@ -64,13 +63,11 @@ object OrganizerOverviewScreenTestTags {
   const val PROGRESS_PERCENT = "OrganizerOverviewProgressPercent"
   const val PROGRESS_COUNT = "OrganizerOverviewProgressCount"
   const val ALL_TEAMS_CHIP = "OrganizerOverviewTeamChip_All"
-  const val MISSIONS_HEADER = "OrganizerOverviewMissionsHeader"
   const val LOADING_INDICATOR = "OrganizerOverviewLoadingIndicator"
   const val LOAD_ERROR = "OrganizerOverviewLoadError"
   const val RETRY_BUTTON = "OrganizerOverviewRetryButton"
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
-  const val BACK_TO_TODAY = "OrganizerOverviewBackToToday"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
   const val ASSIGN_DIALOG = "OrganizerOverviewAssignDialog"
   const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
@@ -185,11 +182,26 @@ private fun OverviewColumn(
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
     if (state.loadFailed) LoadError(actions.onRetry)
-    TeamFilters(state.teams, state.selectedTeamId, actions.onSelectTeam)
-    if (dayPicker.showsStrip) {
-      // The days of the team picked get a dot.
-      EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
-    }
+    // No "Back to today" next to the filter: the strip's "Today" brings today back.
+    DayHeader(
+        title = missionsTitle(state, dayPicker),
+        filter = {
+          TeamFilterMenu(
+              teams = state.teams.map { it.id to it.name },
+              selectedTeamId = state.selectedTeamId,
+              onSelectTeam = actions.onSelectTeam,
+              allTestTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
+              teamTestTag = OrganizerOverviewScreenTestTags::teamChip,
+          )
+        },
+        // The days of the team picked get a dot.
+        strip =
+            if (dayPicker.showsStrip) {
+              {
+                EventDayStrip(dayPicker, dayPicker.daysOf(state.visibleMissions.map { it.startAt }))
+              }
+            } else null,
+    )
     Missions(state, dayPicker, actions.onAssign, actions.onEditMission)
     NotificationCard(actions.onSendNotification)
   }
@@ -314,61 +326,19 @@ private fun LoadError(onRetry: () -> Unit) {
   }
 }
 
-/** "All" followed by the teams of the event; exactly one is selected. */
+/**
+ * "Missions (4)": the missions of the team picked on the day shown. The team is left to the menu
+ * next to it, which already names it.
+ */
 @Composable
-private fun TeamFilters(
-    teams: List<OverviewTeam>,
-    selectedId: String?,
-    onSelectTeam: (String?) -> Unit,
-) {
-  Row(
-      modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    TeamChip(
-        label = stringResource(R.string.overview_filter_all),
-        selected = selectedId == null,
-        onClick = { onSelectTeam(null) },
-        testTag = OrganizerOverviewScreenTestTags.ALL_TEAMS_CHIP,
-    )
-    teams.forEach { team ->
-      TeamChip(
-          label = team.name,
-          selected = team.id == selectedId,
-          onClick = { onSelectTeam(team.id) },
-          testTag = OrganizerOverviewScreenTestTags.teamChip(team.id),
-      )
-    }
-  }
-}
-
-@Composable
-private fun TeamChip(label: String, selected: Boolean, onClick: () -> Unit, testTag: String) {
-  val colorScheme = MaterialTheme.colorScheme
-  val shape = RoundedCornerShape(20.dp)
-  Box(
-      modifier =
-          Modifier.clip(shape)
-              .background(
-                  if (selected) colorScheme.primaryContainer else colorScheme.surfaceVariant
-              )
-              .border(1.dp, if (selected) colorScheme.primary else colorScheme.outline, shape)
-              .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
-              .padding(horizontal = 12.dp, vertical = 7.dp)
-              .testTag(testTag)
-  ) {
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = if (selected) colorScheme.primary else colorScheme.onSurfaceVariant,
-    )
-  }
+private fun missionsTitle(state: OrganizerOverviewUiState, dayPicker: EventDayPicker): String {
+  val count = state.visibleMissions.count { dayPicker.isShown(it.startAt) }
+  return stringResource(R.string.overview_missions_count, count)
 }
 
 /**
- * The missions of the selected team on the day [dayPicker] shows, under a header naming the team
- * and counting them, with "Back to today" while another day is shown.
+ * The missions of the selected team on the day [dayPicker] shows, under the [DayHeader] that counts
+ * them; or why there are none.
  */
 @Composable
 private fun Missions(
@@ -379,26 +349,7 @@ private fun Missions(
 ) {
   val teamMissions = state.visibleMissions
   val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
-  val onBackToToday = dayPicker.onBackToToday
-  val selectedTeam = state.teams.firstOrNull { it.id == state.selectedTeamId }
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-      Text(
-          text =
-              if (selectedTeam == null) {
-                stringResource(R.string.overview_missions_all, missions.size)
-              } else {
-                stringResource(R.string.overview_missions_team, selectedTeam.name, missions.size)
-              },
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.onBackground,
-          modifier = Modifier.weight(1f).testTag(OrganizerOverviewScreenTestTags.MISSIONS_HEADER),
-      )
-      if (onBackToToday != null) {
-        BackToToday(onBackToToday, Modifier.testTag(OrganizerOverviewScreenTestTags.BACK_TO_TODAY))
-      }
-    }
     when {
       missions.isNotEmpty() ->
           missions.forEach { mission ->
@@ -425,7 +376,7 @@ private fun Missions(
           Text(
               text =
                   stringResource(
-                      if (selectedTeam == null) R.string.overview_no_missions
+                      if (state.selectedTeamId == null) R.string.overview_no_missions
                       else R.string.overview_no_team_missions
                   ),
               style = MaterialTheme.typography.bodySmall,

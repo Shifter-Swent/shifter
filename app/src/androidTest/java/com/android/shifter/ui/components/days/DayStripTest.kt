@@ -1,16 +1,22 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.days
 
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.LocalDate
@@ -36,6 +42,7 @@ class DayStripTest {
       daysWithMissions: Set<LocalDate> = setOf(friday, saturday, sunday),
       selected: LocalDate = saturday,
       today: LocalDate = saturday,
+      modifier: Modifier = Modifier,
   ) {
     compose.setContent {
       ShifterTheme {
@@ -45,12 +52,77 @@ class DayStripTest {
             selected = selected,
             today = today,
             onSelect = { picked = it },
+            modifier = modifier,
         )
       }
     }
   }
 
   private fun day(date: LocalDate) = compose.onNodeWithTag(DayStripTestTags.day(date))
+
+  private fun outsideDay(date: LocalDate) = compose.onNodeWithTag(DayStripTestTags.outsideDay(date))
+
+  /**
+   * Room for 7 chips of 44 dp with 6 dp between them, and some to spare: never 6 by rounding. Even
+   * on a narrower screen, as the CI's 320 dp emulator, which would otherwise cut it to 6.
+   */
+  private val sevenDaysWide = Modifier.requiredWidth(360.dp)
+
+  @Test
+  fun aShortEvent_isPaddedWithTheDaysAroundIt_untilTheStripIsFull() {
+    // Friday to Monday in room for 7: one day before, two after.
+    show(modifier = sevenDaysWide)
+
+    outsideDay(friday.minusDays(1))
+        .assert(hasAnyChild(hasText("Thu")))
+        .assert(hasAnyChild(hasText("12")))
+    outsideDay(monday.plusDays(1)).assertExists()
+    outsideDay(monday.plusDays(2)).assertExists()
+    outsideDay(friday.minusDays(2)).assertDoesNotExist()
+    outsideDay(monday.plusDays(3)).assertDoesNotExist()
+    day(friday).assertExists()
+  }
+
+  @Test
+  fun aPaddedDay_cannotBePicked_andIsNotReadOut() {
+    show(modifier = sevenDaysWide)
+
+    outsideDay(monday.plusDays(1)).performClick()
+
+    assertEquals(null, picked)
+    outsideDay(monday.plusDays(1))
+        .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Selected))
+    compose
+        .onNodeWithTag(
+            DayStripTestTags.missionsDot(monday.plusDays(1)),
+            useUnmergedTree = true,
+        )
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun aPaddedDay_thatIsToday_isNamedSo() {
+    // The event starts tomorrow, Friday: today is the Thursday added before it.
+    show(selected = friday, today = friday.minusDays(1), modifier = sevenDaysWide)
+
+    outsideDay(friday.minusDays(1)).assert(hasAnyChild(hasText("Today")))
+  }
+
+  @Test
+  fun aLongEvent_isNotPadded() {
+    val month = (0L until 30L).map { friday.plusDays(it) }
+
+    show(
+        days = month,
+        daysWithMissions = month.toSet(),
+        selected = friday,
+        modifier = sevenDaysWide,
+    )
+
+    outsideDay(friday.minusDays(1)).assertDoesNotExist()
+    day(friday.plusDays(10)).assertIsNotDisplayed()
+  }
 
   @Test
   fun dayStrip_showsTheWeekdayAndTheDayOfTheMonth() {
