@@ -1,7 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.days
 
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -62,8 +62,11 @@ class DayStripTest {
 
   private fun outsideDay(date: LocalDate) = compose.onNodeWithTag(DayStripTestTags.outsideDay(date))
 
-  /** Room for 7 chips of 44 dp with 6 dp between them, and some to spare: never 6 by rounding. */
-  private val sevenDaysWide = Modifier.width(360.dp)
+  /**
+   * Room for 7 chips of 44 dp with 6 dp between them, and some to spare: never 6 by rounding. Even
+   * on a narrower screen, as the CI's 320 dp emulator, which would otherwise cut it to 6.
+   */
+  private val sevenDaysWide = Modifier.requiredWidth(360.dp)
 
   @Test
   fun aShortEvent_isPaddedWithTheDaysAroundIt_untilTheStripIsFull() {
