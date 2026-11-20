@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<!--
+    The texts of the notifications, read through NotificationTexts.
+
+    One section per NotificationKind, filled by the task that writes that kind, so the
+    notification tasks of sprint 7 never edit the same lines. Inside a section, every name starts
+    with the prefix of its section; a count goes in a <plurals>, never in an if on the count.
+-->
+<resources>
+
+    <!-- Shared: the name of each kind's Android channel and Settings switch (#614, #620).
+         Prefix: notification_channel_ -->
+
+    <!-- NEW_APPLICATION (#595). Prefix: notification_new_application_ -->
+
+    <!-- APPLICATION_DECIDED (#603). Prefix: notification_application_decided_ -->
+
+    <!-- TEAM_CHANGED (#599). Prefix: notification_team_changed_ -->
+
+    <!-- MISSION_ASSIGNED (#617, #606). Prefix: notification_mission_assigned_ -->
+
+    <!-- MISSION_CHANGED (#617). Prefix: notification_mission_changed_ -->
+
+    <!-- ANNOUNCEMENT (#618). Prefix: notification_announcement_ -->
+
+    <!-- MISSED_CHECK_IN (#611). Prefix: notification_missed_check_in_ -->
+
+    <!-- OPEN_SPOTS (#608). Prefix: notification_open_spots_ -->
+
+</resources>
