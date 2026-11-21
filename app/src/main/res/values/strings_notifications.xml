@@ -27,5 +27,10 @@
     <!-- MISSED_CHECK_IN (#611). Prefix: notification_missed_check_in_ -->
 
     <!-- OPEN_SPOTS (#608). Prefix: notification_open_spots_ -->
+    <!-- The text: the mission, its start time and how many volunteers it still needs. -->
+    <plurals name="notification_open_spots_text">
+        <item quantity="one">%1$s at %2$s still needs %3$d volunteer.</item>
+        <item quantity="other">%1$s at %2$s still needs %3$d volunteers.</item>
+    </plurals>
 
 </resources>
