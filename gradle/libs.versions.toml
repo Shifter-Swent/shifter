@@ -17,6 +17,8 @@ kaspresso = "1.6.1"
 robolectric = "4.16.1"
 sonar = "7.5.0.8588"
 coroutines = "1.11.0"
+# The version navigation-compose brings for the routes; JSON only reads it back in tests.
+serializationJson = "1.7.3"
 mockk = "1.14.9"
 mapsCompose = "9.0.1"
 playServicesMaps = "20.1.0"
@@ -35,6 +37,7 @@ googleid = "1.2.0"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }

@@ -170,6 +170,7 @@ dependencies {
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
   testImplementation(libs.mockk)
+  testImplementation(libs.kotlinx.serialization.json)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
