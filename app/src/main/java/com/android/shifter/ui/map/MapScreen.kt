@@ -75,6 +75,18 @@ private const val VOLUNTEER_MARKER_PREFIX = "volunteer-"
 private const val EVENT_ZOOM = 15f
 
 /**
+ * How close the camera must already be to a recenter button's target for a tap to zoom instead: a
+ * walking user's position moves a little between two taps.
+ */
+private const val CENTRED_WITHIN_METERS = 25.0
+
+/** How much a tap on a recenter button zooms in once centred. */
+private const val ZOOM_STEP = 1.5f
+
+/** How far a recenter button zooms in: the street. A camera pinched closer stays where it is. */
+private const val MAX_ZOOM = 19f
+
+/**
  * The Map tab of an event: its missions on a map, driven by [viewModel]. See [MapContent] for
  * [contentPadding].
  */
@@ -220,11 +232,16 @@ fun MapContent(
           verticalArrangement = Arrangement.spacedBy(12.dp),
       ) {
         val scope = rememberCoroutineScope()
+        // A first tap centres on the target; a tap once centred on it zooms in, up to the street.
         val goTo = { target: GeoPosition ->
           scope.launch {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLngZoom(target.toLatLng(), EVENT_ZOOM)
-            )
+            val zoom =
+                recenterZoom(
+                    camera = cameraPositionState.position,
+                    isMoving = cameraPositionState.isMoving,
+                    target = target,
+                )
+            cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target.toLatLng(), zoom))
           }
         }
         // Only once the event is loaded: before, the opening move to the venue would undo a tap,
@@ -259,6 +276,19 @@ fun MapContent(
       }
     }
   }
+}
+
+/**
+ * The zoom a tap on a recenter button sends the camera to, on [target]: one [ZOOM_STEP] closer, up
+ * to [MAX_ZOOM] and never out, when the still [camera] is already centred on it; otherwise
+ * [EVENT_ZOOM].
+ */
+internal fun recenterZoom(camera: CameraPosition, isMoving: Boolean, target: GeoPosition): Float {
+  val centred =
+      !isMoving && camera.target.toGeoPosition().distanceTo(target) < CENTRED_WITHIN_METERS
+  // Never below the current zoom, so a camera pinched past the limit is not zoomed out.
+  return if (centred) maxOf(camera.zoom, (camera.zoom + ZOOM_STEP).coerceAtMost(MAX_ZOOM))
+  else EVENT_ZOOM
 }
 
 /**
