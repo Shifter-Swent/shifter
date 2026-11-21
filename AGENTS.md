@@ -23,7 +23,7 @@ Writing them down also helps the human team agree on how we build.
 
 - The feature works and matches its acceptance criteria and user story requirements.
 - **All new code comes with tests:**
-  - Unit tests for ViewModels, logic helpers, and repository fake implementations (`test/`).
+  - Unit tests for ViewModels and logic helpers (`test/`). Never test a fake on its own: what the code relies on in a fake is tested through the ViewModels that use it, and a fake has no test file (#347).
   - Compose UI tests for screens and navigation flows (`androidTest/`).
   - Instrumented repository tests running against Firebase/Firestore emulators.
 - `./gradlew check` is green (unit tests + lint) and `./gradlew ktfmtCheck` passes (formatting) before you submit.
