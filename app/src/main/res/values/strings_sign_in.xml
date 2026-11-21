@@ -12,7 +12,7 @@
     <string name="sign_in_google_logo">Google</string>
     <!-- Sign-in feedback (#646): what the user can do, never the exception's text -->
     <string name="sign_in_success">Signed in.</string>
-    <string name="sign_in_error_no_account">No Google account on this phone. Add one in your phone\'s settings, then try again.</string>
+    <string name="sign_in_error_no_account">No Google account is available for sign-in. Check your Google account settings and try again.</string>
     <string name="sign_in_error_failed">Sign-in failed. Check your connection and try again.</string>
     <string name="sign_in_error_profile">Couldn\'t load your profile. Check your connection and sign in again.</string>
     <string name="choose_mode_error_profile">Couldn\'t create your profile. Check your connection and sign in again.</string>
