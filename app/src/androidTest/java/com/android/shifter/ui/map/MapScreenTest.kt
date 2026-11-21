@@ -137,7 +137,7 @@ class MapScreenTest {
         .assertContentDescriptionEquals("Center on the event")
         .performClick()
 
-    compose.waitUntilCentred(camera, LOADED.center!!, zoom = 15f)
+    compose.waitUntilCentred(camera, EVENT, zoom = 15f)
   }
 
   @Test
@@ -147,7 +147,7 @@ class MapScreenTest {
     compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
     compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
 
-    compose.waitUntilCentred(camera, LOADED.center!!, zoom = 15f)
+    compose.waitUntilCentred(camera, EVENT, zoom = 15f)
   }
 
   @Test
@@ -197,8 +197,8 @@ class MapScreenTest {
   fun recenterButton_secondTap_zoomsInOnTheEvent() {
     val camera = setContentWithCamera(myPosition = null)
 
-    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 15f)
-    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 16.5f)
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 15f)
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 16.5f)
   }
 
   @Test
@@ -206,7 +206,7 @@ class MapScreenTest {
     val camera = setContentWithCamera(myPosition = null)
 
     listOf(15f, 16.5f, 18f, 19f, 19f).forEach {
-      tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = it)
+      tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = it)
     }
   }
 
@@ -217,7 +217,7 @@ class MapScreenTest {
     tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
     tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 16.5f)
 
-    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 15f)
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 15f)
   }
 
   /** Taps the button of [tag], then waits for the camera to rest on [target] at [zoom]. */
@@ -231,13 +231,17 @@ class MapScreenTest {
     compose.waitUntilCentred(camera, target, zoom)
   }
 
-  /** Waits for [camera] to rest on [target] at [zoom], so the next tap sees it still. */
+  /**
+   * Waits for [camera] to rest on [target] at [zoom], so the next tap sees it still. Generous,
+   * since the emulators of the CI draw the map in software and its animations can then take
+   * seconds.
+   */
   private fun ComposeContentTestRule.waitUntilCentred(
       camera: CameraPositionState,
       target: GeoPosition,
       zoom: Float,
   ) {
-    waitUntil(timeoutMillis = 5_000) {
+    waitUntil(timeoutMillis = 20_000) {
       !camera.isMoving &&
           camera.position.target.isNear(target) &&
           abs(camera.position.zoom - zoom) < 0.01f
@@ -440,10 +444,12 @@ class MapScreenTest {
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     /** Away from the center the camera opens on. */
     val FOCUS = GeoPosition(46.53, 6.58)
+    /** Where the loaded event centres the map. */
+    val EVENT = GeoPosition(46.52, 6.57)
     val LOADED =
         MapUiState(
             venue = "Place Bellecour",
-            center = GeoPosition(46.52, 6.57),
+            center = EVENT,
             markers = listOf(WATER),
             isLoading = false,
         )
