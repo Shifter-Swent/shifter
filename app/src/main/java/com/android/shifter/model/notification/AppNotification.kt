@@ -12,9 +12,10 @@ import kotlinx.serialization.Serializable
  *
  * @property key identifies what it is about, within its [kind]: a notification with the kind and
  *   the key of one still shown replaces it rather than adding a second one, while two kinds never
- *   replace each other, even with the same key, such as a mission's id. A format only groups the
- *   items of one call: with the app open, each document arrives on its own, so a key per event and
- *   kind makes a new application replace the last one instead of counting both.
+ *   replace each other, even with the same key, such as a mission's id. A new item joins the
+ *   notification it replaces, as the engine gives the format the items of that notification again
+ *   (see [NotificationFormat.format]): a key per event makes "3 new applications", with the app
+ *   open or closed.
  * @property at when what it tells happened, the inbox document's [InboxNotification.createdAt] or
  *   the time a check found it, shown rather than the time it is displayed, which may come up to 15
  *   minutes later with the app closed.
@@ -57,9 +58,12 @@ sealed interface NotificationTarget {
   ) : NotificationTarget
 
   /**
-   * The volunteer's Planning of the event, on [day], written by `LocalDate.toString()`, such as
-   * `2026-11-27`: a target that is not a date is refused when built, and when read back from an
-   * intent, rather than failing on the tap.
+   * The volunteer's Planning of the event, on [day]: the event day of the mission's start,
+   * `startAt.eventDay(zone)` (`ui/components/days/GroupByDay.kt`), not its calendar date, since the
+   * Planning lists a day from 04:00 to 04:00 (#558) and a mission at 02:00 is under the day before.
+   *
+   * Written by `LocalDate.toString()`, such as `2026-11-27`: a target that is not a date is refused
+   * when built, and when read back from an intent, rather than failing on the tap.
    */
   @Serializable
   data class Planning(val eventId: String, val eventTitle: String, val day: String) :

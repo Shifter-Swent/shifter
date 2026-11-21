@@ -20,6 +20,11 @@ interface NotificationFormat {
    * What to show for [items], all of [kind], oldest first. A format may group several into one ("3
    * new applications"), and may show nothing for an item it cannot read: that item is still removed
    * from the inbox.
+   *
+   * [items] holds the new items and, with them, the items of this kind's notifications still shown
+   * on the phone, which the engine (#614) keeps. So a new item that replaces a notification, by its
+   * [AppNotification.identity], is grouped with what that one showed rather than hiding it, the
+   * same with the app open, where documents arrive one at a time, as with the app closed.
    */
   fun format(items: List<InboxNotification>, texts: NotificationTexts): List<AppNotification>
 }
