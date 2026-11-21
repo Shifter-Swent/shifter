@@ -142,15 +142,41 @@ class InMemorySeenStore : SeenStore {
  * test turns kinds off for a user with [disable], live while the flow is collected.
  */
 class FakeNotificationPreferences : NotificationPreferences {
-  private val disabled = MutableStateFlow<Map<String, Set<NotificationKind>>>(emptyMap())
+
+  /**
+   * The kinds turned off and the failure, in one flow, so a failure set while collected ends it.
+   */
+  private val state = MutableStateFlow(State(emptyMap(), null))
+
+  /**
+   * When set, a new collection of [disabledKinds] throws it, and one running ends with it, like a
+   * profile that cannot be read: the caller must not take it for "all on".
+   */
+  var failure: Exception?
+    get() = state.value.failure
+    set(value) {
+      state.update { it.copy(failure = value) }
+    }
 
   /** Turns [kinds] off for [userId], as Settings would. */
   fun disable(userId: String, vararg kinds: NotificationKind) {
-    disabled.update { it + (userId to it[userId].orEmpty() + kinds) }
+    state.update { it.copy(disabled = it.disabled + (userId to it.of(userId) + kinds)) }
   }
 
   override fun disabledKinds(userId: String): Flow<Set<NotificationKind>> =
-      disabled.map { it[userId].orEmpty() }.distinctUntilChanged()
+      state
+          .map {
+            it.failure?.let { failure -> throw failure }
+            it.of(userId)
+          }
+          .distinctUntilChanged()
+
+  private data class State(
+      val disabled: Map<String, Set<NotificationKind>>,
+      val failure: Exception?,
+  ) {
+    fun of(userId: String) = disabled[userId].orEmpty()
+  }
 }
 
 /** A [NotificationScheduler] that records the times it was asked to check at, in order. */
