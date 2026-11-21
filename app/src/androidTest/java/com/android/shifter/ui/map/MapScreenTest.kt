@@ -28,6 +28,7 @@ import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.ui.location.LocationPermissionTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -81,7 +82,8 @@ class MapScreenTest {
     setContent(LOADED, locationStatus = LocationStatus.DENIED)
 
     compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertIsDisplayed()
-    compose.onNodeWithText("Allow location").assertIsDisplayed()
+    // Its action depends on the device's real permissions, which other tests may have granted.
+    compose.onNodeWithTag(LocationPermissionTestTags.ACTION).assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.waitForIdle()
     assertTrue(refreshes > 0)
