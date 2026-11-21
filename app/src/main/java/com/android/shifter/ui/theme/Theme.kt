@@ -1,3 +1,4 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.theme
 
 import androidx.compose.material3.ColorScheme
@@ -40,12 +41,12 @@ private val DarkColorScheme =
     )
 
 /**
- * The app's theme, always dark. The system bars are set up once by [enableShifterEdgeToEdge], so
- * the theme leaves them alone.
+ * The app's theme, always dark, with every text in Satoshi ([ShifterTypography]). The system bars
+ * are set up once by [enableShifterEdgeToEdge], so the theme leaves them alone.
  */
 @Composable
 fun ShifterTheme(content: @Composable () -> Unit) {
   val colorScheme: ColorScheme = DarkColorScheme // Later maybe add a lightColorScheme
 
-  MaterialTheme(colorScheme = colorScheme, content = content)
+  MaterialTheme(colorScheme = colorScheme, typography = ShifterTypography, content = content)
 }
