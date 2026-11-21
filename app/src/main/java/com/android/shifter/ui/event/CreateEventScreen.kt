@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.annotation.StringRes
@@ -71,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.swent.shifter.R
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventType
@@ -78,6 +80,7 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.isWindowShortForACalendar
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -508,6 +511,10 @@ private fun DateTimePickerButton(
     // A day outside the picker's year range is not preselected: the dialog opens with no selection.
     val pickerState =
         rememberDatePickerState(initialSelectedDateMillis = initialDay.toPickerMillis())
+    // The calendar is taller than a phone in landscape: there it scrolls under the dialog's
+    // buttons, which stay put below, rather than being cut off. Upright it fits and does not move.
+    val calendarScroll = rememberScrollState()
+    val shortWindow = isWindowShortForACalendar()
     DatePickerDialog(
         onDismissRequest = { showDate = false },
         confirmButton = {
@@ -533,7 +540,9 @@ private fun DateTimePickerButton(
     ) {
       DatePicker(
           state = pickerState,
-          modifier = Modifier.testTag(CreateEventScreenTestTags.DATE_PICKER),
+          modifier =
+              Modifier.then(if (shortWindow) Modifier.verticalScroll(calendarScroll) else Modifier)
+                  .testTag(CreateEventScreenTestTags.DATE_PICKER),
       )
     }
   }
@@ -549,6 +558,8 @@ private fun DateTimePickerButton(
         )
     AlertDialog(
         onDismissRequest = { pickedEpochDay = null },
+        // The dial lies down in landscape, wider than a platform dialog: let it size itself.
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         confirmButton = {
           TextButton(
               onClick = {
