@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components
 
 import androidx.compose.runtime.Composable

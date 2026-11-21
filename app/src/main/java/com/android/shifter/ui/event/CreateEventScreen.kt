@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.annotation.StringRes
