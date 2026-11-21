@@ -4,12 +4,16 @@ package com.swent.shifter.ui.location
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -30,6 +34,8 @@ object LocationPermissionTestTags {
  * @param onRequest asks for the permission again.
  * @param onOpenAppSettings opens the app's settings, where a refused permission can be granted.
  * @param onOpenLocationSettings opens the settings that turn location services on.
+ * @param compact puts the message and a text button on one row, in a smaller card, for a screen
+ *   where the card goes over other content, such as the map.
  */
 @Composable
 fun LocationPermissionCard(
@@ -38,6 +44,7 @@ fun LocationPermissionCard(
     onOpenAppSettings: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
   val content =
       when (access) {
@@ -61,7 +68,15 @@ fun LocationPermissionCard(
                 onOpenLocationSettings,
             )
       }
-  Card(modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD)) {
+  if (compact) {
+    CompactCard(content, modifier)
+    return
+  }
+  Card(
+      modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD),
+      shape = MaterialTheme.shapes.medium,
+      colors = cardColors(),
+  ) {
     Column(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -79,6 +94,41 @@ fun LocationPermissionCard(
     }
   }
 }
+
+/** The message and a text button on one row, so the card takes little room. */
+@Composable
+private fun CompactCard(content: CardContent, modifier: Modifier) {
+  Card(
+      modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD),
+      shape = MaterialTheme.shapes.medium,
+      colors = cardColors(),
+  ) {
+    Row(
+        modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+          text = stringResource(content.message),
+          style = MaterialTheme.typography.bodySmall,
+          modifier =
+              Modifier.weight(1f)
+                  .padding(vertical = 8.dp)
+                  .testTag(LocationPermissionTestTags.MESSAGE),
+      )
+      TextButton(
+          onClick = content.onClick,
+          modifier = Modifier.testTag(LocationPermissionTestTags.ACTION),
+      ) {
+        Text(stringResource(content.action))
+      }
+    }
+  }
+}
+
+/** The background of the app's notices, such as a day with nothing planned. */
+@Composable
+private fun cardColors() =
+    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
 
 private class CardContent(
     @StringRes val message: Int,

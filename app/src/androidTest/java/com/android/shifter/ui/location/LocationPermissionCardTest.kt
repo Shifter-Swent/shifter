@@ -22,7 +22,7 @@ class LocationPermissionCardTest {
   private var appSettings = 0
   private var locationSettings = 0
 
-  private fun setContent(access: LocationAccess) {
+  private fun setContent(access: LocationAccess, compact: Boolean = false) {
     compose.setContent {
       ShifterTheme {
         LocationPermissionCard(
@@ -30,6 +30,7 @@ class LocationPermissionCardTest {
             onRequest = { requests++ },
             onOpenAppSettings = { appSettings++ },
             onOpenLocationSettings = { locationSettings++ },
+            compact = compact,
         )
       }
     }
@@ -90,6 +91,24 @@ class LocationPermissionCardTest {
   @Test
   fun granted_showsNothing() {
     setContent(LocationAccess.GRANTED)
+
+    compose.onNodeWithTag(LocationPermissionTestTags.CARD).assertDoesNotExist()
+  }
+
+  @Test
+  fun compact_showsTheMessageAndItsAction() {
+    setContent(LocationAccess.LOCATION_OFF, compact = true)
+
+    compose.onNodeWithText("Location is turned off", substring = true).assertIsDisplayed()
+    compose.onNodeWithTag(LocationPermissionTestTags.ACTION).assertTextEquals("Turn on location")
+    compose.onNodeWithTag(LocationPermissionTestTags.ACTION).performClick()
+
+    assertEquals(1, locationSettings)
+  }
+
+  @Test
+  fun compact_whenGranted_showsNothing() {
+    setContent(LocationAccess.GRANTED, compact = true)
 
     compose.onNodeWithTag(LocationPermissionTestTags.CARD).assertDoesNotExist()
   }
