@@ -26,6 +26,7 @@ Writing them down also helps the human team agree on how we build.
   - Unit tests for ViewModels, logic helpers, and repository fake implementations (`test/`).
   - Compose UI tests for screens and navigation flows (`androidTest/`).
   - Instrumented repository tests running against Firebase/Firestore emulators.
+  - A test never widens the public API: what a test needs from a class is `internal`, never public (#645).
 - `./gradlew check` is green (unit tests + lint) and `./gradlew ktfmtCheck` passes (formatting) before you submit.
 - Features covered by instrumented tests (under `androidTest/`, e.g. the Firestore repository) must also pass `./gradlew connectedDebugAndroidTest`, with an Android emulator and the Firebase emulator running.
 - A PR that adds or changes a screen, or its test tags, updates its frames in the [Figma](https://www.figma.com/design/mO0rO29TWFRdEhGfm0NPDT/Shifter-Design) (Wireframe/Mockup and its Testing boards) before it is merged. If review changes alter the UI or its test tags again, the Figma is updated again before the merge.
