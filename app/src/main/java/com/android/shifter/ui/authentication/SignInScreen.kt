@@ -75,10 +75,10 @@ fun SignInScreen(
   val uiState by authViewModel.uiState.collectAsState()
 
   // Show error message if login fails
-  LaunchedEffect(uiState.errorMsg) {
-    uiState.errorMsg?.let {
+  LaunchedEffect(uiState.error) {
+    uiState.error?.let {
       Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-      authViewModel.clearErrorMsg()
+      authViewModel.clearError()
     }
   }
 
@@ -86,7 +86,7 @@ fun SignInScreen(
   LaunchedEffect(uiState.signedInAs, uiState.needsMode) {
     val mode = uiState.signedInAs
     if (mode == null && !uiState.needsMode) return@LaunchedEffect
-    Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, R.string.sign_in_success, Toast.LENGTH_SHORT).show()
     if (mode != null) onSignedIn(mode) else onNewAccount()
     authViewModel.onSignedInHandled()
   }

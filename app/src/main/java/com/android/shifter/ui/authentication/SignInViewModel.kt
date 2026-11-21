@@ -6,6 +6,7 @@ package com.swent.shifter.ui.authentication
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
@@ -33,7 +34,8 @@ import kotlinx.coroutines.launch
 data class AuthUIState(
     val isLoading: Boolean = false,
     val user: AuthUser? = null,
-    val errorMsg: String? = null,
+    /** Why the sign-in failed, as a string resource, until the screen has shown it. */
+    @StringRes val error: Int? = null,
     /** One-shot event: the mode to enter after a sign-in, reset once the screen has navigated. */
     val signedInAs: UserMode? = null,
     /**
@@ -58,9 +60,9 @@ class SignInViewModel(
   private val _uiState = MutableStateFlow(AuthUIState())
   val uiState: StateFlow<AuthUIState> = _uiState.asStateFlow()
 
-  /** Clears the current authentication error. */
-  fun clearErrorMsg() {
-    _uiState.update { it.copy(errorMsg = null) }
+  /** Clears the current authentication error, once it is shown. */
+  fun clearError() {
+    _uiState.update { it.copy(error = null) }
   }
 
   /** Marks the sign-in event as handled, so the screen does not navigate again. */
@@ -73,7 +75,7 @@ class SignInViewModel(
     if (_uiState.value.isLoading) return
 
     viewModelScope.launch {
-      _uiState.update { it.copy(isLoading = true, errorMsg = null) }
+      _uiState.update { it.copy(isLoading = true, error = null) }
 
       try {
         val option =
@@ -88,18 +90,18 @@ class SignInViewModel(
             .signInWithGoogle(credential)
             .fold(
                 onSuccess = { user -> loadProfile(user) },
-                onFailure = { error -> showError(error.localizedMessage ?: "Sign-in failed") },
+                onFailure = { error -> showError(R.string.sign_in_error_failed, error) },
             )
       } catch (e: GetCredentialCancellationException) {
         _uiState.update { it.copy(isLoading = false) }
       } catch (e: NoCredentialException) {
-        showError("No Google credential is available for sign-in")
+        showError(R.string.sign_in_error_no_account, e)
       } catch (e: GetCredentialException) {
-        showError("Failed to get credentials: ${e.localizedMessage ?: UNKNOWN_ERROR}")
+        showError(R.string.sign_in_error_failed, e)
       } catch (e: CancellationException) {
         throw e
       } catch (e: Exception) {
-        showError("Unexpected error: ${e.localizedMessage ?: UNKNOWN_ERROR}")
+        showError(R.string.sign_in_error_failed, e)
       }
     }
   }
@@ -128,12 +130,10 @@ class SignInViewModel(
       _uiState.update { it.copy(isLoading = false) }
       throw e
     } catch (e: Exception) {
-      val reason = e.localizedMessage ?: UNKNOWN_ERROR
-      if (signOutWithoutProfile()) {
-        showError("Could not load your profile: $reason")
-      } else {
-        showError("Could not load your profile ($reason) and could not sign you out")
-      }
+      // The same message whether the sign-out worked or not: either way the user can only sign in
+      // again, and a failed sign-out is logged.
+      signOutWithoutProfile()
+      showError(R.string.sign_in_error_profile, e)
       return
     }
     _uiState.value =
@@ -148,15 +148,14 @@ class SignInViewModel(
           .onFailure { Log.e(TAG, "Could not sign out after a profile failure", it) }
           .isSuccess
 
-  private fun showError(message: String) {
-    _uiState.update { it.copy(isLoading = false, errorMsg = message) }
+  /** Shows [message] and logs [cause], whose text is technical and never shown. */
+  private fun showError(@StringRes message: Int, cause: Throwable) {
+    Log.w(TAG, "Sign-in failed", cause)
+    _uiState.update { it.copy(isLoading = false, error = message) }
   }
 
   companion object {
     private const val TAG = "SignInViewModel"
-
-    /** Shown when an exception carries no message. */
-    private const val UNKNOWN_ERROR = "Unknown error"
 
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor

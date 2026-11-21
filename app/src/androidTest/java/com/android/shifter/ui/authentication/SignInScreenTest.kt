@@ -150,7 +150,7 @@ class SignInScreenTest {
     // The user can retry, and no error is shown.
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOADING_INDICATOR).assertDoesNotExist()
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
     assertEquals(0, signedInCalls)
     assertNull(AuthEmulator.auth.currentUser)
   }

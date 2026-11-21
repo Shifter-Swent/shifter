@@ -3,6 +3,7 @@ package com.swent.shifter.ui.authentication
 
 import android.os.Looper
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthUser
 import com.swent.shifter.model.authentication.FakeAuthRepository
 import com.swent.shifter.model.user.FakeUserRepository
@@ -87,10 +88,7 @@ class ChooseModeViewModelTest {
 
     choose(UserMode.ORGANIZER)
 
-    assertEquals(
-        "Could not create your profile: The user profile service is unavailable",
-        viewModel.uiState.value.errorMsg,
-    )
+    assertEquals(R.string.choose_mode_error_profile, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.entered)
     assertFalse(viewModel.uiState.value.saving)
     // Signed out only once the error is shown, as signing out leaves this screen.
@@ -98,7 +96,7 @@ class ChooseModeViewModelTest {
 
     viewModel.onErrorShown()
 
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
     assertEquals(1, auth.signOutCalls)
     assertNull(auth.currentUser())
   }

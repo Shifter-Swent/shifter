@@ -64,7 +64,7 @@ class SignInViewModelTest {
 
     assertEquals(newGoogleAccountCredential, repository.receivedCredential)
     assertEquals(user, viewModel.uiState.value.user)
-    assertTrue(viewModel.uiState.value.errorMsg == null)
+    assertTrue(viewModel.uiState.value.error == null)
   }
 
   @Test
@@ -127,7 +127,7 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertEquals("Repository unavailable", viewModel.uiState.value.errorMsg)
+    assertEquals(R.string.sign_in_error_failed, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
@@ -140,26 +140,23 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertEquals(
-        "Failed to get credentials: Credential provider unavailable",
-        viewModel.uiState.value.errorMsg,
-    )
+    assertEquals(R.string.sign_in_error_failed, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun clearErrorMsg_clearsCredentialManagerError() {
+  fun clearError_clearsCredentialManagerError() {
     coEvery { credentialManager.getCredential(context, any<GetCredentialRequest>()) } throws
         GetCredentialUnknownException("Credential provider unavailable")
 
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
-    assertTrue(viewModel.uiState.value.errorMsg != null)
+    assertTrue(viewModel.uiState.value.error != null)
 
-    viewModel.clearErrorMsg()
+    viewModel.clearError()
 
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
   }
 
   @Test
@@ -170,7 +167,7 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
@@ -183,7 +180,7 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertEquals("No Google credential is available for sign-in", viewModel.uiState.value.errorMsg)
+    assertEquals(R.string.sign_in_error_no_account, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
@@ -217,7 +214,7 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    assertEquals("Unexpected error: Play services missing", viewModel.uiState.value.errorMsg)
+    assertEquals(R.string.sign_in_error_failed, viewModel.uiState.value.error)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
   }
@@ -231,18 +228,7 @@ class SignInViewModelTest {
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
     // Coroutine cancellation is not a sign-in error
-    assertNull(viewModel.uiState.value.errorMsg)
-  }
-
-  @Test
-  fun signIn_repositoryFailureWithoutMessage_usesGenericSignInError() {
-    repository.signInResult = Result.failure(IllegalStateException())
-    stubCredentialManager(mockk<Credential>())
-
-    viewModel.signIn(context, credentialManager)
-    shadowOf(android.os.Looper.getMainLooper()).idle()
-
-    assertEquals("Sign-in failed", viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
   }
 
   @Test
@@ -323,10 +309,7 @@ class SignInViewModelTest {
     // A session without a profile must not survive, or the next launch would skip sign-in.
     assertEquals(1, repository.signOutCalls)
     assertNull(repository.currentUser())
-    assertEquals(
-        "Could not load your profile: The user profile service is unavailable",
-        viewModel.uiState.value.errorMsg,
-    )
+    assertEquals(R.string.sign_in_error_profile, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.signedIn)
     assertNull(viewModel.uiState.value.user)
     assertFalse(viewModel.uiState.value.isLoading)
@@ -345,7 +328,7 @@ class SignInViewModelTest {
     // Not only repository errors: any failure must close the session without a profile.
     assertEquals(1, repository.signOutCalls)
     assertNull(repository.currentUser())
-    assertEquals("Could not load your profile: Mapper bug", viewModel.uiState.value.errorMsg)
+    assertEquals(R.string.sign_in_error_profile, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.signedIn)
   }
 
@@ -361,13 +344,13 @@ class SignInViewModelTest {
 
     assertEquals(1, repository.signOutCalls)
     assertNull(repository.currentUser())
-    assertNull(viewModel.uiState.value.errorMsg)
+    assertNull(viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.signedIn)
     assertFalse(viewModel.uiState.value.isLoading)
   }
 
   @Test
-  fun signIn_profileFailureAndSignOutFailure_reportsBoth() {
+  fun signIn_profileFailureAndSignOutFailure_showsTheProfileError() {
     val user = AuthUser(uid = "uid-1", email = "ada@example.com", displayName = "Ada")
     repository.signInResult = Result.success(user)
     repository.signOutResult = Result.failure(IllegalStateException("Sign-out failed"))
@@ -377,13 +360,10 @@ class SignInViewModelTest {
     viewModel.signIn(context, credentialManager)
     shadowOf(android.os.Looper.getMainLooper()).idle()
 
-    // The session survived, so the user must be told it was not closed.
+    // The session survived, but the user can only sign in again either way: same message, and
+    // the failed sign-out is logged.
     assertEquals(user, repository.currentUser())
-    assertEquals(
-        "Could not load your profile (The user profile service is unavailable) " +
-            "and could not sign you out",
-        viewModel.uiState.value.errorMsg,
-    )
+    assertEquals(R.string.sign_in_error_profile, viewModel.uiState.value.error)
     assertFalse(viewModel.uiState.value.signedIn)
   }
 

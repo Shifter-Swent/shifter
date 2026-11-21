@@ -59,8 +59,8 @@ fun ChooseModeScreen(viewModel: ChooseModeViewModel, onModeChosen: (UserMode) ->
     }
   }
   // Shown before signing out, which takes the user back to sign-in.
-  LaunchedEffect(uiState.errorMsg) {
-    uiState.errorMsg?.let {
+  LaunchedEffect(uiState.error) {
+    uiState.error?.let {
       Toast.makeText(context, it, Toast.LENGTH_LONG).show()
       viewModel.onErrorShown()
     }
