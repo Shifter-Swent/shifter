@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,7 +72,11 @@ fun LocationPermissionCard(
     CompactCard(content, modifier)
     return
   }
-  Card(modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD)) {
+  Card(
+      modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD),
+      shape = MaterialTheme.shapes.medium,
+      colors = cardColors(),
+  ) {
     Column(
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -93,7 +98,11 @@ fun LocationPermissionCard(
 /** The message and a text button on one row, so the card takes little room. */
 @Composable
 private fun CompactCard(content: CardContent, modifier: Modifier) {
-  Card(modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD)) {
+  Card(
+      modifier = modifier.fillMaxWidth().testTag(LocationPermissionTestTags.CARD),
+      shape = MaterialTheme.shapes.medium,
+      colors = cardColors(),
+  ) {
     Row(
         modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -115,6 +124,11 @@ private fun CompactCard(content: CardContent, modifier: Modifier) {
     }
   }
 }
+
+/** The background of the app's notices, such as a day with nothing planned. */
+@Composable
+private fun cardColors() =
+    CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
 
 private class CardContent(
     @StringRes val message: Int,
