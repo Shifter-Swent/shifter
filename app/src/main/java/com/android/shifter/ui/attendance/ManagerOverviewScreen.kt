@@ -676,42 +676,7 @@ private fun MissionCard(
     }
 
     if (expanded && expandable) {
-      HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-      People(
-          label = stringResource(R.string.attendance_present, mission.presentCount),
-          people = mission.presentAssignees,
-          icon = Icons.Filled.Check,
-          tint = shifter_success,
-          zone = zone,
-          testTag = ManagerOverviewTestTags.present(mission.id),
-          missionId = mission.id,
-      )
-      if (mission.missingAssignees.isNotEmpty()) {
-        // Before the start they are merely awaited; only once it has begun are they late.
-        val early = status == AttendanceStatus.EARLY
-        People(
-            missionId = mission.id,
-            // Once the mission is completed, by hand or past its end, a check-in would record the
-            // tap rather than an arrival, so the names are no longer tappable, and the section says
-            // so.
-            onCheckIn = onCheckIn.takeUnless { status == AttendanceStatus.COMPLETED },
-            hint =
-                if (status == AttendanceStatus.COMPLETED) R.string.attendance_check_in_closed
-                else R.string.attendance_tap_to_check_in,
-            label =
-                stringResource(
-                    if (early) R.string.attendance_expected else R.string.attendance_missing,
-                    mission.missingAssignees.size,
-                ),
-            people = mission.missingAssignees,
-            icon = Icons.Filled.RadioButtonUnchecked,
-            tint = if (early) shifter_mutedText else shifter_warning,
-            zone = zone,
-            testTag =
-                if (early) ManagerOverviewTestTags.expected(mission.id)
-                else ManagerOverviewTestTags.missing(mission.id),
-        )
-      }
+      MissionPeople(mission = mission, status = status, zone = zone, onCheckIn = onCheckIn)
     }
 
     if (canMarkCompleted) {
@@ -723,6 +688,55 @@ private fun MissionCard(
           isLoading = isMarkingCompleted,
       )
     }
+  }
+}
+
+/**
+ * Who is there and who is not yet, under the divider of an expanded card: the sections of
+ * [MissionCard] that depend on nothing but the mission and its status.
+ */
+@Composable
+private fun MissionPeople(
+    mission: AttendanceMission,
+    status: AttendanceStatus,
+    zone: ZoneId,
+    onCheckIn: (userId: String) -> Unit,
+) {
+  HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+  People(
+      label = stringResource(R.string.attendance_present, mission.presentCount),
+      people = mission.presentAssignees,
+      icon = Icons.Filled.Check,
+      tint = shifter_success,
+      zone = zone,
+      testTag = ManagerOverviewTestTags.present(mission.id),
+      missionId = mission.id,
+  )
+  if (mission.missingAssignees.isNotEmpty()) {
+    // Before the start they are merely awaited; only once it has begun are they late.
+    val early = status == AttendanceStatus.EARLY
+    People(
+        missionId = mission.id,
+        // Once the mission is completed, by hand or past its end, a check-in would record the
+        // tap rather than an arrival, so the names are no longer tappable, and the section says
+        // so.
+        onCheckIn = onCheckIn.takeUnless { status == AttendanceStatus.COMPLETED },
+        hint =
+            if (status == AttendanceStatus.COMPLETED) R.string.attendance_check_in_closed
+            else R.string.attendance_tap_to_check_in,
+        label =
+            stringResource(
+                if (early) R.string.attendance_expected else R.string.attendance_missing,
+                mission.missingAssignees.size,
+            ),
+        people = mission.missingAssignees,
+        icon = Icons.Filled.RadioButtonUnchecked,
+        tint = if (early) shifter_mutedText else shifter_warning,
+        zone = zone,
+        testTag =
+            if (early) ManagerOverviewTestTags.expected(mission.id)
+            else ManagerOverviewTestTags.missing(mission.id),
+    )
   }
 }
 
