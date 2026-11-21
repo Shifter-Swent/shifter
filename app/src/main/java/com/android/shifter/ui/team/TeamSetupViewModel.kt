@@ -10,11 +10,17 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * State of the team setup step of the organizer's event creation flow.
@@ -22,26 +28,32 @@ import kotlinx.coroutines.launch
  * @property loadFailed whether the last load failed. The teams of an earlier load are kept and stay
  *   listed.
  * @property teams the teams of the event, in the order the backend returns them.
+ * @property deletingTeamIds the ids of the teams whose deletion is running.
  */
 data class TeamSetupUiState(
     val isLoading: Boolean = true,
     val loadFailed: Boolean = false,
     val teams: List<Team> = emptyList(),
+    val deletingTeamIds: Set<String> = emptySet(),
 ) {
   /** Whether the event is known to have no team: not while a load runs, nor after one failed. */
   val isEmpty: Boolean
     get() = !isLoading && !loadFailed && teams.isEmpty()
 
-  /** Whether the organizer can move on to the join code: the event has a team, new or older. */
+  /**
+   * Whether the organizer can move on to the join code: the event has a team, new or older, that is
+   * not being deleted.
+   */
   val canProceed: Boolean
-    get() = teams.isNotEmpty()
+    get() = teams.any { it.id !in deletingTeamIds }
 }
 
 /**
  * Lists the teams of the event [eventId] while the organizer sets them up.
  *
- * Creating one team belongs to [CreateTeamViewModel]: this ViewModel holds no form and never writes
- * a team. The screen hands it each creation through [onTeamCreated].
+ * Creating or editing a team belongs to [CreateTeamViewModel]: this ViewModel holds no form, and
+ * the only write it makes is [deleteTeam]. The screen hands it each creation through
+ * [onTeamCreated].
  *
  * The event itself is never loaded: the teams hang under its id, so that id is all this ViewModel
  * needs and it stays free of [com.swent.shifter.model.event.EventRepository].
@@ -54,6 +66,21 @@ class TeamSetupViewModel(
   private val _uiState = MutableStateFlow(TeamSetupUiState())
   val uiState: StateFlow<TeamSetupUiState> = _uiState.asStateFlow()
 
+  /**
+   * The teams this ViewModel deleted, which a load that read them before their deletion would bring
+   * back.
+   */
+  private val deletedTeamIds = mutableSetOf<String>()
+
+  private val _deleteFailures = Channel<Team>(Channel.UNLIMITED)
+
+  /**
+   * One element per failed deletion, the team that was kept, for the screen to report once and
+   * offer to try again. An event rather than a flag of [uiState], like the failed saves of
+   * [CreateTeamViewModel].
+   */
+  val deleteFailures: Flow<Team> = _deleteFailures.receiveAsFlow()
+
   init {
     refresh()
   }
@@ -63,7 +90,7 @@ class TeamSetupViewModel(
     _uiState.update { it.copy(isLoading = true, loadFailed = false) }
     viewModelScope.launch {
       try {
-        val teams = teamRepository.getTeamsByEvent(eventId)
+        val teams = teamRepository.getTeamsByEvent(eventId).filterNot { it.id in deletedTeamIds }
         _uiState.update { it.copy(isLoading = false, teams = teams) }
       } catch (e: CancellationException) {
         throw e
@@ -85,6 +112,42 @@ class TeamSetupViewModel(
       _uiState.update { it.copy(teams = it.teams + team) }
     }
     refresh()
+  }
+
+  /**
+   * Deletes [team] with everything it owns, then takes it out of the list. A deletion already
+   * running for it is not started again.
+   *
+   * Once started, it runs to its end even if the screen is left, as stopping it between two of its
+   * writes would leave the team half deleted. If the connection drops halfway, it waits for it to
+   * come back. When the backend refuses it, or it is offline from the start, the team stays listed
+   * and is reported through [deleteFailures]; calling this again completes a deletion stopped
+   * halfway.
+   */
+  fun deleteTeam(team: Team) {
+    if (team.id in _uiState.value.deletingTeamIds) return
+    _uiState.update { it.copy(deletingTeamIds = it.deletingTeamIds + team.id) }
+    // Started at once, before navigation can clear this ViewModel, like the saves of
+    // CreateTeamViewModel.
+    viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+      val deleted =
+          withContext(NonCancellable) {
+            try {
+              teamRepository.deleteTeam(eventId, team.id)
+              true
+            } catch (_: Exception) {
+              false
+            }
+          }
+      if (deleted) deletedTeamIds += team.id
+      _uiState.update { state ->
+        state.copy(
+            teams = if (deleted) state.teams.filterNot { it.id == team.id } else state.teams,
+            deletingTeamIds = state.deletingTeamIds - team.id,
+        )
+      }
+      if (!deleted) _deleteFailures.trySend(team)
+    }
   }
 
   /**
