@@ -21,6 +21,7 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(AndroidJUnit4::class)
 class ChooseModeScreenTest {
@@ -100,6 +101,11 @@ class ChooseModeScreenTest {
     composeTestRule.onNodeWithTag(ChooseModeTestTags.ORGANIZER).performClick()
     composeTestRule.waitForIdle()
 
+    // The resolved text, never the exception's.
+    assertEquals(
+        "Couldn't create your profile. Check your connection and sign in again.",
+        ShadowToast.getTextOfLatestToast(),
+    )
     assertEquals(1, auth.signOutCalls)
     assertNull(entered)
   }

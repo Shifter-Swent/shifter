@@ -2,11 +2,13 @@
 package com.swent.shifter.ui.authentication
 
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
@@ -24,12 +26,13 @@ import kotlinx.coroutines.launch
  *   created, until the screen has left, so the choices are not offered again.
  * @property entered one-shot event: the mode to enter once the profile exists, reset once the
  *   screen has navigated.
- * @property errorMsg why the profile could not be created; the user is signed out once it is shown.
+ * @property error why the profile could not be created, as a string resource; the user is signed
+ *   out once it is shown.
  */
 data class ChooseModeUiState(
     val saving: Boolean = false,
     val entered: UserMode? = null,
-    val errorMsg: String? = null,
+    @StringRes val error: Int? = null,
 )
 
 /**
@@ -52,7 +55,7 @@ class ChooseModeViewModel(
     val state = _uiState.value
     if (state.saving || state.entered != null) return
     val user = authRepository.currentUser() ?: return
-    _uiState.update { it.copy(saving = true, errorMsg = null) }
+    _uiState.update { it.copy(saving = true, error = null) }
     viewModelScope.launch {
       try {
         val profile =
@@ -68,8 +71,9 @@ class ChooseModeViewModel(
         _uiState.update { it.copy(saving = false) }
         throw e
       } catch (e: Exception) {
-        val reason = e.localizedMessage ?: "Unknown error"
-        _uiState.value = ChooseModeUiState(errorMsg = "Could not create your profile: $reason")
+        // The exception's text is technical: logged, never shown.
+        Log.w(TAG, "Could not create the profile", e)
+        _uiState.value = ChooseModeUiState(error = R.string.choose_mode_error_profile)
       }
     }
   }
@@ -84,7 +88,7 @@ class ChooseModeViewModel(
    * fails, they stay here and may choose again.
    */
   fun onErrorShown() {
-    _uiState.update { it.copy(errorMsg = null) }
+    _uiState.update { it.copy(error = null) }
     authRepository.signOut().onFailure { Log.e(TAG, "Could not sign out without a profile", it) }
   }
 
