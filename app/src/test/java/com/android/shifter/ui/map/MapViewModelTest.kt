@@ -313,6 +313,58 @@ class MapViewModelTest {
   }
 
   @Test
+  fun locationStatus_followsTheProvider() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    assertEquals(LocationStatus.DENIED, viewModel.locationStatus.value)
+
+    location.setStatus(LocationStatus.GRANTED)
+
+    assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
+  }
+
+  @Test
+  fun locationStatus_withNoProvider_isNull() = runTest {
+    assertNull(viewModel().locationStatus.value)
+  }
+
+  @Test
+  fun refreshLocation_readsTheStatusAgain() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    location.deviceStatus = LocationStatus.GRANTED
+
+    viewModel.refreshLocation()
+
+    assertEquals(1, location.refreshCount)
+    assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
+  }
+
+  @Test
+  fun refreshLocation_withNoProvider_doesNothing() = runTest {
+    val viewModel = viewModel()
+
+    viewModel.refreshLocation()
+
+    assertNull(viewModel.locationStatus.value)
+  }
+
+  @Test
+  fun refreshLocation_onceGranted_showsThePositionWithoutLeavingTheMap() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+    location.emit(accurate(TENT.position))
+    assertNull(viewModel.myPosition.value)
+
+    location.deviceStatus = LocationStatus.GRANTED
+    viewModel.refreshLocation()
+    location.emit(accurate(STAND.position))
+
+    assertEquals(STAND.position, viewModel.myPosition.value)
+  }
+
+  @Test
   fun myPosition_staysUnknownWhenTheGpsFailsAndTheMapStillLoads() = runTest {
     val failing =
         object : LocationProvider by FakeLocationProvider() {

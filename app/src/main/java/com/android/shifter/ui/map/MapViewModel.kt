@@ -127,8 +127,8 @@ data class VolunteerPin(
  * @param clock tells which missions are over and, each minute, how old a position is; replaceable
  *   in tests.
  * @param zone the time zone the mission hours are shown in, replaceable in tests.
- * @param locationProvider gives the user's position to show on the map; null when the map does not
- *   locate the user.
+ * @param locationProvider gives the user's position to show on the map, and the [locationStatus]
+ *   the screen asks for until it is granted; null when the map does not locate the user.
  * @param userRepository reads the volunteers' names; without it, every name is unknown.
  */
 class MapViewModel(
@@ -138,7 +138,7 @@ class MapViewModel(
     private val currentUserId: () -> String?,
     private val clock: MinuteClock,
     private val zone: ZoneId = ZoneId.systemDefault(),
-    locationProvider: LocationProvider? = null,
+    private val locationProvider: LocationProvider? = null,
     private val liveLocations: LiveLocationRepository? = null,
     private val watchedTeams: WatchedTeams? = null,
     private val userRepository: UserRepository? = null,
@@ -146,6 +146,14 @@ class MapViewModel(
 
   private val _uiState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
+
+  /**
+   * Whether the user's position can be read, for the screen to ask for the location until it is
+   * [LocationStatus.GRANTED]; null without a provider, where the map locates nobody and asks for
+   * nothing. Refreshed by [refreshLocation].
+   */
+  val locationStatus: StateFlow<LocationStatus?> =
+      locationProvider?.status ?: MutableStateFlow(null).asStateFlow()
 
   /** The mission [openMission] asked for while its marker was not loaded, opened once it is. */
   private var missionToOpen: String? = null
@@ -275,6 +283,14 @@ class MapViewModel(
    * itself may wait for the map to be ready.
    */
   fun focusShown() = _uiState.update { it.copy(focus = null) }
+
+  /**
+   * Reads the location permission and services again, after the permission dialog or when the
+   * screen resumes, where the user may have changed them in the settings.
+   */
+  fun refreshLocation() {
+    locationProvider?.refreshStatus()
+  }
 
   /** Closes the card of the selected mission. */
   fun clearSelection() = _uiState.update { it.copy(selected = null) }
