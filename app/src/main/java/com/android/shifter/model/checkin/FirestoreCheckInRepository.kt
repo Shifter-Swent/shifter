@@ -118,7 +118,7 @@ class FirestoreCheckInRepository(
 
   companion object {
     /** Translates a Firestore error into the [CheckInRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): CheckInRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): CheckInRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> CheckInRepositoryException.NotAllowed(e)

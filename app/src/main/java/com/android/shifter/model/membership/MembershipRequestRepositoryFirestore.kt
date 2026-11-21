@@ -330,7 +330,9 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     /**
      * Translates a Firestore error into the [MembershipRequestRepositoryException] callers handle.
      */
-    fun toRepositoryException(e: FirebaseFirestoreException): MembershipRequestRepositoryException =
+    internal fun toRepositoryException(
+        e: FirebaseFirestoreException
+    ): MembershipRequestRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> MembershipRequestRepositoryException.PermissionDenied(e)

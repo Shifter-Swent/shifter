@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.location
 
 import com.google.firebase.auth.FirebaseAuth
@@ -154,7 +155,9 @@ class FirestoreLiveLocationRepository(
 
   companion object {
     /** Translates a Firestore error into the [LiveLocationRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): LiveLocationRepositoryException =
+    internal fun toRepositoryException(
+        e: FirebaseFirestoreException
+    ): LiveLocationRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> LiveLocationRepositoryException.PermissionDenied(e)

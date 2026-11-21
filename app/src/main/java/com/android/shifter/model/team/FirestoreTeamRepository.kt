@@ -286,7 +286,7 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
     private const val MAX_BATCH_WRITES = 500
 
     /** Translates a Firestore error into the [TeamRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): TeamRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): TeamRepositoryException =
         when (e.code) {
           Code.NOT_FOUND -> TeamRepositoryException.NotFound(e)
           Code.PERMISSION_DENIED,
