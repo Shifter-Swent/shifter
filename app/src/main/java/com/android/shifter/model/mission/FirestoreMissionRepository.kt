@@ -233,7 +233,7 @@ class FirestoreMissionRepository(
 
   companion object {
     /** Translates a Firestore error into the [MissionRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): MissionRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): MissionRepositoryException =
         when (e.code) {
           Code.NOT_FOUND -> MissionRepositoryException.NotFound(e)
           Code.PERMISSION_DENIED,

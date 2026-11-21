@@ -229,7 +229,7 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
         )
 
     /** Translates a Firestore error into the [UserRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): UserRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): UserRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> UserRepositoryException.PermissionDenied(e)

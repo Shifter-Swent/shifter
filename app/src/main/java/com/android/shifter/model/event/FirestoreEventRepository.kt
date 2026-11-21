@@ -114,7 +114,7 @@ class FirestoreEventRepository(
 
   companion object {
     /** Translates a Firestore error into the [EventRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): EventRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): EventRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> EventRepositoryException.PermissionDenied(e)

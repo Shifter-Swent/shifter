@@ -111,7 +111,7 @@ class FirestoreChatRepository(
     const val SEND_TIMEOUT_MILLIS = 10_000L
 
     /** Translates a Firestore error into the [ChatRepositoryException] callers handle. */
-    fun toRepositoryException(e: FirebaseFirestoreException): ChatRepositoryException =
+    internal fun toRepositoryException(e: FirebaseFirestoreException): ChatRepositoryException =
         when (e.code) {
           Code.PERMISSION_DENIED,
           Code.UNAUTHENTICATED -> ChatRepositoryException.NotAllowed(e)
