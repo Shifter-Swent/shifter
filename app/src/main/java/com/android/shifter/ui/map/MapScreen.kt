@@ -30,11 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -48,6 +52,8 @@ import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.ui.location.LocationPermissionGate
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -66,6 +72,7 @@ object MapScreenTestTags {
   const val CENTER_ON_ME_BUTTON = "MapCenterOnMeButton"
   const val VOLUNTEER = "MapVolunteer"
   const val STALE_VOLUNTEER = "MapStaleVolunteer"
+  const val LOCATION_GATE = "MapLocationGate"
 }
 
 /** Starts the id of a volunteer's marker, which keeps it apart from the missions' ids. */
@@ -88,6 +95,7 @@ fun MapScreen(
   val myPosition by viewModel.myPosition.collectAsStateWithLifecycle()
   // Stops following the volunteers' positions while the app is in the background.
   val volunteers by viewModel.volunteers.collectAsStateWithLifecycle()
+  val locationStatus by viewModel.locationStatus.collectAsStateWithLifecycle()
   MapContent(
       uiState = uiState,
       onMarkerClick = viewModel::selectMarker,
@@ -96,6 +104,8 @@ fun MapScreen(
       onFocusShown = viewModel::focusShown,
       myPosition = myPosition,
       volunteers = volunteers,
+      locationStatus = locationStatus,
+      onRefreshLocation = viewModel::refreshLocation,
       contentPadding = contentPadding,
   )
 }
@@ -109,6 +119,12 @@ fun MapScreen(
  *   wait for the map to be ready.
  * @param volunteers the volunteers of the manager's teams who share their position, drawn apart
  *   from the missions. A tap on one only centres the map on them.
+ * @param locationStatus whether the user's position can be read: until it is
+ *   [LocationStatus.GRANTED], a compact [LocationPermissionGate] over the top of the map asks for
+ *   it, and the map's own controls move below it. Null, for a map that locates nobody, asks for
+ *   nothing.
+ * @param onRefreshLocation reads [locationStatus] again, after the permission dialog and each time
+ *   the screen resumes.
  * @param cameraPositionState the camera of the map, which tests pass to check where it points.
  * @param contentPadding the space taken by the bars around the screen. The map runs behind the
  *   bottom one, while its controls, its cards and its logo stay above it.
@@ -122,6 +138,8 @@ fun MapContent(
     onFocusShown: () -> Unit = {},
     myPosition: GeoPosition? = null,
     volunteers: List<VolunteerPin> = emptyList(),
+    locationStatus: LocationStatus? = null,
+    onRefreshLocation: () -> Unit = {},
     cameraPositionState: CameraPositionState = rememberCameraPositionState {
       position = CameraPosition.fromLatLngZoom(DEFAULT_CENTER, DEFAULT_ZOOM)
     },
@@ -189,6 +207,10 @@ fun MapContent(
               ) to it.isStale
             }
           }
+      val showGate = locationStatus != null && locationStatus != LocationStatus.GRANTED
+      // The gate's height, so the map's own controls, such as its compass, stay below it.
+      var gateHeight by remember { mutableStateOf(0.dp) }
+      val density = LocalDensity.current
       ShifterMap(
           markers =
               uiState.markers.map {
@@ -199,12 +221,25 @@ fun MapContent(
           modifier = Modifier.fillMaxSize(),
           myPosition = myPosition,
           cameraPositionState = cameraPositionState,
-          contentPadding = PaddingValues(bottom = bottomPadding),
+          contentPadding =
+              PaddingValues(top = if (showGate) gateHeight else 0.dp, bottom = bottomPadding),
           markerContent = {
             val isStale = volunteerMarkers[it]
             if (isStale != null) VolunteerLabel(it, isStale) else MissionLabel(it)
           },
       )
+      if (showGate) {
+        LocationPermissionGate(
+            status = locationStatus,
+            onRefreshStatus = onRefreshLocation,
+            modifier =
+                Modifier.align(Alignment.TopCenter)
+                    .onSizeChanged { gateHeight = with(density) { it.height.toDp() } }
+                    .padding(16.dp)
+                    .testTag(MapScreenTestTags.LOCATION_GATE),
+            compact = true,
+        )
+      }
       if (uiState.isLoading) {
         CircularProgressIndicator(
             modifier = Modifier.align(Alignment.Center).testTag(MapScreenTestTags.LOADING)
