@@ -834,6 +834,7 @@ class ShifterNavHostTest {
    */
   @Test
   fun volunteerMap_followsTheUsersPosition() {
+    signIn()
     val location =
         openMapWithAKnownPosition(
             UserMode.VOLUNTEER,
@@ -844,9 +845,10 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
   }
 
-  /** The organizer's map is given no location provider, so it never shows where they are. */
+  /** The organizer's map is given the location provider too, to show them where they are (#655). */
   @Test
-  fun organizerMap_doesNotFollowTheUsersPosition() {
+  fun organizerMap_followsTheUsersPosition() {
+    signIn()
     val location =
         openMapWithAKnownPosition(
             UserMode.ORGANIZER,
@@ -854,8 +856,24 @@ class ShifterNavHostTest {
             OrganizerTabs.Map,
         )
 
-    composeTestRule.waitForIdle()
-    assertEquals(0, location.activeCollectors)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
+  }
+
+  /**
+   * Once their event is loaded, the organizer's map offers to center on their position, which only
+   * shows when the map knows where they are.
+   */
+  @Test
+  fun organizerMap_showsTheCenterOnYourPositionButton() {
+    val event = createEvent(signIn(), location = VIDY_BEACH_VENUE)
+    openMapWithAKnownPosition(
+        UserMode.ORGANIZER,
+        OrganizerEvent(event.id, event.title),
+        OrganizerTabs.Map,
+    )
+
+    waitForNode(MapScreenTestTags.CENTER_ON_ME_BUTTON)
+    composeTestRule.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertIsDisplayed()
   }
 
   @Test
@@ -1913,16 +1931,15 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Shows the app in [mode] to a fresh account, with a GPS that knows where the user is, and opens
-   * [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map opens, so
-   * whatever follows it afterwards is the map.
+   * Shows the app in [mode] to the signed-in account, with a GPS that knows where the user is, and
+   * opens [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map
+   * opens, so whatever follows it afterwards is the map.
    */
   private fun openMapWithAKnownPosition(
       mode: UserMode,
       event: EventMode,
       mapTab: Tab,
   ): FakeLocationProvider {
-    signIn(googleCredential())
     saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
     val location = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     lateinit var navController: NavHostController
@@ -1974,7 +1991,11 @@ class ShifterNavHostTest {
    * Creates an event organized by [organizer], who must be the signed-in user: upcoming by default,
    * or in progress now when [running], for the tests that need an event whose period is open.
    */
-  private fun createEvent(organizer: AuthUser, running: Boolean = false): Event {
+  private fun createEvent(
+      organizer: AuthUser,
+      running: Boolean = false,
+      location: EventLocation = EventLocation(VIDY_BEACH_VENUE.address),
+  ): Event {
     val now = Instant.now()
     // On a whole minute, as a mission's time is picked to the minute.
     val startAt =
@@ -1990,7 +2011,7 @@ class ShifterNavHostTest {
               type = EventType.NATURE,
               startAt = startAt,
               endAt = endAt,
-              location = EventLocation("Vidy beach, Lausanne"),
+              location = location,
               createdAt = now,
           )
       )
@@ -2143,6 +2164,10 @@ class ShifterNavHostTest {
     const val COORDINATE_TOLERANCE = 1e-9
 
     val GENEVA = GeoPosition(46.2044, 6.1432)
+
+    /** The venue of the tests' events, with its coordinates for a test that needs it on the map. */
+    val VIDY_BEACH_VENUE = EventLocation("Vidy beach, Lausanne", GeoPosition(46.5167, 6.5953))
+
     const val EVENT_TITLE = "City Marathon"
   }
 }

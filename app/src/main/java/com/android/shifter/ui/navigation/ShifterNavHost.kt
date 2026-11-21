@@ -115,7 +115,8 @@ import kotlinx.coroutines.flow.filter
  *   so a test cannot reach the production backend by forgetting to pass the emulator ones.
  * @param credentialManager The Google account picker of sign-in, and what sign-out clears. A test
  *   passes one that answers with a fake account, as the system picker cannot be driven.
- * @param locationProvider The volunteer's position, for the automatic check-in and their map.
+ * @param locationProvider The user's position, for the volunteer's automatic check-in and the map
+ *   of either mode.
  * @param eventSharer What sends an event's join code to another app from its Sharing tab. A test
  *   passes a fake, as the system share sheet cannot be driven.
  * @param qrScanner The camera that reads the event's QR code to join it. A test passes a fake one.
@@ -663,6 +664,8 @@ private fun ShifterNavGraph(
             navController,
             repositories,
             currentUserId,
+            // Shows the organizer where they are, to them alone: the map shares nothing.
+            locationProvider,
         )
         discussionsTab<
             OrganizerTabs.Discussions,
