@@ -157,21 +157,48 @@ class LiveLocationPublisher(
     val lastWrite = MutableStateFlow<LiveLocationSharingState?>(null)
     // Counts the losses seen, so a write can tell whether one happened while it was answering.
     val accessLosses = AtomicInteger()
-    launch {
-      locationProvider.status
-          .onEach {
-            if (it != LocationStatus.GRANTED) {
-              accessLosses.incrementAndGet()
-              lastWrite.value = null
-            }
+    // Both launched, so this block returns at once and the scope waits for them: neither ends on
+    // its own, cancelling the call stops both, and a failure in one cancels the other.
+    launch { reportStates(lastWrite, accessLosses, onState) }
+    launch { shareEachPosition(eventId, teamId, lastWrite, accessLosses) }
+  }
+
+  /**
+   * Reports to [onState] the state worked out from the access and [lastWrite], each time it
+   * changes, and on each loss of the access forgets [lastWrite] and counts the loss in
+   * [accessLosses] (see [shareWhileGranted]).
+   */
+  private suspend fun reportStates(
+      lastWrite: MutableStateFlow<LiveLocationSharingState?>,
+      accessLosses: AtomicInteger,
+      onState: (LiveLocationSharingState) -> Unit,
+  ) {
+    locationProvider.status
+        .onEach {
+          if (it != LocationStatus.GRANTED) {
+            accessLosses.incrementAndGet()
+            lastWrite.value = null
           }
-          .combine(lastWrite) { status, write ->
-            if (status == LocationStatus.GRANTED) write ?: LiveLocationSharingState.WAITING
-            else LiveLocationSharingState.NO_LOCATION_ACCESS
-          }
-          .distinctUntilChanged()
-          .collect(onState)
-    }
+        }
+        .combine(lastWrite) { status, write ->
+          if (status == LocationStatus.GRANTED) write ?: LiveLocationSharingState.WAITING
+          else LiveLocationSharingState.NO_LOCATION_ACCESS
+        }
+        .distinctUntilChanged()
+        .collect(onState)
+  }
+
+  /**
+   * Writes every position worth it, and keeps in [lastWrite] what became of the last write, unless
+   * the access was lost while it was answering, which [accessLosses] tells (see
+   * [shareWhileGranted]).
+   */
+  private suspend fun shareEachPosition(
+      eventId: String,
+      teamId: String,
+      lastWrite: MutableStateFlow<LiveLocationSharingState?>,
+      accessLosses: AtomicInteger,
+  ) {
     var lastAttemptAt: Instant? = null
     var lastShared: GeoPosition? = null
     // Sequential on purpose: the next position waits for the write of the previous one, so two
