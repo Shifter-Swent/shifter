@@ -1,5 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
 package com.swent.shifter.ui.settings
 
 import android.util.Log
@@ -21,6 +22,7 @@ import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
@@ -104,7 +106,7 @@ class SettingsViewModel(
     viewModelScope.launch {
       _uiState.update { it.copy(changingMode = true, modeChangeFailed = false) }
       try {
-        withTimeout(MODE_CHANGE_TIMEOUT_MILLIS) { userRepository.setMode(uid, target) }
+        withTimeout(MODE_CHANGE_TIMEOUT_MILLIS.milliseconds) { userRepository.setMode(uid, target) }
       } catch (e: TimeoutCancellationException) {
         // The write stays queued and would reach the server on reconnection: queue the current
         // mode after it, so the profile ends where the user still is.
@@ -195,30 +197,11 @@ class SettingsViewModel(
     }
     viewModelScope.launch {
       try {
-        // Leaving Settings cancels viewModelScope, which would otherwise drop a change still
-        // reading the teams before it is written, while the switch already showed it saved. Once
-        // written, the change no longer needs this coroutine: Firestore keeps it queued.
-        val confirmed =
-            withContext(NonCancellable) {
-              val teams = if (enabled) emptyList() else teamsOf(uid)
-              val result =
-                  withTimeoutOrNull(SAVE_TIMEOUT_MILLIS) {
-                    userRepository.setLocationSharing(uid, enabled, teams)
-                  }
-              // The off is now persisted, or queued offline: confirm it, so the next consent the
-              // publisher observes ends the local decision and Firestore drives again, without
-              // resuming GPS from the stale true in between (#377). Usually that is a later on: the
-              // write's own off reached the publisher while the decision was pending (Firestore
-              // commits locally before the server answers) and was held off as such. Inside
-              // NonCancellable, so it still confirms if Settings has left the screen.
-              if (!enabled) localSharingConsent.confirmOff(uid)
-              result
-            }
+        val confirmed = saveLocationSharing(uid, enabled)
         _uiState.update {
           it.copy(
               savingLocationSharing = false,
-              locationSharingNotice =
-                  if (confirmed == null) LocationSharingNotice.SAVED_OFFLINE else null,
+              locationSharingNotice = if (confirmed) null else LocationSharingNotice.SAVED_OFFLINE,
           )
         }
       } catch (e: CancellationException) {
@@ -238,6 +221,32 @@ class SettingsViewModel(
       }
     }
   }
+
+  /**
+   * Writes [enabled] on [uid]'s profile, in the same commit as the removal of their position in
+   * their teams when it is off, then confirms the local decision. False when the server has not
+   * answered before [SAVE_TIMEOUT_MILLIS], the write staying queued.
+   *
+   * Leaving Settings cancels viewModelScope, which would otherwise drop a change still reading the
+   * teams before it is written, while the switch already showed it saved. Once written, the change
+   * no longer needs this coroutine: Firestore keeps it queued.
+   */
+  private suspend fun saveLocationSharing(uid: String, enabled: Boolean): Boolean =
+      withContext(NonCancellable) {
+        val teams = if (enabled) emptyList() else teamsOf(uid)
+        val result =
+            withTimeoutOrNull(SAVE_TIMEOUT_MILLIS.milliseconds) {
+              userRepository.setLocationSharing(uid, enabled, teams)
+            }
+        // The off is now persisted, or queued offline: confirm it, so the next consent the
+        // publisher observes ends the local decision and Firestore drives again, without
+        // resuming GPS from the stale true in between (#377). Usually that is a later on: the
+        // write's own off reached the publisher while the decision was pending (Firestore
+        // commits locally before the server answers) and was held off as such. Inside
+        // NonCancellable, so it still confirms if Settings has left the screen.
+        if (!enabled) localSharingConsent.confirmOff(uid)
+        result != null
+      }
 
   /** The teams [uid] is a member of, in every event they were accepted to. */
   private suspend fun teamsOf(uid: String): List<Team> = coroutineScope {
