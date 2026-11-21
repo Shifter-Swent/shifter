@@ -45,6 +45,7 @@ import com.swent.shifter.ui.components.nowcard.accent
 import com.swent.shifter.ui.components.time.formatDuration
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
+import com.swent.shifter.ui.theme.SatoshiFontFamily
 import com.swent.shifter.ui.theme.shifter_avatarBackground
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -586,7 +587,14 @@ private fun Detail(text: String, color: Color) {
   Text(text = text, color = color, fontSize = 12.sp, lineHeight = 16.sp)
 }
 
-private val NAME = TextStyle(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium)
+// A style built from scratch has no typeface of its own, so it names the theme's one.
+private val NAME =
+    TextStyle(
+        fontFamily = SatoshiFontFamily,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        fontWeight = FontWeight.Medium,
+    )
 
 /** How much of the success green a row takes once its volunteer is checked in. */
 private const val GREEN_TINT = 0.25f
