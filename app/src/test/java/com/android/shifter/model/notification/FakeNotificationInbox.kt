@@ -2,6 +2,7 @@
 package com.swent.shifter.model.notification
 
 import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -161,8 +162,11 @@ class FakeNotificationScheduler : NotificationScheduler {
   }
 }
 
-/** [NotificationTexts] that write the resource id and the arguments, for tests without Android. */
-class FakeNotificationTexts : NotificationTexts {
+/**
+ * [NotificationTexts] that write the resource id and the arguments, for tests without Android, in
+ * the [zone] the test chooses, such as `ZoneOffset.UTC`.
+ */
+class FakeNotificationTexts(override val zone: ZoneId) : NotificationTexts {
   override fun string(id: Int, vararg args: Any) = "$id${args.toList()}"
 
   override fun plural(id: Int, count: Int, vararg args: Any) = "$id#$count${args.toList()}"

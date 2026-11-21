@@ -3,6 +3,7 @@ package com.swent.shifter.model.notification
 
 import androidx.annotation.PluralsRes
 import androidx.annotation.StringRes
+import java.time.ZoneId
 
 /**
  * Turns the inbox notifications of one [kind] into what is shown. One per kind with
@@ -34,6 +35,12 @@ interface NotificationFormat {
  * that returns the resource name and its arguments.
  */
 interface NotificationTexts {
+
+  /**
+   * The time zone a format writes times and days in: the phone's, as on the screens. Given rather
+   * than read by each format, so a test fixes it and passes the same on any machine.
+   */
+  val zone: ZoneId
 
   /** The string [id], formatted with [args]. */
   fun string(@StringRes id: Int, vararg args: Any): String
