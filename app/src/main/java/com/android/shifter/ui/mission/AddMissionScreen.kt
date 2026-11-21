@@ -77,6 +77,7 @@ import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
+import com.swent.shifter.ui.components.isWindowShortForACalendar
 import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.formatWeekday
 import com.swent.shifter.ui.components.toPickerDate
@@ -868,6 +869,10 @@ private fun DayField(
                   }
                 },
         )
+    // The calendar is taller than a phone in landscape: there it scrolls under the dialog's
+    // buttons, which stay put below, rather than being cut off. Upright it fits and does not move.
+    val calendarScroll = rememberScrollState()
+    val shortWindow = isWindowShortForACalendar()
     DatePickerDialog(
         onDismissRequest = { open = false },
         confirmButton = {
@@ -885,7 +890,11 @@ private fun DayField(
           TextButton(onClick = { open = false }) { Text(stringResource(R.string.dialog_cancel)) }
         },
     ) {
-      DatePicker(state = pickerState)
+      DatePicker(
+          state = pickerState,
+          modifier =
+              Modifier.then(if (shortWindow) Modifier.verticalScroll(calendarScroll) else Modifier),
+      )
     }
   }
 }
@@ -922,6 +931,8 @@ private fun TimeField(
         )
     AlertDialog(
         onDismissRequest = { open = false },
+        // The dial lies down in landscape, wider than a platform dialog: let it size itself.
+        properties = DialogProperties(usePlatformDefaultWidth = false),
         confirmButton = {
           TextButton(
               onClick = {
