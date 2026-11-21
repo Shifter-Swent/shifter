@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -124,7 +125,7 @@ class MapScreenTest {
         .assertContentDescriptionEquals("Center on your position")
         .performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(ME) }
+    compose.waitUntilCentred(camera, ME, zoom = 15f)
   }
 
   @Test
@@ -136,7 +137,7 @@ class MapScreenTest {
         .assertContentDescriptionEquals("Center on the event")
         .performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    compose.waitUntilCentred(camera, LOADED.center!!, zoom = 15f)
   }
 
   @Test
@@ -146,7 +147,101 @@ class MapScreenTest {
     compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
     compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    compose.waitUntilCentred(camera, LOADED.center!!, zoom = 15f)
+  }
+
+  @Test
+  fun centerOnMeButton_secondTap_zoomsInOnTheUser() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 16.5f)
+  }
+
+  @Test
+  fun centerOnMeButton_onceCentred_stopsZoomingInAt19() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    listOf(15f, 16.5f, 18f, 19f, 19f).forEach {
+      tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = it)
+    }
+  }
+
+  @Test
+  fun centerOnMeButton_afterTheUserWalkedAFewMeters_stillZoomsIn() {
+    lateinit var camera: CameraPositionState
+    var myPosition by mutableStateOf(ME)
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = LOADED,
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            myPosition = myPosition,
+            cameraPositionState = camera,
+        )
+      }
+    }
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
+
+    // About 22 m to the north, within the margin of a centred camera.
+    val walked = GeoPosition(ME.latitude + 0.0002, ME.longitude)
+    compose.runOnIdle { myPosition = walked }
+
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, walked, zoom = 16.5f)
+  }
+
+  @Test
+  fun recenterButton_secondTap_zoomsInOnTheEvent() {
+    val camera = setContentWithCamera(myPosition = null)
+
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 15f)
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 16.5f)
+  }
+
+  @Test
+  fun recenterButton_onceCentred_stopsZoomingInAt19() {
+    val camera = setContentWithCamera(myPosition = null)
+
+    listOf(15f, 16.5f, 18f, 19f, 19f).forEach {
+      tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = it)
+    }
+  }
+
+  @Test
+  fun recenterButton_afterCentringOnTheUser_centresOnTheEventAtTheEventZoom() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 16.5f)
+
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, LOADED.center!!, zoom = 15f)
+  }
+
+  /** Taps the button of [tag], then waits for the camera to rest on [target] at [zoom]. */
+  private fun tapAndWait(
+      tag: String,
+      camera: CameraPositionState,
+      target: GeoPosition,
+      zoom: Float,
+  ) {
+    compose.onNodeWithTag(tag).performClick()
+    compose.waitUntilCentred(camera, target, zoom)
+  }
+
+  /** Waits for [camera] to rest on [target] at [zoom], so the next tap sees it still. */
+  private fun ComposeContentTestRule.waitUntilCentred(
+      camera: CameraPositionState,
+      target: GeoPosition,
+      zoom: Float,
+  ) {
+    waitUntil(timeoutMillis = 5_000) {
+      !camera.isMoving &&
+          camera.position.target.isNear(target) &&
+          abs(camera.position.zoom - zoom) < 0.01f
+    }
   }
 
   /** Shows the loaded map with [myPosition], its camera moved away from where the button goes. */
@@ -165,8 +260,9 @@ class MapScreenTest {
         )
       }
     }
-    // Moved away first, since the camera already opens on the event.
-    compose.runOnIdle { camera.position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 15f) }
+    // Moved away first, since the camera already opens on the event, and at another zoom, so the
+    // first tap is seen to set it.
+    compose.runOnIdle { camera.position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 10f) }
     return camera
   }
 
