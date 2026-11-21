@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -101,7 +102,7 @@ fun SignInScreen(
       verticalArrangement = Arrangement.Center,
   ) {
     Text(
-        text = "Shifter",
+        text = stringResource(R.string.app_name),
         color = colors.onBackground,
         fontSize = 44.sp,
         fontWeight = FontWeight.Bold,
@@ -121,7 +122,7 @@ fun SignInScreen(
     Spacer(modifier = Modifier.height(18.dp))
 
     Text(
-        text = "Create your account or sign in\nwith your Google account.",
+        text = stringResource(R.string.sign_in_intro),
         color = colors.secondary,
         fontSize = 14.sp,
         lineHeight = 22.sp,
@@ -147,12 +148,12 @@ fun GoogleSignInButton(onSignIn: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Image(
           painter = painterResource(R.drawable.google_icon),
-          contentDescription = "Google",
+          contentDescription = stringResource(R.string.sign_in_google_logo),
           modifier = Modifier.size(20.dp),
       )
       Spacer(modifier = Modifier.width(12.dp))
       Text(
-          text = "Continue with Google",
+          text = stringResource(R.string.sign_in_google_button),
           fontSize = 16.sp,
           fontWeight = FontWeight.SemiBold,
       )
