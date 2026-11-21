@@ -7,10 +7,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,8 +21,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
@@ -124,7 +128,7 @@ class MapScreenTest {
         .assertContentDescriptionEquals("Center on your position")
         .performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(ME) }
+    compose.waitUntilCentred(camera, ME, zoom = 15f)
   }
 
   @Test
@@ -136,7 +140,7 @@ class MapScreenTest {
         .assertContentDescriptionEquals("Center on the event")
         .performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    compose.waitUntilCentred(camera, EVENT, zoom = 15f)
   }
 
   @Test
@@ -146,11 +150,138 @@ class MapScreenTest {
     compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
     compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).performClick()
 
-    compose.waitUntil(timeoutMillis = 5_000) { camera.position.target.isNear(LOADED.center!!) }
+    compose.waitUntilCentred(camera, EVENT, zoom = 15f)
   }
 
-  /** Shows the loaded map with [myPosition], its camera moved away from where the button goes. */
-  private fun setContentWithCamera(myPosition: GeoPosition?): CameraPositionState {
+  @Test
+  fun centerOnMeButton_secondTap_zoomsInOnTheUser() {
+    val camera = setContentWithCamera(myPosition = ME)
+
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 16.5f)
+  }
+
+  @Test
+  fun centerOnMeButton_onceCentred_stopsZoomingInAt19() {
+    val camera = setContentWithCamera(myPosition = ME, start = cameraAt(ME, 18f))
+
+    // 18 + 1.5 would pass the limit.
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 19f)
+  }
+
+  @Test
+  fun centerOnMeButton_afterTheUserWalkedAFewMeters_stillZoomsIn() {
+    lateinit var camera: CameraPositionState
+    var myPosition by mutableStateOf(ME)
+    compose.setContent {
+      ShifterTheme {
+        camera = rememberCameraPositionState()
+        MapContent(
+            uiState = LOADED,
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            myPosition = myPosition,
+            cameraPositionState = camera,
+        )
+      }
+    }
+    awaitTheMap(camera, cameraAt(ME, 15f))
+
+    // About 22 m to the north, within the margin of a centred camera.
+    val walked = GeoPosition(ME.latitude + 0.0002, ME.longitude)
+    compose.runOnIdle { myPosition = walked }
+
+    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, walked, zoom = 16.5f)
+  }
+
+  @Test
+  fun recenterButton_secondTap_zoomsInOnTheEvent() {
+    val camera = setContentWithCamera(myPosition = null)
+
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 15f)
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 16.5f)
+  }
+
+  @Test
+  fun recenterButton_onceCentred_stopsZoomingInAt19() {
+    val camera = setContentWithCamera(myPosition = null, start = cameraAt(EVENT, 18f))
+
+    // 18 + 1.5 would pass the limit.
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 19f)
+  }
+
+  @Test
+  fun recenterButton_afterCentringOnTheUser_centresOnTheEventAtTheEventZoom() {
+    val camera = setContentWithCamera(myPosition = ME, start = cameraAt(ME, 16.5f))
+
+    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 15f)
+  }
+
+  /** Taps the button of [tag], then waits for the camera to rest on [target] at [zoom]. */
+  private fun tapAndWait(
+      tag: String,
+      camera: CameraPositionState,
+      target: GeoPosition,
+      zoom: Float,
+  ) {
+    compose.onNodeWithTag(tag).performClick()
+    compose.waitUntilCentred(camera, target, zoom)
+  }
+
+  /**
+   * Waits for the map to report its camera resting on [target] at [zoom], so the next tap sees it
+   * still. The move reason is set by the map's listener alone, so a position the state merely
+   * remembers from before the map does not count. Generous, since the emulators of the CI draw the
+   * map in software.
+   */
+  private fun ComposeContentTestRule.waitUntilCentred(
+      camera: CameraPositionState,
+      target: GeoPosition,
+      zoom: Float,
+  ) {
+    try {
+      waitUntil(timeoutMillis = 20_000) {
+        camera.cameraMoveStartedReason != CameraMoveStartedReason.NO_MOVEMENT_YET &&
+            !camera.isMoving &&
+            camera.position.target.isNear(target) &&
+            abs(camera.position.zoom - zoom) < 0.01f
+      }
+    } catch (e: ComposeTimeoutException) {
+      throw AssertionError(
+          "Expected $target at zoom $zoom, camera at ${camera.position}, " +
+              "moving=${camera.isMoving}, last move ${camera.cameraMoveStartedReason}",
+          e,
+      )
+    }
+  }
+
+  /**
+   * Waits for the map to be bound, then parks its camera at [start] and waits for the map itself to
+   * report it. Until the map has drawn, the state still shows the camera it had before the map, so
+   * a tap would read a stale camera, and an animation started then can be dropped.
+   */
+  private fun awaitTheMap(camera: CameraPositionState, start: CameraPosition) {
+    // The projection is read on the main thread, as every call to the map must be.
+    compose.waitUntil(timeoutMillis = 20_000) {
+      compose.runOnUiThread { camera.projection != null }
+    }
+    compose.runOnIdle { camera.move(CameraUpdateFactory.newCameraPosition(start)) }
+    compose.waitUntilCentred(camera, start.target.toGeoPosition(), start.zoom)
+  }
+
+  private fun cameraAt(position: GeoPosition, zoom: Float) =
+      CameraPosition.fromLatLngZoom(position.toLatLng(), zoom)
+
+  /**
+   * Shows the loaded map with [myPosition], once the map is ready, its camera parked at [start]: by
+   * default away from where the buttons go, and at another zoom, so the first tap is seen to set
+   * it.
+   */
+  private fun setContentWithCamera(
+      myPosition: GeoPosition?,
+      start: CameraPosition = AWAY,
+  ): CameraPositionState {
     lateinit var camera: CameraPositionState
     compose.setContent {
       ShifterTheme {
@@ -165,8 +296,7 @@ class MapScreenTest {
         )
       }
     }
-    // Moved away first, since the camera already opens on the event.
-    compose.runOnIdle { camera.position = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 15f) }
+    awaitTheMap(camera, start)
     return camera
   }
 
@@ -344,10 +474,14 @@ class MapScreenTest {
     val WATER = MapMarker("mission-1", GeoPosition(46.519, 6.569), "Water", "10:00–11:00 · Stand")
     /** Away from the center the camera opens on. */
     val FOCUS = GeoPosition(46.53, 6.58)
+    /** Far from the event and the user, at another zoom than the buttons'. */
+    val AWAY: CameraPosition = CameraPosition.fromLatLngZoom(LatLng(0.0, 0.0), 10f)
+    /** Where the loaded event centres the map. */
+    val EVENT = GeoPosition(46.52, 6.57)
     val LOADED =
         MapUiState(
             venue = "Place Bellecour",
-            center = GeoPosition(46.52, 6.57),
+            center = EVENT,
             markers = listOf(WATER),
             isLoading = false,
         )
