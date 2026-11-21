@@ -56,7 +56,10 @@ object NotificationData {
     const val TEAM_NAME = "teamName"
     /** The missions concerned, one [MissionLine] per line. */
     const val MISSIONS = "missions"
-    /** [Value.TIME] or [Value.PLACE], for [NotificationKind.MISSION_CHANGED]. */
+    /**
+     * [Value.TIME], [Value.PLACE] or [Value.TIME_AND_PLACE], for
+     * [NotificationKind.MISSION_CHANGED]: what one action changed, in one notification.
+     */
     const val WHAT = "what"
     const val ADDRESS = "address"
     /** A [com.swent.shifter.model.chat.ChannelKind] name, for [NotificationKind.ANNOUNCEMENT]. */
@@ -92,16 +95,28 @@ object NotificationData {
     const val REMOVED = "REMOVED"
     const val TIME = "TIME"
     const val PLACE = "PLACE"
+    const val TIME_AND_PLACE = "TIME_AND_PLACE"
   }
 }
 
 /**
- * One mission in [NotificationData.Key.MISSIONS], stored as `id|title|start`, the start in
- * ISO-8601. A notification keeps the title and the start as they are once the action is done (the
- * new start for a mission moved), so the recipient's phone can show them without reading the
- * mission, which may have changed again or be gone.
+ * One mission in [NotificationData.Key.MISSIONS], stored as `id|title|start|end`, the times in
+ * ISO-8601. A notification keeps the title and the times as they are once the action is done (the
+ * new ones for a mission moved, even if only its end moved), so the recipient's phone can show them
+ * without reading the mission, which may have changed again or be gone.
+ *
+ * @property endAt never before [startAt]: a line built otherwise is refused, and one read otherwise
+ *   is skipped.
  */
-data class MissionLine(val id: String, val title: String, val startAt: Instant) {
+data class MissionLine(
+    val id: String,
+    val title: String,
+    val startAt: Instant,
+    val endAt: Instant,
+) {
+  init {
+    require(!endAt.isBefore(startAt)) { "A mission ends after it starts" }
+  }
 
   /**
    * The stored form of this line. The lines of a title are joined with spaces, its blank ones left
@@ -110,7 +125,7 @@ data class MissionLine(val id: String, val title: String, val startAt: Instant) 
    */
   fun encode(): String {
     val oneLineTitle = title.lines().filter { it.isNotBlank() }.joinToString(" ")
-    return "$id$SEPARATOR$oneLineTitle$SEPARATOR$startAt"
+    return listOf(id, oneLineTitle, startAt, endAt).joinToString(SEPARATOR.toString())
   }
 
   companion object {
@@ -120,22 +135,32 @@ data class MissionLine(val id: String, val title: String, val startAt: Instant) 
     fun encodeAll(lines: List<MissionLine>): String = lines.joinToString("\n") { it.encode() }
 
     /**
-     * Reads one stored line, or null when it is malformed. The id and the start never hold the
-     * separator, so the line is cut at its first and its last one, and a title holding it stays
-     * whole.
+     * Reads one stored line, or null when it is malformed. The id and the times never hold the
+     * separator, so the line is cut at its first one and at its last two, and a title holding it
+     * stays whole.
      */
     fun decode(line: String): MissionLine? {
       val first = line.indexOf(SEPARATOR)
       val last = line.lastIndexOf(SEPARATOR)
-      if (first <= 0 || first == last) return null
-      val startAt =
-          try {
-            Instant.parse(line.substring(last + 1))
-          } catch (_: DateTimeParseException) {
-            return null
-          }
-      return MissionLine(line.substring(0, first), line.substring(first + 1, last), startAt)
+      val beforeLast = line.lastIndexOf(SEPARATOR, last - 1)
+      if (first <= 0 || beforeLast <= first) return null
+      val startAt = parseInstant(line.substring(beforeLast + 1, last)) ?: return null
+      val endAt = parseInstant(line.substring(last + 1)) ?: return null
+      if (endAt.isBefore(startAt)) return null
+      return MissionLine(
+          line.substring(0, first),
+          line.substring(first + 1, beforeLast),
+          startAt,
+          endAt,
+      )
     }
+
+    private fun parseInstant(text: String): Instant? =
+        try {
+          Instant.parse(text)
+        } catch (_: DateTimeParseException) {
+          null
+        }
 
     /** Reads the lines stored by [encodeAll], skipping the malformed ones. */
     fun decodeAll(stored: String): List<MissionLine> =

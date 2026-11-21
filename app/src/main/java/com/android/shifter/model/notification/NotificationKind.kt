@@ -30,8 +30,8 @@ enum class NotificationKind(val inInbox: Boolean) {
    */
   MISSION_ASSIGNED(inInbox = true),
   /**
-   * The time or the place of a mission changed: for its assignees. Data: `missions`, `what`, and
-   * `address` for PLACE only. Written by #617.
+   * The time or the place of a mission changed, or both in one action: for its assignees. Data:
+   * `missions`, `what`, and `address` for PLACE and TIME_AND_PLACE only. Written by #617.
    */
   MISSION_CHANGED(inInbox = true),
   /**
