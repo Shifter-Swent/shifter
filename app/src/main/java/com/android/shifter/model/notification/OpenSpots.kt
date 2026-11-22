@@ -43,49 +43,51 @@ class OpenSpots(
   override val kind = NotificationKind.OPEN_SPOTS
 
   override suspend fun run(userId: String, now: Instant, seen: SeenStore): List<AppNotification> {
-    // Everything is read before any key is marked, so a failed read loses no notification. An
-    // event already over has no mission left to staff, so its missions are not read.
+    // Nothing is marked until every notification is built, so a read or a text that fails loses
+    // none. An event already over has no mission left to staff, so its missions are not read.
     val missionsByEvent =
         events
             .getEventsByOrganizer(userId)
             .filter { it.endAt >= now }
             .map { it to missions.getMissionsByEvent(it.id) }
-    return missionsByEvent.flatMap { (event, eventMissions) ->
+    val shown = missionsByEvent.flatMap { (event, eventMissions) ->
       eventMissions.mapNotNull { mission ->
         when {
+          // Forgetting early can at worst show a mission twice, never lose one.
           !mission.isShortAt(now) -> {
             seen.forget(mission.id)
             null
           }
           seen.wasShown(mission.id) -> null
-          else -> {
-            val missing = mission.volunteersNeeded - mission.assigneeIds.size
-            // Built before the key is marked, so a text that fails leaves it to the next run.
-            AppNotification(
-                    kind = kind,
-                    key = mission.id,
-                    title = event.title,
-                    text =
-                        texts.plural(
-                            R.plurals.notification_open_spots_text,
-                            missing,
-                            mission.title,
-                            mission.startAt.formatTime(texts.zone),
-                            missing,
-                        ),
-                    at = now,
-                    target =
-                        NotificationTarget.Mission(
-                            event.id,
-                            event.title,
-                            UserMode.ORGANIZER,
-                            mission.id,
-                        ),
-                )
-                .also { seen.markShown(mission.id) }
-          }
+          else -> notification(event.id, event.title, mission, now)
         }
       }
     }
+    shown.forEach { seen.markShown(it.key) }
+    return shown
+  }
+
+  private fun notification(
+      eventId: String,
+      eventTitle: String,
+      mission: Mission,
+      now: Instant,
+  ): AppNotification {
+    val missing = mission.volunteersNeeded - mission.assigneeIds.size
+    return AppNotification(
+        kind = kind,
+        key = mission.id,
+        title = eventTitle,
+        text =
+            texts.plural(
+                R.plurals.notification_open_spots_text,
+                missing,
+                mission.title,
+                mission.startAt.formatTime(texts.zone),
+                missing,
+            ),
+        at = now,
+        target = NotificationTarget.Mission(eventId, eventTitle, UserMode.ORGANIZER, mission.id),
+    )
   }
 }

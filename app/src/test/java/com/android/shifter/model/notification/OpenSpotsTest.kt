@@ -24,8 +24,8 @@ import org.junit.Test
 
 /**
  * Covers, through [OpenSpots.run], which missions are short (the 24 h window, started, full,
- * completed), and what is shown: each short mission once, again once it was full then short
- * again, and nothing marked when a read fails.
+ * completed), and what is shown: each short mission once, again once it was full then short again,
+ * and nothing marked when a read fails.
  */
 class OpenSpotsTest {
 
@@ -222,5 +222,29 @@ class OpenSpotsTest {
 
     assertTrue(result.exceptionOrNull() is IOException)
     assertFalse(seen.wasShown(created.id))
+  }
+
+  @Test
+  fun run_whenALaterTextFails_marksNothing() = runTest {
+    createEvent()
+    val first = missionRepository.createMission(mission(title = "Set up the stands"))
+    missionRepository.createMission(mission(title = "Sell the books"))
+    // Writes the first text, then fails on the second, like a malformed translation.
+    val failingTexts =
+        object : NotificationTexts by texts {
+          private var calls = 0
+
+          override fun plural(id: Int, count: Int, vararg args: Any): String {
+            if (++calls > 1) throw IllegalStateException("bad translation")
+            return texts.plural(id, count, *args)
+          }
+        }
+
+    val result = runCatching {
+      OpenSpots(eventRepository, missionRepository, failingTexts).run("organizer", now, seen)
+    }
+
+    assertTrue(result.exceptionOrNull() is IllegalStateException)
+    assertFalse(seen.wasShown(first.id))
   }
 }
