@@ -32,10 +32,11 @@ import com.swent.shifter.model.location.GeoPosition
  *
  * It keeps no state: [draft] is the point picked so far, kept by the caller's ViewModel so it
  * survives a configuration change, and tapping the map reports a new one through [onDraftChange].
- * "Use this place" is disabled while there is no point, so nothing can be confirmed without one;
- * closing the dialog, with the button or by going back, calls [onCancel] and is the caller's cue to
- * leave its coordinates as they were. The test tags are the caller's too, so each form's tests and
- * Testing board keep their own names.
+ * "Use this place" is disabled while there is no point, so nothing can be confirmed without one,
+ * which also covers a map that never loaded: [LocationPicker] drops its taps, so no draft comes out
+ * of it, and the button needs no rule of its own; closing the dialog, with the button or by going
+ * back, calls [onCancel] and is the caller's cue to leave its coordinates as they were. The test
+ * tags are the caller's too, so each form's tests and Testing board keep their own names.
  *
  * @param initialCenter where the map opens with no [draft], or else the app's default place.
  */

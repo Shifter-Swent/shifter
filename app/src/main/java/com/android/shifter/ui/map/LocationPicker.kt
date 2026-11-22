@@ -10,7 +10,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -39,8 +42,10 @@ private const val PICKER_ZOOM = 16f
 
 /**
  * Draws the map of a [LocationPicker]: the [markers] to show, [onMapClick] to call with the point
- * tapped, and the [cameraPositionState] to open at. The picker draws a [ShifterMap] by default; a
- * test passes another, since a tap inside the native map cannot be made from a Compose test.
+ * tapped, the [cameraPositionState] to open at, and [onMapLoaded] to call once it has drawn. The
+ * picker draws a [ShifterMap] by default; a test passes another, since a tap inside the native map
+ * cannot be made from a Compose test, and one that never calls [onMapLoaded] stands for a map that
+ * never loads.
  */
 internal typealias PickerMap =
     @Composable
@@ -48,6 +53,7 @@ internal typealias PickerMap =
         markers: List<MapMarker>,
         onMapClick: (GeoPosition) -> Unit,
         cameraPositionState: CameraPositionState,
+        onMapLoaded: () -> Unit,
     ) -> Unit
 
 /**
@@ -66,7 +72,9 @@ internal typealias PickerMap =
  * Give it the whole screen or a dialog rather than a place in a scrolling form, whose vertical
  * scroll would fight the map's own gestures. A map cannot be used with a screen reader, and stays
  * grey with no network or no Maps key while still taking taps, so a form offering it should keep
- * another way to enter a place, such as coordinates typed in.
+ * another way to enter a place, such as coordinates typed in. Until the map reports that it has
+ * drawn, its taps are dropped rather than read as a place the user meant, and it says so instead of
+ * asking for one; a [selected] the caller already had is still shown, and still confirmable.
  */
 @Composable
 fun LocationPicker(
@@ -78,13 +86,15 @@ fun LocationPicker(
   LocationPicker(selected, onSelect, modifier, initialCenter) {
       markers,
       onMapClick,
-      cameraPositionState ->
+      cameraPositionState,
+      onMapLoaded ->
     ShifterMap(
         markers = markers,
         onMarkerClick = {},
         modifier = Modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
         onMapClick = onMapClick,
+        onMapLoaded = onMapLoaded,
         centerOnMarkerClick = false,
     )
   }
@@ -111,13 +121,21 @@ internal fun LocationPicker(
         listOfNotNull(selected?.let { MapMarker(SELECTION_MARKER_ID, it, markerTitle) })
       }
   val description = stringResource(R.string.map_picker_description)
+  // A map with no network and no Maps key stays grey and still reports the taps it is given, so a
+  // tap on it would place a point near the default centre rather than where the user meant (#483).
+  var isMapLoaded by remember { mutableStateOf(false) }
   Box(
       modifier =
           modifier.testTag(LocationPickerTestTags.PICKER).semantics {
             contentDescription = description
           }
   ) {
-    map(markers, onSelect, cameraPositionState)
+    map(
+        markers,
+        { position -> if (isMapLoaded) onSelect(position) },
+        cameraPositionState,
+        { isMapLoaded = true },
+    )
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -125,13 +143,16 @@ internal fun LocationPicker(
     ) {
       Text(
           text =
-              if (selected == null) stringResource(R.string.map_picker_hint)
-              else
-                  stringResource(
-                      R.string.map_picker_selected,
-                      formatCoordinate(selected.latitude),
-                      formatCoordinate(selected.longitude),
-                  ),
+              when {
+                selected != null ->
+                    stringResource(
+                        R.string.map_picker_selected,
+                        formatCoordinate(selected.latitude),
+                        formatCoordinate(selected.longitude),
+                    )
+                isMapLoaded -> stringResource(R.string.map_picker_hint)
+                else -> stringResource(R.string.map_picker_unavailable)
+              },
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurface,
           modifier =
