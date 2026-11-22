@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,21 +52,28 @@ class LocationPickerTest {
   /** The camera the picker opened the map with. */
   private var camera: CameraPositionState? = null
 
-  private val fakeMap: PickerMap = { markers, onMapClick, cameraPositionState ->
-    this.markers = markers
-    camera = cameraPositionState
-    // In a column, so each button is tapped on its own rather than through the one above it.
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-      Button(onClick = { onMapClick(EPFL) }, Modifier.testTag(TAP_EPFL)) { Text("EPFL") }
-      Button(onClick = { onMapClick(OUCHY) }, Modifier.testTag(TAP_OUCHY)) { Text("Ouchy") }
-    }
-  }
+  /**
+   * A stand-in map that reports itself loaded when [loads], as the real one does once it has drawn,
+   * and never otherwise, as it does with no network or no Maps key.
+   */
+  private fun fakeMap(loads: Boolean = true): PickerMap =
+      { markers, onMapClick, cameraPositionState, onMapLoaded ->
+        this.markers = markers
+        camera = cameraPositionState
+        if (loads) LaunchedEffect(Unit) { onMapLoaded() }
+        // In a column, so each button is tapped on its own rather than through the one above it.
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+          Button(onClick = { onMapClick(EPFL) }, Modifier.testTag(TAP_EPFL)) { Text("EPFL") }
+          Button(onClick = { onMapClick(OUCHY) }, Modifier.testTag(TAP_OUCHY)) { Text("Ouchy") }
+        }
+      }
 
   /** The picker with its selection kept here, as a caller would keep it. */
   private fun show(
       initialSelection: GeoPosition? = null,
       initialCenter: GeoPosition? = null,
       onSelect: (GeoPosition) -> Unit = {},
+      map: PickerMap = fakeMap(),
   ) {
     compose.setContent {
       var selected by remember { mutableStateOf(initialSelection) }
@@ -78,7 +86,7 @@ class LocationPickerTest {
             },
             modifier = Modifier,
             initialCenter = initialCenter,
-            map = fakeMap,
+            map = map,
         )
       }
     }
@@ -191,6 +199,34 @@ class LocationPickerTest {
     compose
         .onNodeWithTag(LocationPickerTestTags.SELECTED)
         .assertTextEquals("Selected: 46.50690, 6.62660")
+  }
+
+  @Test
+  fun tappingTheMap_beforeItLoaded_isIgnoredAndAsksForTheCoordinates() {
+    var chosen: GeoPosition? = null
+    show(onSelect = { chosen = it }, map = fakeMap(loads = false))
+
+    compose.onNodeWithTag(TAP_EPFL).performClick()
+    compose.waitForIdle()
+
+    // A grey map still reports taps, which would place the point near the default centre.
+    assertNull(chosen)
+    assertEquals(emptyList<MapMarker>(), markers)
+    compose.onNodeWithTag(LocationPickerTestTags.SELECTED).assertDoesNotExist()
+    compose
+        .onNodeWithTag(LocationPickerTestTags.HINT)
+        .assertTextEquals("The map is unavailable. Type the coordinates instead.")
+  }
+
+  @Test
+  fun opening_onAMapThatNeverLoaded_stillShowsTheSelectionItWasGiven() {
+    show(initialSelection = OUCHY, map = fakeMap(loads = false))
+
+    // The coordinates the caller already had are not lost, only the taps are dropped.
+    compose
+        .onNodeWithTag(LocationPickerTestTags.SELECTED)
+        .assertTextEquals("Selected: 46.50690, 6.62660")
+    assertEquals(listOf(OUCHY), markers.map { it.position })
   }
 
   @Test
