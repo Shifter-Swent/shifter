@@ -861,11 +861,19 @@ class ShifterNavHostTest {
 
   /**
    * Once their event is loaded, the organizer's map offers to center on their position, which only
-   * shows when the map knows where they are.
+   * shows when the map knows where they are. The event has only its address, as the ones created in
+   * the app, so the map opens on its located mission.
    */
   @Test
   fun organizerMap_showsTheCenterOnYourPositionButton() {
-    val event = createEvent(signIn(), location = VIDY_BEACH_VENUE)
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    createMission(
+        event,
+        "Pick up the litter",
+        teamIds.getValue(event.id),
+        location = MissionLocation("Beach", GeoPosition(46.5167, 6.5953)),
+    )
     openMapWithAKnownPosition(
         UserMode.ORGANIZER,
         OrganizerEvent(event.id, event.title),
@@ -1534,6 +1542,7 @@ class ShifterNavHostTest {
       title: String,
       teamId: String?,
       description: String = "",
+      location: MissionLocation? = null,
   ): Mission {
     val mission = runBlocking {
       repositories.missionRepository.createMission(
@@ -1545,6 +1554,7 @@ class ShifterNavHostTest {
               volunteersNeeded = 1,
               startAt = event.startAt,
               endAt = event.startAt.plus(Duration.ofHours(1)),
+              location = location,
               createdAt = Instant.now(),
           )
       )
@@ -1991,11 +2001,7 @@ class ShifterNavHostTest {
    * Creates an event organized by [organizer], who must be the signed-in user: upcoming by default,
    * or in progress now when [running], for the tests that need an event whose period is open.
    */
-  private fun createEvent(
-      organizer: AuthUser,
-      running: Boolean = false,
-      location: EventLocation = EventLocation(VIDY_BEACH_VENUE.address),
-  ): Event {
+  private fun createEvent(organizer: AuthUser, running: Boolean = false): Event {
     val now = Instant.now()
     // On a whole minute, as a mission's time is picked to the minute.
     val startAt =
@@ -2011,7 +2017,7 @@ class ShifterNavHostTest {
               type = EventType.NATURE,
               startAt = startAt,
               endAt = endAt,
-              location = location,
+              location = EventLocation("Vidy beach, Lausanne"),
               createdAt = now,
           )
       )
@@ -2164,9 +2170,6 @@ class ShifterNavHostTest {
     const val COORDINATE_TOLERANCE = 1e-9
 
     val GENEVA = GeoPosition(46.2044, 6.1432)
-
-    /** The venue of the tests' events, with its coordinates for a test that needs it on the map. */
-    val VIDY_BEACH_VENUE = EventLocation("Vidy beach, Lausanne", GeoPosition(46.5167, 6.5953))
 
     const val EVENT_TITLE = "City Marathon"
   }
