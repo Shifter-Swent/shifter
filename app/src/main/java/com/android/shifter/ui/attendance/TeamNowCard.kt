@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.avatarInitials
 import com.swent.shifter.ui.components.nowcard.CountdownBar
@@ -43,7 +44,6 @@ import com.swent.shifter.ui.components.nowcard.ThenStrip
 import com.swent.shifter.ui.components.nowcard.TimeBar
 import com.swent.shifter.ui.components.nowcard.accent
 import com.swent.shifter.ui.components.time.formatDuration
-import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
 import com.swent.shifter.ui.theme.SatoshiFontFamily
 import com.swent.shifter.ui.theme.shifter_avatarBackground

@@ -6,8 +6,8 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.isCompleted
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.model.user.UserMode
-import com.swent.shifter.ui.components.time.formatTime
 import java.time.Duration
 import java.time.Instant
 

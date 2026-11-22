@@ -28,7 +28,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.time.formatTime
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.ZoneId
 

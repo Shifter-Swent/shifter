@@ -74,13 +74,13 @@ import androidx.lifecycle.withResumed
 import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.time.formatTime
+import com.swent.shifter.model.time.formatWeekday
 import com.swent.shifter.ui.components.FieldLabel
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.FormTextField
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.isWindowShortForACalendar
-import com.swent.shifter.ui.components.time.formatTime
-import com.swent.shifter.ui.components.time.formatWeekday
 import com.swent.shifter.ui.components.toPickerDate
 import com.swent.shifter.ui.components.toPickerMillis
 import com.swent.shifter.ui.map.LocationPicker

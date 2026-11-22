@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.time.formatFullDate
+import com.swent.shifter.model.time.formatFullDate
 import java.time.LocalDate
 
 /**

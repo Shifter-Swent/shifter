@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.checkin.NotCheckedIn
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.time.formatDuration
-import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning

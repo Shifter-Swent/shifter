@@ -3,9 +3,9 @@ package com.swent.shifter.ui.events
 
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventStatus
-import com.swent.shifter.ui.components.time.formatDay
-import com.swent.shifter.ui.components.time.formatTime
-import com.swent.shifter.ui.components.time.formatWeekday
+import com.swent.shifter.model.time.formatDay
+import com.swent.shifter.model.time.formatTime
+import com.swent.shifter.model.time.formatWeekday
 import java.time.Instant
 import java.time.ZoneId
 
