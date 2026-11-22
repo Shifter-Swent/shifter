@@ -35,6 +35,7 @@ enum class ChatError {
 /**
  * A message as the channel shows it.
  *
+ * @property senderId the user id of the sender, which gives them their tint.
  * @property senderName the sender's public name, or null when it could not be loaded.
  * @property sentAt when it was sent, or null for a message not yet in the channel.
  * @property isPending whether it is sent by the user and not confirmed by the server yet.
@@ -43,6 +44,7 @@ enum class ChatError {
 data class ChatMessageItem(
     val id: String,
     val text: String,
+    val senderId: String,
     val senderName: String?,
     val sentAt: Instant?,
     val isMine: Boolean,
@@ -293,6 +295,7 @@ class TeamChatViewModel(
       ChatMessageItem(
           id = message.id,
           text = message.text,
+          senderId = message.senderId,
           senderName = names[message.senderId],
           sentAt = message.sentAt,
           isMine = mine,
@@ -305,6 +308,7 @@ class TeamChatViewModel(
       ChatMessageItem(
           id = "sending_${it.localId}",
           text = it.text,
+          senderId = me.orEmpty(),
           senderName = me?.let { uid -> names[uid] },
           sentAt = null,
           isMine = true,
