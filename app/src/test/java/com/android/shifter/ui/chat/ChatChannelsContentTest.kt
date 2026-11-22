@@ -4,6 +4,7 @@ package com.swent.shifter.ui.chat
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -68,12 +69,16 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun general_isListedAboveTheTeams_andOpensTheGeneralChannel() {
+  fun list_asVolunteer_groupsTheEventChannelsAboveTheirTeam() {
     setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
 
-    composeTestRule.onNodeWithText("Teams").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Discussions").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Event").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Your team").assertIsDisplayed()
     assertEquals(
         listOf(
+            ChatChannelsTestTags.TITLE,
+            ChatChannelsTestTags.EVENT_HEADER,
             ChatChannelsTestTags.GENERAL,
             ChatChannelsTestTags.TEAMS_HEADER,
             ChatChannelsTestTags.channel("bar"),
@@ -88,11 +93,21 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun admin_whenShown_isListedBetweenTheGeneralChannelAndTheTeams_andOpensIt() {
-    setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
+  fun list_asOrganizer_listsTheAdminChannelUnderEvent_andTheirTeams() {
+    setContent(
+        ChatChannelsUiState(
+            asOrganizer = true,
+            channels = CHANNELS,
+            showsAdmin = true,
+            isLoading = false,
+        )
+    )
 
+    composeTestRule.onNodeWithText("Your teams").assertIsDisplayed()
     assertEquals(
         listOf(
+            ChatChannelsTestTags.TITLE,
+            ChatChannelsTestTags.EVENT_HEADER,
             ChatChannelsTestTags.GENERAL,
             ChatChannelsTestTags.ADMIN,
             ChatChannelsTestTags.TEAMS_HEADER,
@@ -108,6 +123,15 @@ class ChatChannelsContentTest {
   }
 
   @Test
+  fun list_asManager_headsTheTeamsAsTheirs() {
+    setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
+
+    tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Your teams").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Your team").assertDoesNotExist()
+  }
+
+  @Test
   fun admin_whenNotShown_isNotListed() {
     setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
 
@@ -116,24 +140,37 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun noTeamChannel_asVolunteer_showsTheGeneralChannelAndExplainsWhy() {
+  fun noTeamChannel_asVolunteer_showsACardSayingWhy() {
     setContent(ChatChannelsUiState(isLoading = false))
 
     tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
-    tag(ChatChannelsTestTags.EMPTY).assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText("You will see your team's channel once you are in a team.")
+    assertEquals(
+        listOf(
+            ChatChannelsTestTags.TITLE,
+            ChatChannelsTestTags.EVENT_HEADER,
+            ChatChannelsTestTags.GENERAL,
+            ChatChannelsTestTags.TEAMS_HEADER,
+            ChatChannelsTestTags.EMPTY,
+        ),
+        rows(),
+    )
+    tag(ChatChannelsTestTags.EMPTY)
         .assertIsDisplayed()
+        .assertTextContains("No team yet")
+        .assertTextContains("Your team's channel shows up here once a manager puts you in a team.")
   }
 
   @Test
-  fun noTeamChannel_asOrganizer_saysTheEventHasNoTeam() {
-    setContent(ChatChannelsUiState(asOrganizer = true, isLoading = false))
+  fun noTeamChannel_asOrganizer_showsACardSayingTheEventHasNoTeam() {
+    setContent(ChatChannelsUiState(asOrganizer = true, showsAdmin = true, isLoading = false))
 
     tag(ChatChannelsTestTags.GENERAL).assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText("This event has no team yet. Each team you create gets its own channel.")
+    tag(ChatChannelsTestTags.EMPTY)
         .assertIsDisplayed()
+        .assertTextContains("No teams yet")
+        .assertTextContains(
+            "This event has no team yet. Each team you create gets its own channel."
+        )
   }
 
   @Test
