@@ -90,10 +90,12 @@ class MapScreenTest {
   }
 
   @Test
-  fun locationOff_offersToTurnItOn() {
+  fun locationOff_offersToTurnItOnWithTheMapsMessage() {
     setContent(LOADED, locationStatus = LocationStatus.LOCATION_OFF)
 
     compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertIsDisplayed()
+    compose.onNodeWithText("the map cannot show you", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("checked in", substring = true).assertDoesNotExist()
     compose.onNodeWithText("Turn on location").assertIsDisplayed()
   }
 

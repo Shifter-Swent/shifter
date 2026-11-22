@@ -54,6 +54,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.ui.location.LocationPermissionGate
+import com.swent.shifter.ui.location.LocationReason
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -249,6 +250,7 @@ fun MapContent(
                     .onSizeChanged { gateHeight = with(density) { it.height.toDp() } }
                     .padding(16.dp)
                     .testTag(MapScreenTestTags.LOCATION_GATE),
+            reason = LocationReason.MAP,
             compact = true,
         )
       }

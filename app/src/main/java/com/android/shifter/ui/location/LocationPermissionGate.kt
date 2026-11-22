@@ -29,6 +29,7 @@ import com.swent.shifter.ui.permission.openAppSettings
  *
  * @param onRefreshStatus called after the permission dialog and each time the screen resumes, so a
  *   change made in the settings is seen when the user comes back.
+ * @param reason what the location is for, which the card's messages explain.
  * @param compact shows the smaller card, for a screen where it goes over other content.
  */
 @Composable
@@ -36,6 +37,7 @@ fun LocationPermissionGate(
     status: LocationStatus,
     onRefreshStatus: () -> Unit,
     modifier: Modifier = Modifier,
+    reason: LocationReason = LocationReason.CHECK_IN,
     compact: Boolean = false,
 ) {
   val context = LocalContext.current
@@ -85,6 +87,7 @@ fun LocationPermissionGate(
         }
       },
       modifier = modifier,
+      reason = reason,
       compact = compact,
   )
 }

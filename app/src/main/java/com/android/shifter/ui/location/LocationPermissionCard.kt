@@ -27,11 +27,20 @@ object LocationPermissionTestTags {
   const val ACTION = "locationPermissionAction"
 }
 
+/** Why a screen asks for the location, which picks the messages of the [LocationPermissionCard]. */
+enum class LocationReason {
+  /** The volunteer's automatic check-in when they arrive at their mission. */
+  CHECK_IN,
+  /** The user's own position on the map. */
+  MAP,
+}
+
 /**
  * Explains why the location is needed and offers the action that unblocks it, for every
  * [LocationAccess] but [LocationAccess.GRANTED], where it shows nothing.
  *
  * @param onRequest asks for the permission again.
+ * @param reason what the location is for, which the messages explain.
  * @param onOpenAppSettings opens the app's settings, where a refused permission can be granted.
  * @param onOpenLocationSettings opens the settings that turn location services on.
  * @param compact puts the message and a text button on one row, in a smaller card, for a screen
@@ -44,29 +53,17 @@ fun LocationPermissionCard(
     onOpenAppSettings: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    reason: LocationReason = LocationReason.CHECK_IN,
     compact: Boolean = false,
 ) {
+  val message = message(access, reason) ?: return
   val content =
       when (access) {
-        LocationAccess.GRANTED -> return
-        LocationAccess.NOT_REQUESTED ->
-            CardContent(R.string.location_not_requested, R.string.location_allow, onRequest)
-        LocationAccess.DENIED ->
-            CardContent(R.string.location_denied, R.string.location_allow, onRequest)
-        LocationAccess.APPROXIMATE_ONLY ->
-            CardContent(R.string.location_approximate_only, R.string.location_allow, onRequest)
         LocationAccess.PERMANENTLY_DENIED ->
-            CardContent(
-                R.string.location_permanently_denied,
-                R.string.location_open_app_settings,
-                onOpenAppSettings,
-            )
+            CardContent(message, R.string.location_open_app_settings, onOpenAppSettings)
         LocationAccess.LOCATION_OFF ->
-            CardContent(
-                R.string.location_off,
-                R.string.location_open_location_settings,
-                onOpenLocationSettings,
-            )
+            CardContent(message, R.string.location_open_location_settings, onOpenLocationSettings)
+        else -> CardContent(message, R.string.location_allow, onRequest)
       }
   if (compact) {
     CompactCard(content, modifier)
@@ -94,6 +91,30 @@ fun LocationPermissionCard(
     }
   }
 }
+
+/** The message that explains [access] for [reason]; null once granted, where nothing is shown. */
+@StringRes
+private fun message(access: LocationAccess, reason: LocationReason): Int? =
+    when (reason) {
+      LocationReason.CHECK_IN ->
+          when (access) {
+            LocationAccess.GRANTED -> null
+            LocationAccess.NOT_REQUESTED -> R.string.location_not_requested
+            LocationAccess.DENIED -> R.string.location_denied
+            LocationAccess.APPROXIMATE_ONLY -> R.string.location_approximate_only
+            LocationAccess.PERMANENTLY_DENIED -> R.string.location_permanently_denied
+            LocationAccess.LOCATION_OFF -> R.string.location_off
+          }
+      LocationReason.MAP ->
+          when (access) {
+            LocationAccess.GRANTED -> null
+            LocationAccess.NOT_REQUESTED -> R.string.map_location_not_requested
+            LocationAccess.DENIED -> R.string.map_location_denied
+            LocationAccess.APPROXIMATE_ONLY -> R.string.map_location_approximate_only
+            LocationAccess.PERMANENTLY_DENIED -> R.string.map_location_permanently_denied
+            LocationAccess.LOCATION_OFF -> R.string.map_location_off
+          }
+    }
 
 /** The message and a text button on one row, so the card takes little room. */
 @Composable

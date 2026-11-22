@@ -1,6 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.location
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -22,7 +25,11 @@ class LocationPermissionCardTest {
   private var appSettings = 0
   private var locationSettings = 0
 
-  private fun setContent(access: LocationAccess, compact: Boolean = false) {
+  private fun setContent(
+      access: LocationAccess,
+      compact: Boolean = false,
+      reason: LocationReason = LocationReason.CHECK_IN,
+  ) {
     compose.setContent {
       ShifterTheme {
         LocationPermissionCard(
@@ -30,6 +37,7 @@ class LocationPermissionCardTest {
             onRequest = { requests++ },
             onOpenAppSettings = { appSettings++ },
             onOpenLocationSettings = { locationSettings++ },
+            reason = reason,
             compact = compact,
         )
       }
@@ -109,6 +117,43 @@ class LocationPermissionCardTest {
   @Test
   fun compact_whenGranted_showsNothing() {
     setContent(LocationAccess.GRANTED, compact = true)
+
+    compose.onNodeWithTag(LocationPermissionTestTags.CARD).assertDoesNotExist()
+  }
+
+  @Test
+  fun mapReason_explainsEachAccessForTheMap() {
+    var access by mutableStateOf(LocationAccess.NOT_REQUESTED)
+    compose.setContent {
+      ShifterTheme {
+        LocationPermissionCard(
+            access = access,
+            onRequest = { requests++ },
+            onOpenAppSettings = { appSettings++ },
+            onOpenLocationSettings = { locationSettings++ },
+            reason = LocationReason.MAP,
+            compact = true,
+        )
+      }
+    }
+    val messages =
+        mapOf(
+            LocationAccess.NOT_REQUESTED to "Allow the location to see where you are.",
+            LocationAccess.DENIED to "Location denied: the map cannot show you.",
+            LocationAccess.APPROXIMATE_ONLY to "Allow the precise location to see where you are.",
+            LocationAccess.PERMANENTLY_DENIED to "Location denied: allow it in the settings.",
+            LocationAccess.LOCATION_OFF to "Location is off: the map cannot show you.",
+        )
+
+    for ((shown, message) in messages) {
+      access = shown
+      compose.onNodeWithTag(LocationPermissionTestTags.MESSAGE).assertTextEquals(message)
+    }
+  }
+
+  @Test
+  fun mapReason_whenGranted_showsNothing() {
+    setContent(LocationAccess.GRANTED, compact = true, reason = LocationReason.MAP)
 
     compose.onNodeWithTag(LocationPermissionTestTags.CARD).assertDoesNotExist()
   }
