@@ -1,11 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.firestore.optionalInstant
 import com.swent.shifter.model.firestore.optionalString
@@ -60,36 +62,65 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
               val stored = transaction.get(ref).takeIf { it.exists() }
               val hasPublicProfile = transaction.get(publicRef).exists()
               if (stored == null) {
-                transaction.set(ref, newUserFields(displayName, email, mode))
-                if (!hasPublicProfile) transaction.set(publicRef, publicProfileFields(displayName))
-                return@runTransaction Result.success(
-                    User(uid = uid, displayName = displayName, email = email, mode = mode)
+                Result.success(
+                    transaction.createUser(
+                        ref,
+                        publicRef,
+                        User(uid = uid, displayName = displayName, email = email, mode = mode),
+                        hasPublicProfile,
+                    )
                 )
-              }
-              // Mapped before writing anything: a malformed profile gets neither a mode nor a
-              // public profile, so a sign-in that fails leaves nothing behind. Only this pure call
-              // is guarded, as an IllegalStateException caught around an await() could be a
-              // coroutine cancellation.
-              val user =
-                  try {
-                    userFromFirestore(stored)
-                  } catch (e: IllegalStateException) {
-                    return@runTransaction Result.failure(e)
-                  }
-              // The rules require the public name to be the private one.
-              if (!hasPublicProfile)
-                  transaction.set(publicRef, publicProfileFields(user.displayName))
-              if (mode != null && stored.get(MODE) == null) {
-                // A profile from before modes: it takes the mode of this sign-in. One already
-                // set, even unknown to this version, is never overwritten at sign-in.
-                transaction.update(ref, mapOf(MODE to mode.name))
-                Result.success(user.copy(mode = mode))
               } else {
-                Result.success(user)
+                transaction.completeStoredUser(ref, publicRef, stored, hasPublicProfile, mode)
               }
             }
             .await()
     profile.getOrElse { throw UserRepositoryException.Unknown(it) }
+  }
+
+  /**
+   * Writes the profile of a first sign-in for [user] at [ref], and its public profile at
+   * [publicRef] unless [hasPublicProfile].
+   */
+  private fun Transaction.createUser(
+      ref: DocumentReference,
+      publicRef: DocumentReference,
+      user: User,
+      hasPublicProfile: Boolean,
+  ): User {
+    set(ref, newUserFields(user.displayName, user.email, user.mode))
+    if (!hasPublicProfile) set(publicRef, publicProfileFields(user.displayName))
+    return user
+  }
+
+  /**
+   * Maps the [stored] profile at [ref], then gives it what it lacks: its public profile at
+   * [publicRef] unless [hasPublicProfile], and the [mode] of this sign-in if it has none. Returns
+   * the profile, or why the stored one could not be mapped.
+   */
+  private fun Transaction.completeStoredUser(
+      ref: DocumentReference,
+      publicRef: DocumentReference,
+      stored: DocumentSnapshot,
+      hasPublicProfile: Boolean,
+      mode: UserMode?,
+  ): Result<User> {
+    // Mapped before writing anything: a malformed profile gets neither a mode nor a public
+    // profile, so a sign-in that fails leaves nothing behind. Only this pure call is guarded, as an
+    // IllegalStateException caught around an await() could be a coroutine cancellation.
+    val user =
+        try {
+          userFromFirestore(stored)
+        } catch (e: IllegalStateException) {
+          return Result.failure(e)
+        }
+    // The rules require the public name to be the private one.
+    if (!hasPublicProfile) set(publicRef, publicProfileFields(user.displayName))
+    // A profile from before modes takes the mode of this sign-in. One already set, even unknown to
+    // this version, is never overwritten at sign-in.
+    if (mode == null || stored.get(MODE) != null) return Result.success(user)
+    update(ref, mapOf(MODE to mode.name))
+    return Result.success(user.copy(mode = mode))
   }
 
   override suspend fun setMode(uid: String, mode: UserMode): Unit = translatingErrors {
