@@ -10,11 +10,9 @@ import java.time.format.DateTimeParseException
  *
  * It holds data, not text: the recipient's phone writes the text in its own language, with the
  * [NotificationFormat] of the [kind]. Free of Firebase types, so it can be tested without a
- * backend.
+ * backend. It refuses, when built, what the rules refuse to store, with [requireStorable].
  *
- * @property id the document id. It refuses, when built, what the rules refuse to store, so a
- *   writer's test fails on it rather than the whole batch of its action failing on the server: a
- *   [kind] computed on the phone, or a key of [data] outside [NotificationData.Key.ALL].
+ * @property id the document id.
  * @property kind always one with [NotificationKind.inInbox].
  * @property senderId the user whose action wrote it, checked by the rules to be the writer.
  * @property data the details of the [kind], under the keys of [NotificationData.Key], always
@@ -31,9 +29,33 @@ data class InboxNotification(
     val createdAt: Instant,
 ) {
   init {
-    require(kind.inInbox) { "$kind is computed on the phone, never written in an inbox" }
-    require(NotificationData.Key.ALL.containsAll(data.keys)) { "Unknown data keys in $data" }
+    requireStorable(kind, data)
   }
+}
+
+/**
+ * Throws [IllegalArgumentException] for what the rules refuse to store in an inbox, so a writer's
+ * test fails here rather than the whole batch of its action on the server: a [kind] computed on the
+ * phone, or a key of [data] outside [NotificationData.Key.ALL].
+ */
+private fun requireStorable(kind: NotificationKind, data: Map<String, String>) {
+  require(kind.inInbox) { "$kind is computed on the phone, never written in an inbox" }
+  require(NotificationData.Key.ALL.containsAll(data.keys)) { "Unknown data keys in $data" }
+}
+
+/**
+ * [requireStorable], and also refuses a notification to its own sender, which the rules refuse too:
+ * the one acting is never told about their own action. Checked by every writer, the fake inbox
+ * included, before anything is written.
+ */
+internal fun requireWritable(
+    recipientId: String,
+    senderId: String,
+    kind: NotificationKind,
+    data: Map<String, String>,
+) {
+  require(senderId != recipientId) { "Nobody writes in their own inbox" }
+  requireStorable(kind, data)
 }
 
 /**

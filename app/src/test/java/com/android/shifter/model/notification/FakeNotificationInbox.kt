@@ -64,7 +64,7 @@ class FakeNotificationInbox(
       senderId: String,
       data: Map<String, String>,
   ): InboxNotification {
-    require(senderId != recipientId) { "Nobody writes in their own inbox" }
+    requireWritable(recipientId, senderId, kind, data)
     val notification =
         InboxNotification(
             "notification-${nextId++}",
