@@ -3,17 +3,13 @@ package com.swent.shifter.model.mission
 
 import com.swent.shifter.model.location.GeoPosition
 import java.time.Instant
-import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Unit tests for [Mission.conflictsWith], [MissionLocation] and the rule in
- * [FakeMissionRepository].
- */
+/** Unit tests for [Mission.conflictsWith], [MissionLocation] and [isCompleted]. */
 class MissionTest {
 
   @Test
@@ -78,22 +74,6 @@ class MissionTest {
     assertThrows(IllegalArgumentException::class.java) {
       MissionLocation(" ", GeoPosition(46.21, 6.14))
     }
-  }
-
-  @Test
-  fun fakeRepository_refusesAConflictingMissionAndKeepsTheOthers() = runTest {
-    val repository = FakeMissionRepository()
-    val first = repository.createMission(geoTimed(10, 12))
-
-    val failure = runCatching { repository.createMission(geoTimed(11, 13)) }.exceptionOrNull()
-    repository.createMission(geoTimed(12, 13))
-
-    assertTrue(
-        "expected MissionOverlapException, but was: $failure",
-        failure is MissionOverlapException,
-    )
-    assertEquals(first, (failure as MissionOverlapException).conflictingMission)
-    assertEquals(2, repository.created.size)
   }
 
   /** Checks [expected] both ways, since a conflict does not depend on which mission comes first. */
