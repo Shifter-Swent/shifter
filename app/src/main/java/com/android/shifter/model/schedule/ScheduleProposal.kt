@@ -19,8 +19,8 @@ data class TimeSlot(val start: Instant, val end: Instant) {
 /**
  * A volunteer the schedule can propose for missions.
  *
- * @property userId id of the volunteer's `/users` document; it also breaks the ties between
- *   volunteers with as many hours.
+ * @property userId id of the volunteer's `/users` document, unique among the candidates; it also
+ *   breaks the ties between volunteers with as many hours.
  * @property teamIds ids of the teams of the event the volunteer belongs to.
  * @property slots when the volunteer can work, taken from the shifts they chose, in any order.
  *   Slots that touch or overlap may be listed separately.
@@ -48,27 +48,40 @@ data class ScheduleProposal(
 /**
  * Proposes volunteers among the [candidates] for the empty spots of the [missions] of an event.
  *
- * The upcoming missions are gone through by [Mission.startAt]; the ones completed at [now] (see
- * [com.swent.shifter.model.mission.isCompleted]) or already started are skipped. A candidate is
- * proposed for a mission only if:
+ * The missions are gone through by [Mission.startAt], then by [Mission.id] for those that start at
+ * the same time, so the result does not depend on the order of [missions]. A mission completed at
+ * [now] (see [com.swent.shifter.model.mission.isCompleted]) is skipped. A mission already started
+ * gets nobody, but its empty spots still go to [ScheduleProposal.unfilled], so the organizer can
+ * finish it by hand.
+ *
+ * A candidate is proposed for an upcoming mission only if:
  * - they belong to the mission's team: General missions (no team) are never filled, so their empty
  *   spots always go to [ScheduleProposal.unfilled];
  * - the union of their slots covers the whole mission, slots that touch or overlap being merged;
- * - no mission they are assigned to, or proposed for in this run, overlaps it;
+ * - no mission they are assigned to, General ones included, or proposed for in this run, overlaps
+ *   it. Two missions that only touch, one ending when the other starts, do not overlap. Every
+ *   mission counts, with or without a team or a place, unlike [Mission.conflictsWith];
  * - they are not already assigned to it.
  *
  * Among the candidates of a mission, the one with the fewest hours, assigned and proposed across
- * the missions, goes first, and a tie goes to the smallest [ScheduleCandidate.userId]. Nobody is
+ * the [missions], goes first, and a tie goes to the smallest [ScheduleCandidate.userId]. Nobody is
  * ever removed from a mission: the spots still empty go to [ScheduleProposal.unfilled]. Running it
  * again once the proposal is accepted proposes nobody new.
  *
  * Its body comes with #605; until then it proposes nothing.
  *
  * @param now the current time, passed in so the tests can fix it.
+ * @throws IllegalArgumentException when two [candidates] have the same [ScheduleCandidate.userId],
+ *   since one volunteer would then be proposed twice.
  */
 @Suppress("UNUSED_PARAMETER")
 fun proposeSchedule(
     missions: List<Mission>,
     candidates: List<ScheduleCandidate>,
     now: Instant,
-): ScheduleProposal = ScheduleProposal()
+): ScheduleProposal {
+  require(candidates.map { it.userId }.toSet().size == candidates.size) {
+    "Each candidate must have a distinct userId"
+  }
+  return ScheduleProposal()
+}

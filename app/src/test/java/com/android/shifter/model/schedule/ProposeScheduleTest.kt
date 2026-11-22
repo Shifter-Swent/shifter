@@ -7,8 +7,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Covers what [proposeSchedule] never proposes: nothing without a mission, and nothing for a
- * mission that is past or completed, even for a candidate who fits it.
+ * Covers what [proposeSchedule] never proposes: nothing without a mission, nobody for a mission in
+ * progress or completed, even for a candidate who fits it, and that it refuses two candidates with
+ * the same user id.
  */
 class ProposeScheduleTest {
 
@@ -48,10 +49,19 @@ class ProposeScheduleTest {
   }
 
   @Test
-  fun proposeSchedule_withAPastMission_skipsIt() {
-    val past = mission("2026-11-21T08:00:00Z", "2026-11-21T10:00:00Z")
+  fun proposeSchedule_withAMissionInProgress_proposesNobody() {
+    val inProgress = mission("2026-11-21T11:00:00Z", "2026-11-21T13:00:00Z")
 
-    assertEquals(ScheduleProposal(), proposeSchedule(listOf(past), listOf(alice), now))
+    val proposal = proposeSchedule(listOf(inProgress), listOf(alice), now)
+
+    assertEquals(emptyMap<String, List<String>>(), proposal.proposed)
+  }
+
+  @Test(expected = IllegalArgumentException::class)
+  fun proposeSchedule_withTwiceTheSameUserId_throws() {
+    val upcoming = mission("2026-11-21T14:00:00Z", "2026-11-21T16:00:00Z")
+
+    proposeSchedule(listOf(upcoming), listOf(alice, alice.copy(teamIds = emptySet())), now)
   }
 
   @Test
