@@ -17,6 +17,7 @@ import com.swent.shifter.R
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.model.RepositoryProviderFactory
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -176,6 +177,15 @@ class SettingsRouteTest {
     ) = throw UnsupportedOperationException()
 
     override fun observeLocationSharing(uid: String): Flow<Boolean> = flowOf(false)
+
+    override suspend fun setNotificationEnabled(
+        uid: String,
+        kind: NotificationKind,
+        enabled: Boolean,
+    ) = throw UnsupportedOperationException()
+
+    override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> =
+        flowOf(emptySet())
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */

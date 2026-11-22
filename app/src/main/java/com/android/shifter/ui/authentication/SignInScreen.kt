@@ -44,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
 import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
@@ -211,6 +212,15 @@ private object PreviewUserRepository : UserRepository {
   ) = throw UnsupportedOperationException("Preview")
 
   override fun observeLocationSharing(uid: String): Flow<Boolean> = flowOf(false)
+
+  override suspend fun setNotificationEnabled(
+      uid: String,
+      kind: NotificationKind,
+      enabled: Boolean,
+  ) = throw UnsupportedOperationException("Preview")
+
+  override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> =
+      flowOf(emptySet())
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? = null
 }

@@ -3,17 +3,21 @@ package com.swent.shifter.model.user
 
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.optionalInstant
 import com.swent.shifter.model.firestore.optionalString
 import com.swent.shifter.model.firestore.requireBoolean
 import com.swent.shifter.model.firestore.requireString
 import com.swent.shifter.model.location.LiveLocationSchema
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamSchema
 import kotlinx.coroutines.channels.awaitClose
@@ -191,6 +195,55 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
   }
       .distinctUntilChanged()
 
+  override suspend fun setNotificationEnabled(
+      uid: String,
+      kind: NotificationKind,
+      enabled: Boolean,
+  ): Unit = translatingErrors {
+    // An update of the one key, not of the whole map: a choice made on another phone for another
+    // kind is kept. An update, not a set: the rules refuse it when there is no profile.
+    db.collection(USERS_COLLECTION)
+        .document(uid)
+        .update(FieldPath.of(NOTIFICATION_SETTINGS, kind.name), enabled)
+        .await()
+  }
+
+  /**
+   * Listens to `users/{uid}`, as [observeLocationSharing] does: the first snapshot is the current
+   * value, a local write is delivered before the server confirms it, and a listener error or a
+   * malformed field ends the flow with a [UserRepositoryException]. [distinctUntilChanged] drops
+   * the unchanged sets the listener re-delivers when another field of the profile changes.
+   *
+   * A document that does not exist reads as no kind turned off, but only once the server says so.
+   * Offline, without a cached copy of the profile, Firestore delivers a snapshot from the cache
+   * that only means "unknown": reading it as "every kind on" would show kinds the user turned off,
+   * so it is skipped and the flow waits for the server. The listener asks for metadata changes
+   * ([MetadataChanges.INCLUDE]) because the server confirming that the profile is still missing
+   * changes no data, only `isFromCache`: without them, that answer would never be delivered and the
+   * flow would stay silent.
+   */
+  override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> =
+      callbackFlow {
+        val registration =
+            db.collection(USERS_COLLECTION).document(uid).addSnapshotListener(
+                MetadataChanges.INCLUDE
+            ) { snapshot, error ->
+              when {
+                error != null -> close(toRepositoryException(error))
+                snapshot != null && !snapshot.exists() && snapshot.metadata.isFromCache -> Unit
+                snapshot == null || !snapshot.exists() -> trySend(emptySet())
+                else ->
+                    try {
+                      trySend(disabledNotificationsFrom(snapshot))
+                    } catch (e: IllegalStateException) {
+                      close(UserRepositoryException.Unknown(e))
+                    }
+              }
+            }
+        awaitClose { registration.remove() }
+      }
+      .distinctUntilChanged()
+
   override suspend fun getPublicProfile(uid: String): PublicProfile? = translatingErrors {
     db.collection(PUBLIC_PROFILES_COLLECTION)
         .document(uid)
@@ -206,6 +259,7 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
     const val LOCATION_SHARING_ENABLED = "locationSharingEnabled"
     const val CREATED_AT = "createdAt"
     const val MODE = "mode"
+    const val NOTIFICATION_SETTINGS = "notificationSettings"
 
     /**
      * Fields of a newly created profile, with [mode] when given. Location sharing starts disabled
@@ -258,6 +312,26 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
                   UserMode.entries.firstOrNull { it.name == name }
                 },
         )
+
+    /**
+     * The kinds [snapshot] turns off. [NOTIFICATION_SETTINGS] maps the name of a kind to whether it
+     * is on, and a missing map or kind is on. A name this version does not know, added by a later
+     * one, is skipped, as for [User.mode], so an older install still reads the others.
+     *
+     * Throws [IllegalStateException] when the field is not a map, or when a kind this version knows
+     * is not a boolean: a malformed choice is a schema problem, not "on".
+     */
+    private fun disabledNotificationsFrom(snapshot: DocumentSnapshot): Set<NotificationKind> {
+      val settings = snapshot.get(NOTIFICATION_SETTINGS) ?: return emptySet()
+      if (settings !is Map<*, *>) snapshot.invalidField(ENTITY, NOTIFICATION_SETTINGS)
+      return NotificationKind.entries.filterTo(mutableSetOf()) { kind ->
+        when (val enabled = settings[kind.name]) {
+          null -> false
+          is Boolean -> !enabled
+          else -> snapshot.invalidField(ENTITY, "$NOTIFICATION_SETTINGS.${kind.name}")
+        }
+      }
+    }
 
     /** Translates a Firestore error into the [UserRepositoryException] callers handle. */
     internal fun toRepositoryException(e: FirebaseFirestoreException): UserRepositoryException =

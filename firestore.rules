@@ -17,6 +17,22 @@ service cloud.firestore {
         return mode in ['VOLUNTEER', 'ORGANIZER'];
       }
 
+      // notificationSettings maps the names of NotificationKind to whether that kind is on; a
+      // missing kind is on. A change of it changes nothing else, and only the kinds it changes must
+      // be known ones: a kind removed from the app later stays in the map without blocking the
+      // next change. Every value is a boolean.
+      function isValidNotificationSettingsChange() {
+        let settings = request.resource.data.notificationSettings;
+        let before = resource.data.get('notificationSettings', {});
+        return request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['notificationSettings'])
+          && settings is map
+          && settings.diff(before).affectedKeys().hasOnly(['NEW_APPLICATION',
+               'APPLICATION_DECIDED', 'TEAM_CHANGED', 'MISSION_ASSIGNED', 'MISSION_CHANGED',
+               'ANNOUNCEMENT', 'MISSED_CHECK_IN', 'OPEN_SPOTS'])
+          && settings.values().hasOnly([true, false]);
+      }
+
       allow read: if isOwner();
 
       // Location sharing is opt-in, so a profile always starts with it disabled. The mode of the
@@ -31,10 +47,14 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
 
       // A new name is also written to the public profile in the same commit, so the two never
-      // disagree. The mode can be set or changed, to a known mode only, but never removed.
+      // disagree. The mode can be set or changed, to a known mode only, but never removed. The
+      // notification choices change on their own (see isValidNotificationSettingsChange).
       allow update: if isOwner()
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['displayName', 'locationSharingEnabled', 'mode'])
+             .hasOnly(['displayName', 'locationSharingEnabled', 'mode', 'notificationSettings'])
+        && (!request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['notificationSettings'])
+            || isValidNotificationSettingsChange())
         && request.resource.data.displayName is string
         && request.resource.data.locationSharingEnabled is bool
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['mode'])

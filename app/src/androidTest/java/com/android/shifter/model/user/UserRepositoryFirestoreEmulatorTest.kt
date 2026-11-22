@@ -3,6 +3,7 @@ package com.swent.shifter.model.user
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
@@ -11,10 +12,12 @@ import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.NOTIFICATION_SETTINGS
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.async
@@ -405,6 +408,200 @@ class UserRepositoryFirestoreEmulatorTest {
         }
 
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun setNotificationEnabled_turnsAKindOffThenOnAgain() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    val seen = MutableStateFlow(emptyList<Set<NotificationKind>>())
+    coroutineScope {
+      val collector = launch {
+        // listOf: a list plus a set would add the set's kinds, not the set itself.
+        repository.observeDisabledNotifications(uid).collect { v -> seen.update { it + listOf(v) } }
+      }
+
+      // A profile that never changed a choice has every kind on.
+      step("await all on") { seen.first { it.lastOrNull() == emptySet<NotificationKind>() } }
+      step("turn off") {
+        repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = false)
+      }
+      step("await off") { seen.first { it.lastOrNull() == setOf(NotificationKind.ANNOUNCEMENT) } }
+      step("turn on") {
+        repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = true)
+      }
+      step("await on") { seen.first { it.lastOrNull() == emptySet<NotificationKind>() } }
+
+      collector.cancel()
+    }
+  }
+
+  @Test
+  fun setNotificationEnabled_changesOnlyThatKind() = emulatorTest {
+    // The other kinds and fields are kept. That a choice made at the same time on another phone is
+    // kept too comes from writing one key, checked in UserRepositoryFirestoreTest.
+    step("create profile") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.VOLUNTEER)
+    }
+    val before = step("read profile") { repository.getUser(uid) }
+    step("turn off two kinds") {
+      repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = false)
+      repository.setNotificationEnabled(uid, NotificationKind.OPEN_SPOTS, enabled = false)
+    }
+
+    step("turn one back on") {
+      repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = true)
+    }
+
+    assertEquals(
+        setOf(NotificationKind.OPEN_SPOTS),
+        step("read choices") { repository.observeDisabledNotifications(uid).first() },
+    )
+    assertEquals(before, step("read profile") { repository.getUser(uid) })
+  }
+
+  /** The rules list the kinds by name: this catches a kind added to the app but not to them. */
+  @Test
+  fun rules_acceptEveryNotificationKind() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+
+    NotificationKind.entries.forEach { kind ->
+      step("turn off $kind") { repository.setNotificationEnabled(uid, kind, enabled = false) }
+    }
+
+    assertEquals(
+        NotificationKind.entries.toSet(),
+        step("read choices") { repository.observeDisabledNotifications(uid).first() },
+    )
+  }
+
+  @Test
+  fun rules_forbidAnUnknownKindOrAChoiceThatIsNotABoolean() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    val profile = profileRef()
+
+    assertDenied { profile.update(FieldPath.of(NOTIFICATION_SETTINGS, "UNKNOWN"), false).await() }
+    assertDenied {
+      profile.update(FieldPath.of(NOTIFICATION_SETTINGS, "ANNOUNCEMENT"), "off").await()
+    }
+    assertDenied { profile.update(NOTIFICATION_SETTINGS, "off").await() }
+    assertEquals(
+        emptySet<NotificationKind>(),
+        step("read choices") { repository.observeDisabledNotifications(uid).first() },
+    )
+  }
+
+  @Test
+  fun rules_forbidChangingAnotherUsersNotifications() = emulatorTest {
+    val owner = uid
+    step("create profile") { repository.getOrCreateUser(owner, "Ada", "ada@example.com") }
+    signInAsAnotherUser()
+
+    val thrown =
+        step("turn off another user's kind") {
+          runCatching {
+            repository.setNotificationEnabled(
+                owner,
+                NotificationKind.ANNOUNCEMENT,
+                enabled = false,
+            )
+          }
+              .exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun rules_forbidChangingTheNotificationsWithAnotherField() = emulatorTest {
+    step("create profile") {
+      repository.getOrCreateUser(uid, "Ada", "ada@example.com", UserMode.VOLUNTEER)
+    }
+
+    assertDenied {
+      profileRef()
+          .update(
+              FieldPath.of(NOTIFICATION_SETTINGS, "ANNOUNCEMENT"),
+              false,
+              FieldPath.of(MODE),
+              "ORGANIZER",
+          )
+          .await()
+    }
+    assertEquals(UserMode.VOLUNTEER, step("read profile") { repository.getUser(uid) }?.mode)
+  }
+
+  /**
+   * A kind removed from the app, and from the rules, stays in the profiles that turned it off: it
+   * must not block the next change.
+   */
+  @Test
+  fun setNotificationEnabled_withAKindTheAppNoLongerKnowsStored_savesTheChange() = emulatorTest {
+    step("store profile") {
+      FirestoreEmulatorAdmin.createDocument(
+          "$USERS_COLLECTION/$uid",
+          mapOf(
+              DISPLAY_NAME to "Ada",
+              UserRepositoryFirestore.EMAIL to "ada@example.com",
+              LOCATION_SHARING_ENABLED to false,
+              UserRepositoryFirestore.CREATED_AT to Instant.now(),
+              NOTIFICATION_SETTINGS to mapOf("A_REMOVED_KIND" to false),
+          ),
+      )
+    }
+
+    step("turn off") {
+      repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = false)
+    }
+
+    assertEquals(
+        setOf(NotificationKind.ANNOUNCEMENT),
+        step("read choices") { repository.observeDisabledNotifications(uid).first() },
+    )
+  }
+
+  /**
+   * Offline, a profile this device never cached is unknown, not "every kind on": the flow waits for
+   * the server, then reports a missing profile once it is confirmed.
+   */
+  @Test
+  fun observeDisabledNotifications_offlineWithoutACachedProfile_waitsForTheServer() = emulatorTest {
+    val seen = MutableStateFlow(emptyList<Set<NotificationKind>>())
+    db.disableNetwork().await()
+    try {
+      coroutineScope {
+        val collector = launch {
+          repository.observeDisabledNotifications(uid).collect { v ->
+            seen.update { it + listOf(v) }
+          }
+        }
+
+        assertNull(withTimeoutOrNull(OFFLINE_WAIT_MILLIS) { seen.first { it.isNotEmpty() } })
+        db.enableNetwork().await()
+        step("await server") { seen.first { it == listOf(emptySet<NotificationKind>()) } }
+
+        collector.cancel()
+      }
+    } finally {
+      db.enableNetwork().await()
+    }
+  }
+
+  @Test
+  fun setNotificationEnabled_withoutProfile_throwsPermissionDenied() = emulatorTest {
+    val thrown =
+        step("turn off") {
+          runCatching {
+            repository.setNotificationEnabled(
+                uid,
+                NotificationKind.ANNOUNCEMENT,
+                enabled = false,
+            )
+          }
+              .exceptionOrNull()
+        }
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+    assertNull(step("read profile") { repository.getUser(uid) })
   }
 
   /**

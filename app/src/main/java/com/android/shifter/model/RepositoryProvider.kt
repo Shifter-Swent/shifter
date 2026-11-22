@@ -10,6 +10,7 @@ import com.swent.shifter.model.location.LiveLocationRepository
 import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.notification.NotificationPreferences
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.time.DeviceMinuteClock
 import com.swent.shifter.model.time.MinuteClock
@@ -53,4 +54,12 @@ class RepositoryProvider(
      */
     val minuteClock: MinuteClock =
         DeviceMinuteClock(CoroutineScope(SupervisorJob() + Dispatchers.Default)),
+    /**
+     * The kinds of notifications each user turned off, read by the notification engine (#614). The
+     * choices live on the profile, so they are read from [userRepository] rather than built by
+     * [RepositoryProviderFactory].
+     */
+    val notificationPreferences: NotificationPreferences = NotificationPreferences { userId ->
+      userRepository.observeDisabledNotifications(userId)
+    },
 )
