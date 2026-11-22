@@ -24,7 +24,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
-import com.google.maps.android.compose.CameraMoveStartedReason
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
@@ -230,10 +229,9 @@ class MapScreenTest {
   }
 
   /**
-   * Waits for the map to report its camera resting on [target] at [zoom], so the next tap sees it
-   * still. The move reason is set by the map's listener alone, so a position the state merely
-   * remembers from before the map does not count. Generous, since the emulators of the CI draw the
-   * map in software.
+   * Waits for the camera to rest on [target] at [zoom], so the next tap sees it still. Once the map
+   * is bound, only its own listeners update the state's position, so a camera seen on [target] is
+   * the map's report. Generous, since the emulators of the CI draw the map in software.
    */
   private fun ComposeContentTestRule.waitUntilCentred(
       camera: CameraPositionState,
@@ -241,34 +239,38 @@ class MapScreenTest {
       zoom: Float,
   ) {
     try {
-      waitUntil(timeoutMillis = 20_000) {
-        camera.cameraMoveStartedReason != CameraMoveStartedReason.NO_MOVEMENT_YET &&
-            !camera.isMoving &&
-            camera.position.target.isNear(target) &&
-            abs(camera.position.zoom - zoom) < 0.01f
-      }
+      waitUntil(timeoutMillis = 20_000) { !camera.isMoving && camera.position.isAt(target, zoom) }
     } catch (e: ComposeTimeoutException) {
       throw AssertionError(
-          "Expected $target at zoom $zoom, camera at ${camera.position}, " +
-              "moving=${camera.isMoving}, last move ${camera.cameraMoveStartedReason}",
+          "Expected $target at zoom $zoom, camera at ${camera.position}, moving=${camera.isMoving}",
           e,
       )
     }
   }
 
   /**
-   * Waits for the map to be bound, then parks its camera at [start] and waits for the map itself to
-   * report it. Until the map has drawn, the state still shows the camera it had before the map, so
-   * a tap would read a stale camera, and an animation started then can be dropped.
+   * Waits for the map to be bound, then parks its camera at [start] and waits for the map to report
+   * it. Until the map has drawn, the state still shows the camera it had before the map, so a tap
+   * would read a stale camera, and an animation started then can be dropped.
    */
   private fun awaitTheMap(camera: CameraPositionState, start: CameraPosition) {
     // The projection is read on the main thread, as every call to the map must be.
     compose.waitUntil(timeoutMillis = 20_000) {
       compose.runOnUiThread { camera.projection != null }
     }
-    compose.runOnIdle { camera.move(CameraUpdateFactory.newCameraPosition(start)) }
-    compose.waitUntilCentred(camera, start.target.toGeoPosition(), start.zoom)
+    val target = start.target.toGeoPosition()
+    compose.runOnIdle {
+      // Else the camera the state had before the map would pass for the map's report.
+      check(!camera.position.isAt(target, start.zoom)) {
+        "Start the camera away from ${camera.position}, where it opens"
+      }
+      camera.move(CameraUpdateFactory.newCameraPosition(start))
+    }
+    compose.waitUntilCentred(camera, target, start.zoom)
   }
+
+  private fun CameraPosition.isAt(point: GeoPosition, zoom: Float) =
+      this.target.isNear(point) && abs(this.zoom - zoom) < 0.01f
 
   private fun cameraAt(position: GeoPosition, zoom: Float) =
       CameraPosition.fromLatLngZoom(position.toLatLng(), zoom)
