@@ -8,6 +8,10 @@ package com.swent.shifter.model.membership
  *
  * A volunteer has at most one request per event, identified by their user id.
  *
+ * A pending or accepted request lists its volunteer in the `volunteerIds` of each of its
+ * [MembershipRequest.shiftIds]: from #594, a Firestore-backed implementation keeps them in step
+ * when it applies, changes the shifts, rejects or withdraws. The in-memory fakes do not model it.
+ *
  * Every method throws a [MembershipRequestRepositoryException] when the operation fails.
  */
 interface MembershipRequestRepository {
@@ -81,6 +85,23 @@ interface MembershipRequestRepository {
    * leave. The in-memory fakes do not model it, nor the missions.
    */
   suspend fun moveToTeam(eventId: String, userId: String, teamId: String)
+
+  /**
+   * Replaces the chosen shifts of the request from [userId] for [eventId] with [shiftIds], and its
+   * availability with [availability], the slots of those shifts joined back to back, as the caller
+   * computes them for [apply]. [availability] must not be empty.
+   *
+   * Only the volunteer themself can change their shifts, and only while the request is
+   * [MembershipRequestStatus.PENDING]: a request that is missing, accepted or rejected is refused
+   * with [MembershipRequestRepositoryException.Unknown]. Until #594, the Firestore-backed
+   * implementation refuses every change the same way.
+   */
+  suspend fun updateShifts(
+      eventId: String,
+      userId: String,
+      shiftIds: List<String>,
+      availability: List<AvailabilitySlot>,
+  )
 
   /**
    * Returns the request from [userId] for [eventId], or null if they have not applied. Only the

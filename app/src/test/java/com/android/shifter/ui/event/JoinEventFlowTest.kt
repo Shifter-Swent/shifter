@@ -23,6 +23,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
@@ -85,6 +86,13 @@ class JoinEventFlowTest {
 
         override suspend fun moveToTeam(eventId: String, userId: String, teamId: String): Unit =
             error("unused")
+
+        override suspend fun updateShifts(
+            eventId: String,
+            userId: String,
+            shiftIds: List<String>,
+            availability: List<AvailabilitySlot>,
+        ): Unit = error("unused")
 
         override suspend fun getMembershipRequest(eventId: String, userId: String) =
             sentRequests

@@ -6,6 +6,9 @@ import com.swent.shifter.model.team.TeamRepository
 /**
  * In-memory [MembershipRequestRepository] for unit tests.
  *
+ * It does not record the shifts a request names in their `volunteerIds`, as that link is the
+ * backend's (#594): a test that needs a chosen shift seeds it in a `FakeShiftRepository`.
+ *
  * @property failure when set, every call throws it, to simulate a backend error.
  * @param teams when set, decisions and withdrawals keep the requested team's members in step, like
  *   the backend does. Left null, tests that do not look at teams need not create them.
@@ -87,6 +90,22 @@ class FakeMembershipRequestRepository(
     if (previous != null) teams.removeMember(eventId, previous.id, userId)
     teams.addMember(eventId, teamId, userId)
     requests.getValue(eventId)[userId] = request.copy(teamId = teamId)
+  }
+
+  /** Like the backend, only a pending request can change its shifts. */
+  override suspend fun updateShifts(
+      eventId: String,
+      userId: String,
+      shiftIds: List<String>,
+      availability: List<AvailabilitySlot>,
+  ) {
+    failure?.let { throw it }
+    val request = requests[eventId]?.get(userId)
+    if (request?.status != MembershipRequestStatus.PENDING) {
+      throw MembershipRequestRepositoryException.Unknown()
+    }
+    requests.getValue(eventId)[userId] =
+        request.copy(shiftIds = shiftIds, availability = availability)
   }
 
   /** Takes [userId] out of the team [teamId], and out of its management when they lead it. */

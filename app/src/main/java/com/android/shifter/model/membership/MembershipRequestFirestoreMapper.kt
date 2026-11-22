@@ -4,7 +4,11 @@ package com.swent.shifter.model.membership
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentSnapshot
+import com.swent.shifter.model.firestore.requireStringList
 import java.time.Instant
+
+/** Names this entity in the failure a malformed document raises. */
+private const val ENTITY = "Membership request"
 
 /**
  * Names of the membership requests subcollection and of every field of a request document.
@@ -21,6 +25,7 @@ internal object MembershipRequestSchema {
   const val USER_ID = "userId"
   const val TEAM_ID = "teamId"
   const val AVAILABILITY = "availability"
+  const val SHIFT_IDS = "shiftIds"
   const val STATUS = "status"
   const val CREATED_AT = "createdAt"
 
@@ -31,15 +36,21 @@ internal object MembershipRequestSchema {
   }
 }
 
-/** The document body written to `/events/{eventId}/membershipRequests/{requestId}`. */
-internal fun MembershipRequest.toFirestoreMap(): Map<String, Any?> =
-    mapOf(
-        MembershipRequestSchema.USER_ID to userId,
-        MembershipRequestSchema.TEAM_ID to teamId,
-        MembershipRequestSchema.AVAILABILITY to availability.map { it.toFirestoreMap() },
-        MembershipRequestSchema.STATUS to status.name,
-        MembershipRequestSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
-    )
+/**
+ * The document body written to `/events/{eventId}/membershipRequests/{requestId}`.
+ *
+ * [MembershipRequest.shiftIds] is left out while it is empty, which reads back the same: the rules
+ * refuse the field until #594 allows it, so a request with no shifts must still be stored as
+ * before.
+ */
+internal fun MembershipRequest.toFirestoreMap(): Map<String, Any?> = buildMap {
+  put(MembershipRequestSchema.USER_ID, userId)
+  put(MembershipRequestSchema.TEAM_ID, teamId)
+  put(MembershipRequestSchema.AVAILABILITY, availability.map { it.toFirestoreMap() })
+  if (shiftIds.isNotEmpty()) put(MembershipRequestSchema.SHIFT_IDS, shiftIds)
+  put(MembershipRequestSchema.STATUS, status.name)
+  put(MembershipRequestSchema.CREATED_AT, createdAt.toFirestoreTimestamp())
+}
 
 /**
  * Rebuilds the [MembershipRequest] stored in this document, taking [MembershipRequest.id] from the
@@ -63,6 +74,8 @@ internal fun DocumentSnapshot.toMembershipRequest(): MembershipRequest {
       userId = requireString(MembershipRequestSchema.USER_ID),
       teamId = requireTeamId(),
       availability = requireAvailability(),
+      // Absent for a request with no shifts, and for those sent before shifts existed.
+      shiftIds = requireStringList(ENTITY, MembershipRequestSchema.SHIFT_IDS),
       status = requireStatus(),
       createdAt = requireInstant(MembershipRequestSchema.CREATED_AT),
   )
@@ -125,10 +138,12 @@ private fun DocumentSnapshot.requireString(field: String): String =
 private fun DocumentSnapshot.requireInstant(field: String): Instant =
     (get(field) as? Timestamp)?.toInstant() ?: invalid(field)
 
+/**
+ * Throws itself rather than calling `invalidField`, which raises the same failure: the coverage
+ * tool counts a line whose call always throws as never run.
+ */
 private fun DocumentSnapshot.invalid(field: String): Nothing =
-    throw IllegalStateException(
-        "Membership request document '$id' has a missing or invalid '$field' field"
-    )
+    throw IllegalStateException("$ENTITY document '$id' has a missing or invalid '$field' field")
 
 /** Firestore keeps microsecond precision, so a sub-microsecond [Instant] is truncated on write. */
 private fun Instant.toFirestoreTimestamp(): Timestamp = Timestamp(epochSecond, nano)

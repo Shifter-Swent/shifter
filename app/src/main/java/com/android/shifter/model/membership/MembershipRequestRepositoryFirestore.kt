@@ -228,6 +228,18 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     return null
   }
 
+  /** Written by #594, with the rules that let a volunteer change their own pending request. */
+  override suspend fun updateShifts(
+      eventId: String,
+      userId: String,
+      shiftIds: List<String>,
+      availability: List<AvailabilitySlot>,
+  ) {
+    throw MembershipRequestRepositoryException.Unknown(
+        UnsupportedOperationException("Changing the shifts of a request comes with #594")
+    )
+  }
+
   override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? =
       translatingErrors {
         requests(eventId).document(userId).get().await().takeIf { it.exists() }?.toRequestOrThrow()
