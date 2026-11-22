@@ -149,61 +149,83 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     require(teamId.isNotBlank()) { "The team to move '$userId' to is blank" }
     translatingErrors {
       val now = Instant.now()
-      val request = requests(eventId).document(userId)
-      val previousTeamId = request.get().await().getString(MembershipRequestSchema.TEAM_ID)
-      val missions =
-          db.collection(EventSchema.COLLECTION)
-              .document(eventId)
-              .collection(MissionSchema.COLLECTION)
-              .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+      val previousTeamId =
+          requests(eventId)
+              .document(userId)
               .get()
               .await()
-              .documents
-              .filter { it.isOpenMissionOf(previousTeamId, now) }
-              .map { it.reference }
+              .getString(MembershipRequestSchema.TEAM_ID)
+      val missions = openMissions(eventId, userId, previousTeamId, now)
       val refusal: String? =
           db.runTransaction { transaction ->
-                val snapshot = transaction.get(request)
-                if (
-                    snapshot.getString(MembershipRequestSchema.STATUS) !=
-                        MembershipRequestStatus.ACCEPTED.name
-                ) {
-                  return@runTransaction "'$userId' is not an accepted volunteer of event '$eventId'"
-                }
-                val target = team(eventId, teamId)
-                val targetSnapshot = transaction.get(target)
-                if (!targetSnapshot.exists()) {
-                  return@runTransaction "Team '$teamId' of event '$eventId' does not exist"
-                }
-                val from = snapshot.getString(MembershipRequestSchema.TEAM_ID)
-                if (from == teamId) {
-                  transaction.rejoin(target, targetSnapshot, userId)
-                  return@runTransaction null
-                }
-                if (from != previousTeamId) {
-                  return@runTransaction "The team of '$userId' changed meanwhile, try again"
-                }
-                val previous = from?.let { team(eventId, it) }
-                val previousSnapshot = previous?.let { transaction.get(it) }
-                if (previousSnapshot?.getString(TeamSchema.MANAGER_ID) == userId) {
-                  return@runTransaction "'$userId' manages their team and cannot be moved"
-                }
-                // Read again, so a mission deleted, given to another team or closed meanwhile is
-                // left alone.
-                val assigned = missions.filter { transaction.get(it).isOpenMissionOf(from, now) }
-                if (previous != null && previousSnapshot?.exists() == true) {
-                  transaction.leaveTeam(previous, previousSnapshot, userId)
-                }
-                transaction.update(target, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
-                transaction.update(request, MembershipRequestSchema.TEAM_ID, teamId)
-                assigned.forEach {
-                  transaction.update(it, MissionSchema.ASSIGNEE_IDS, FieldValue.arrayRemove(userId))
-                }
-                null
+                transaction.move(eventId, userId, teamId, previousTeamId, missions, now)
               }
               .await()
       refusal?.let { throw MembershipRequestRepositoryException.Unknown(IllegalStateException(it)) }
     }
+  }
+
+  /** The open missions of [teamId] in [eventId] that [userId] is assigned to, at [now]. */
+  private suspend fun openMissions(
+      eventId: String,
+      userId: String,
+      teamId: String?,
+      now: Instant,
+  ): List<DocumentReference> =
+      db.collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(MissionSchema.COLLECTION)
+          .whereArrayContains(MissionSchema.ASSIGNEE_IDS, userId)
+          .get()
+          .await()
+          .documents
+          .filter { it.isOpenMissionOf(teamId, now) }
+          .map { it.reference }
+
+  /**
+   * Moves [userId] to [teamId] in this transaction, from [previousTeamId], the team their request
+   * named when [missions] were found: out of that team and off those of its [missions] still open.
+   * Every read comes before the first write, as a transaction requires. Returns why the move is
+   * refused, or null once it is written.
+   */
+  private fun Transaction.move(
+      eventId: String,
+      userId: String,
+      teamId: String,
+      previousTeamId: String?,
+      missions: List<DocumentReference>,
+      now: Instant,
+  ): String? {
+    val request = requests(eventId).document(userId)
+    val snapshot = get(request)
+    if (
+        snapshot.getString(MembershipRequestSchema.STATUS) != MembershipRequestStatus.ACCEPTED.name
+    ) {
+      return "'$userId' is not an accepted volunteer of event '$eventId'"
+    }
+    val target = team(eventId, teamId)
+    val targetSnapshot = get(target)
+    if (!targetSnapshot.exists()) return "Team '$teamId' of event '$eventId' does not exist"
+    val from = snapshot.getString(MembershipRequestSchema.TEAM_ID)
+    if (from == teamId) {
+      rejoin(target, targetSnapshot, userId)
+      return null
+    }
+    if (from != previousTeamId) return "The team of '$userId' changed meanwhile, try again"
+    val previous = from?.let { team(eventId, it) }
+    val previousSnapshot = previous?.let { get(it) }
+    if (previousSnapshot?.getString(TeamSchema.MANAGER_ID) == userId) {
+      return "'$userId' manages their team and cannot be moved"
+    }
+    // Read again, so a mission deleted, given to another team or closed meanwhile is left alone.
+    val assigned = missions.filter { get(it).isOpenMissionOf(from, now) }
+    if (previous != null && previousSnapshot?.exists() == true) {
+      leaveTeam(previous, previousSnapshot, userId)
+    }
+    update(target, TeamSchema.MEMBER_IDS, FieldValue.arrayUnion(userId))
+    update(request, MembershipRequestSchema.TEAM_ID, teamId)
+    assigned.forEach { update(it, MissionSchema.ASSIGNEE_IDS, FieldValue.arrayRemove(userId)) }
+    return null
   }
 
   override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? =
