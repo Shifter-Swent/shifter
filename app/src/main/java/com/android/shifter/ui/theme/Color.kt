@@ -64,3 +64,12 @@ val shifter_qrLight = Color(0xFFFFFFFF)
 val shifter_announcement = shifter_warning
 val shifter_announcementContainer = lerp(md_theme_dark_surface, shifter_warning, 0.2f)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
+
+// The tints of the Discussions, one per team or person: soft enough to read as a name on the dark
+// surface and to carry dark text as an avatar.
+val shifter_chatTintPink = Color(0xFFF4B4B4)
+val shifter_chatTintGreen = Color(0xFFB5E3A8)
+val shifter_chatTintBlue = Color(0xFFAFC6F7)
+val shifter_chatTintAmber = Color(0xFFF2D28C)
+val shifter_chatTintPurple = Color(0xFFD3B8F2)
+val shifter_chatTintTeal = Color(0xFF9EDCDC)

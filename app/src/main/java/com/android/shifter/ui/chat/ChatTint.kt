@@ -1,0 +1,28 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.swent.shifter.ui.chat
+
+import androidx.compose.ui.graphics.Color
+import com.swent.shifter.ui.theme.shifter_chatTintAmber
+import com.swent.shifter.ui.theme.shifter_chatTintBlue
+import com.swent.shifter.ui.theme.shifter_chatTintGreen
+import com.swent.shifter.ui.theme.shifter_chatTintPink
+import com.swent.shifter.ui.theme.shifter_chatTintPurple
+import com.swent.shifter.ui.theme.shifter_chatTintTeal
+
+/** The tints of the Discussions: a team's channel tile, and the name and avatar of a member. */
+internal val CHAT_TINTS =
+    listOf(
+        shifter_chatTintPink,
+        shifter_chatTintGreen,
+        shifter_chatTintBlue,
+        shifter_chatTintAmber,
+        shifter_chatTintPurple,
+        shifter_chatTintTeal,
+    )
+
+/**
+ * The tint of [key] (a team id or a member's name), always the same for the same key, so a team or
+ * a person keeps their color from one screen and one day to the next.
+ */
+internal fun chatTint(key: String): Color =
+    CHAT_TINTS[Math.floorMod(key.hashCode(), CHAT_TINTS.size)]
