@@ -54,6 +54,7 @@ Agreed by the team in #334.
   - A PR that depends on another one waits for it to be merged, then branches from the updated `main`.
 - **Pull requests**: titled like their main commit, and filled from `.github/pull_request_template.md`.
   - The Definition of Done copies the acceptance criteria of the issue, plus the items of "Definition of done" above. Only check what was actually verified; an unchecked box points to Out of scope or Known limitations.
+  - Just before `Closes #N`, an `## Acknowledgement` section says which AI (name and model) did what in the PR, e.g. "Claude (Opus 5) wrote the fix and its tests and drafted this description, all under review. It is credited with a `Co-Authored-By:` trailer on the commits." Write "None." when no AI was used. The M3 grading requires every use of AI to be stated in the PR.
   - End with `Closes #N`, or `Part of #N` when the issue is only partly done.
 - **Merging**: "Create a merge commit" only, once the branch is rebased on `main` and the CI is green; the branch is deleted after the merge.
 - **Issues**: titled in the imperative, and filled from the templates of `.github/ISSUE_TEMPLATE/` (task, bug, user story), with their project fields.

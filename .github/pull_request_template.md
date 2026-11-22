@@ -52,5 +52,10 @@
 
 -
 
+## Acknowledgement
+
+<!-- Which AI (name and model) did what: code, tests, investigation, description, all under review,
+     and that it is credited with a Co-Authored-By: trailer on the commits. "None." if no AI was used. -->
+
 <!-- Closes #N, or Part of #N if the issue is only partly done. -->
 Closes #
