@@ -126,7 +126,10 @@ abstract class DownloadFontTask : DefaultTask() {
     target.parentFile.mkdirs()
     var found = false
     try {
-      ZipInputStream(URI(url.get()).toURL().openStream()).use { zip ->
+      val connection = URI(url.get()).toURL().openConnection()
+      connection.connectTimeout = TIMEOUT_MILLIS
+      connection.readTimeout = TIMEOUT_MILLIS
+      ZipInputStream(connection.getInputStream()).use { zip ->
         var zipEntry: ZipEntry? = zip.nextEntry
         while (zipEntry != null && !found) {
           if (zipEntry.name == entry.get()) {
@@ -145,10 +148,17 @@ abstract class DownloadFontTask : DefaultTask() {
     }
     if (!found) throw GradleException("${entry.get()} is missing from ${url.get()}.")
   }
+
+  private companion object {
+    /** How long to wait for Fontshare to connect, then for each read, so a stuck server fails. */
+    const val TIMEOUT_MILLIS = 30_000
+  }
 }
 
 val downloadSatoshiFont =
     tasks.register<DownloadFontTask>("downloadSatoshiFont") {
+      group = "build"
+      description = "Downloads the Satoshi typeface from Fontshare into the generated resources."
       url.set("https://api.fontshare.com/v2/fonts/download/satoshi")
       entry.set("Satoshi_Complete/Fonts/TTF/Satoshi-Variable.ttf")
       resourceName.set("satoshi_variable")
