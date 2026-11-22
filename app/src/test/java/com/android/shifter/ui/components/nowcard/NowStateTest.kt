@@ -2,6 +2,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.nowcard
 
+import com.swent.shifter.model.checkin.CheckInRules
 import com.swent.shifter.model.checkin.checkInWindow
 import com.swent.shifter.model.location.GeoPosition
 import com.swent.shifter.model.mission.Mission
@@ -9,6 +10,7 @@ import com.swent.shifter.model.mission.MissionLocation
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NowStateTest {
@@ -249,6 +251,12 @@ class NowStateTest {
   fun nowState_withASuppliedMissionTomorrow_keepsItInTheHorizon() {
     val next = mission("tomorrow", START.plus(Duration.ofDays(1)))
     assertEquals(NowState.Later(next), nowState(listOf(next), START, emptySet()))
+  }
+
+  @Test
+  fun soonBeforeStart_coversTheCheckInWindow() {
+    // The card must show a mission before its check-in opens, or the volunteer could miss it.
+    assertTrue(NowCardRules.SOON_BEFORE_START >= CheckInRules.OPENS_BEFORE_START)
   }
 
   private fun mission(

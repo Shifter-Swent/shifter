@@ -11,7 +11,8 @@ import java.time.Instant
 object NowCardRules {
   /**
    * How long before its start a mission is shown: as [NowState.Soon] when nothing runs, and as the
-   * `next` strip under a running mission. Long enough to always cover the 15 min check-in window.
+   * `next` strip under a running mission. Long enough to always cover the check-in window, which
+   * opens [com.swent.shifter.model.checkin.CheckInRules.OPENS_BEFORE_START] before the start.
    */
   val SOON_BEFORE_START: Duration = Duration.ofMinutes(30)
 }

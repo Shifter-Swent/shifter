@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.model.checkin.CheckInRules
 import com.swent.shifter.model.time.formatDay
 import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.FormPrimaryButton
@@ -70,6 +71,7 @@ import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
+import com.swent.shifter.ui.components.time.formatDuration
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning
@@ -415,14 +417,19 @@ private fun CheckInMessages(
   }
   val failure = failures.firstOrNull()
   val errorMessage = failure?.let {
-    stringResource(
-        when (it.reason) {
-          ManualCheckInError.NOT_ALLOWED -> R.string.attendance_check_in_not_allowed
-          ManualCheckInError.FAILED -> R.string.attendance_check_in_failed
-          ManualCheckInError.OUTSIDE_WINDOW -> R.string.attendance_check_in_outside_window
-        },
-        it.displayName?.ifBlank { null } ?: unnamed,
-    )
+    val name = it.displayName?.ifBlank { null } ?: unnamed
+    when (it.reason) {
+      ManualCheckInError.NOT_ALLOWED ->
+          stringResource(R.string.attendance_check_in_not_allowed, name)
+      ManualCheckInError.FAILED -> stringResource(R.string.attendance_check_in_failed, name)
+      // Read from the rule, so the message cannot drift from it.
+      ManualCheckInError.OUTSIDE_WINDOW ->
+          stringResource(
+              R.string.attendance_check_in_outside_window,
+              name,
+              formatDuration(CheckInRules.OPENS_BEFORE_START),
+          )
+    }
   }
   // Keyed on the whole list, not its first failure: once that is shown and taken out, an equal one
   // behind it, such as the same volunteer refused twice, must still be shown. A failure added while

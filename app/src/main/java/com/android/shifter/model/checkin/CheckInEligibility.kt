@@ -39,7 +39,10 @@ sealed interface CheckInEligibility {
 
 /** The check-in window and zone, in one place so they are easy to change. */
 object CheckInRules {
-  /** How long before the mission's start the check-in opens. It closes when the mission ends. */
+  /**
+   * How long before the mission's start the check-in opens. It closes when the mission ends. The
+   * messages that state it round it down to the minute.
+   */
   val OPENS_BEFORE_START: Duration = Duration.ofMinutes(15)
 
   /**
