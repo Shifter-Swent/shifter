@@ -30,7 +30,7 @@ import java.time.ZonedDateTime
 
 /** A message, with the tag above it and an amber background when it is an announcement. */
 @Composable
-internal fun Bubble(message: ChatMessageItem, zone: ZoneId, today: LocalDate) {
+internal fun ChatMessageBubble(message: ChatMessageItem, zone: ZoneId, today: LocalDate) {
   val name =
       if (message.isMine) stringResource(R.string.chat_you)
       else message.senderName ?: stringResource(R.string.chat_unknown_sender)

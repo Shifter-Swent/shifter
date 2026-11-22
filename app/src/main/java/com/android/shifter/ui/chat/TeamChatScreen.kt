@@ -86,7 +86,7 @@ fun TeamChatContent(
   Column(modifier = modifier.fillMaxSize().imePadding()) {
     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
       when {
-        keepsMessages -> Messages(state.messages, zone, today)
+        keepsMessages -> ChatMessageList(state.messages, zone, today)
         state.isLoading ->
             CircularProgressIndicator(modifier = Modifier.testTag(TeamChatTestTags.LOADING))
         state.error != null -> LoadError(state.error, onRetry)
@@ -103,7 +103,7 @@ fun TeamChatContent(
     if (state.announcementRefused) {
       SendError(R.string.chat_announcement_refused, TeamChatTestTags.ANNOUNCEMENT_REFUSED)
     }
-    Input(state, onDraftChange, onSend, onAnnouncementChange)
+    ChatComposer(state, onDraftChange, onSend, onAnnouncementChange)
   }
 }
 

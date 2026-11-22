@@ -24,7 +24,7 @@ import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_announcement
 
 @Composable
-internal fun Input(
+internal fun ChatComposer(
     state: TeamChatUiState,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,

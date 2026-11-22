@@ -24,7 +24,7 @@ import java.time.ZoneId
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun Messages(messages: List<ChatMessageItem>, zone: ZoneId, today: LocalDate) {
+internal fun ChatMessageList(messages: List<ChatMessageItem>, zone: ZoneId, today: LocalDate) {
   val listState = rememberLazyListState()
   val latest = messages.last()
   // Keyed on the latest message rather than the count, which stays at the cap of the channel. It is
@@ -46,6 +46,6 @@ internal fun Messages(messages: List<ChatMessageItem>, zone: ZoneId, today: Loca
       contentPadding = PaddingValues(16.dp),
       verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    items(messages, key = { it.id }) { Bubble(it, zone, today) }
+    items(messages, key = { it.id }) { ChatMessageBubble(it, zone, today) }
   }
 }
