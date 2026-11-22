@@ -313,6 +313,41 @@ class OrganizerOverviewScreenTest {
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
   }
 
+  @Test
+  fun assignDialog_overTheLoweredNeed_saysWhyAndDisablesSave() {
+    val tooMany =
+        assigning().let {
+          it.copy(limit = 1, selection = it.selection.copy(selectedIds = listOf("ana", "ben")))
+        }
+    show(loaded.copy(assigning = tooMany))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT)
+        .assertTextEquals("This mission now needs only 1 person. Unpick some to save.")
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
+  }
+
+  @Test
+  fun assignDialog_withinTheLimit_showsNoLimitMessage() {
+    show(loaded.copy(assigning = assigning()))
+
+    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT).assertDoesNotExist()
+  }
+
+  @Test
+  fun deletedMission_isToldOnceInASnackbar() {
+    var shown = 0
+    show(
+        loaded.copy(assignedMissionDeleted = true),
+        OrganizerOverviewActions(onDeletedMissionShown = { shown++ }),
+    )
+
+    compose.onNodeWithText("This mission no longer exists.").assertIsDisplayed()
+    // Past a short snackbar's 4 s.
+    compose.mainClock.advanceTimeBy(5_000)
+    compose.runOnIdle { assertEquals(1, shown) }
+  }
+
   /** Mission "m1" being assigned, its candidates loaded and Ana picked. */
   private fun assigning() =
       AssignState(

@@ -94,9 +94,11 @@ class FirestoreMissionAssigneesTest {
         .exceptionOrNull()
 
     assertTrue(
-        "expected IllegalArgumentException, but was: $failure",
-        failure is IllegalArgumentException,
+        "expected AssigneesAboveVolunteersException, but was: $failure",
+        failure is AssigneesAboveVolunteersException,
     )
+    // The stored need, so the screen can say how many people the mission takes.
+    assertEquals(1, (failure as AssigneesAboveVolunteersException).volunteersNeeded)
     assertEquals(listOf("user-1"), stored(created).assigneeIds)
   }
 

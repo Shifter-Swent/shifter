@@ -26,16 +26,21 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -73,6 +78,8 @@ object OrganizerOverviewScreenTestTags {
   const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
   const val ASSIGN_CANCEL = "OrganizerOverviewAssignCancel"
   const val ASSIGN_ERROR = "OrganizerOverviewAssignError"
+  const val ASSIGN_OVER_LIMIT = "OrganizerOverviewAssignOverLimit"
+  const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
 
@@ -118,6 +125,7 @@ fun OrganizerOverviewScreen(
               onRetryAssignees = viewModel::retryAssignees,
               onSaveAssignees = viewModel::saveAssignees,
               onDismissAssign = viewModel::dismissAssign,
+              onDeletedMissionShown = viewModel::deletedMissionShown,
           ),
   )
 }
@@ -136,6 +144,7 @@ data class OrganizerOverviewActions(
     val onRetryAssignees: () -> Unit = {},
     val onSaveAssignees: () -> Unit = {},
     val onDismissAssign: () -> Unit = {},
+    val onDeletedMissionShown: () -> Unit = {},
 )
 
 /**
@@ -156,7 +165,23 @@ fun OrganizerOverviewContent(
     now: Instant,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
-  OverviewColumn(state, actions, now, zone)
+  val snackbarHostState = remember { SnackbarHostState() }
+  val deleted = stringResource(R.string.overview_assign_deleted)
+  LaunchedEffect(state.assignedMissionDeleted) {
+    if (state.assignedMissionDeleted) {
+      snackbarHostState.showSnackbar(deleted)
+      actions.onDeletedMissionShown()
+    }
+  }
+  Box(modifier = Modifier.fillMaxSize()) {
+    OverviewColumn(state, actions, now, zone)
+    SnackbarHost(
+        snackbarHostState,
+        modifier =
+            Modifier.align(Alignment.BottomCenter)
+                .testTag(OrganizerOverviewScreenTestTags.SNACKBAR),
+    )
+  }
   state.assigning?.let { AssignDialog(it, actions) }
 }
 
@@ -477,6 +502,21 @@ private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActio
               onToggle = actions.onToggleAssignee,
               onRetry = actions.onRetryAssignees,
           )
+          // Shown as long as too many are picked, not only after the refused save, so it does not
+          // vanish while Save stays off.
+          if (assigning.overLimit) {
+            Text(
+                text =
+                    pluralStringResource(
+                        R.plurals.overview_assign_over_limit,
+                        assigning.limit,
+                        assigning.limit,
+                    ),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT),
+            )
+          }
           if (assigning.saveFailed) {
             Text(
                 text = stringResource(R.string.overview_assign_failed),
@@ -490,11 +530,13 @@ private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActio
       confirmButton = {
         TextButton(
             onClick = actions.onSaveAssignees,
-            // Saving before the candidates are loaded could not show who is picked.
+            // Saving before the candidates are loaded could not show who is picked, and too many
+            // picked would be refused again.
             enabled =
                 !assigning.isSaving &&
                     !assigning.selection.isLoading &&
-                    !assigning.selection.loadFailed,
+                    !assigning.selection.loadFailed &&
+                    !assigning.overLimit,
             modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE),
         ) {
           Text(stringResource(R.string.overview_assign_save))

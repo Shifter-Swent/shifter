@@ -64,8 +64,9 @@ interface MissionRepository {
    * [eventId] with [assigneeIds], in the given order. An empty list leaves the mission with nobody
    * assigned.
    *
-   * Throws [IllegalArgumentException] when [assigneeIds] lists someone twice or holds more people
-   * than the mission's [Mission.volunteersNeeded]; nothing is written then. Throws
+   * Throws [IllegalArgumentException] when [assigneeIds] lists someone twice, and its
+   * [AssigneesAboveVolunteersException] when it holds more people than the stored mission's
+   * [Mission.volunteersNeeded]; nothing is written then. Throws
    * [MissionRepositoryException.NotFound] when the mission does not exist.
    */
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)

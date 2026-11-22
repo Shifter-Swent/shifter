@@ -576,21 +576,81 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
-  fun saveAssignees_ofAChangedMission_closesAndReloads() = runTest {
+  fun saveAssignees_ofADeletedMission_closesAndSaysSoOnce() = runTest {
     val mission = addMission("Set up", "logistics", hour = 1)
-    // The mission was deleted, or now needs fewer people than picked: trying again cannot work.
-    for (failure in listOf(MissionRepositoryException.NotFound(), IllegalArgumentException())) {
-      open()
-      viewModel.openAssign(mission.id)
-      advanceUntilIdle()
-      missions.failure = failure
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    missions.failure = MissionRepositoryException.NotFound()
 
-      viewModel.saveAssignees()
-      advanceUntilIdle()
+    viewModel.saveAssignees()
+    advanceUntilIdle()
 
-      assertNull(assigning)
-      missions.failure = null
-    }
+    assertNull(assigning)
+    assertTrue(viewModel.uiState.value.assignedMissionDeleted)
+    viewModel.deletedMissionShown()
+    assertFalse(viewModel.uiState.value.assignedMissionDeleted)
+  }
+
+  @Test
+  fun saveAssignees_aboveTheLoweredNeed_keepsThePickWithTheNewLimit() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1, volunteersNeeded = 2)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+    viewModel.toggleAssignee("ben")
+    // Someone else lowers the need while the dialog is open.
+    missions.updateMission(missions.created.single().copy(volunteersNeeded = 1))
+
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    val state = assigning!!
+    assertEquals(1, state.limit)
+    assertTrue(state.overLimit)
+    assertFalse(state.isSaving)
+    assertEquals(listOf("ana", "ben"), state.selection.selectedIds)
+    assertEquals(1, viewModel.uiState.value.missions.single().volunteersNeeded)
+    assertEquals(emptyList<String>(), missions.created.single().assigneeIds)
+  }
+
+  @Test
+  fun saveAssignees_whileOverTheLimit_waitsForAnUnpick() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1, volunteersNeeded = 2)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+    viewModel.toggleAssignee("ben")
+    missions.updateMission(missions.created.single().copy(volunteersNeeded = 1))
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    viewModel.saveAssignees()
+    assertFalse(assigning!!.isSaving)
+    viewModel.toggleAssignee("ben")
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    assertNull(assigning)
+    assertEquals(listOf("ana"), missions.created.single().assigneeIds)
+  }
+
+  @Test
+  fun saveAssignees_onAnotherRefusal_closesAndReloads() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    // Refused for a reason the dialog cannot fix, such as someone listed twice.
+    missions.failure = IllegalArgumentException()
+
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    assertNull(assigning)
+    assertFalse(viewModel.uiState.value.assignedMissionDeleted)
   }
 
   @Test

@@ -84,9 +84,7 @@ class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : Miss
     val index = missions.indexOfFirst { it.eventId == eventId && it.id == missionId }
     if (index < 0) throw MissionRepositoryException.NotFound()
     val mission = missions[index]
-    require(assigneeIds.size <= mission.volunteersNeeded) {
-      "A mission needing ${mission.volunteersNeeded} volunteers cannot have ${assigneeIds.size} assignees"
-    }
+    requireRoomInMission(mission.volunteersNeeded, assigneeIds.size)
     replace(index, mission.copy(assigneeIds = assigneeIds))
   }
 

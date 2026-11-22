@@ -156,10 +156,7 @@ class FirestoreMissionRepository(
                   Code.NOT_FOUND,
               )
             }
-            val volunteersNeeded = snapshot.toMission().volunteersNeeded
-            require(assigneeIds.size <= volunteersNeeded) {
-              "A mission needing $volunteersNeeded volunteers cannot have ${assigneeIds.size} assignees"
-            }
+            requireRoomInMission(snapshot.toMission().volunteersNeeded, assigneeIds.size)
             transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
             null
           }
