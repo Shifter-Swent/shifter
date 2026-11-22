@@ -2,6 +2,8 @@
 package com.swent.shifter.model.schedule
 
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.mission.isCompleted
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -50,9 +52,9 @@ data class ScheduleProposal(
  *
  * The missions are gone through by [Mission.startAt], then by [Mission.id] for those that start at
  * the same time, so the result does not depend on the order of [missions]. A mission completed at
- * [now] (see [com.swent.shifter.model.mission.isCompleted]) is skipped. A mission already started
- * gets nobody, but its empty spots still go to [ScheduleProposal.unfilled], so the organizer can
- * finish it by hand.
+ * [now] (see [isCompleted]) is skipped. A mission already started, from its start included, gets
+ * nobody, but its empty spots still go to [ScheduleProposal.unfilled], so the organizer can finish
+ * it by hand. A mission with more assignees than it needs is left out, and keeps them all.
  *
  * A candidate is proposed for an upcoming mission only if:
  * - they belong to the mission's team: General missions (no team) are never filled, so their empty
@@ -60,21 +62,20 @@ data class ScheduleProposal(
  * - the union of their slots covers the whole mission, slots that touch or overlap being merged;
  * - no mission they are assigned to, General ones included, or proposed for in this run, overlaps
  *   it. Two missions that only touch, one ending when the other starts, do not overlap. Every
- *   mission counts, with or without a team or a place, unlike [Mission.conflictsWith];
+ *   mission counts, with or without a team or a place, unlike [Mission.conflictsWith], and past or
+ *   completed ones too, so a volunteer is never booked twice;
  * - they are not already assigned to it.
  *
  * Among the candidates of a mission, the one with the fewest hours, assigned and proposed across
- * the [missions], goes first, and a tie goes to the smallest [ScheduleCandidate.userId]. Nobody is
- * ever removed from a mission: the spots still empty go to [ScheduleProposal.unfilled]. Running it
- * again once the proposal is accepted proposes nobody new.
- *
- * Its body comes with #605; until then it proposes nothing.
+ * the [missions], goes first, and a tie goes to the smallest [ScheduleCandidate.userId]. The hours
+ * of a mission are its planned length, from [Mission.startAt] to [Mission.endAt], past and
+ * completed missions included. Nobody is ever removed from a mission: the spots still empty go to
+ * [ScheduleProposal.unfilled]. Running it again once the proposal is accepted proposes nobody new.
  *
  * @param now the current time, passed in so the tests can fix it.
  * @throws IllegalArgumentException when two [candidates] have the same [ScheduleCandidate.userId],
  *   since one volunteer would then be proposed twice.
  */
-@Suppress("UNUSED_PARAMETER")
 fun proposeSchedule(
     missions: List<Mission>,
     candidates: List<ScheduleCandidate>,
@@ -83,5 +84,57 @@ fun proposeSchedule(
   require(candidates.map { it.userId }.toSet().size == candidates.size) {
     "Each candidate must have a distinct userId"
   }
-  return ScheduleProposal()
+  val loads = candidates.map { candidate -> Load(candidate, missions) }
+  val proposed = mutableMapOf<String, List<String>>()
+  val unfilled = mutableMapOf<String, Int>()
+  for (mission in missions.sortedWith(compareBy({ it.startAt }, { it.id }))) {
+    var open = mission.volunteersNeeded - mission.assigneeIds.size
+    if (isCompleted(mission.completed, mission.endAt, now) || open <= 0) continue
+    if (now < mission.startAt && mission.teamId != null) {
+      val chosen =
+          loads
+              .filter { it.canTake(mission) }
+              .sortedWith(compareBy({ it.seconds }, { it.candidate.userId }))
+              .take(open)
+      chosen.forEach { it.held += mission }
+      if (chosen.isNotEmpty()) proposed[mission.id] = chosen.map { it.candidate.userId }
+      open -= chosen.size
+    }
+    if (open > 0) unfilled[mission.id] = open
+  }
+  return ScheduleProposal(proposed, unfilled)
+}
+
+/**
+ * A candidate and the missions they hold in this run, the ones they are assigned to or proposed
+ * for.
+ */
+private class Load(val candidate: ScheduleCandidate, missions: List<Mission>) {
+  val held = missions.filter { candidate.userId in it.assigneeIds }.toMutableList()
+
+  private val free = merged(candidate.slots)
+
+  /** The hours held, in seconds. */
+  val seconds: Long
+    get() = held.sumOf { Duration.between(it.startAt, it.endAt).seconds }
+
+  fun canTake(mission: Mission): Boolean =
+      mission.teamId in candidate.teamIds &&
+          candidate.userId !in mission.assigneeIds &&
+          free.any { it.start <= mission.startAt && mission.endAt <= it.end } &&
+          held.none { it.startAt < mission.endAt && mission.startAt < it.endAt }
+}
+
+/** [slots] in order of start, the ones that touch or overlap merged into one. */
+private fun merged(slots: List<TimeSlot>): List<TimeSlot> {
+  val result = mutableListOf<TimeSlot>()
+  for (slot in slots.sortedBy { it.start }) {
+    val last = result.lastOrNull()
+    if (last != null && slot.start <= last.end) {
+      result[result.lastIndex] = TimeSlot(last.start, maxOf(last.end, slot.end))
+    } else {
+      result += slot
+    }
+  }
+  return result
 }
