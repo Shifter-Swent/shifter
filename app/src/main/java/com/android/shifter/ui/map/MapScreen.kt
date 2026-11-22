@@ -279,16 +279,18 @@ fun MapContent(
 }
 
 /**
- * The zoom a tap on a recenter button sends the camera to, on [target]: one [ZOOM_STEP] closer, up
- * to [MAX_ZOOM] and never out, when the still [camera] is already centred on it; otherwise
- * [EVENT_ZOOM].
+ * The zoom a tap on a recenter button sends the camera to, on [target]: when the still [camera] is
+ * already centred on it, [EVENT_ZOOM] if it is further out, else one [ZOOM_STEP] closer, up to
+ * [MAX_ZOOM] and never out; otherwise [EVENT_ZOOM].
  */
 internal fun recenterZoom(camera: CameraPosition, isMoving: Boolean, target: GeoPosition): Float {
   val centred =
       !isMoving && camera.target.toGeoPosition().distanceTo(target) < CENTRED_WITHIN_METERS
-  // Never below the current zoom, so a camera pinched past the limit is not zoomed out.
-  return if (centred) maxOf(camera.zoom, (camera.zoom + ZOOM_STEP).coerceAtMost(MAX_ZOOM))
-  else EVENT_ZOOM
+  return when {
+    !centred || camera.zoom < EVENT_ZOOM -> EVENT_ZOOM
+    // Never below the current zoom, so a camera pinched past the limit is not zoomed out.
+    else -> maxOf(camera.zoom, (camera.zoom + ZOOM_STEP).coerceAtMost(MAX_ZOOM))
+  }
 }
 
 /**

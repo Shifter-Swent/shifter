@@ -26,6 +26,12 @@ class RecenterZoomTest {
   }
 
   @Test
+  fun recenterZoom_centredButZoomedOut_isTheEventZoom() {
+    assertEquals(15f, recenterZoom(cameraAt(TARGET, 8f), isMoving = false, target = TARGET))
+    assertEquals(15f, recenterZoom(cameraAt(TARGET, 14f), isMoving = false, target = TARGET))
+  }
+
+  @Test
   fun recenterZoom_withinTheMargin_zoomsIn() {
     assertEquals(16.5f, recenterZoom(cameraAt(NEAR, 15f), isMoving = false, target = TARGET))
   }
