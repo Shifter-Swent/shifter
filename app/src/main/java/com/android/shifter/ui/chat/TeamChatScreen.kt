@@ -1,61 +1,30 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
-import com.swent.shifter.ui.components.time.formatDay
-import com.swent.shifter.ui.components.time.formatTime
-import com.swent.shifter.ui.theme.shifter_announcement
-import com.swent.shifter.ui.theme.shifter_announcementContainer
 import com.swent.shifter.ui.theme.shifter_mutedText
-import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZonedDateTime
 
 object TeamChatTestTags {
   const val LOADING = "teamChatLoading"
@@ -117,7 +86,7 @@ fun TeamChatContent(
   Column(modifier = modifier.fillMaxSize().imePadding()) {
     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
       when {
-        keepsMessages -> Messages(state.messages, zone, today)
+        keepsMessages -> ChatMessageList(state.messages, zone, today)
         state.isLoading ->
             CircularProgressIndicator(modifier = Modifier.testTag(TeamChatTestTags.LOADING))
         state.error != null -> LoadError(state.error, onRetry)
@@ -134,175 +103,8 @@ fun TeamChatContent(
     if (state.announcementRefused) {
       SendError(R.string.chat_announcement_refused, TeamChatTestTags.ANNOUNCEMENT_REFUSED)
     }
-    Input(state, onDraftChange, onSend, onAnnouncementChange)
+    ChatComposer(state, onDraftChange, onSend, onAnnouncementChange)
   }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun Messages(messages: List<ChatMessageItem>, zone: ZoneId, today: LocalDate) {
-  val listState = rememberLazyListState()
-  val latest = messages.last()
-  // Keyed on the latest message rather than the count, which stays at the cap of the channel. It is
-  // followed only from the bottom, or when it is the user's own, so reading older ones is not
-  // interrupted; the latest one already followed tells whether the list was at the bottom.
-  var followedId by remember { mutableStateOf<String?>(null) }
-  LaunchedEffect(latest.id) {
-    val atBottom =
-        followedId == null || listState.layoutInfo.visibleItemsInfo.any { it.key == followedId }
-    if (atBottom || latest.isMine) listState.scrollToItem(messages.lastIndex)
-    followedId = latest.id
-  }
-  // Whether it is open, not its height, so the animation of the keyboard does not restart this.
-  val keyboardOpen = WindowInsets.isImeVisible
-  LaunchedEffect(keyboardOpen) { if (keyboardOpen) listState.scrollToItem(messages.lastIndex) }
-  LazyColumn(
-      state = listState,
-      modifier = Modifier.fillMaxSize().testTag(TeamChatTestTags.MESSAGES),
-      contentPadding = PaddingValues(16.dp),
-      verticalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    items(messages, key = { it.id }) { Bubble(it, zone, today) }
-  }
-}
-
-/** A message, with the tag above it and an amber background when it is an announcement. */
-@Composable
-private fun Bubble(message: ChatMessageItem, zone: ZoneId, today: LocalDate) {
-  val name =
-      if (message.isMine) stringResource(R.string.chat_you)
-      else message.senderName ?: stringResource(R.string.chat_unknown_sender)
-  val colors = MaterialTheme.colorScheme
-  // Set here, as a background alone, unlike a Surface, gives the text no color on the bubble.
-  val (background, textColor) =
-      when {
-        message.isAnnouncement -> shifter_announcementContainer to shifter_onAnnouncementContainer
-        message.isMine -> colors.primaryContainer to colors.onPrimaryContainer
-        else -> colors.surfaceVariant to colors.onSurface
-      }
-  Box(modifier = Modifier.fillMaxWidth()) {
-    Column(
-        horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start,
-        modifier =
-            Modifier.align(if (message.isMine) Alignment.CenterEnd else Alignment.CenterStart)
-                .widthIn(max = 280.dp)
-                // Read as one message by TalkBack: the tag, sender, text and time together.
-                .semantics(mergeDescendants = true) {}
-                .testTag(TeamChatTestTags.message(message.id)),
-    ) {
-      if (message.isAnnouncement) AnnouncementTag(message.id)
-      Column(
-          horizontalAlignment = if (message.isMine) Alignment.End else Alignment.Start,
-          modifier =
-              Modifier.background(background, RoundedCornerShape(12.dp))
-                  .padding(horizontal = 12.dp, vertical = 8.dp),
-      ) {
-        Text(
-            name,
-            color = textColor,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(message.text, color = textColor, style = MaterialTheme.typography.bodyMedium)
-        val status =
-            when {
-              message.isPending -> stringResource(R.string.chat_sending)
-              message.sentAt != null -> sentAtLabel(message.sentAt.atZone(zone), today)
-              else -> null
-            }
-        if (status != null) {
-          Text(
-              text = status,
-              style = MaterialTheme.typography.labelSmall,
-              color = shifter_mutedText,
-              modifier =
-                  if (message.isPending) Modifier.testTag(TeamChatTestTags.pending(message.id))
-                  else Modifier,
-          )
-        }
-      }
-    }
-  }
-}
-
-/** The megaphone and "Announcement", above the bubble of an announcement. */
-@Composable
-private fun AnnouncementTag(messageId: String) {
-  Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(4.dp),
-      modifier =
-          Modifier.padding(bottom = 4.dp).testTag(TeamChatTestTags.announcementTag(messageId)),
-  ) {
-    Icon(
-        Icons.Filled.Campaign,
-        contentDescription = null,
-        tint = shifter_announcement,
-        modifier = Modifier.size(16.dp),
-    )
-    Text(
-        stringResource(R.string.chat_announcement_tag),
-        color = shifter_announcement,
-        style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
-    )
-  }
-}
-
-@Composable
-private fun Input(
-    state: TeamChatUiState,
-    onDraftChange: (String) -> Unit,
-    onSend: () -> Unit,
-    onAnnouncementChange: (Boolean) -> Unit,
-) {
-  Row(
-      modifier = Modifier.fillMaxWidth().padding(8.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    if (state.canAnnounce) {
-      IconToggleButton(
-          checked = state.asAnnouncement,
-          onCheckedChange = onAnnouncementChange,
-          colors =
-              IconButtonDefaults.iconToggleButtonColors(checkedContentColor = shifter_announcement),
-          modifier = Modifier.testTag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE),
-      ) {
-        Icon(
-            Icons.Filled.Campaign,
-            contentDescription = stringResource(R.string.chat_send_as_announcement),
-        )
-      }
-    }
-    val placeholder =
-        if (state.asAnnouncement) R.string.chat_announcement_placeholder
-        else R.string.chat_input_placeholder
-    OutlinedTextField(
-        value = state.draft,
-        onValueChange = onDraftChange,
-        placeholder = { Text(stringResource(placeholder)) },
-        maxLines = 4,
-        modifier = Modifier.weight(1f).testTag(TeamChatTestTags.INPUT),
-    )
-    IconButton(
-        onClick = onSend,
-        enabled = state.canSend,
-        modifier = Modifier.testTag(TeamChatTestTags.SEND_BUTTON),
-    ) {
-      Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.chat_send))
-    }
-  }
-}
-
-/** Why the last message was not sent, above the field that has its text back. */
-@Composable
-private fun SendError(messageRes: Int, tag: String) {
-  Text(
-      text = stringResource(messageRes),
-      style = MaterialTheme.typography.bodySmall,
-      color = MaterialTheme.colorScheme.error,
-      modifier = Modifier.padding(horizontal = 16.dp).testTag(tag),
-  )
 }
 
 /** The error in place of the messages, when there are none to show. */
@@ -350,13 +152,3 @@ private val ChatError.messageRes: Int
         ChatError.NOT_ALLOWED -> R.string.chat_error_not_allowed
         ChatError.UNEXPECTED -> R.string.chat_error_unexpected
       }
-
-/**
- * The time of a message sent [today], or its day and time otherwise: the channel stays open after
- * the event, which can last several days, so an old instruction must not read as a current one.
- */
-internal fun sentAtLabel(sentAt: ZonedDateTime, today: LocalDate): String {
-  val time = sentAt.toLocalTime().formatTime()
-  val day = sentAt.toLocalDate()
-  return if (day == today) time else "${day.formatDay(withYear = day.year != today.year)}, $time"
-}
