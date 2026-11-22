@@ -19,7 +19,7 @@ private val OPEN_SPOTS_WINDOW: Duration = Duration.ofHours(24)
  * starts within the next 24 h, both ends included, so one already started is left out, it is not
  * completed, and it has fewer assignees than it needs.
  */
-internal fun Mission.isShortAt(now: Instant): Boolean =
+private fun Mission.isShortAt(now: Instant): Boolean =
     startAt >= now &&
         startAt <= now + OPEN_SPOTS_WINDOW &&
         !isCompleted(completed, endAt, now) &&

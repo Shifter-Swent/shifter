@@ -23,8 +23,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers which missions [isShortAt] keeps, and what [OpenSpots] shows: each short mission once,
- * again once it was full then short again, and nothing marked when a read fails.
+ * Covers, through [OpenSpots.run], which missions are short (the 24 h window, started, full,
+ * completed), and what is shown: each short mission once, again once it was full then short
+ * again, and nothing marked when a read fails.
  */
 class OpenSpotsTest {
 
@@ -80,39 +81,41 @@ class OpenSpotsTest {
           )
       )
 
-  @Test
-  fun isShortAt_withinTheNext24h_isTrue() {
-    assertTrue(mission().isShortAt(now))
+  /** Whether a first run notifies [mission], created in an event of the organizer. */
+  private suspend fun notifies(mission: Mission): Boolean {
+    createEvent()
+    val created = missionRepository.createMission(mission)
+    return openSpots.run("organizer", now, seen).any { it.key == created.id }
   }
 
   @Test
-  fun isShortAt_atExactly24h_isTrue() {
-    assertTrue(mission(startAt = now + Duration.ofHours(24)).isShortAt(now))
+  fun run_withAMissionAtExactly24h_notifiesIt() = runTest {
+    assertTrue(notifies(mission(startAt = now + Duration.ofHours(24))))
   }
 
   @Test
-  fun isShortAt_after24h_isFalse() {
-    assertFalse(mission(startAt = now + Duration.ofHours(24).plusSeconds(1)).isShortAt(now))
+  fun run_withAMissionAfter24h_staysSilent() = runTest {
+    assertFalse(notifies(mission(startAt = now + Duration.ofHours(24).plusSeconds(1))))
   }
 
   @Test
-  fun isShortAt_startingNow_isTrue() {
-    assertTrue(mission(startAt = now).isShortAt(now))
+  fun run_withAMissionStartingNow_notifiesIt() = runTest {
+    assertTrue(notifies(mission(startAt = now)))
   }
 
   @Test
-  fun isShortAt_alreadyStarted_isFalse() {
-    assertFalse(mission(startAt = now - Duration.ofMinutes(1)).isShortAt(now))
+  fun run_withAStartedMission_staysSilent() = runTest {
+    assertFalse(notifies(mission(startAt = now - Duration.ofMinutes(1))))
   }
 
   @Test
-  fun isShortAt_whenFull_isFalse() {
-    assertFalse(mission(assigneeIds = listOf("alice", "bob")).isShortAt(now))
+  fun run_withAFullMission_staysSilent() = runTest {
+    assertFalse(notifies(mission(assigneeIds = listOf("alice", "bob"))))
   }
 
   @Test
-  fun isShortAt_whenCompleted_isFalse() {
-    assertFalse(mission(completed = true).isShortAt(now))
+  fun run_withACompletedMission_staysSilent() = runTest {
+    assertFalse(notifies(mission(completed = true)))
   }
 
   @Test
