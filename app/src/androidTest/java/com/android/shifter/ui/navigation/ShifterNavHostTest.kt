@@ -834,9 +834,9 @@ class ShifterNavHostTest {
    */
   @Test
   fun volunteerMap_followsTheUsersPosition() {
-    signIn()
     val location =
         openMapWithAKnownPosition(
+            signIn(),
             UserMode.VOLUNTEER,
             VolunteerEvent("event-1", EVENT_TITLE),
             VolunteerTabs.Map,
@@ -848,9 +848,9 @@ class ShifterNavHostTest {
   /** The organizer's map is given the location provider too, to show them where they are (#655). */
   @Test
   fun organizerMap_followsTheUsersPosition() {
-    signIn()
     val location =
         openMapWithAKnownPosition(
+            signIn(),
             UserMode.ORGANIZER,
             OrganizerEvent("event-1", EVENT_TITLE),
             OrganizerTabs.Map,
@@ -875,6 +875,7 @@ class ShifterNavHostTest {
         location = MissionLocation("Beach", GeoPosition(46.5167, 6.5953)),
     )
     openMapWithAKnownPosition(
+        organizer,
         UserMode.ORGANIZER,
         OrganizerEvent(event.id, event.title),
         OrganizerTabs.Map,
@@ -1941,16 +1942,17 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Shows the app in [mode] to the signed-in account, with a GPS that knows where the user is, and
-   * opens [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map
-   * opens, so whatever follows it afterwards is the map.
+   * Shows the app in [mode] to [user], who must be the signed-in account, with a GPS that knows
+   * where they are, and opens [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it
+   * before the map opens, so whatever follows it afterwards is the map.
    */
   private fun openMapWithAKnownPosition(
+      user: AuthUser,
       mode: UserMode,
       event: EventMode,
       mapTab: Tab,
   ): FakeLocationProvider {
-    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
+    saveMode(user.uid, mode)
     val location = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     lateinit var navController: NavHostController
     composeTestRule.setContent {
