@@ -1,4 +1,8 @@
+import java.io.IOException
+import java.net.URI
 import java.util.Properties
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -96,6 +100,79 @@ android {
 
 // With AGP 9+ the JVM target is set outside the Android block.
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+
+/**
+ * Downloads the app's typeface, Satoshi, from Fontshare into a generated resource folder
+ * (`font/satoshi_variable.ttf`).
+ *
+ * Its licence (ITF Free Font License) lets the app embed the font, but forbids sharing the file
+ * through a repository, so the file is never committed: every build gets its own copy from
+ * Fontshare. Gradle keeps it in `build/` until the next clean.
+ */
+abstract class DownloadFontTask : DefaultTask() {
+  @get:Input abstract val url: Property<String>
+
+  /** The path of the font file inside the zip that Fontshare serves. */
+  @get:Input abstract val entry: Property<String>
+
+  /** The name of the font resource, `R.font.<name>`. */
+  @get:Input abstract val resourceName: Property<String>
+
+  @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+  @TaskAction
+  fun download() {
+    val target = outputDir.get().dir("font").file("${resourceName.get()}.ttf").asFile
+    target.parentFile.mkdirs()
+    var found = false
+    try {
+      val connection = URI(url.get()).toURL().openConnection()
+      connection.connectTimeout = TIMEOUT_MILLIS
+      connection.readTimeout = TIMEOUT_MILLIS
+      ZipInputStream(connection.getInputStream()).use { zip ->
+        var zipEntry: ZipEntry? = zip.nextEntry
+        while (zipEntry != null && !found) {
+          if (zipEntry.name == entry.get()) {
+            target.outputStream().use { out -> zip.copyTo(out) }
+            found = true
+          }
+          zipEntry = zip.nextEntry
+        }
+      }
+    } catch (e: IOException) {
+      throw GradleException(
+          "Could not download the Satoshi font from ${url.get()} (${e.message}). " +
+              "The first build needs a network connection.",
+          e,
+      )
+    }
+    if (!found) throw GradleException("${entry.get()} is missing from ${url.get()}.")
+  }
+
+  private companion object {
+    /** How long to wait for Fontshare to connect, then for each read, so a stuck server fails. */
+    const val TIMEOUT_MILLIS = 30_000
+  }
+}
+
+val downloadSatoshiFont =
+    tasks.register<DownloadFontTask>("downloadSatoshiFont") {
+      group = "build"
+      description = "Downloads the Satoshi typeface from Fontshare into the generated resources."
+      url.set("https://api.fontshare.com/v2/fonts/download/satoshi")
+      entry.set("Satoshi_Complete/Fonts/TTF/Satoshi-Variable.ttf")
+      resourceName.set("satoshi_variable")
+      outputDir.set(layout.buildDirectory.dir("generated/res/satoshi"))
+    }
+
+androidComponents {
+  onVariants { variant ->
+    variant.sources.res?.addGeneratedSourceDirectory(
+        downloadSatoshiFont,
+        DownloadFontTask::outputDir,
+    )
+  }
+}
 
 sonar {
   properties {
