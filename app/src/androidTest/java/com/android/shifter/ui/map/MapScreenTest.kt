@@ -199,6 +199,33 @@ class MapScreenTest {
   }
 
   @Test
+  fun centerOnMeButton_withoutACenter_centersOnTheUser() {
+    val camera = setContentWithCamera(myPosition = ME, uiState = NO_CENTER)
+
+    // No center to come back to, so only the user's button.
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).performClick()
+
+    compose.waitUntilCentred(camera, ME, zoom = 15f)
+  }
+
+  @Test
+  fun reloading_anEventWithACenter_keepsBothButtons() {
+    setContent(LOADED.copy(isLoading = true), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertIsDisplayed()
+  }
+
+  @Test
+  fun offline_withoutACenter_offersNoButton() {
+    setContent(NO_CENTER.copy(error = MapError.OFFLINE), myPosition = ME)
+
+    compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
   fun recenterButton_withMyPosition_stillGoesBackToTheEvent() {
     val camera = setContentWithCamera(myPosition = ME)
 
@@ -355,20 +382,21 @@ class MapScreenTest {
       CameraPosition.fromLatLngZoom(position.toLatLng(), zoom)
 
   /**
-   * Shows the loaded map with [myPosition], once the map is ready, its camera parked at [start]: by
-   * default away from where the buttons go, and at another zoom, so the first tap is seen to set
-   * it.
+   * Shows the map of [uiState], loaded by default, with [myPosition], once the map is ready, its
+   * camera parked at [start]: by default away from where the buttons go, and at another zoom, so
+   * the first tap is seen to set it.
    */
   private fun setContentWithCamera(
       myPosition: GeoPosition?,
       start: CameraPosition = AWAY,
+      uiState: MapUiState = LOADED,
   ): CameraPositionState {
     lateinit var camera: CameraPositionState
     compose.setContent {
       ShifterTheme {
         camera = rememberCameraPositionState()
         MapContent(
-            uiState = LOADED,
+            uiState = uiState,
             onMarkerClick = {},
             onCloseCard = {},
             onRetry = {},
@@ -566,5 +594,7 @@ class MapScreenTest {
             markers = listOf(WATER),
             isLoading = false,
         )
+    /** An event created in the app: no venue position and no located mission. */
+    val NO_CENTER = MapUiState(venue = "Place Bellecour", isLoading = false)
   }
 }
