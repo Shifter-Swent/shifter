@@ -21,8 +21,9 @@ internal val CHAT_TINTS =
     )
 
 /**
- * The tint of [key] (a team id or a member's name), always the same for the same key, so a team or
- * a person keeps their color from one screen and one day to the next.
+ * The tint of [key] (a team id or a member's user id), always the same for the same key, so a team
+ * or a person keeps their color from one screen and one day to the next. An id rather than a name,
+ * so two members with the same name get their own tint, and a renamed one keeps theirs.
  */
 internal fun chatTint(key: String): Color =
     CHAT_TINTS[Math.floorMod(key.hashCode(), CHAT_TINTS.size)]
