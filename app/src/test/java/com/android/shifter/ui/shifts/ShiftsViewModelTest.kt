@@ -1,0 +1,369 @@
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+package com.swent.shifter.ui.shifts
+
+import androidx.lifecycle.viewModelScope
+import com.swent.shifter.model.event.Event
+import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventType
+import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.shift.FakeShiftRepository
+import com.swent.shifter.model.shift.Shift
+import com.swent.shifter.model.shift.ShiftRepository
+import com.swent.shifter.model.shift.ShiftRepositoryException
+import com.swent.shifter.model.shift.ShiftSlot
+import com.swent.shifter.model.shift.slotOf
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class ShiftsViewModelTest {
+
+  private val dispatcher = StandardTestDispatcher()
+
+  private lateinit var shifts: FakeShiftRepository
+  private lateinit var events: FakeEventRepository
+  private lateinit var viewModel: ShiftsViewModel
+
+  private val state
+    get() = viewModel.uiState.value
+
+  @Before
+  fun setUp() {
+    Dispatchers.setMain(dispatcher)
+    shifts = FakeShiftRepository()
+    events = FakeEventRepository()
+  }
+
+  @After
+  fun tearDown() {
+    Dispatchers.resetMain()
+  }
+
+  /** Starts the ViewModel over [seeded] and [event], and lets its first reads finish. */
+  private fun TestScope.start(
+      seeded: List<Shift> = emptyList(),
+      event: Event? = eventFrom(fri, sun),
+      repository: ShiftRepository = shifts,
+  ) {
+    seeded.forEach(shifts::put)
+    event?.let { events.events += it }
+    viewModel = ShiftsViewModel(EVENT_ID, repository, events, ZONE)
+    advanceUntilIdle()
+  }
+
+  private fun TestScope.edit() {
+    viewModel.setMode(ShiftsMode.EDIT)
+    advanceUntilIdle()
+  }
+
+  /** The shift of the slot of [day] at [hour], chosen by [volunteers] of them. */
+  private fun shift(day: LocalDate, hour: Int, volunteers: Int = 0): Shift {
+    val slot = slotOf(day, hour, ZONE)
+    return Shift(
+        eventId = EVENT_ID,
+        volunteerIds = List(volunteers) { "volunteer-$it" },
+        startAt = slot.startAt,
+        endAt = slot.endAt,
+        createdAt = Instant.EPOCH,
+    )
+  }
+
+  private fun eventFrom(first: LocalDate, last: LocalDate) =
+      Event(
+          id = EVENT_ID,
+          organizerId = "organizer-1",
+          title = "Summer Festival",
+          description = "Three days by the lake",
+          type = EventType.MUSIC,
+          startAt = slotOf(first, 8, ZONE).startAt,
+          endAt = slotOf(last, 22, ZONE).startAt,
+          location = EventLocation(address = "Lakeside Park"),
+          createdAt = Instant.EPOCH,
+      )
+
+  // ------------------------------------------------------------------ Loading
+
+  @Test
+  fun load_withoutASlotOpen_showsTheDaysAndTheEmptyState() = runTest {
+    start()
+
+    assertFalse(state.isLoading)
+    assertEquals(listOf(fri, sat, sun), state.days)
+    assertEquals(emptyList<Shift>(), state.shifts)
+    assertTrue(state.isEmpty)
+    assertEquals(0L, state.openHours)
+    assertEquals(ShiftsMode.VIEW, state.mode)
+  }
+
+  @Test
+  fun load_withSlotsOpen_showsThemWithTheirVolunteers() = runTest {
+    start(seeded = listOf(shift(sat, 10, volunteers = 3), shift(sat, 12)))
+
+    assertFalse(state.isEmpty)
+    assertEquals(listOf(shift(sat, 10, volunteers = 3), shift(sat, 12)), state.shifts)
+    assertEquals(3, state.shifts.first().volunteerIds.size)
+    assertEquals(listOf(fri, sat, sun), state.days)
+  }
+
+  @Test
+  fun observeShifts_whenAVolunteerChoosesASlot_theStateFollowsWithNoReload() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    assertEquals(0, state.shifts.single().volunteerIds.size)
+
+    shifts.put(shift(sat, 10, volunteers = 2))
+    advanceUntilIdle()
+
+    assertEquals(2, state.shifts.single().volunteerIds.size)
+  }
+
+  // ------------------------------------------------------------------- Modes
+
+  @Test
+  fun setMode_switchesTheMode_andOnlyEditActsOnATap() = runTest {
+    start()
+
+    // In View a tap changes nothing, so the grid can be read without opening a slot by mistake.
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+    assertEquals(emptyList<Shift>(), state.shifts)
+
+    edit()
+    assertEquals(ShiftsMode.EDIT, state.mode)
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+
+    viewModel.setMode(ShiftsMode.VIEW)
+    assertEquals(ShiftsMode.VIEW, state.mode)
+  }
+
+  // ----------------------------------------------------------- Opening, closing
+
+  @Test
+  fun toggleSlot_onAClosedSlot_opensItAndShowsItAtOnce() = runTest {
+    start()
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sat, 10)), shifts.shifts)
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+    assertEquals(2L, state.openHours)
+  }
+
+  @Test
+  fun toggleSlot_onAnOpenSlotNobodyChose_closesIt() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(emptyList<Shift>(), shifts.shifts)
+    assertEquals(emptyList<Shift>(), state.shifts)
+  }
+
+  @Test
+  fun toggleSlot_onASlotVolunteersChose_keepsItAndSaysWhoKeptIt() = runTest {
+    start(seeded = listOf(shift(sat, 10, volunteers = 3)))
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sat, 10, volunteers = 3)), state.shifts)
+    assertEquals(KeptSlot(slotOf(sat, 10, ZONE).startAt, 3), state.keptSlot)
+    assertNull(state.error)
+  }
+
+  @Test
+  fun toggleSlot_whenAVolunteerChoosesItFirst_keepsItAndSaysWhoKeptIt() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    edit()
+
+    // The volunteer's choice is on its way: the flow has not delivered it when the organizer taps,
+    // so the close is sent and the backend is the one to refuse it.
+    shifts.put(shift(sat, 10, volunteers = 1))
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sat, 10, volunteers = 1)), state.shifts)
+    assertEquals(KeptSlot(slotOf(sat, 10, ZONE).startAt, 1), state.keptSlot)
+    assertNull(state.error)
+  }
+
+  @Test
+  fun messageShown_dropsTheKeptSlotAndTheError() = runTest {
+    start(seeded = listOf(shift(sat, 10, volunteers = 1)))
+    edit()
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    viewModel.messageShown()
+
+    assertNull(state.keptSlot)
+    assertNull(state.error)
+  }
+
+  @Test
+  fun toggleSlot_tappedTwiceBeforeItIsSaved_opensTheSlotOnce() = runTest {
+    val counting = CountingShifts(shifts)
+    start(repository = counting)
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(1, counting.opens)
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+  }
+
+  // ------------------------------------------------------------- Hours open
+
+  @Test
+  fun openHours_perDayAndInAll_followTheSlotsThatAreOpen() = runTest {
+    start(
+        seeded =
+            listOf(shift(sat, 10), shift(sat, 12), shift(sat, 18), shift(sun, 10, volunteers = 1))
+    )
+
+    assertEquals(mapOf(sat to 6L, sun to 2L), state.openHoursByDay)
+    assertEquals(8L, state.openHours)
+  }
+
+  @Test
+  fun openHours_ofTheSlotsAfterMidnight_countUnderTheirOwnDay() = runTest {
+    // The grid draws 00:00 and 02:00 in the column of their own date, so their hours count there,
+    // not under the evening before as an event day, which starts at 04:00, would have them.
+    start(seeded = listOf(shift(sat, 0), shift(sat, 2), shift(sat, 10)))
+
+    assertEquals(mapOf(sat to 6L), state.openHoursByDay)
+    assertEquals(6L, state.openHours)
+  }
+
+  @Test
+  fun openHours_onTheNightTheClocksGoForward_countTheHourItReallyLasts() = runTest {
+    // 02:00 never comes that night, so the slot of 02:00 starts at 03:00 and lasts one hour. It is
+    // still drawn in the column of the 29th, where its hour counts.
+    val night = LocalDate.parse("2026-03-29")
+    start(seeded = listOf(shift(night, 2)), event = eventFrom(night.minusDays(1), night))
+
+    assertEquals(1L, state.openHours)
+    assertEquals(mapOf(night to 1L), state.openHoursByDay)
+  }
+
+  @Test
+  fun openHours_onTheNightTheClocksGoBack_countTheThreeHoursItReallyLasts() = runTest {
+    // 02:00 comes twice that night, so the slot of 02:00 lasts three hours.
+    val night = LocalDate.parse("2026-10-25")
+    start(seeded = listOf(shift(night, 2)), event = eventFrom(night.minusDays(1), night))
+
+    assertEquals(3L, state.openHours)
+    assertEquals(mapOf(night to 3L), state.openHoursByDay)
+  }
+
+  // -------------------------------------------------------------- Failures
+
+  @Test
+  fun load_whenTheEventCannotBeRead_keepsTheSlotsAndReportsIt() = runTest {
+    events.failure = RuntimeException("offline")
+    start(seeded = listOf(shift(sat, 10)))
+
+    // The days the open slots fall on still draw a grid; only the empty days around them go.
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+    assertEquals(listOf(sat), state.days)
+    assertEquals(ShiftsError.LOAD_FAILED, state.error)
+  }
+
+  @Test
+  fun load_whenTheShiftsCannotBeRead_reportsItAndStopsLoading() = runTest {
+    shifts.failure = ShiftRepositoryException.Unavailable()
+    start()
+
+    assertFalse(state.isLoading)
+    assertEquals(ShiftsError.LOAD_FAILED, state.error)
+    assertFalse("a failed load is not an event without slots", state.isEmpty)
+    assertEquals(listOf(fri, sat, sun), state.days)
+  }
+
+  @Test
+  fun toggleSlot_whenTheSaveFails_keepsTheGridAndReportsIt() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    edit()
+    shifts.failure = ShiftRepositoryException.Unavailable()
+
+    viewModel.toggleSlot(sat, 12)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+    assertEquals(ShiftsError.SAVE_FAILED, state.error)
+    assertNull(state.keptSlot)
+  }
+
+  @Test
+  fun toggleSlot_whenTheCloseIsDeniedWithNobodyOnTheSlot_reportsTheFailure() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    edit()
+    // Denied for another reason than the volunteers, e.g. the user is not the organizer.
+    shifts.failure = ShiftRepositoryException.PermissionDenied()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(ShiftsError.SAVE_FAILED, state.error)
+    assertNull(state.keptSlot)
+  }
+
+  // ----------------------------------------------------------- Cancellation
+
+  @Test
+  fun clearing_stopsFollowingTheShifts() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+
+    viewModel.viewModelScope.cancel()
+    shifts.put(shift(sat, 10, volunteers = 4))
+    advanceUntilIdle()
+
+    assertEquals(0, state.shifts.single().volunteerIds.size)
+  }
+
+  /** Counts the slots opened, to check a second tap on one does not send a second write. */
+  private class CountingShifts(private val delegate: ShiftRepository) :
+      ShiftRepository by delegate {
+    var opens = 0
+
+    override suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift {
+      opens++
+      return delegate.openSlot(eventId, slot)
+    }
+  }
+
+  private companion object {
+    const val EVENT_ID = "event-1"
+
+    val ZONE: ZoneId = ZoneId.of("Europe/Zurich")
+
+    val fri: LocalDate = LocalDate.parse("2026-06-19")
+    val sat: LocalDate = LocalDate.parse("2026-06-20")
+    val sun: LocalDate = LocalDate.parse("2026-06-21")
+  }
+}
