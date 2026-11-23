@@ -54,9 +54,7 @@ internal fun DocumentSnapshot.toShift(): Shift {
   val endAt = requireInstant(ENTITY, ShiftSchema.END_AT)
   // Another id would let the same slot be stored twice, or the shift be read under an id the app
   // can never find again.
-  if (id != shiftIdOf(startAt)) {
-    throw IllegalStateException("$ENTITY document '$id' is not keyed by its start")
-  }
+  check(id == shiftIdOf(startAt)) { "$ENTITY document '$id' is not keyed by its start" }
   if (!isSlotDuration(startAt, endAt)) invalidField(ENTITY, ShiftSchema.END_AT)
   return Shift(
       eventId = requireParentEventId(ENTITY),
