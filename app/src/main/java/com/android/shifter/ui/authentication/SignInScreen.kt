@@ -35,24 +35,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.credentials.Credential
 import androidx.credentials.CredentialManager
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.swent.shifter.R
-import com.swent.shifter.model.authentication.AuthRepository
-import com.swent.shifter.model.authentication.AuthUser
-import com.swent.shifter.model.notification.NotificationKind
-import com.swent.shifter.model.team.Team
-import com.swent.shifter.model.user.PublicProfile
-import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserMode
-import com.swent.shifter.model.user.UserRepository
-import com.swent.shifter.ui.theme.ShifterTheme
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 
 object SignInScreenTestTags {
   const val APP_NAME = "APP_NAME"
@@ -160,67 +147,4 @@ fun GoogleSignInButton(onSignIn: () -> Unit) {
       )
     }
   }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun SignInScreenPreview() {
-  ShifterTheme {
-    SignInScreen(
-        authViewModel =
-            viewModel(
-                factory =
-                    SignInViewModel.factory(
-                        PreviewAuthRepository,
-                        PreviewUserRepository,
-                    )
-            )
-    )
-  }
-}
-
-/** Signed out, and never asked to sign in: the preview only draws the screen. */
-private object PreviewAuthRepository : AuthRepository {
-  override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
-      Result.failure(UnsupportedOperationException("Preview"))
-
-  override fun currentUser(): AuthUser? = null
-
-  override val authState: Flow<AuthUser?> = flowOf(null)
-
-  override fun signOut(): Result<Unit> = Result.success(Unit)
-}
-
-/** Never reached: the preview never signs in. */
-private object PreviewUserRepository : UserRepository {
-  override suspend fun getUser(uid: String): User? = null
-
-  override suspend fun getOrCreateUser(
-      uid: String,
-      displayName: String,
-      email: String,
-      mode: UserMode?,
-  ): User = throw UnsupportedOperationException("Preview")
-
-  override suspend fun setMode(uid: String, mode: UserMode) =
-      throw UnsupportedOperationException("Preview")
-
-  override suspend fun setLocationSharing(
-      uid: String,
-      enabled: Boolean,
-      sharedIn: Collection<Team>,
-  ) = throw UnsupportedOperationException("Preview")
-
-  override fun observeLocationSharing(uid: String): Flow<Boolean> = flowOf(false)
-
-  override suspend fun setNotificationEnabled(
-      uid: String,
-      kind: NotificationKind,
-      enabled: Boolean,
-  ) = throw UnsupportedOperationException("Preview")
-
-  override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> =
-      flowOf(emptySet())
-
-  override suspend fun getPublicProfile(uid: String): PublicProfile? = null
 }
