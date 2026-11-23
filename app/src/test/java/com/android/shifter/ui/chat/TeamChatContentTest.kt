@@ -296,6 +296,18 @@ class TeamChatContentTest {
   }
 
   @Test
+  fun ownAnnouncement_sitsOnTheRight() {
+    val mine = ANNOUNCEMENT.copy(id = "5", isMine = true)
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, mine)))
+
+    val theirs = tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).getBoundsInRoot()
+    val own = tag(TeamChatTestTags.message(mine.id)).getBoundsInRoot()
+    // Both end at the same edge; the user's own leaves 48dp free at the start.
+    assertEquals(theirs.right, own.right)
+    assertEquals(theirs.left + 48.dp, own.left)
+  }
+
+  @Test
   fun ownAnnouncement_showsYouOnTheCard() {
     val mine = ANNOUNCEMENT.copy(isMine = true, sentAt = null, isPending = true)
     setContent(TeamChatUiState(isLoading = false, messages = listOf(mine)))

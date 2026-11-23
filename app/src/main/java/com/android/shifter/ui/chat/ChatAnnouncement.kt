@@ -34,9 +34,16 @@ import java.time.ZoneId
 
 private val CardShape = RoundedCornerShape(18.dp)
 
+// The user's own announcement has its bottom end corner squared, like their own bubbles.
+private val OwnCardShape = RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)
+
+// The margin at the start of the user's own announcement, which pushes it to the right.
+private val OWN_CARD_INSET = 48.dp
+
 /**
- * An announcement: a full-width amber card with the megaphone and its author, its text, and the
- * time it was sent, the same for the user's own as for someone else's.
+ * An announcement: an amber card with the megaphone and its author, its text, and the time it was
+ * sent. Someone else's spans the width; the user's own leaves a margin at the start and has its
+ * bottom end corner squared, so it sits on the right like their own bubbles.
  */
 @Composable
 internal fun AnnouncementCard(
@@ -45,16 +52,18 @@ internal fun AnnouncementCard(
     today: LocalDate,
     modifier: Modifier = Modifier,
 ) {
+  val shape = if (message.isMine) OwnCardShape else CardShape
   Column(
       verticalArrangement = Arrangement.spacedBy(4.dp),
       modifier =
           modifier
+              .padding(start = if (message.isMine) OWN_CARD_INSET else 0.dp)
               .fillMaxWidth()
               // Read as one message by TalkBack: the megaphone, author, text and time together.
               .semantics(mergeDescendants = true) {}
               .testTag(TeamChatTestTags.message(message.id))
-              .background(shifter_announcementContainer, CardShape)
-              .border(Dp.Hairline, shifter_announcement.copy(alpha = 0.15f), CardShape)
+              .background(shifter_announcementContainer, shape)
+              .border(Dp.Hairline, shifter_announcement.copy(alpha = 0.15f), shape)
               .padding(start = 14.dp, top = 10.dp, end = 14.dp, bottom = 8.dp),
   ) {
     AnnouncementAuthor(
