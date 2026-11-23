@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The proposed schedule of an event, accepted by the organizer -->
+    <!-- Under the number of people the proposal assigns, e.g. "9" then "new assignments, all 3 days" -->
+    <plurals name="schedule_new_assignments">
+        <item quantity="one">new assignment</item>
+        <item quantity="other">new assignments</item>
+    </plurals>
+    <plurals name="schedule_all_days">
+        <item quantity="one">its only day</item>
+        <item quantity="other">all %1$d days</item>
+    </plurals>
+    <string name="schedule_new_assignments_scope">%1$s, %2$s</string>
+    <!-- Under the number of missions that stay short once the proposal is accepted -->
+    <plurals name="schedule_missions_to_finish">
+        <item quantity="one">mission to finish by hand</item>
+        <item quantity="other">missions to finish by hand</item>
+    </plurals>
+    <string name="schedule_nothing_saved">Nothing is saved until you accept.</string>
+    <string name="schedule_legend_proposed">Proposed</string>
+    <string name="schedule_legend_assigned">Already assigned</string>
+    <string name="schedule_slot">%1$s – %2$s</string>
+    <string name="schedule_slot_team">%1$s · %2$s</string>
+    <string name="schedule_team_general">General</string>
+    <!-- How many people a mission has once the proposal is accepted, out of those it needs -->
+    <string name="schedule_count">%1$d/%2$d</string>
+    <string name="schedule_nothing_title">Nothing to propose</string>
+    <string name="schedule_nothing_text">Every mission already has its people, or no volunteer\'s team and shifts fit the missions left.</string>
+    <string name="schedule_load_failed">Could not prepare the proposal.</string>
+    <string name="schedule_retry">Retry</string>
+    <string name="schedule_save_failed">Could not save the schedule. Try again.</string>
+    <string name="schedule_cancel">Cancel</string>
+    <plurals name="schedule_accept">
+        <item quantity="one">Accept</item>
+        <item quantity="other">Accept all %1$d days</item>
+    </plurals>
+</resources>

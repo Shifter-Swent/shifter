@@ -6,4 +6,6 @@
     <string name="dialog_cancel">Cancel</string>
     <!-- The accessibility action of a list that is reloaded by pulling it down. -->
     <string name="refresh">Refresh</string>
+    <!-- A person whose name could not be read, on a PersonChip (the proposed schedule, the Overview) -->
+    <string name="person_chip_unknown">Unknown person</string>
 </resources>
