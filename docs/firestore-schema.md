@@ -320,9 +320,6 @@ has no name and no number of spots. The document id is the epoch milliseconds of
 A shift is never edited, only opened and closed. The mapper ignores the `teamId` and `assigneeIds`
 of the shifts of the old model, which nothing wrote.
 
-Until #593, `firestore.rules` still checks the fields of that old model (`teamId`, `assigneeIds`) and
-refuses `volunteerIds`: nothing writes shifts before then.
-
 ### `events/{eventId}/missions/{missionId}`
 
 | Field | Type | Notes |
@@ -429,7 +426,7 @@ every access to it is denied.
 | `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event and is not `deleting`, while the event has not ended. Only the organizer updates it. Either only `status`: `ACCEPTED`, only before the event's `endAt`, needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. Delete by the volunteer when they withdraw (see below), or by the organizer for a `PENDING` request, in the commit that deletes its team |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, with valid fields (see below), never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist. `deleting` is one of its fields (see below), so the organizer sets it like any other |
-| `shifts` | The organizer and the event's participants | The organizer only, with valid fields (see below). Nothing is allowed under an event that does not exist |
+| `shifts` | Any signed-in user, since a volunteer chooses shifts before applying | Create by the organizer only, with all four fields and no other: the id equal to `startAt` in milliseconds, `startAt` on a quarter of an hour (every time zone's whole hours are), a length of 1 to 3 whole hours, a slot that runs during the event at least in part (`endAt` after the event's `startAt`, `startAt` before its `endAt`), an empty `volunteerIds` and `createdAt` equal to the request time. No update. Delete by the organizer while `volunteerIds` is empty, or once the shift is gone, so closing again succeeds. Nothing is written under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Once completed (`completed` is `true` or `endAt` has passed, by the server's clock), its `title`, `description`, `volunteersNeeded`, `startAt`, `endAt`, `location` and `teamId` no longer change; its assignees may still change and its volunteers may still be checked in. No mission is created in, or moved to, a team that is `deleting`. Always with valid fields (see below). Nothing is allowed under an event that does not exist |
 | `managers/{uid}` | The event's organizer, and the user themself | Create and update by the organizer, or by the user only to take a team out, as when they withdraw, and only under an event that exists. At most one team added or removed per write, which must agree with the team after the same commit: a team added has `managerId` equal to the uid, a team removed no longer has. Delete by the organizer |
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
@@ -453,7 +450,7 @@ The emulator does not check indexes, so a missing one only fails in production. 
 Firestore" workflow deploys `firestore.rules` and `firestore.indexes.json` on every push to `main`
 that changes them; it can also be run by hand from the Actions tab.
 
-**Valid fields** of `teams`, `shifts` and `missions`: no field outside the ones of this page
+**Valid fields** of `teams` and `missions`: no field outside the ones of this page
 (except the legacy `checkInZone` of teams written before #164, kept as it was or removed, never added), and each field that is there with its type above (`volunteersNeeded` of a mission an integer of
 at least 1, a `location` with a non-blank address and coordinates in range). A time slot ends after it
 starts. A field may still be absent: the mappers fail loudly on a missing required one, and a rule
@@ -501,7 +498,7 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   assigned to the volunteer between that query and the commit keeps them, as it would if it were
   assigned right after the move. The missions that are completed or over keep them on purpose,
   since their attendance is built from their assignees.
-- **The rules do not require every field of `teams`, `shifts` and `missions`.** They refuse
+- **The rules do not require every field of `teams` and `missions`.** They refuse
   unknown fields and wrong types, but a document missing a required field is only caught by the
   mappers.
 - **A volunteer who left can still read their missions and check-ins.** They stay in
@@ -509,8 +506,12 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   check-ins do not check participation; #337 is to address it.
 - **Any signed-in user reads an event's teams, `memberIds` included.** The members are uids
   only, but public profiles turn them into names. Events can no longer be listed, but an event's
-  teams can be, by anyone who knows its id; #160 is to address it, e.g. with a public
+  teams can be, by anyone who knows its id; #474 is to address it, e.g. with a public
   subcollection holding only what candidates need.
+- **Any signed-in user reads an event's shifts, `volunteerIds` included.** A candidate needs the
+  slots, not who chose them, but the shift is read whole; #474 is to address it with the teams.
+- **The rules do not check that a slot starts on an even hour.** That depends on the time zone,
+  which only the app knows (`slotOf`): the rules accept any start on a quarter of an hour.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
   so the copy cannot go stale; #234 proposes to keep it in the public profile only.
 - **Deleting an event does not delete its subcollections.** Whoever implements event deletion has
