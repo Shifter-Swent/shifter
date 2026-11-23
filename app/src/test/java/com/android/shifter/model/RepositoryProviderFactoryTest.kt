@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5 <noreply@anthropic.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model
 
 import com.google.android.gms.tasks.Tasks
@@ -19,6 +20,7 @@ import com.swent.shifter.model.membership.MembershipRequestSchema
 import com.swent.shifter.model.mission.MissionSchema
 import com.swent.shifter.model.notification.InboxNotification
 import com.swent.shifter.model.notification.InboxSchema
+import com.swent.shifter.model.shift.ShiftSchema
 import com.swent.shifter.model.team.TeamSchema
 import com.swent.shifter.model.user.USERS_COLLECTION
 import io.mockk.every
@@ -55,6 +57,8 @@ class RepositoryProviderFactoryTest {
   private val requests = mockk<CollectionReference>()
   private val missions = mockk<CollectionReference>()
   private val teams = mockk<CollectionReference>()
+  private val shifts = mockk<CollectionReference>()
+  private val shiftsByStart = mockk<Query>()
 
   private val absent = mockk<DocumentSnapshot>()
   private val empty = mockk<QuerySnapshot>()
@@ -76,6 +80,9 @@ class RepositoryProviderFactoryTest {
     every { event.collection(MissionSchema.COLLECTION) } returns missions
     every { event.collection(TeamSchema.COLLECTION) } returns teams
     listOf(requests, missions, teams).forEach { every { it.get() } returns Tasks.forResult(empty) }
+    every { event.collection(ShiftSchema.COLLECTION) } returns shifts
+    every { shifts.orderBy(ShiftSchema.START_AT) } returns shiftsByStart
+    every { shiftsByStart.get() } returns Tasks.forResult(empty)
 
     every { absent.exists() } returns false
     every { absent.data } returns null
@@ -93,8 +100,8 @@ class RepositoryProviderFactoryTest {
   }
 
   /**
-   * Reads through all five Firestore repositories of one provider. Each read answers from the
-   * supplied instance, so each repository was built on it; a sixth instance anywhere would throw.
+   * Reads through all six Firestore repositories of one provider. Each read answers from the
+   * supplied instance, so each repository was built on it; another instance anywhere would throw.
    */
   @Test
   fun create_buildsEveryFirestoreRepositoryOnTheSuppliedFirestore() = runTest {
@@ -106,6 +113,7 @@ class RepositoryProviderFactoryTest {
     )
     assertEquals(emptyList<Any>(), provider.missionRepository.getMissionsByEvent(EVENT_ID))
     assertEquals(emptyList<Any>(), provider.teamRepository.getTeamsByEvent(EVENT_ID))
+    assertEquals(emptyList<Any>(), provider.shiftRepository.getShifts(EVENT_ID))
 
     verify { firestore.collection(EventSchema.COLLECTION) }
     verify { firestore.collection(USERS_COLLECTION) }

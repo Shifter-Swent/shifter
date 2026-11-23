@@ -15,6 +15,7 @@ import com.swent.shifter.model.location.FirestoreLiveLocationRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
 import com.swent.shifter.model.mission.FirestoreMissionRepository
 import com.swent.shifter.model.notification.FirestoreNotificationInbox
+import com.swent.shifter.model.shift.FirestoreShiftRepository
 import com.swent.shifter.model.team.FirestoreTeamRepository
 import com.swent.shifter.model.user.UserRepositoryFirestore
 
@@ -58,5 +59,6 @@ object RepositoryProviderFactory {
           chatRepository = FirestoreChatRepository(firestore, auth),
           liveLocationRepository = FirestoreLiveLocationRepository(firestore, auth),
           notificationInbox = FirestoreNotificationInbox(firestore),
+          shiftRepository = FirestoreShiftRepository(firestore),
       )
 }
