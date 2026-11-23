@@ -51,36 +51,37 @@ class FakeNotificationInbox(
     }
 
   /**
-   * Puts a notification in the inbox of [recipientId], as a writer's batch would, with a new id and
-   * the [clock]'s time, and returns it. Throws [IllegalArgumentException] for what the rules
-   * refuse: a notification to its own sender, a kind computed on the phone, or a key of [data]
-   * outside [NotificationData.Key.ALL].
+   * Puts a notification in the inbox of each of [recipientIds], as [InboxDocs.documents] would,
+   * leaving out [senderId] and the duplicates the same way, each with a new id and the [clock]'s
+   * time, and returns them. Throws [IllegalArgumentException] for what the rules refuse: a kind
+   * computed on the phone, or a key of [data] outside [NotificationData.Key.ALL].
    */
   fun deliver(
-      recipientId: String,
+      recipientIds: Iterable<String>,
       kind: NotificationKind,
       eventId: String,
       eventTitle: String,
       senderId: String,
       data: Map<String, String>,
-  ): InboxNotification {
-    requireWritable(recipientId, senderId, kind, data)
-    val notification =
-        InboxNotification(
-            "notification-${nextId++}",
-            kind,
-            eventId,
-            eventTitle,
-            senderId,
-            data,
-            clock(),
-        )
-    delivered += Sent(recipientId, notification)
-    state.update {
-      it.copy(inboxes = it.inboxes + (recipientId to it.of(recipientId) + notification))
-    }
-    return notification
-  }
+  ): List<InboxNotification> =
+      InboxDocs.recipients(senderId, recipientIds).map { recipientId ->
+        requireWritable(recipientId, senderId, kind, data)
+        val notification =
+            InboxNotification(
+                "notification-${nextId++}",
+                kind,
+                eventId,
+                eventTitle,
+                senderId,
+                data,
+                clock(),
+            )
+        delivered += Sent(recipientId, notification)
+        state.update {
+          it.copy(inboxes = it.inboxes + (recipientId to it.of(recipientId) + notification))
+        }
+        notification
+      }
 
   override suspend fun pending(userId: String): List<InboxNotification> =
       state.value.pendingOf(userId)

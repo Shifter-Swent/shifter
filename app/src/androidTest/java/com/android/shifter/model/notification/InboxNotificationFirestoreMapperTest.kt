@@ -53,7 +53,7 @@ class InboxNotificationFirestoreMapperTest {
   }
 
   @Test
-  fun writtenWithInboxDocs_isReadBackByTheRecipient() = emulatorTest {
+  fun writtenWithInboxDocs_isReadBackByTheRecipientOnly() = emulatorTest {
     val data =
         mapOf(
             NotificationData.Key.CHANGE to NotificationData.Value.JOINED,
@@ -62,29 +62,33 @@ class InboxNotificationFirestoreMapperTest {
             NotificationData.Key.TEAM_NAME to "Bar",
         )
     signIn(sender)
-    val ref = InboxDocs.newDocument(db, recipient.uid).also { paths += it.path }
     val before = Instant.now()
-    db.batch()
-        .set(
-            ref,
-            InboxDocs.fields(
-                recipient.uid,
-                NotificationKind.TEAM_CHANGED,
-                "event-1",
-                "Festival",
-                sender.uid,
-                data,
-            ),
+    val batch = db.batch()
+    // The sender and a duplicate among the recipients, as a writer may pass them: the batch would
+    // be refused if either were written.
+    InboxDocs.documents(
+            db,
+            listOf(recipient.uid, sender.uid, recipient.uid),
+            NotificationKind.TEAM_CHANGED,
+            "event-1",
+            "Festival",
+            sender.uid,
+            data,
         )
-        .commit()
-        .await()
+        .forEach { (doc, fields) ->
+          paths += doc.path
+          batch.set(doc, fields)
+        }
+    batch.commit().await()
 
+    assertTrue(InboxDocs.inbox(db, sender.uid).get(Source.SERVER).await().isEmpty)
     signIn(recipient)
-    val read = checkNotNull(ref.get(Source.SERVER).await().toInboxNotification())
+    val inbox = InboxDocs.inbox(db, recipient.uid).get(Source.SERVER).await().documents
+    val read = inbox.single().read()
 
     assertEquals(
         InboxNotification(
-            ref.id,
+            inbox.single().id,
             NotificationKind.TEAM_CHANGED,
             "event-1",
             "Festival",

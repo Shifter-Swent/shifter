@@ -7,8 +7,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /**
- * [InboxDocs.fields] refuses what the rules refuse, so a writer's test fails on it. What the rules
- * accept is checked on the emulator by `InboxNotificationFirestoreMapperTest`.
+ * [InboxDocs.fields] refuses what the rules refuse, so a writer's test fails on it, and
+ * [InboxDocs.recipients] leaves out what the rules would refuse a writer for. What the rules accept
+ * is checked on the emulator by `InboxNotificationFirestoreMapperTest`.
  */
 class InboxDocsTest {
 
@@ -46,6 +47,19 @@ class InboxDocsTest {
   @Test
   fun fields_withAnUnknownDataKey_areRefused() {
     assertThrows(IllegalArgumentException::class.java) { fields(data = mapOf("title" to "Hi")) }
+  }
+
+  @Test
+  fun recipients_leaveOutTheSenderAndTheDuplicates_inTheirOrder() {
+    assertEquals(
+        listOf("bob", "alice"),
+        InboxDocs.recipients(SENDER, listOf("bob", SENDER, "alice", "bob")).toList(),
+    )
+  }
+
+  @Test
+  fun recipients_ofOnlyTheSender_areNone() {
+    assertEquals(emptySet<String>(), InboxDocs.recipients(SENDER, listOf(SENDER)))
   }
 
   private fun fields(

@@ -31,14 +31,42 @@ internal object InboxSchema {
 }
 
 /**
- * The writing side of the inbox: where a new notification goes and what it holds. Each action adds
- * it with `set` in its own batch or transaction, so the notification and the action are stored
- * together or not at all:
+ * The writing side of the inbox. Each action sets the [documents] of its notifications in its own
+ * batch or transaction, so the notifications and the action are stored together or not at all:
  * ```
- * batch.set(InboxDocs.newDocument(db, recipientId), InboxDocs.fields(recipientId, …))
+ * InboxDocs.documents(db, team.memberIds, NotificationKind.TEAM_CHANGED, …)
+ *     .forEach { (doc, fields) -> batch.set(doc, fields) }
  * ```
  */
 internal object InboxDocs {
+
+  /**
+   * One new document and its fields for each of [recipientIds], leaving out [senderId] and the
+   * duplicates: the writer passes everyone the action concerns, the sender included or not, and
+   * never makes its own action fail on a notification the rules refuse.
+   *
+   * Throws [IllegalArgumentException] for a [kind] or [data] the rules refuse, see
+   * [requireWritable].
+   */
+  fun documents(
+      db: FirebaseFirestore,
+      recipientIds: Iterable<String>,
+      kind: NotificationKind,
+      eventId: String,
+      eventTitle: String,
+      senderId: String,
+      data: Map<String, String>,
+  ): List<Pair<DocumentReference, Map<String, Any>>> =
+      recipients(senderId, recipientIds).map { recipientId ->
+        newDocument(db, recipientId) to
+            fields(recipientId, kind, eventId, eventTitle, senderId, data)
+      }
+
+  /**
+   * Who [documents] notifies: [recipientIds] in order, without [senderId] and without duplicates.
+   */
+  fun recipients(senderId: String, recipientIds: Iterable<String>): Set<String> =
+      recipientIds.toCollection(LinkedHashSet()) - senderId
 
   /**
    * The inbox of [recipientId]: only they read it, `firestore.rules` let others create in it. The
@@ -53,9 +81,11 @@ internal object InboxDocs {
 
   /**
    * The body of a notification of [senderId] for [recipientId]. `createdAt` is a server timestamp,
-   * which the rules require to be the request time.
+   * which the rules require to be the request time. Writers go through [documents]; this one is for
+   * the tests that check what is stored.
    *
-   * Throws [IllegalArgumentException] for what the rules refuse, with [requireWritable].
+   * Throws [IllegalArgumentException] for what the rules refuse, with [requireWritable], including
+   * a [recipientId] equal to [senderId].
    */
   fun fields(
       recipientId: String,
