@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- The week grid of an event's shifts, shared by the organizer's screens and the volunteer's
+         application -->
+    <!-- Under a day of the grid, the hours its open slots add up to, e.g. "6 h open" -->
+    <string name="shift_grid_hours_open">%1$d h open</string>
+    <!-- Read out for a slot, e.g. "Saturday 21 June 10:00 to 12:00, open, 3 volunteers" -->
+    <string name="shift_grid_slot_description">%1$s %2$s to %3$s, %4$s</string>
+    <!-- A slot the organizer has opened -->
+    <string name="shift_grid_slot_open">open</string>
+    <!-- A slot the organizer has not opened -->
+    <string name="shift_grid_slot_closed">closed</string>
+    <!-- An open slot volunteers have chosen, which the organizer can no longer close -->
+    <string name="shift_grid_slot_open_locked">open, locked</string>
+    <!-- An open slot the volunteer has picked -->
+    <string name="shift_grid_slot_picked">picked</string>
+    <!-- A slot's state followed by its volunteers, e.g. "open, 3 volunteers" -->
+    <string name="shift_grid_slot_and_volunteers">%1$s, %2$s</string>
+    <plurals name="shift_grid_volunteers">
+        <item quantity="one">%1$d volunteer</item>
+        <item quantity="other">%1$d volunteers</item>
+    </plurals>
+    <!-- The arrows that scroll the grid of an event longer than three days -->
+    <string name="shift_grid_previous_day">Previous day</string>
+    <string name="shift_grid_next_day">Next day</string>
+</resources>
