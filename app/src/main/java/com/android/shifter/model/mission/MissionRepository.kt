@@ -72,6 +72,36 @@ interface MissionRepository {
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
 
   /**
+   * Adds, for each mission id of [additions] in the event [eventId], the people it lists after the
+   * mission's assignees, as one write: every mission is changed or none is. Someone already
+   * assigned is left as they are, so a mission with nobody new is not changed at all, and repeating
+   * a call that went through changes nothing.
+   *
+   * In the same write, each person added to at least one mission gets one
+   * [com.swent.shifter.model.notification.NotificationKind.MISSION_ASSIGNED] listing all their new
+   * missions, except the signed-in user, who is not told about their own action. Nothing is read or
+   * written when [additions] lists nobody.
+   *
+   * The checks run in this order, so every implementation reports the same error first. Nothing is
+   * written when one fails.
+   *
+   * @throws IllegalArgumentException when a mission id is empty or holds a `/`, a list names
+   *   someone twice, or more than 100 missions get someone; nothing is read then.
+   * @throws MissionRepositoryException.PermissionDenied when nobody is signed in, or when the
+   *   backend refuses the write, e.g. to someone who is not the event's organizer.
+   * @throws MissionRepositoryException.NotFound when the event or one of the missions does not
+   *   exist.
+   * @throws MissionCompletedException when a mission someone is added to is
+   *   [completed][isCompleted]. The missions are checked one after the other in the order of
+   *   [additions], each for this then for the next error.
+   * @throws AssigneesAboveVolunteersException when the people of a mission no longer fit in its
+   *   stored [Mission.volunteersNeeded].
+   * @throws IllegalStateException when the stored event or a stored mission is malformed, e.g. an
+   *   event without a title.
+   */
+  suspend fun addAssignees(eventId: String, additions: Map<String, List<String>>)
+
+  /**
    * Saves the [Mission.title], [Mission.description], [Mission.startAt], [Mission.endAt],
    * [Mission.location] and [Mission.volunteersNeeded] of [mission] on the existing mission
    * identified by its [Mission.eventId] and [Mission.id]. Its team, assignees, creation time and

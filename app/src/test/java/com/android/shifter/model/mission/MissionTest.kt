@@ -6,6 +6,7 @@ import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,6 +108,78 @@ class MissionTest {
   fun isCompleted_fromItsEnd_isTrueWithoutBeingClosed() {
     assertTrue(isCompleted(completed = false, endAt = at(12), now = at(12)))
     assertTrue(isCompleted(completed = false, endAt = at(12), now = at(13)))
+  }
+
+  @Test
+  fun withAdded_keepsTheAssigneesAndAddsOnlyWhoIsNew() {
+    val mission = geoTimed(10, 12).copy(volunteersNeeded = 3, assigneeIds = listOf("ana"))
+
+    val updated = mission.withAdded(listOf("ben", "ana", "eva"), now = at(9))
+
+    assertEquals(listOf("ana", "ben", "eva"), updated!!.assigneeIds)
+  }
+
+  @Test
+  fun withAdded_withNobodyNew_changesNothingEvenOnceCompleted() {
+    val mission = geoTimed(10, 12).copy(volunteersNeeded = 1, assigneeIds = listOf("ana"))
+
+    // Already full and over: a repeated write is not refused for either.
+    assertNull(mission.withAdded(listOf("ana"), now = at(13)))
+  }
+
+  @Test
+  fun withAdded_toACompletedMission_isRefusedBeforeTheRoom() {
+    val closed = geoTimed(10, 12).copy(volunteersNeeded = 1, completed = true)
+    val ended = geoTimed(10, 12).copy(volunteersNeeded = 1)
+
+    assertThrows(MissionCompletedException::class.java) {
+      closed.withAdded(listOf("ana", "ben"), now = at(9))
+    }
+    assertThrows(MissionCompletedException::class.java) {
+      ended.withAdded(listOf("ana"), now = at(12))
+    }
+  }
+
+  @Test
+  fun withAdded_aboveTheVolunteersNeeded_isRefused() {
+    val mission = geoTimed(10, 12).copy(volunteersNeeded = 2, assigneeIds = listOf("ana"))
+
+    val refused =
+        assertThrows(AssigneesAboveVolunteersException::class.java) {
+          mission.withAdded(listOf("ben", "eva"), now = at(9))
+        }
+    assertEquals(2, refused.volunteersNeeded)
+  }
+
+  @Test
+  fun requireValidAdditions_withSomeoneTwiceInAList_isRefused() {
+    requireValidAdditions(mapOf("m1" to listOf("ana"), "m2" to listOf("ana")))
+    assertThrows(IllegalArgumentException::class.java) {
+      requireValidAdditions(mapOf("m1" to listOf("ana", "ana")))
+    }
+  }
+
+  @Test
+  fun requireValidAdditions_withAnIdOutsideTheMissions_isRefused() {
+    assertThrows(IllegalArgumentException::class.java) {
+      requireValidAdditions(mapOf("" to listOf("ana")))
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      requireValidAdditions(mapOf("m1/checkIns/ana" to listOf("ana")))
+    }
+  }
+
+  @Test
+  fun requireValidAdditions_aboveTheMissionCap_isRefused() {
+    // 100 missions, the most one call takes, whatever the number of people.
+    val fits = (1..100).associate { "m$it" to listOf("user-$it", "user-${it + 100}") }
+    requireValidAdditions(fits)
+    // The empty list adds no one and is not counted.
+    requireValidAdditions(fits + ("m0" to emptyList()))
+
+    assertThrows(IllegalArgumentException::class.java) {
+      requireValidAdditions(fits + ("m101" to listOf("user-1")))
+    }
   }
 
   private fun assertConflict(expected: Boolean, a: Mission, b: Mission) {

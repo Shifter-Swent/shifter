@@ -32,7 +32,7 @@ class FirestoreMissionAssigneesTest {
 
   private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
-  private val repository = FirestoreMissionRepository(firestore)
+  private val repository = FirestoreMissionRepository(firestore, auth)
 
   /** The documents this test created, deleted in [tearDown]. */
   private val createdDocuments = mutableListOf<DocumentReference>()

@@ -35,7 +35,7 @@ class FirestoreMissionUpdateTest {
 
   private val auth = FirestoreEmulator.auth
   private val firestore = FirestoreEmulator.firestore
-  private val repository = FirestoreMissionRepository(firestore)
+  private val repository = FirestoreMissionRepository(firestore, auth)
 
   /** The documents this test created, deleted in [tearDown]. */
   private val createdDocuments = mutableListOf<DocumentReference>()
@@ -249,7 +249,7 @@ class FirestoreMissionUpdateTest {
     val afterItsEnd = Clock.fixed(created.endAt, ZoneOffset.UTC)
 
     val failure = runCatching {
-      FirestoreMissionRepository(firestore, afterItsEnd)
+      FirestoreMissionRepository(firestore, auth, afterItsEnd)
           .updateMission(created.copy(title = "Too late"))
     }
         .exceptionOrNull()

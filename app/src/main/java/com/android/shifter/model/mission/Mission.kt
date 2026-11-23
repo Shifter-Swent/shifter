@@ -127,6 +127,43 @@ internal fun requireRoomInMission(volunteersNeeded: Int, assigneeCount: Int) {
 }
 
 /**
+ * The most missions one [MissionRepository.addAssignees] call takes. Its transaction reads them one
+ * after another, a round trip each, as the Android SDK reads no batch of documents in a transaction;
+ * this keeps that wait bounded, while leaving room for a whole event's proposed schedule.
+ */
+private const val MAX_MISSIONS_PER_ADDITION = 100
+
+/**
+ * Checks the input of [MissionRepository.addAssignees] that needs no stored data, with an
+ * [IllegalArgumentException]: each mission id names one document of the event's missions, each list
+ * names a person once, and at most [MAX_MISSIONS_PER_ADDITION] missions get someone.
+ */
+internal fun requireValidAdditions(additions: Map<String, List<String>>) {
+  // A slash would make Firestore read another document of the path, such as a check-in.
+  additions.keys.forEach { require(it.isNotEmpty() && '/' !in it) { "Invalid mission id '$it'" } }
+  additions.values.forEach { requireDistinctAssignees(it) }
+  val missions = additions.values.count { it.isNotEmpty() }
+  require(missions <= MAX_MISSIONS_PER_ADDITION) {
+    "$missions missions are more than the $MAX_MISSIONS_PER_ADDITION one write takes"
+  }
+}
+
+/**
+ * This mission with [userIds] added after its assignees, or null when they are all assigned
+ * already, so a write repeated after a lost answer changes nothing rather than failing.
+ *
+ * Throws [MissionCompletedException] when it is completed at [now], then
+ * [AssigneesAboveVolunteersException] when the people do not fit in [Mission.volunteersNeeded].
+ */
+internal fun Mission.withAdded(userIds: List<String>, now: Instant): Mission? {
+  val added = userIds.filter { it !in assigneeIds }
+  if (added.isEmpty()) return null
+  requireNotCompleted(this, now)
+  requireRoomInMission(volunteersNeeded, assigneeIds.size + added.size)
+  return copy(assigneeIds = assigneeIds + added)
+}
+
+/**
  * Checks the input of [MissionRepository.updateMission] that needs no stored data: a valid
  * [mission] that was created. Its assignees are not checked, as an update keeps the stored ones.
  */
