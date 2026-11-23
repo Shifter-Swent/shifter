@@ -212,24 +212,31 @@ class TeamChatViewModel(
         // Not confirmed, but still queued: it stays pending and is not offered to be sent again.
         return@launch
       } catch (e: Exception) {
-        val refused = announcement && e is ChatRepositoryException.NotAllowed
-        // Gives the message back as it was, unless the user already typed another one.
-        _uiState.update {
-          val giveBack = it.draft.isBlank()
-          it.copy(
-              draft = if (giveBack) text else it.draft,
-              asAnnouncement = if (giveBack) announcement else it.asAnnouncement,
-              sendFailed = !refused,
-              announcementRefused = refused,
-          )
-        }
-        // In a team's channel, the manager may have been replaced meanwhile: without the right any
-        // more, the option goes, so the same announcement is not refused again and again.
-        if (refused) loadTeam()
+        giveBack(message, refused = announcement && e is ChatRepositoryException.NotAllowed)
       }
       sending = sending - message
       show()
     }
+  }
+
+  /**
+   * Gives back a [message] that was not sent, as it was, unless the user already typed another one.
+   *
+   * @param refused whether it was an announcement the user may not make.
+   */
+  private fun giveBack(message: Sending, refused: Boolean) {
+    _uiState.update {
+      val restored =
+          if (it.draft.isBlank()) {
+            it.copy(draft = message.text, asAnnouncement = message.announcement)
+          } else {
+            it
+          }
+      restored.copy(sendFailed = !refused, announcementRefused = refused)
+    }
+    // In a team's channel, the manager may have been replaced meanwhile: without the right any
+    // more, the option goes, so the same announcement is not refused again and again.
+    if (refused) loadTeam()
   }
 
   /**
