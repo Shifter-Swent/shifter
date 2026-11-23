@@ -55,6 +55,17 @@ val shifter_avatarBackground = Color(0xFF2F3E55)
 val shifter_signoutOutline = Color(0xFF493044)
 val shifter_locationIconBackground = Color(0xFF203452)
 
+// The week grid of shifts: its own tones, darker than the surfaces, so a grid of dozens of cells
+// stays readable. A slot the volunteers already chose uses primaryContainer, and the line between
+// two cells shifter_divider.
+val shifter_shiftOpen = Color(0xFF1C365E)
+val shifter_shiftClosed = Color(0xFF18212D)
+/** A slot the organizer can still open, a shade above a closed one so the "+" invites a tap. */
+val shifter_shiftOpenable = Color(0xFF1A2433)
+/** The line inside a block of slots that carries on past a cell, fainter than a grid line. */
+val shifter_shiftJoin = Color(0xFF15294A)
+val shifter_onShiftLocked = Color(0xFFCFE0FF)
+
 // A QR code stays dark on light whatever the theme, so every scanner reads it.
 val shifter_qrDark = Color(0xFF000000)
 val shifter_qrLight = Color(0xFFFFFFFF)
