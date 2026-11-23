@@ -39,7 +39,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
 import com.swent.shifter.model.team.Team
-import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
@@ -64,55 +63,6 @@ import org.junit.runner.RunWith
 class TeamSetupScreenTest {
 
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
-
-  /**
-   * The teams of the event, in memory: the fakes of the unit tests live in `src/test` and are out
-   * of reach here. Ids are assigned in creation order, and [failure] makes every call throw.
-   */
-  private class FakeTeams(initialTeams: List<Team> = emptyList()) : TeamRepository {
-    val teams: MutableList<Team> = initialTeams.toMutableList()
-    var failure: Exception? = null
-    var beforeUpdate: suspend () -> Unit = {}
-    private var createdCount = 0
-
-    override suspend fun createTeam(team: Team): Team {
-      failure?.let { throw it }
-      return team.copy(id = "team-${++createdCount}").also { teams += it }
-    }
-
-    override suspend fun getTeamsByEvent(eventId: String): List<Team> {
-      failure?.let { throw it }
-      return teams.filter { it.eventId == eventId }
-    }
-
-    override suspend fun getTeam(eventId: String, teamId: String): Team? = null
-
-    override suspend fun getTeamsOfMember(eventId: String, userId: String): List<Team> = emptyList()
-
-    override suspend fun getTeamsManagedBy(eventId: String, userId: String): List<Team> =
-        emptyList()
-
-    override suspend fun setManager(eventId: String, teamId: String, managerId: String?) = Unit
-
-    override suspend fun updateTeam(
-        eventId: String,
-        teamId: String,
-        name: String,
-        description: String,
-        icon: String,
-    ) {
-      beforeUpdate()
-      failure?.let { throw it }
-      val index = teams.indexOfFirst { it.id == teamId }
-      teams[index] = teams[index].copy(name = name, description = description, icon = icon)
-    }
-
-    override suspend fun addMember(eventId: String, teamId: String, userId: String) = Unit
-
-    override suspend fun removeMember(eventId: String, teamId: String, userId: String) = Unit
-
-    override suspend fun deleteTeam(eventId: String, teamId: String) = Unit
-  }
 
   private val eventId = "event-1"
   private val createdAt = Instant.parse("2027-06-20T08:00:00Z")
