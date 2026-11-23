@@ -28,7 +28,7 @@ internal sealed interface ChatRow {
 
   /**
    * The [message], the [first][startsGroup] and the [last][endsGroup] of a run of messages from the
-   * same sender: the first shows the name and the avatar, the last the time and the bubble's tail.
+   * same sender: the first shows the name, the last the avatar, the time and the bubble's tail.
    */
   data class Message(
       val message: ChatMessageItem,

@@ -68,8 +68,11 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
         }
     else -> {
       val tint = chatTint(message.senderId)
-      Row(modifier = Modifier.padding(top = top).fillMaxWidth().then(merged)) {
-        if (row.startsGroup) Avatar(message.senderName, tint) else Spacer(Modifier.width(AVATAR))
+      Row(
+          modifier = Modifier.padding(top = top).fillMaxWidth().then(merged),
+          verticalAlignment = Alignment.Bottom,
+      ) {
+        if (row.endsGroup) Avatar(message.senderName, tint) else Spacer(Modifier.width(AVATAR))
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.widthIn(max = 264.dp)) {
           if (row.startsGroup) {
@@ -103,7 +106,7 @@ private fun bubbleShape(tail: Boolean, mine: Boolean): Shape {
   else RoundedCornerShape(16.dp, 16.dp, 16.dp, corner)
 }
 
-/** The initial of [name] on a disc of [tint], beside the first message of their run. */
+/** The initial of [name] on a disc of [tint], beside the last message of their run. */
 @Composable
 private fun Avatar(name: String?, tint: Color) {
   Box(
