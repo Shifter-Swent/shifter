@@ -277,14 +277,14 @@ private fun DaysHeader(
       ScrollArrow(
           icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
           description = stringResource(R.string.shift_grid_previous_day),
-          enabled = scroll.value > 0,
+          enabled = scroll.canScrollBackward,
           modifier = Modifier.align(Alignment.CenterStart).testTag(ShiftGridTestTags.PREVIOUS_DAY),
           onClick = { scope.launch { scroll.animateScrollTo(scroll.value - step) } },
       )
       ScrollArrow(
           icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
           description = stringResource(R.string.shift_grid_next_day),
-          enabled = scroll.value < scroll.maxValue,
+          enabled = scroll.canScrollForward,
           modifier = Modifier.align(Alignment.CenterEnd).testTag(ShiftGridTestTags.NEXT_DAY),
           onClick = { scope.launch { scroll.animateScrollTo(scroll.value + step) } },
       )

@@ -10,7 +10,9 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -280,11 +282,24 @@ class ShiftGridTest {
     show(ShiftGridMode.EDIT, days = fiveDays)
 
     header(tue).assertIsNotDisplayed()
+    // The first day is in view, so only the way forward is offered.
+    compose.onNodeWithTag(ShiftGridTestTags.PREVIOUS_DAY).assertIsNotEnabled()
+    compose.onNodeWithTag(ShiftGridTestTags.NEXT_DAY).assertIsEnabled()
     compose.onNodeWithTag(ShiftGridTestTags.NEXT_DAY).performClick()
     compose.onNodeWithTag(ShiftGridTestTags.NEXT_DAY).performClick()
 
     header(tue).assertIsDisplayed()
     header(fri).assertIsNotDisplayed()
+    // The last day is in view: the grid is at its end and only the way back is left.
+    compose.onNodeWithTag(ShiftGridTestTags.NEXT_DAY).assertIsNotEnabled()
+    compose.onNodeWithTag(ShiftGridTestTags.PREVIOUS_DAY).assertIsEnabled()
+
+    compose.onNodeWithTag(ShiftGridTestTags.PREVIOUS_DAY).performClick()
+    compose.onNodeWithTag(ShiftGridTestTags.PREVIOUS_DAY).performClick()
+
+    header(fri).assertIsDisplayed()
+    header(tue).assertIsNotDisplayed()
+    compose.onNodeWithTag(ShiftGridTestTags.PREVIOUS_DAY).assertIsNotEnabled()
   }
 
   @Test
