@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_announcement
@@ -29,6 +31,8 @@ import com.swent.shifter.ui.theme.shifter_announcementMuted
 import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
 import java.time.LocalDate
 import java.time.ZoneId
+
+private val CardShape = RoundedCornerShape(18.dp)
 
 /**
  * An announcement: a full-width amber card with the megaphone and its author, its text, and the
@@ -49,7 +53,8 @@ internal fun AnnouncementCard(
               // Read as one message by TalkBack: the megaphone, author, text and time together.
               .semantics(mergeDescendants = true) {}
               .testTag(TeamChatTestTags.message(message.id))
-              .background(shifter_announcementContainer, RoundedCornerShape(18.dp))
+              .background(shifter_announcementContainer, CardShape)
+              .border(Dp.Hairline, shifter_announcement.copy(alpha = 0.15f), CardShape)
               .padding(start = 14.dp, top = 10.dp, end = 14.dp, bottom = 8.dp),
   ) {
     AnnouncementAuthor(
