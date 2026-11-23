@@ -836,6 +836,7 @@ class ShifterNavHostTest {
   fun volunteerMap_followsTheUsersPosition() {
     val location =
         openMapWithAKnownPosition(
+            signIn(),
             UserMode.VOLUNTEER,
             VolunteerEvent("event-1", EVENT_TITLE),
             VolunteerTabs.Map,
@@ -844,18 +845,44 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
   }
 
-  /** The organizer's map is given no location provider, so it never shows where they are. */
+  /** The organizer's map is given the location provider too, to show them where they are (#655). */
   @Test
-  fun organizerMap_doesNotFollowTheUsersPosition() {
+  fun organizerMap_followsTheUsersPosition() {
     val location =
         openMapWithAKnownPosition(
+            signIn(),
             UserMode.ORGANIZER,
             OrganizerEvent("event-1", EVENT_TITLE),
             OrganizerTabs.Map,
         )
 
-    composeTestRule.waitForIdle()
-    assertEquals(0, location.activeCollectors)
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
+  }
+
+  /**
+   * Once their event is loaded, the organizer's map offers to center on their position, which only
+   * shows when the map knows where they are. The event has only its address, as the ones created in
+   * the app, so the map opens on its located mission.
+   */
+  @Test
+  fun organizerMap_showsTheCenterOnYourPositionButton() {
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    createMission(
+        event,
+        "Pick up the litter",
+        teamIds.getValue(event.id),
+        location = MissionLocation("Beach", GeoPosition(46.5167, 6.5953)),
+    )
+    openMapWithAKnownPosition(
+        organizer,
+        UserMode.ORGANIZER,
+        OrganizerEvent(event.id, event.title),
+        OrganizerTabs.Map,
+    )
+
+    waitForNode(MapScreenTestTags.CENTER_ON_ME_BUTTON)
+    composeTestRule.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertIsDisplayed()
   }
 
   @Test
@@ -1516,6 +1543,7 @@ class ShifterNavHostTest {
       title: String,
       teamId: String?,
       description: String = "",
+      location: MissionLocation? = null,
   ): Mission {
     val mission = runBlocking {
       repositories.missionRepository.createMission(
@@ -1527,6 +1555,7 @@ class ShifterNavHostTest {
               volunteersNeeded = 1,
               startAt = event.startAt,
               endAt = event.startAt.plus(Duration.ofHours(1)),
+              location = location,
               createdAt = Instant.now(),
           )
       )
@@ -1913,17 +1942,17 @@ class ShifterNavHostTest {
   }
 
   /**
-   * Shows the app in [mode] to a fresh account, with a GPS that knows where the user is, and opens
-   * [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it before the map opens, so
-   * whatever follows it afterwards is the map.
+   * Shows the app in [mode] to [user], who must be the signed-in account, with a GPS that knows
+   * where they are, and opens [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it
+   * before the map opens, so whatever follows it afterwards is the map.
    */
   private fun openMapWithAKnownPosition(
+      user: AuthUser,
       mode: UserMode,
       event: EventMode,
       mapTab: Tab,
   ): FakeLocationProvider {
-    signIn(googleCredential())
-    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, mode)
+    saveMode(user.uid, mode)
     val location = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
     lateinit var navController: NavHostController
     composeTestRule.setContent {
@@ -2143,6 +2172,7 @@ class ShifterNavHostTest {
     const val COORDINATE_TOLERANCE = 1e-9
 
     val GENEVA = GeoPosition(46.2044, 6.1432)
+
     const val EVENT_TITLE = "City Marathon"
   }
 }

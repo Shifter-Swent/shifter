@@ -127,8 +127,8 @@ data class VolunteerPin(
  * @param clock tells which missions are over and, each minute, how old a position is; replaceable
  *   in tests.
  * @param zone the time zone the mission hours are shown in, replaceable in tests.
- * @param locationProvider gives the user's position to show on the map; null for a user the map
- *   does not locate, such as an organizer.
+ * @param locationProvider gives the user's position to show on the map; null when the map does not
+ *   locate the user.
  * @param userRepository reads the volunteers' names; without it, every name is unknown.
  */
 class MapViewModel(
