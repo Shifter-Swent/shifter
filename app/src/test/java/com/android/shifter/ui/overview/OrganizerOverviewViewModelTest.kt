@@ -561,6 +561,63 @@ class OrganizerOverviewViewModelTest {
   }
 
   @Test
+  fun saveAssignees_refusedAfterAnotherMissionOpened_leavesItsDialog() = runTest {
+    val first = addMission("Set up", "logistics", hour = 1, volunteersNeeded = 2)
+    val second = addMission("Pack up", "logistics", hour = 3, volunteersNeeded = 3)
+    open()
+    viewModel.openAssign(first.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+    viewModel.toggleAssignee("ben")
+    missions.updateMission(missions.created.first().copy(volunteersNeeded = 1))
+    repository.save = CompletableDeferred()
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    viewModel.openAssign(second.id)
+    advanceUntilIdle()
+    repository.save!!.complete(Unit)
+    advanceUntilIdle()
+
+    val state = assigning!!
+    assertEquals(second.id, state.missionId)
+    assertEquals(3, state.limit)
+    assertFalse(state.isSaving)
+  }
+
+  @Test
+  fun saveAssignees_whileSaving_storesOnce() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+    advanceUntilIdle()
+    viewModel.toggleAssignee("ana")
+    repository.save = CompletableDeferred()
+    viewModel.saveAssignees()
+    advanceUntilIdle()
+
+    viewModel.saveAssignees()
+    repository.save!!.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(1, repository.saves)
+  }
+
+  @Test
+  fun saveAssignees_beforeTheCandidatesLoaded_isIgnored() = runTest {
+    val mission = addMission("Set up", "logistics", hour = 1)
+    open()
+    viewModel.openAssign(mission.id)
+
+    viewModel.saveAssignees()
+
+    assertTrue(assigning!!.selection.isLoading)
+    assertFalse(assigning!!.isSaving)
+    advanceUntilIdle()
+    assertEquals(0, repository.saves)
+  }
+
+  @Test
   fun saveAssignees_whenTheCandidatesFailed_isIgnored() = runTest {
     val mission = addMission("Set up", "logistics", hour = 1, assigneeIds = listOf("ana"))
     open()
@@ -784,6 +841,9 @@ private class SlowMissionRepository(private val missions: FakeMissionRepository)
   var reload: CompletableDeferred<Unit>? = null
   var save: CompletableDeferred<Unit>? = null
 
+  /** How many saves of the assignees were asked for. */
+  var saves = 0
+
   override suspend fun getMissionsByEvent(eventId: String): List<Mission> {
     reload?.await()
     return missions.getMissionsByEvent(eventId)
@@ -794,6 +854,7 @@ private class SlowMissionRepository(private val missions: FakeMissionRepository)
       missionId: String,
       assigneeIds: List<String>,
   ) {
+    saves++
     save?.await()
     missions.updateAssignees(eventId, missionId, assigneeIds)
   }
