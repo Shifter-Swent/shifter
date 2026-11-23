@@ -215,7 +215,7 @@ class LocationPickerTest {
     compose.onNodeWithTag(LocationPickerTestTags.SELECTED).assertDoesNotExist()
     compose
         .onNodeWithTag(LocationPickerTestTags.HINT)
-        .assertTextEquals("The map is unavailable. Type the coordinates instead.")
+        .assertTextEquals("Loading the map… If it doesn't load, enter coordinates manually.")
   }
 
   @Test
