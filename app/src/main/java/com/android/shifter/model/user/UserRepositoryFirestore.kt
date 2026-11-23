@@ -325,11 +325,9 @@ class UserRepositoryFirestore(private val db: FirebaseFirestore) : UserRepositor
       val settings = snapshot.get(NOTIFICATION_SETTINGS) ?: return emptySet()
       if (settings !is Map<*, *>) snapshot.invalidField(ENTITY, NOTIFICATION_SETTINGS)
       return NotificationKind.entries.filterTo(mutableSetOf()) { kind ->
-        when (val enabled = settings[kind.name]) {
-          null -> false
-          is Boolean -> !enabled
-          else -> snapshot.invalidField(ENTITY, "$NOTIFICATION_SETTINGS.${kind.name}")
-        }
+        val enabled = settings[kind.name] ?: return@filterTo false
+        if (enabled !is Boolean) snapshot.invalidField(ENTITY, "$NOTIFICATION_SETTINGS.$kind")
+        !enabled
       }
     }
 
