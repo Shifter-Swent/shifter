@@ -36,9 +36,11 @@ data class InboxNotification(
 /**
  * Throws [IllegalArgumentException] for what the rules refuse to store in an inbox, so a writer's
  * test fails here rather than the whole batch of its action on the server: a [kind] computed on the
- * phone, or a key of [data] outside [NotificationData.Key.ALL].
+ * phone, or a key of [data] outside [NotificationData.Key.ALL]. Checked once per action by
+ * [InboxDocs.documents], even when it notifies nobody, so a writer's test catches it whoever the
+ * recipients are.
  */
-private fun requireStorable(kind: NotificationKind, data: Map<String, String>) {
+internal fun requireStorable(kind: NotificationKind, data: Map<String, String>) {
   require(kind.inInbox) { "$kind is computed on the phone, never written in an inbox" }
   require(NotificationData.Key.ALL.containsAll(data.keys)) { "Unknown data keys in $data" }
 }
@@ -46,7 +48,8 @@ private fun requireStorable(kind: NotificationKind, data: Map<String, String>) {
 /**
  * [requireStorable], and also refuses a notification to its own sender, which the rules refuse too:
  * the one acting is never told about their own action. Checked by every writer, the fake inbox
- * included, before anything is written.
+ * included, before anything is written. [InboxDocs.recipients] already leaves the sender out, so
+ * this check is only a safeguard.
  */
 internal fun requireWritable(
     recipientId: String,

@@ -53,7 +53,7 @@ class InboxNotificationFirestoreMapperTest {
   }
 
   @Test
-  fun writtenWithInboxDocs_isReadBackByTheRecipientOnly() = emulatorTest {
+  fun writtenWithInboxDocs_leavesOutTheSenderAndTheDuplicates() = emulatorTest {
     val data =
         mapOf(
             NotificationData.Key.CHANGE to NotificationData.Value.JOINED,
@@ -64,8 +64,8 @@ class InboxNotificationFirestoreMapperTest {
     signIn(sender)
     val before = Instant.now()
     val batch = db.batch()
-    // The sender and a duplicate among the recipients, as a writer may pass them: the batch would
-    // be refused if either were written.
+    // The sender and a duplicate among the recipients, as a writer may pass them: the rules would
+    // refuse the batch if the sender were written, and the recipient would get two.
     InboxDocs.documents(
             db,
             listOf(recipient.uid, sender.uid, recipient.uid),
@@ -81,7 +81,6 @@ class InboxNotificationFirestoreMapperTest {
         }
     batch.commit().await()
 
-    assertTrue(InboxDocs.inbox(db, sender.uid).get(Source.SERVER).await().isEmpty)
     signIn(recipient)
     val inbox = InboxDocs.inbox(db, recipient.uid).get(Source.SERVER).await().documents
     val read = inbox.single().read()

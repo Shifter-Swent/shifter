@@ -2,6 +2,7 @@
 package com.swent.shifter.model.notification
 
 import com.google.firebase.firestore.FieldValue
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -53,13 +54,37 @@ class InboxDocsTest {
   fun recipients_leaveOutTheSenderAndTheDuplicates_inTheirOrder() {
     assertEquals(
         listOf("bob", "alice"),
-        InboxDocs.recipients(SENDER, listOf("bob", SENDER, "alice", "bob")).toList(),
+        InboxDocs.recipients(listOf("bob", SENDER, "alice", "bob"), SENDER).toList(),
     )
   }
 
   @Test
   fun recipients_ofOnlyTheSender_areNone() {
-    assertEquals(emptySet<String>(), InboxDocs.recipients(SENDER, listOf(SENDER)))
+    assertEquals(emptySet<String>(), InboxDocs.recipients(listOf(SENDER), SENDER))
+  }
+
+  @Test
+  fun documents_ofAKindComputedOnThePhone_areRefusedEvenWithNobodyToNotify() {
+    val kind = NotificationKind.entries.first { !it.inInbox }
+
+    assertThrows(IllegalArgumentException::class.java) {
+      InboxDocs.documents(mockk(), listOf(SENDER), kind, "event-1", "Festival", SENDER, emptyMap())
+    }
+  }
+
+  @Test
+  fun documents_withAnUnknownDataKey_areRefusedEvenWithNobodyToNotify() {
+    assertThrows(IllegalArgumentException::class.java) {
+      InboxDocs.documents(
+          mockk(),
+          emptyList(),
+          NotificationKind.NEW_APPLICATION,
+          "event-1",
+          "Festival",
+          SENDER,
+          mapOf("title" to "Hi"),
+      )
+    }
   }
 
   private fun fields(

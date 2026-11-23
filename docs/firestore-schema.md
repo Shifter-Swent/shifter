@@ -456,8 +456,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   recipient, and a batch is allowed 20, so an announcement to a large event would be refused with
   its message. Only `senderId` is trusted, as the rules make it the writer: someone could fill an
   inbox they know the uid of (uids cannot be listed, so mostly the people of their events). The
-  real cost is the text, not the data: anyone sharing an event with a volunteer can send them a
-  false `ANNOUNCEMENT` ("Event cancelled, don't come") or `MISSION_CHANGED` ("07:00, gate B")
+  real cost is the text, not the data: anyone who can open an event (its join code is enough)
+  can read the uids of its volunteers in its teams and send them a false `ANNOUNCEMENT` ("Event cancelled, don't come") or `MISSION_CHANGED` ("07:00, gate B")
   under the real `eventTitle`, with any name in `data`. It shows up as a system notification, and
   people act on it without tapping it, so the rules protecting the screens it opens do not help.
   The phone can at least show the sender's name from the public profile of `senderId` rather than
@@ -468,6 +468,11 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   that do not come from the app (Firebase App Check) would make both much harder, which the rules
   cannot do. Nothing ties the keys of `data` to the `kind`. A server writing the notifications
   (Cloud Function) would close all of it.
+- **An action notifies at most 499 people.** A batch or transaction holds at most 500 writes, and
+  the notifications go in the one of their action, so the two are stored together or not at all:
+  an announcement in an event of 500 participants or more would be refused, its message with it.
+  Splitting the notifications into other commits would lose that; a Cloud Function writing them
+  would not have the limit.
 
 - **A mission assigned during a move keeps the volunteer.** The missions to leave are found by a
   query, which a transaction cannot run, so they are read before it: a mission of the old team

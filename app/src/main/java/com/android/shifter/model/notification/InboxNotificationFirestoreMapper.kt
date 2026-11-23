@@ -45,8 +45,12 @@ internal object InboxDocs {
    * duplicates: the writer passes everyone the action concerns, the sender included or not, and
    * never makes its own action fail on a notification the rules refuse.
    *
+   * A batch or transaction holds at most 500 writes, the action's own included: an action that
+   * notifies more people than that is refused as a whole (see Known gaps in
+   * `docs/firestore-schema.md`).
+   *
    * Throws [IllegalArgumentException] for a [kind] or [data] the rules refuse, see
-   * [requireWritable].
+   * [requireStorable], even when there is nobody to notify.
    */
   fun documents(
       db: FirebaseFirestore,
@@ -56,16 +60,17 @@ internal object InboxDocs {
       eventTitle: String,
       senderId: String,
       data: Map<String, String>,
-  ): List<Pair<DocumentReference, Map<String, Any>>> =
-      recipients(senderId, recipientIds).map { recipientId ->
-        newDocument(db, recipientId) to
-            fields(recipientId, kind, eventId, eventTitle, senderId, data)
-      }
+  ): List<Pair<DocumentReference, Map<String, Any>>> {
+    requireStorable(kind, data)
+    return recipients(recipientIds, senderId).map { recipientId ->
+      newDocument(db, recipientId) to fields(recipientId, kind, eventId, eventTitle, senderId, data)
+    }
+  }
 
   /**
    * Who [documents] notifies: [recipientIds] in order, without [senderId] and without duplicates.
    */
-  fun recipients(senderId: String, recipientIds: Iterable<String>): Set<String> =
+  fun recipients(recipientIds: Iterable<String>, senderId: String): Set<String> =
       recipientIds.toCollection(LinkedHashSet()) - senderId
 
   /**
@@ -76,13 +81,12 @@ internal object InboxDocs {
       db.collection(USERS_COLLECTION).document(recipientId).collection(InboxSchema.COLLECTION)
 
   /** A new document in the inbox of [recipientId], with an id chosen by Firestore. */
-  fun newDocument(db: FirebaseFirestore, recipientId: String): DocumentReference =
+  private fun newDocument(db: FirebaseFirestore, recipientId: String): DocumentReference =
       inbox(db, recipientId).document()
 
   /**
    * The body of a notification of [senderId] for [recipientId]. `createdAt` is a server timestamp,
-   * which the rules require to be the request time. Writers go through [documents]; this one is for
-   * the tests that check what is stored.
+   * which the rules require to be the request time: what [documents] stores for each recipient.
    *
    * Throws [IllegalArgumentException] for what the rules refuse, with [requireWritable], including
    * a [recipientId] equal to [senderId].
