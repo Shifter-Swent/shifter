@@ -19,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,7 +39,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -54,7 +52,8 @@ import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.time.rememberNow
-import com.swent.shifter.ui.mission.AssigneePicker
+import com.swent.shifter.ui.mission.AssignDialog
+import com.swent.shifter.ui.mission.AssignDialogTestTags
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import java.time.Instant
@@ -74,11 +73,11 @@ object OrganizerOverviewScreenTestTags {
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
-  const val ASSIGN_DIALOG = "OrganizerOverviewAssignDialog"
-  const val ASSIGN_SAVE = "OrganizerOverviewAssignSave"
-  const val ASSIGN_CANCEL = "OrganizerOverviewAssignCancel"
-  const val ASSIGN_ERROR = "OrganizerOverviewAssignError"
-  const val ASSIGN_OVER_LIMIT = "OrganizerOverviewAssignOverLimit"
+  const val ASSIGN_DIALOG = AssignDialogTestTags.DIALOG
+  const val ASSIGN_SAVE = AssignDialogTestTags.SAVE
+  const val ASSIGN_CANCEL = AssignDialogTestTags.CANCEL
+  const val ASSIGN_ERROR = AssignDialogTestTags.ERROR
+  const val ASSIGN_OVER_LIMIT = AssignDialogTestTags.OVER_LIMIT
   const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
@@ -187,7 +186,15 @@ fun OrganizerOverviewContent(
                 .testTag(OrganizerOverviewScreenTestTags.SNACKBAR),
     )
   }
-  state.assigning?.let { AssignDialog(it, actions) }
+  state.assigning?.let {
+    AssignDialog(
+        assigning = it,
+        onToggle = actions.onToggleAssignee,
+        onRetry = actions.onRetryAssignees,
+        onSave = actions.onSaveAssignees,
+        onDismiss = actions.onDismissAssign,
+    )
+  }
 }
 
 @Composable
@@ -485,78 +492,6 @@ private fun MissionRow(
       Text(stringResource(R.string.overview_assign), fontWeight = FontWeight.SemiBold)
     }
   }
-}
-
-/** Edits who is assigned to the mission of [assigning]; nothing is stored until Save. */
-@Composable
-private fun AssignDialog(assigning: AssignState, actions: OrganizerOverviewActions) {
-  AlertDialog(
-      // A save cannot be taken back: the dialog stays open until it ends.
-      onDismissRequest = { if (!assigning.isSaving) actions.onDismissAssign() },
-      modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_DIALOG),
-      title = { Text(assigning.title) },
-      text = {
-        Column(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          AssigneePicker(
-              selection = assigning.selection,
-              limit = assigning.limit,
-              enabled = !assigning.isSaving,
-              onToggle = actions.onToggleAssignee,
-              onRetry = actions.onRetryAssignees,
-          )
-          // Shown as long as too many are picked, not only after the refused save, so it does not
-          // vanish while Save stays off.
-          if (assigning.overLimit) {
-            Text(
-                text =
-                    pluralStringResource(
-                        R.plurals.overview_assign_over_limit,
-                        assigning.limit,
-                        assigning.limit,
-                    ),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT),
-            )
-          }
-          if (assigning.saveFailed) {
-            Text(
-                text = stringResource(R.string.overview_assign_failed),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_ERROR),
-            )
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(
-            onClick = actions.onSaveAssignees,
-            // Saving before the candidates are loaded could not show who is picked, and too many
-            // picked would be refused again.
-            enabled =
-                !assigning.isSaving &&
-                    !assigning.selection.isLoading &&
-                    !assigning.selection.loadFailed &&
-                    !assigning.overLimit,
-            modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE),
-        ) {
-          Text(stringResource(R.string.overview_assign_save))
-        }
-      },
-      dismissButton = {
-        TextButton(
-            onClick = actions.onDismissAssign,
-            enabled = !assigning.isSaving,
-            modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL),
-        ) {
-          Text(stringResource(R.string.overview_assign_cancel))
-        }
-      },
-  )
 }
 
 /** Sends a notification to every team of the event. */

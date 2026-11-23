@@ -12,6 +12,7 @@ import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.mission.isCompleted
 import com.swent.shifter.model.team.TeamRepository
+import com.swent.shifter.ui.mission.AssignState
 import com.swent.shifter.ui.mission.AssigneeCandidates
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -44,31 +45,6 @@ data class OverviewMission(
     val volunteersNeeded: Int = 1,
     val assigneeIds: List<String> = emptyList(),
 )
-
-/**
- * Who is being assigned to the mission [missionId], while the organizer edits it.
- *
- * @property limit the most people that can be picked, the mission's volunteers needed, as last
- *   known: a refused save sets it to what the stored mission needs.
- * @property isSaving whether the picked people are being stored.
- * @property saveFailed whether storing them failed; the selection is kept to try again.
- */
-data class AssignState(
-    val missionId: String,
-    val title: String,
-    val limit: Int,
-    val selection: AssigneeSelection,
-    val isSaving: Boolean = false,
-    val saveFailed: Boolean = false,
-) {
-  /**
-   * Whether more people are picked than the mission needs now, after its volunteers needed were
-   * lowered: nothing can be saved until some are unpicked. Derived rather than stored, so it holds
-   * until the selection fits, however many are unpicked.
-   */
-  val overLimit: Boolean
-    get() = selection.selectedIds.size > limit
-}
 
 /**
  * State of the organizer's management screen of an event.

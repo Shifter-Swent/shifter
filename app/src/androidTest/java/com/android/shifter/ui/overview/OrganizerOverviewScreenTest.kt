@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
+import com.swent.shifter.ui.mission.AssignState
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
