@@ -96,7 +96,7 @@ fun proposeSchedule(
               .filter { it.canTake(mission) }
               .sortedWith(compareBy({ it.seconds }, { it.candidate.userId }))
               .take(open)
-      chosen.forEach { it.held += mission }
+      chosen.forEach { it.take(mission) }
       if (chosen.isNotEmpty()) proposed[mission.id] = chosen.map { it.candidate.userId }
       open -= chosen.size
     }
@@ -110,13 +110,19 @@ fun proposeSchedule(
  * for.
  */
 private class Load(val candidate: ScheduleCandidate, missions: List<Mission>) {
-  val held = missions.filter { candidate.userId in it.assigneeIds }.toMutableList()
+  private val held = missions.filter { candidate.userId in it.assigneeIds }.toMutableList()
 
   private val free = merged(candidate.slots)
 
-  /** The hours held, in seconds. */
-  val seconds: Long
-    get() = held.sumOf { Duration.between(it.startAt, it.endAt).seconds }
+  /** The hours held, in seconds, kept up to date by [take] so a sort reads it without a sum. */
+  var seconds: Long = held.sumOf { it.lengthInSeconds() }
+    private set
+
+  /** Holds [mission] too, as proposed in this run. */
+  fun take(mission: Mission) {
+    held += mission
+    seconds += mission.lengthInSeconds()
+  }
 
   fun canTake(mission: Mission): Boolean =
       mission.teamId in candidate.teamIds &&
@@ -124,6 +130,9 @@ private class Load(val candidate: ScheduleCandidate, missions: List<Mission>) {
           free.any { it.start <= mission.startAt && mission.endAt <= it.end } &&
           held.none { it.startAt < mission.endAt && mission.startAt < it.endAt }
 }
+
+/** The planned length of this mission, past or completed alike. */
+private fun Mission.lengthInSeconds(): Long = Duration.between(startAt, endAt).seconds
 
 /** [slots] in order of start, the ones that touch or overlap merged into one. */
 private fun merged(slots: List<TimeSlot>): List<TimeSlot> {
