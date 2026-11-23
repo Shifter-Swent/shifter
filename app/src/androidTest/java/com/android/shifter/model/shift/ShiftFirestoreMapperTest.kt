@@ -13,6 +13,7 @@ import com.swent.shifter.firebase.emulatorTest
 import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.firestore.toFirestoreTimestamp
 import java.time.Instant
 import kotlinx.coroutines.tasks.await
 import org.junit.After
@@ -26,7 +27,7 @@ import org.junit.runner.RunWith
 /**
  * Mapping tests for [toShift] and [toFirestoreMap], run against the Firestore emulator.
  *
- * There is no shift repository yet, so each test writes a raw document and reads it back: a
+ * The shift repository is #593, so each test writes a raw document and reads it back: a
  * [DocumentSnapshot] cannot be constructed outside Firebase. Every instance works under a freshly
  * generated event id, so tests cannot observe each other whatever order they run in.
  */
@@ -83,35 +84,24 @@ class ShiftFirestoreMapperTest {
 
     val mapped = read(shiftId).toShift()
 
-    assertEquals(shiftId, mapped.id)
+    assertEquals(shiftIdOf(START), mapped.id)
     assertEquals(eventId, mapped.eventId)
-    assertEquals(TEAM_ID, mapped.teamId)
-    assertEquals(ASSIGNEES, mapped.assigneeIds)
-    assertEquals(Instant.parse("2026-07-21T16:00:00Z"), mapped.startAt)
-    assertEquals(Instant.parse("2026-07-22T02:00:00Z"), mapped.endAt)
+    assertEquals(VOLUNTEERS, mapped.volunteerIds)
+    assertEquals(START, mapped.startAt)
+    assertEquals(END, mapped.endAt)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
 
-    // The id is the only field the document cannot carry, so the rest must round-trip.
-    assertEquals(stored.copy(id = shiftId), mapped)
+    assertEquals(stored, mapped)
   }
 
   @Test
-  fun toShift_takesTheIdFromTheDocumentAndNeverFromAField() = emulatorTest {
+  fun toShift_neverStoresTheIdNorTheEventAsFields() = emulatorTest {
+    // Both are the path: a field could contradict it.
     val shiftId = writeRawShift(richShift().toFirestoreMap())
 
     val snapshot = read(shiftId)
 
-    assertEquals("the shift id must be the document id", shiftId, snapshot.toShift().id)
     assertFalse("the id must not be duplicated as a field", snapshot.contains("id"))
-  }
-
-  @Test
-  fun toShift_doesNotPersistTheEventItBelongsTo() = emulatorTest {
-    // The parent event is the path: a field could contradict it.
-    val shiftId = writeRawShift(richShift().toFirestoreMap())
-
-    val snapshot = read(shiftId)
-
     assertFalse("the event id must not be a field", snapshot.contains("eventId"))
     // Absent from the document, yet present on the model: it can only come from the path.
     assertEquals("the event id must still be mapped", eventId, snapshot.toShift().eventId)
@@ -122,7 +112,7 @@ class ShiftFirestoreMapperTest {
     // A second event, so the mapped id has to follow the document it was read from rather than
     // anything this test class holds: a volunteer's schedule spans several events.
     val otherEventId = ScratchEvents.create().also { createdDocuments += it }.id
-    val document = writeRawShiftUnder(otherEventId, richShift().toFirestoreMap())
+    val document = writeRawShiftUnder(otherEventId, shiftIdOf(START), richShift().toFirestoreMap())
 
     val mapped = document.get(Source.SERVER).await().toShift()
 
@@ -130,17 +120,38 @@ class ShiftFirestoreMapperTest {
   }
 
   @Test
-  fun toShift_failsLoudlyOnAMissingTeamId() = emulatorTest {
-    val shiftId = writeRawShift(richShift().toFirestoreMap() - ShiftSchema.TEAM_ID)
+  fun toShift_withADocumentIdThatIsNotItsStart_failsLoudly() = emulatorTest {
+    // Another id would let the same slot be stored twice.
+    val document = writeRawShiftUnder(eventId, "shift-1", richShift().toFirestoreMap())
 
-    assertFailsOnField(shiftId, ShiftSchema.TEAM_ID)
+    val failure = runCatching { document.get(Source.SERVER).await().toShift() }.exceptionOrNull()
+
+    assertTrue(
+        "a document not keyed by its start must fail with IllegalStateException, but was: $failure",
+        failure is IllegalStateException,
+    )
   }
 
   @Test
-  fun toShift_failsLoudlyOnATeamIdWithAWrongType() = emulatorTest {
-    val shiftId = writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.TEAM_ID to 42))
+  fun toShift_ignoresTheFieldsOfTheOldModel() = emulatorTest {
+    // Shifts were once staffed per team; nothing wrote them, but a document of that time may stay.
+    val body =
+        richShift().toFirestoreMap() +
+            mapOf("teamId" to "team-logistics", "assigneeIds" to listOf("user-volunteer-1"))
+    val shiftId = writeRawShift(body)
 
-    assertFailsOnField(shiftId, ShiftSchema.TEAM_ID)
+    assertEquals(richShift(), read(shiftId).toShift())
+  }
+
+  @Test
+  fun toShift_withASlotThatIsNotOneToThreeHours_failsLoudly() = emulatorTest {
+    val shiftId =
+        writeRawShift(
+            richShift().toFirestoreMap() +
+                (ShiftSchema.END_AT to Instant.parse("2026-07-18T18:00:00Z").toFirestoreTimestamp())
+        )
+
+    assertFailsOnField(shiftId, ShiftSchema.END_AT)
   }
 
   @Test
@@ -153,17 +164,15 @@ class ShiftFirestoreMapperTest {
   @Test
   fun toShift_failsLoudlyOnATimestampWithAWrongType() = emulatorTest {
     val shiftId =
-        writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.END_AT to "2026-07-22T02:00:00Z"))
+        writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.END_AT to "2026-07-18T10:00:00Z"))
 
     assertFailsOnField(shiftId, ShiftSchema.END_AT)
   }
 
   @Test
-  fun toShift_roundTripsSeveralAssigneeIdsInOrder() = emulatorTest {
-    // Belonging to the team and working a given slot are separate: these are only the volunteers
-    // scheduled for this shift.
-    val assignees = listOf("user-c", "user-a", "user-b")
-    val stored = richShift().copy(assigneeIds = assignees)
+  fun toShift_roundTripsSeveralVolunteerIdsInOrder() = emulatorTest {
+    val volunteers = listOf("user-c", "user-a", "user-b")
+    val stored = richShift().copy(volunteerIds = volunteers)
     val shiftId = writeRawShift(stored.toFirestoreMap())
 
     val snapshot = read(shiftId)
@@ -171,17 +180,17 @@ class ShiftFirestoreMapperTest {
 
     assertEquals(
         "the field must be stored as a Firestore list of strings, in order",
-        assignees,
-        snapshot.get(ShiftSchema.ASSIGNEE_IDS),
+        volunteers,
+        snapshot.get(ShiftSchema.VOLUNTEER_IDS),
     )
-    assertEquals("the stored order must be preserved", assignees, mapped.assigneeIds)
-    assertEquals(stored.copy(id = shiftId), mapped)
+    assertEquals("the stored order must be preserved", volunteers, mapped.volunteerIds)
+    assertEquals(stored, mapped)
   }
 
   @Test
-  fun toShift_roundTripsAnUnstaffedShift() = emulatorTest {
-    // A shift exists before anybody is scheduled for it, so an empty list is valid.
-    val stored = richShift().copy(assigneeIds = emptyList())
+  fun toShift_roundTripsAShiftNobodyChose() = emulatorTest {
+    // A slot is opened before anybody chooses it, so an empty list is valid.
+    val stored = richShift().copy(volunteerIds = emptyList())
     val shiftId = writeRawShift(stored.toFirestoreMap())
 
     val snapshot = read(shiftId)
@@ -189,76 +198,66 @@ class ShiftFirestoreMapperTest {
 
     assertTrue(
         "an empty list must be stored rather than omitted",
-        snapshot.contains(ShiftSchema.ASSIGNEE_IDS),
+        snapshot.contains(ShiftSchema.VOLUNTEER_IDS),
     )
-    assertEquals(emptyList<String>(), mapped.assigneeIds)
-    assertEquals(stored.copy(id = shiftId), mapped)
+    assertEquals(emptyList<String>(), mapped.volunteerIds)
+    assertEquals(stored, mapped)
   }
 
   @Test
-  fun toShift_mapsAnAbsentAssigneeIdsToAnEmptyList() = emulatorTest {
+  fun toShift_mapsAnAbsentVolunteerIdsToAnEmptyList() = emulatorTest {
     // The key is removed rather than written as null, which is what a shift document saved before
-    // the field existed looks like. "Nobody scheduled yet" cannot be told apart from a shift that
-    // is legitimately unstaffed, so it maps to an empty list rather than failing.
-    val shiftId = writeRawShift(richShift().toFirestoreMap() - ShiftSchema.ASSIGNEE_IDS)
+    // the field existed looks like.
+    val shiftId = writeRawShift(richShift().toFirestoreMap() - ShiftSchema.VOLUNTEER_IDS)
 
     val snapshot = read(shiftId)
 
-    assertFalse("the field must really be absent", snapshot.contains(ShiftSchema.ASSIGNEE_IDS))
-    assertEquals(emptyList<String>(), snapshot.toShift().assigneeIds)
+    assertFalse("the field must really be absent", snapshot.contains(ShiftSchema.VOLUNTEER_IDS))
+    assertEquals(emptyList<String>(), snapshot.toShift().volunteerIds)
   }
 
   @Test
-  fun toShift_failsLoudlyOnAnExplicitlyNullAssigneeIds() = emulatorTest {
-    // A non-nullable list never serializes to null, so a null is a schema problem rather than an
-    // unstaffed shift.
-    val shiftId = writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.ASSIGNEE_IDS to null))
+  fun toShift_failsLoudlyOnAnExplicitlyNullVolunteerIds() = emulatorTest {
+    // A non-nullable list never serializes to null, so a null is a schema problem rather than a
+    // shift nobody chose.
+    val shiftId = writeRawShift(richShift().toFirestoreMap() + (ShiftSchema.VOLUNTEER_IDS to null))
 
-    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
+    assertFailsOnField(shiftId, ShiftSchema.VOLUNTEER_IDS)
   }
 
   @Test
-  fun toShift_failsLoudlyOnAnAssigneeIdsThatIsNotAList() = emulatorTest {
-    val shiftId =
-        writeRawShift(
-            richShift().toFirestoreMap() + (ShiftSchema.ASSIGNEE_IDS to "user-volunteer-1")
-        )
-
-    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
-  }
-
-  @Test
-  fun toShift_failsLoudlyOnAnAssigneeIdsEntryThatIsNotAString() = emulatorTest {
-    // Skipping the malformed entry would quietly take a volunteer off a shift they are due to work.
+  fun toShift_failsLoudlyOnAVolunteerIdsEntryThatIsNotAString() = emulatorTest {
+    // Skipping the malformed entry would quietly take a volunteer off a shift they chose.
     val shiftId =
         writeRawShift(
             richShift().toFirestoreMap() +
-                (ShiftSchema.ASSIGNEE_IDS to listOf("user-volunteer-1", 7))
+                (ShiftSchema.VOLUNTEER_IDS to listOf("user-volunteer-1", 7))
         )
 
-    assertFailsOnField(shiftId, ShiftSchema.ASSIGNEE_IDS)
+    assertFailsOnField(shiftId, ShiftSchema.VOLUNTEER_IDS)
   }
 
   /** Whole-second instants on purpose: Firestore keeps microseconds, not nanoseconds. */
   private fun richShift() =
       Shift(
           eventId = eventId,
-          teamId = TEAM_ID,
-          assigneeIds = ASSIGNEES,
-          startAt = Instant.parse("2026-07-21T16:00:00Z"),
-          endAt = Instant.parse("2026-07-22T02:00:00Z"),
+          volunteerIds = VOLUNTEERS,
+          startAt = START,
+          endAt = END,
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
 
-  /** Writes [body] into the event's shifts subcollection and remembers it for cleanup. */
-  private suspend fun writeRawShift(body: Map<String, Any?>): String =
-      writeRawShiftUnder(eventId, body).id
-
   /**
-   * Writes [body] into the shifts subcollection of [parentEventId] and remembers it for cleanup.
+   * Writes [body] into the event's shifts subcollection, under the id of [START] as every shift is,
+   * and remembers it for cleanup.
    */
+  private suspend fun writeRawShift(body: Map<String, Any?>): String =
+      writeRawShiftUnder(eventId, shiftIdOf(START), body).id
+
+  /** Writes [body] as the shift [shiftId] of [parentEventId] and remembers it for cleanup. */
   private suspend fun writeRawShiftUnder(
       parentEventId: String,
+      shiftId: String,
       body: Map<String, Any?>,
   ): DocumentReference {
     val document =
@@ -266,7 +265,7 @@ class ShiftFirestoreMapperTest {
             .collection(EventSchema.COLLECTION)
             .document(parentEventId)
             .collection(ShiftSchema.COLLECTION)
-            .document()
+            .document(shiftId)
     createdDocuments += document
     // As an admin: the rules refuse the malformed documents these tests store.
     step("write") { FirestoreEmulatorAdmin.createDocument(document.path, body) }
@@ -293,8 +292,9 @@ class ShiftFirestoreMapperTest {
   }
 
   private companion object {
-    const val TEAM_ID = "team-logistics"
+    val START: Instant = Instant.parse("2026-07-18T08:00:00Z")
+    val END: Instant = Instant.parse("2026-07-18T10:00:00Z")
 
-    val ASSIGNEES = listOf("user-volunteer-1", "user-volunteer-2")
+    val VOLUNTEERS = listOf("user-volunteer-1", "user-volunteer-2")
   }
 }

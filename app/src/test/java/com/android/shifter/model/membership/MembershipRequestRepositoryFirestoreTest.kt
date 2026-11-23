@@ -527,4 +527,23 @@ class MembershipRequestRepositoryFirestoreTest {
     every { snapshot.contains(any<String>()) } answers { fields.containsKey(firstArg<String>()) }
     return snapshot
   }
+
+  @Test
+  fun updateShifts_failsUntilTheFirestoreImplementationOf594() = runTest {
+    // A placeholder, so nothing reaches Firestore, whose rules still refuse the change.
+    val failure = runCatching {
+      repository.updateShifts(
+          "event-1",
+          "volunteer-1",
+          listOf("1784448000000"),
+          listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(7200))),
+      )
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "expected Unknown, but was: $failure",
+        failure is MembershipRequestRepositoryException.Unknown,
+    )
+  }
 }

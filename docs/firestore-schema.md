@@ -36,7 +36,7 @@ joinCodes/{code}
 | `events/{eventId}/managers/{uid}` | The teams of the event a user manages, keyed by their uid | `ManagerIndexSchema` |
 | `events/{eventId}/channels/general/messages/{messageId}` | A message of the event's general chat channel | `ChatMessageSchema` |
 | `events/{eventId}/channels/admin/messages/{messageId}` | A message of the event's admin chat channel, for its organizer and managers | `ChatMessageSchema` |
-| `events/{eventId}/shifts/{shiftId}` | A time slot a team has to staff | `ShiftSchema` |
+| `events/{eventId}/shifts/{shiftId}` | A 2 h slot the organizer opened for volunteers to choose | `ShiftSchema` |
 | `events/{eventId}/missions/{missionId}` | A task with its own time slot | `MissionSchema` |
 | `events/{eventId}/missions/{missionId}/checkIns/{uid}` | A volunteer's presence at a mission, keyed by their uid | `CheckInSchema` |
 | `events/{eventId}/membershipRequests/{uid}` | A volunteer's request to join, keyed by their uid | `MembershipRequestSchema` |
@@ -115,8 +115,6 @@ stays in `users/{uid}`.
 | `createdAt` | timestamp | |
 | `deleting` | boolean | `true` once the organizer starts deleting the team, until it is gone: a deletion interrupted halfway leaves it `true` until it is tried again. Absent otherwise. Read by the rules only, never by the app (see "Deleting a team" below) |
 
-Belonging to a team (`memberIds`) is not the same as working a given slot (`Shift.assigneeIds`).
-
 #### Deleting a team
 
 `TeamRepository.deleteTeam` deletes the team with everything that belongs to it (#398). A batch
@@ -149,8 +147,7 @@ repositories without deleting it. The first is a window of a few round trips, in
 to act, unlike a position, which a member's app sends on its own.
 The final batch holds two writes plus one per member and one per pending application, so a team
 with more than 498 members and pending applications together can never be deleted: no event of the
-app comes near it. Shifts of the
-team (`shifts` with its `teamId`) are not deleted either: nothing writes them yet.
+app comes near it. Shifts belong to the event, not to a team, so deleting a team leaves them.
 
 ### `events/{eventId}/managers/{uid}`
 
@@ -267,12 +264,22 @@ only a path: no document is stored there.
 
 ### `events/{eventId}/shifts/{shiftId}`
 
+A slot of the event that its organizer opened, for volunteers to choose when they apply (#585). It
+has no name and no number of spots. The document id is the epoch milliseconds of `startAt`
+(`shiftIdOf`), so a slot can never be stored twice, and opening it again writes the same document.
+
 | Field | Type | Notes |
 |---|---|---|
-| `teamId` | string | A team of the same event |
-| `assigneeIds` | list of string | The volunteers scheduled for this slot |
-| `startAt`, `endAt` | timestamp | |
-| `createdAt` | timestamp | |
+| `volunteerIds` | list of string | The volunteers whose pending or accepted request chose this shift (`shiftIds`). Absent reads as empty |
+| `startAt` | timestamp | An even hour, 00 to 22, in the zone the event's days are shown in: the phone's |
+| `endAt` | timestamp | The next even hour on the clock: 2 h after `startAt`, but 1 h or 3 h on the nights the clocks change, so the slots of a day never overlap nor leave a gap. A duration is read from `startAt` and `endAt` |
+| `createdAt` | timestamp | When the organizer opened the slot |
+
+A shift is never edited, only opened and closed. The mapper ignores the `teamId` and `assigneeIds`
+of the shifts of the old model, which nothing wrote.
+
+Until #593, `firestore.rules` still checks the fields of that old model (`teamId`, `assigneeIds`) and
+refuses `volunteerIds`: nothing writes shifts before then.
 
 ### `events/{eventId}/missions/{missionId}`
 
@@ -333,7 +340,8 @@ The document id is the volunteer's uid, so a volunteer can send only one request
 |---|---|---|
 | `userId` | string | Same as the document id |
 | `teamId` | string | The team of the same event the volunteer applies to. Changes only when the organizer moves an accepted volunteer to another team |
-| `availability` | list of maps | `startAt`, `endAt` (timestamp); at least one slot |
+| `availability` | list of maps | `startAt`, `endAt` (timestamp); at least one slot. With shifts, the slots of the chosen shifts joined back to back |
+| `shiftIds` | list of string | Ids of the shifts the volunteer chose. Absent reads as empty, as for the requests sent before shifts existed; the app leaves it out while it is empty |
 | `status` | string | `PENDING`, then `ACCEPTED` or `REJECTED` |
 | `createdAt` | timestamp | |
 

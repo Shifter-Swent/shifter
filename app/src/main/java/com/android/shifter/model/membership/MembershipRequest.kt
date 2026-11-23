@@ -16,13 +16,17 @@ import java.time.Instant
  *   one team per event, so they apply to exactly one, and accepting the request makes them a member
  *   of it.
  * @property availability when the volunteer can work. Never empty: an organizer needs at least one
- *   declared time window before the request can be scheduled.
+ *   declared time window before the request can be scheduled. With shifts, it is the slots of the
+ *   chosen shifts, joined back to back.
+ * @property shiftIds ids of the shifts of the event the volunteer chose (see `Shift`), empty when
+ *   they chose none, e.g. for an event without shifts or a request sent before shifts existed.
  */
 data class MembershipRequest(
     val id: String = "",
     val userId: String,
     val teamId: String,
     val availability: List<AvailabilitySlot>,
+    val shiftIds: List<String> = emptyList(),
     val status: MembershipRequestStatus = MembershipRequestStatus.PENDING,
     val createdAt: Instant,
 ) {

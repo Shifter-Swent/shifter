@@ -92,6 +92,7 @@ class MembershipRequestFirestoreMapperTest {
         ),
         mapped.availability[1],
     )
+    assertEquals(listOf("1784448000000"), mapped.shiftIds)
     assertEquals(MembershipRequestStatus.ACCEPTED, mapped.status)
     assertEquals(Instant.parse("2026-01-15T09:00:00Z"), mapped.createdAt)
 
@@ -183,6 +184,49 @@ class MembershipRequestFirestoreMapperTest {
 
     assertEquals(listOf(slot), mapped.availability)
     assertEquals(stored.copy(id = requestId), mapped)
+  }
+
+  @Test
+  fun toMembershipRequest_roundTripsTheChosenShiftsInOrder() = emulatorTest {
+    val shiftIds = listOf("1784448000000", "1784440800000")
+    val stored = richRequest().copy(shiftIds = shiftIds)
+    val requestId = writeRawRequest(stored.toFirestoreMap())
+
+    val snapshot = read(requestId)
+
+    assertEquals(shiftIds, snapshot.get(MembershipRequestSchema.SHIFT_IDS))
+    assertEquals(stored.copy(id = requestId), snapshot.toMembershipRequest())
+  }
+
+  @Test
+  fun toFirestoreMap_withNoShifts_leavesTheFieldOut() {
+    // The rules refuse the field until #594 allows it, so applying must keep working without it.
+    val body = richRequest().copy(shiftIds = emptyList()).toFirestoreMap()
+
+    assertFalse(MembershipRequestSchema.SHIFT_IDS in body)
+  }
+
+  @Test
+  fun toMembershipRequest_withoutShiftIds_readsNoShifts() = emulatorTest {
+    // What a request sent before shifts existed looks like.
+    val requestId =
+        writeRawRequest(richRequest().toFirestoreMap() - MembershipRequestSchema.SHIFT_IDS)
+
+    val snapshot = read(requestId)
+
+    assertFalse(snapshot.contains(MembershipRequestSchema.SHIFT_IDS))
+    assertEquals(emptyList<String>(), snapshot.toMembershipRequest().shiftIds)
+  }
+
+  @Test
+  fun toMembershipRequest_failsLoudlyOnAShiftIdsEntryThatIsNotAString() = emulatorTest {
+    val requestId =
+        writeRawRequest(
+            richRequest().toFirestoreMap() +
+                (MembershipRequestSchema.SHIFT_IDS to listOf("1784448000000", 7))
+        )
+
+    assertFailsOnField(requestId, MembershipRequestSchema.SHIFT_IDS)
   }
 
   @Test
@@ -369,6 +413,7 @@ class MembershipRequestFirestoreMapperTest {
                       Instant.parse("2026-07-22T12:00:00Z"),
                   ),
               ),
+          shiftIds = listOf("1784448000000"),
           status = MembershipRequestStatus.ACCEPTED,
           createdAt = Instant.parse("2026-01-15T09:00:00Z"),
       )
