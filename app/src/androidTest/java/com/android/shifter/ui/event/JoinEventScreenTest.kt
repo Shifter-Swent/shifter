@@ -260,13 +260,13 @@ class JoinEventScreenTest {
   }
 
   @Test
-  fun codeStep_showsItsTitleAndLeavesWithTheBackButton() {
+  fun codeStep_keepsItsTitleAndLeavesWithTheBackButton() {
     var leaves = 0
     composeTestRule.setContent { content(uiState = JoinEventUiState(), onLeave = { leaves++ }) }
 
-    composeTestRule
-        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
-        .assertTextEquals("Join an event")
+    // Only the back button is added: the title stays in the step, with no top bar.
+    composeTestRule.onNodeWithText("Join an event").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertDoesNotExist()
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
     assertEquals(1, leaves)

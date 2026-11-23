@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -61,9 +62,9 @@ import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.components.BackButton
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PrimaryButton
-import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.membershipStatusColors
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_inputBackground
@@ -152,11 +153,10 @@ fun JoinEventContent(
               )
   ) {
     if (event == null) {
-      Column(Modifier.fillMaxSize()) {
-        ShifterTopBar(title = stringResource(R.string.join_event_title), onBack = onLeave)
-        Box(Modifier.weight(1f)) {
-          JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
-        }
+      Box(Modifier.statusBarsPadding()) {
+        JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
+        // The circle alone, where the shared top bar puts it: the step keeps its own title.
+        BackButton(onClick = onLeave, modifier = Modifier.padding(start = 20.dp, top = 12.dp))
       }
     } else {
       BackHandler(onBack = onBack)
@@ -198,6 +198,12 @@ private fun JoinCodeStep(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
     ) {
+      Text(
+          text = stringResource(R.string.join_event_title),
+          color = colors.onBackground,
+          fontSize = 22.sp,
+          fontWeight = FontWeight.Bold,
+      )
       Text(
           text = stringResource(R.string.join_event_intro),
           color = shifter_mutedText,

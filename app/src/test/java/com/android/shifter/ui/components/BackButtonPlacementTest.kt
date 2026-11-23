@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.components
 
 import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
@@ -10,6 +11,8 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.ui.event.EventDetailsContent
+import com.swent.shifter.ui.event.JoinEventContent
+import com.swent.shifter.ui.event.JoinEventUiState
 import com.swent.shifter.ui.settings.SettingsScreen
 import com.swent.shifter.ui.settings.SettingsUiState
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -68,6 +71,29 @@ class BackButtonPlacementTest {
     }
 
     assertCircleStartsAt24Dp()
+  }
+
+  @Test
+  fun joinEventCodeStep_placesTheCircleWhereTheTopBarDoes() {
+    composeTestRule.setContent {
+      ShifterTheme {
+        JoinEventContent(
+            uiState = JoinEventUiState(),
+            onJoinCodeChange = {},
+            onFindEvent = {},
+            onBack = {},
+            onLeave = {},
+            onTeamSelected = {},
+            onApply = {},
+        )
+      }
+    }
+
+    assertCircleStartsAt24Dp()
+    // 12 dp above the button in the 72 dp bar, plus 4 dp around the circle.
+    composeTestRule
+        .onNodeWithTag(BackButtonTestTags.CIRCLE, useUnmergedTree = true)
+        .assertTopPositionInRootIsEqualTo(16.dp)
   }
 
   private companion object {
