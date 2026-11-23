@@ -1,6 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.shifts
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
@@ -15,6 +17,7 @@ import com.swent.shifter.model.shift.slotOf
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
@@ -99,6 +102,25 @@ class ShiftsViewModelTest {
       )
 
   // ------------------------------------------------------------------ Loading
+
+  @Test
+  fun load_beforeTheShiftsArrive_isLoadingAndNotYetEmpty() = runTest {
+    viewModel = ShiftsViewModel(EVENT_ID, shifts, events, ZONE)
+
+    assertTrue(state.isLoading)
+    assertFalse("the grid must not flash its empty state while loading", state.isEmpty)
+  }
+
+  @Test
+  fun load_whenTheEventIsNotFound_keepsTheDaysOfTheOpenSlots() = runTest {
+    start(seeded = listOf(shift(sat, 10)), event = null)
+
+    // An event that is gone is not a failure to report: its open slots still draw their own days.
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+    assertEquals(listOf(sat), state.days)
+    assertNull(state.error)
+    assertFalse(state.isLoading)
+  }
 
   @Test
   fun load_withoutASlotOpen_showsTheDaysAndTheEmptyState() = runTest {
@@ -336,6 +358,37 @@ class ShiftsViewModelTest {
   // ----------------------------------------------------------- Cancellation
 
   @Test
+  fun load_whenTheEventReadIsCancelled_reportsNoFailure() = runTest {
+    events.failure = CancellationException("the screen went away")
+    start(seeded = listOf(shift(sat, 10)))
+
+    assertNull(state.error)
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+  }
+
+  @Test
+  fun observeShifts_whenTheFlowIsCancelled_reportsNoFailure() = runTest {
+    shifts.failure = CancellationException("the screen went away")
+    start()
+
+    assertNull(state.error)
+    assertTrue("a cancelled read leaves the state as it was", state.isLoading)
+  }
+
+  @Test
+  fun toggleSlot_whenTheSaveIsCancelled_reportsNoFailure() = runTest {
+    start(seeded = listOf(shift(sat, 10)))
+    edit()
+    shifts.failure = CancellationException("the screen went away")
+
+    viewModel.toggleSlot(sat, 12)
+    advanceUntilIdle()
+
+    assertNull(state.error)
+    assertEquals(listOf(shift(sat, 10)), state.shifts)
+  }
+
+  @Test
   fun clearing_stopsFollowingTheShifts() = runTest {
     start(seeded = listOf(shift(sat, 10)))
 
@@ -344,6 +397,22 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(0, state.shifts.single().volunteerIds.size)
+  }
+
+  // ------------------------------------------------------------------ Factory
+
+  @Test
+  fun factory_buildsAViewModelOverTheSameEventAndRepositories() = runTest {
+    shifts.put(shift(sat, 10))
+    events.events += eventFrom(fri, sun)
+
+    val factory = ShiftsViewModel.factory(EVENT_ID, shifts, events)
+    val built = ViewModelProvider(ViewModelStore(), factory)[ShiftsViewModel::class.java]
+    advanceUntilIdle()
+
+    // The zone is the phone's here, so only what does not depend on it is asserted.
+    assertEquals(listOf(shift(sat, 10)), built.uiState.value.shifts)
+    assertNull(built.uiState.value.error)
   }
 
   /** Counts the slots opened, to check a second tap on one does not send a second write. */
