@@ -17,6 +17,19 @@ service cloud.firestore {
         return mode in ['VOLUNTEER', 'ORGANIZER'];
       }
 
+      // The names of NotificationKind, split by NotificationKind.inInbox: a new kind goes into
+      // exactly one of these two lists, so the inbox and the notification choices both know it.
+      // The kinds written in an inbox by the app of the person who acts.
+      function inboxKinds() {
+        return ['NEW_APPLICATION', 'APPLICATION_DECIDED', 'TEAM_CHANGED', 'MISSION_ASSIGNED',
+                'MISSION_CHANGED', 'ANNOUNCEMENT'];
+      }
+
+      // The kinds computed on the recipient's phone, which nobody writes in an inbox.
+      function phoneKinds() {
+        return ['MISSED_CHECK_IN', 'OPEN_SPOTS'];
+      }
+
       // notificationSettings maps the names of NotificationKind to whether that kind is on; a
       // missing kind is on. A change of it changes nothing else, and only the kinds it changes must
       // be known ones: a kind removed from the app later stays in the map without blocking the
@@ -27,9 +40,7 @@ service cloud.firestore {
         return request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['notificationSettings'])
           && settings is map
-          && settings.diff(before).affectedKeys().hasOnly(['NEW_APPLICATION',
-               'APPLICATION_DECIDED', 'TEAM_CHANGED', 'MISSION_ASSIGNED', 'MISSION_CHANGED',
-               'ANNOUNCEMENT', 'MISSED_CHECK_IN', 'OPEN_SPOTS'])
+          && settings.diff(before).affectedKeys().hasOnly(inboxKinds().concat(phoneKinds()))
           && settings.values().hasOnly([true, false]);
       }
 
@@ -71,12 +82,6 @@ service cloud.firestore {
       // inbox, as the rules cannot tell which actions concern whom: a notification is only trusted
       // for its senderId, which is always the writer, never for what its data says.
       match /notifications/{notificationId} {
-        // The names of the NotificationKinds with inInbox: the others are computed on the phone.
-        function isInboxKind(kind) {
-          return kind in ['NEW_APPLICATION', 'APPLICATION_DECIDED', 'TEAM_CHANGED',
-                          'MISSION_ASSIGNED', 'MISSION_CHANGED', 'ANNOUNCEMENT'];
-        }
-
         // NotificationData.Key.ALL, each value a string. A rule cannot loop over a map, so every
         // key is checked by name.
         function isValidData(data) {
@@ -101,7 +106,7 @@ service cloud.firestore {
           let data = request.resource.data;
           return data.keys().hasOnly(
                    ['kind', 'eventId', 'eventTitle', 'senderId', 'data', 'createdAt'])
-            && isInboxKind(data.kind)
+            && data.kind in inboxKinds()
             && data.eventId is string
             && data.eventTitle is string
             && data.senderId == request.auth.uid
