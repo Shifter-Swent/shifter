@@ -166,9 +166,8 @@ fun ShiftGrid(
   val openShifts = remember(shifts) { shifts.associateBy { it.id } }
   val hours = remember(days, openShifts, mode, zone) { rowsOf(days, openShifts, mode, zone) }
   val shiftAt = { day: LocalDate, hour: Int -> openShifts[slotOf(day, hour, zone).shiftId] }
-  // Cells are joined into blocks for an organizer, never for a volunteer picking one slot at a
-  // time, and only where both cells are drawn: the first and last row always close their block.
-  val joins = mode != ShiftGridMode.PICK
+  // Blocks are drawn for an organizer, never for a volunteer picking one slot at a time.
+  val joinsBlocks = mode != ShiftGridMode.PICK
 
   BoxWithConstraints(modifier = modifier.fillMaxWidth().testTag(ShiftGridTestTags.GRID)) {
     val columns = days.size.coerceIn(1, DAYS_ON_SCREEN)
@@ -194,11 +193,14 @@ fun ShiftGrid(
           ) {
             days.forEach { day ->
               val slot = slotOf(day, hour, zone)
+              val shift = openShifts[slot.shiftId]
+              // Only two open cells join: a closed one, and the first and last row, close a block.
+              val joins = joinsBlocks && shift != null
               SlotCell(
                   day = day,
                   hour = hour,
                   slot = slot,
-                  shift = openShifts[slot.shiftId],
+                  shift = shift,
                   mode = mode,
                   picked = pickedShiftIds.contains(slot.shiftId),
                   joinedAbove = joins && row > 0 && shiftAt(day, hours[row - 1]) != null,
@@ -562,6 +564,8 @@ private fun slotDescription(
       when {
         shift == null -> stringResource(R.string.shift_grid_slot_closed)
         mode == ShiftGridMode.PICK && picked -> stringResource(R.string.shift_grid_slot_picked)
+        mode == ShiftGridMode.EDIT && volunteers > 0 ->
+            stringResource(R.string.shift_grid_slot_open_locked)
         else -> stringResource(R.string.shift_grid_slot_open)
       }
   val said =

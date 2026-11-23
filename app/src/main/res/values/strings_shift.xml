@@ -11,6 +11,8 @@
     <string name="shift_grid_slot_open">open</string>
     <!-- A slot the organizer has not opened -->
     <string name="shift_grid_slot_closed">closed</string>
+    <!-- An open slot volunteers have chosen, which the organizer can no longer close -->
+    <string name="shift_grid_slot_open_locked">open, locked</string>
     <!-- An open slot the volunteer has picked -->
     <string name="shift_grid_slot_picked">picked</string>
     <!-- A slot's state followed by its volunteers, e.g. "open, 3 volunteers" -->

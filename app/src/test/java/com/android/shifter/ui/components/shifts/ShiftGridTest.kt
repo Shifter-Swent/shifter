@@ -140,7 +140,7 @@ class ShiftGridTest {
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
     mark(ShiftGridTestTags.CLOSE_ACTION, sat, 10).assertDoesNotExist()
-    cell(sat, 10).assert(hasContentDescription(OPEN_WITH_THREE, substring = true))
+    cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
     cell(sat, 10).assertHasNoClickAction()
     cell(sat, 10).performClick()
 
@@ -194,18 +194,19 @@ class ShiftGridTest {
   // ---------------------------------------------------------------- View
 
   @Test
-  fun view_joinsTheSlotsThatFollowEachOther_andNotThoseApart() {
+  fun view_stacksTheRowsWithNoGap_andReadsOutOpenAndClosedSlots() {
     show(
         ShiftGridMode.VIEW,
         shifts = listOf(shiftOf(sat, 10), shiftOf(sat, 12), shiftOf(sat, 16)),
     )
 
-    // 10 and 12 make one block of 4 h: nothing stands between their cells.
+    // The rows carry no spacing, so a cell always touches the one below it, drawn as one block
+    // with it or not. This pins the pitch of the grid, not the corners a block rounds.
     assertEquals(
         cell(sat, 10).getUnclippedBoundsInRoot().bottom,
         cell(sat, 12).getUnclippedBoundsInRoot().top,
     )
-    // 16 is a block of its own: the slot before it is closed.
+    // 16 stands apart from them: the slot before it is closed.
     cell(sat, 14).assert(hasContentDescription(CLOSED, substring = true))
     cell(sat, 16).assert(hasContentDescription(OPEN, substring = true))
   }
@@ -356,7 +357,7 @@ class ShiftGridTest {
     shifts = listOf(shiftOf(sat, 10, volunteers = 3))
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
-    cell(sat, 10).assert(hasContentDescription(OPEN_WITH_THREE, substring = true))
+    cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
     cell(sat, 10).assertHasNoClickAction()
   }
 
@@ -438,5 +439,6 @@ class ShiftGridTest {
     const val OPEN = ", open"
     const val CLOSED = ", closed"
     const val OPEN_WITH_THREE = "open, 3 volunteers"
+    const val LOCKED_WITH_THREE = "open, locked, 3 volunteers"
   }
 }
