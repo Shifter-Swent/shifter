@@ -149,14 +149,8 @@ class FirestoreMissionRepository(
     translatingErrors {
       firestore
           .runTransaction { transaction ->
-            val snapshot = transaction.get(document)
-            if (!snapshot.exists()) {
-              throw FirebaseFirestoreException(
-                  "Mission '$missionId' of event '$eventId' does not exist",
-                  Code.NOT_FOUND,
-              )
-            }
-            requireRoomInMission(snapshot.toMission().volunteersNeeded, assigneeIds.size)
+            val stored = transaction.get(document).toStoredMission()
+            requireRoomInMission(stored.volunteersNeeded, assigneeIds.size)
             transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
             null
           }
@@ -182,12 +176,12 @@ class FirestoreMissionRepository(
     requireValidUpdate(mission)
     val document = missionsOf(mission.eventId).document(mission.id)
     translatingErrors {
-      val stored = document.get().await().toStoredMission(mission)
+      val stored = document.get().await().toStoredMission()
       requireNotCompleted(stored, clock.instant())
       findConflict(stored.withEditableFieldsOf(mission))?.let { throw MissionOverlapException(it) }
       firestore
           .runTransaction { transaction ->
-            val current = transaction.get(document).toStoredMission(mission)
+            val current = transaction.get(document).toStoredMission()
             requireNotCompleted(current, clock.instant())
             requireRoomForAssignees(current, mission)
             transaction.update(document, mission.toEditableFieldsMap())
@@ -217,13 +211,10 @@ class FirestoreMissionRepository(
         .firstOrNull { it.id != mission.id && mission.conflictsWith(it) }
   }
 
-  /** The mission stored in this snapshot, failing with NOT_FOUND when [mission] does not exist. */
-  private fun DocumentSnapshot.toStoredMission(mission: Mission): Mission {
+  /** The mission stored in this snapshot, failing with NOT_FOUND when it does not exist. */
+  private fun DocumentSnapshot.toStoredMission(): Mission {
     if (!exists()) {
-      throw FirebaseFirestoreException(
-          "Mission '${mission.id}' of event '${mission.eventId}' does not exist",
-          Code.NOT_FOUND,
-      )
+      throw FirebaseFirestoreException("Mission '${reference.path}' does not exist", Code.NOT_FOUND)
     }
     return toMission()
   }
