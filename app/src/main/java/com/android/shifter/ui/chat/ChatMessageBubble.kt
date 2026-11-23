@@ -28,12 +28,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.formatDay
 import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.theme.md_theme_dark_surface
+import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_onPrimaryMuted
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -62,6 +66,7 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
               showsTime = row.endsGroup,
               background = MaterialTheme.colorScheme.primary,
               textColor = MaterialTheme.colorScheme.onPrimary,
+              statusColor = shifter_onPrimaryMuted,
               shape = bubbleShape(tail = row.endsGroup, mine = true),
               modifier = Modifier.align(Alignment.CenterEnd).widthIn(max = 280.dp).then(merged),
           )
@@ -91,6 +96,7 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
               showsTime = row.endsGroup,
               background = MaterialTheme.colorScheme.surfaceVariant,
               textColor = MaterialTheme.colorScheme.onSurface,
+              statusColor = shifter_mutedText,
               shape = bubbleShape(tail = row.endsGroup, mine = false),
           )
         }
@@ -132,6 +138,7 @@ private fun ChatMessageBubble(
     showsTime: Boolean,
     background: Color,
     textColor: Color,
+    statusColor: Color,
     shape: Shape,
     modifier: Modifier = Modifier,
 ) {
@@ -147,8 +154,7 @@ private fun ChatMessageBubble(
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.align(Alignment.Start),
     )
-    if (message.isPending || showsTime)
-        MessageStatus(message, zone, today, textColor.copy(alpha = 0.7f))
+    if (message.isPending || showsTime) MessageStatus(message, zone, today, statusColor)
   }
 }
 
@@ -171,18 +177,27 @@ internal fun MessageStatus(message: ChatMessageItem, zone: ZoneId, today: LocalD
           Text(
               stringResource(R.string.chat_sending),
               color = color,
-              style = MaterialTheme.typography.labelSmall,
+              style = statusStyle(),
           )
         }
     message.sentAt != null ->
         Text(
             sentAtLabel(message.sentAt.atZone(zone), today),
             color = color,
-            style = MaterialTheme.typography.labelSmall,
+            style = statusStyle(),
             modifier = Modifier.padding(top = 2.dp),
         )
   }
 }
+
+/** The small text of a message's time, tighter than labelSmall so it stays discreet. */
+@Composable
+private fun statusStyle(): TextStyle =
+    MaterialTheme.typography.labelSmall.copy(
+        fontSize = 11.sp,
+        lineHeight = 13.sp,
+        letterSpacing = 0.sp,
+    )
 
 /**
  * The time of a message sent [today], or its day and time otherwise: the channel stays open after
