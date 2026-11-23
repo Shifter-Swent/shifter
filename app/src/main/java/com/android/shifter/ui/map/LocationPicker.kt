@@ -151,7 +151,7 @@ internal fun LocationPicker(
                         formatCoordinate(selected.longitude),
                     )
                 isMapLoaded -> stringResource(R.string.map_picker_hint)
-                else -> stringResource(R.string.map_picker_unavailable)
+                else -> stringResource(R.string.map_picker_loading)
               },
           style = MaterialTheme.typography.bodySmall,
           color = MaterialTheme.colorScheme.onSurface,
