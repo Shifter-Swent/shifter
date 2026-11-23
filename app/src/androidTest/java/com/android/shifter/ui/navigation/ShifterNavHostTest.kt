@@ -1091,6 +1091,7 @@ class ShifterNavHostTest {
             checkInRepository = repositories.checkInRepository,
             chatRepository = repositories.chatRepository,
             liveLocationRepository = repositories.liveLocationRepository,
+            notificationInbox = repositories.notificationInbox,
         )
     lateinit var navController: NavHostController
     composeTestRule.setContent {
@@ -1325,6 +1326,7 @@ class ShifterNavHostTest {
             repositories.checkInRepository,
             repositories.chatRepository,
             repositories.liveLocationRepository,
+            repositories.notificationInbox,
         )
     )
 

@@ -10,6 +10,7 @@ import com.swent.shifter.model.location.LiveLocationRepository
 import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.mission.MissionRepository
+import com.swent.shifter.model.notification.NotificationInbox
 import com.swent.shifter.model.notification.NotificationPreferences
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.time.DeviceMinuteClock
@@ -41,6 +42,8 @@ class RepositoryProvider(
     val checkInRepository: CheckInRepository,
     val chatRepository: ChatRepository,
     val liveLocationRepository: LiveLocationRepository,
+    /** The signed-in user's inbox, read and emptied by the notification engine (#614). */
+    val notificationInbox: NotificationInbox,
     /**
      * The volunteer's just-made location-sharing decision, shared between Settings and the
      * foreground publisher so turning sharing off stops GPS at once (#377). In memory, not a
