@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -1068,15 +1069,6 @@ class AddMissionViewModelTest {
     viewModel.save()
     advanceUntilIdle()
     assertEquals(2, missions.created.size)
-  }
-
-  @Test
-  fun parseCoordinate_acceptsAPointOrACommaWithinTheRange() {
-    assertEquals(46.5, parseCoordinate(" 46.5 ", -90.0..90.0))
-    assertEquals(-6.25, parseCoordinate("-6,25", -90.0..90.0))
-    assertNull(parseCoordinate("", -90.0..90.0))
-    assertNull(parseCoordinate("abc", -90.0..90.0))
-    assertNull(parseCoordinate("-90.5", -90.0..90.0))
   }
 
   @Test

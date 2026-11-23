@@ -1,4 +1,5 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+// Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.event
 
 import androidx.lifecycle.viewmodel.CreationExtras
@@ -7,9 +8,11 @@ import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventStatus
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
+import com.swent.shifter.model.location.GeoPosition
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -35,6 +38,11 @@ class CreateEventViewModelTest {
 
   private lateinit var repository: FakeEventRepository
   private lateinit var viewModel: CreateEventViewModel
+
+  /** A point whose five-decimal form is "46.50690, 6.62660", as the map would give it. */
+  private val ouchy = GeoPosition(46.5069, 6.6266)
+  /** A second point, to move a draft to before cancelling. */
+  private val lausanne = GeoPosition(46.5197, 6.6323)
 
   @Before
   fun setUp() {
@@ -456,5 +464,232 @@ class CreateEventViewModelTest {
     viewModel.onTitleChange("Paléo")
 
     assertFalse(state.saveFailed)
+  }
+
+  @Test
+  fun createEvent_withValidCoordinates_savesThePoint() = runTest {
+    fillValidForm()
+    viewModel.onLatitudeChange("46.5069")
+    // A decimal comma is accepted as well as a point, as typed on many keyboards.
+    viewModel.onLongitudeChange(" 6,6266 ")
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(
+        EventLocation("Route de Saint-Cergue 312, Nyon", GeoPosition(46.5069, 6.6266)),
+        repository.events.single().location,
+    )
+  }
+
+  @Test
+  fun createEvent_withOnlyOneCoordinate_reportsTheOtherInvalid() {
+    fillValidForm()
+    viewModel.onLatitudeChange("46.5069")
+
+    viewModel.createEvent()
+
+    assertEquals(setOf(EventFormError.LONGITUDE_INVALID), state.errors)
+    assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun createEvent_withOutOfRangeCoordinates_reportsThem() {
+    fillValidForm()
+    viewModel.onLatitudeChange("91")
+    viewModel.onLongitudeChange("200")
+
+    viewModel.createEvent()
+
+    assertEquals(
+        setOf(EventFormError.LATITUDE_INVALID, EventFormError.LONGITUDE_INVALID),
+        state.errors,
+    )
+    assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun pickLocation_opensOnTheTypedCoordinates() {
+    viewModel.onLatitudeChange("46.5069")
+    viewModel.onLongitudeChange("6.6266")
+
+    viewModel.onPickLocation()
+
+    assertTrue(state.isPickingLocation)
+    assertEquals(ouchy, state.locationDraft)
+  }
+
+  @Test
+  fun pickLocation_withoutCoordinates_opensWithNoDraft() {
+    viewModel.onPickLocation()
+
+    assertTrue(state.isPickingLocation)
+    assertNull(state.locationDraft)
+  }
+
+  @Test
+  fun confirmLocation_fillsTheCoordinatesWithADecimalPoint() {
+    val defaultLocale = Locale.getDefault()
+    try {
+      Locale.setDefault(Locale.FRANCE)
+
+      viewModel.onPickLocation()
+      viewModel.onLocationDraftChange(ouchy)
+      viewModel.onConfirmLocation()
+
+      assertFalse(state.isPickingLocation)
+      assertNull(state.locationDraft)
+      assertEquals("46.50690", state.latitude)
+      assertEquals("6.62660", state.longitude)
+    } finally {
+      Locale.setDefault(defaultLocale)
+    }
+  }
+
+  @Test
+  fun confirmLocation_withoutMoving_keepsTheTypedCoordinates() {
+    viewModel.onLatitudeChange("46.5069123")
+    viewModel.onLongitudeChange("6.6266456")
+
+    viewModel.onPickLocation()
+    viewModel.onConfirmLocation()
+
+    // Not rounded to the five decimals the map gives.
+    assertFalse(state.isPickingLocation)
+    assertEquals("46.5069123", state.latitude)
+    assertEquals("6.6266456", state.longitude)
+  }
+
+  @Test
+  fun confirmLocation_withOnlyALatitudeTyped_replacesBothCoordinates() {
+    viewModel.onLatitudeChange("46.5")
+
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(ouchy)
+    viewModel.onConfirmLocation()
+
+    // The map opened with no draft, so the point picked is new and writes both coordinates.
+    assertEquals("46.50690", state.latitude)
+    assertEquals("6.62660", state.longitude)
+  }
+
+  @Test
+  fun confirmLocation_afterASubmitWithAnInvalidLatitude_clearsTheError() {
+    fillValidForm()
+    viewModel.onLatitudeChange("91")
+    viewModel.onLongitudeChange("6.6266")
+    viewModel.createEvent()
+    assertEquals(setOf(EventFormError.LATITUDE_INVALID), state.errors)
+
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(ouchy)
+    viewModel.onConfirmLocation()
+
+    // Confirming goes through the form's own edit, so the errors follow it as for any other change.
+    assertTrue(state.errors.isEmpty())
+    assertEquals("46.50690", state.latitude)
+  }
+
+  @Test
+  fun createEvent_withWhitespaceOnlyCoordinates_savesTheAddressAlone() = runTest {
+    fillValidForm()
+    viewModel.onLatitudeChange("   ")
+    viewModel.onLongitudeChange(" ")
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(state.errors.isEmpty())
+    assertNull(repository.events.single().location.position)
+  }
+
+  @Test
+  fun cancelLocationPicker_keepsTheCoordinates() {
+    viewModel.onLatitudeChange("46.5069")
+    viewModel.onLongitudeChange("6.6266")
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(lausanne)
+
+    viewModel.onCancelLocationPicker()
+
+    assertFalse(state.isPickingLocation)
+    assertNull(state.locationDraft)
+    assertEquals("46.5069", state.latitude)
+    assertEquals("6.6266", state.longitude)
+  }
+
+  @Test
+  fun locationDraftChange_withTheMapClosed_isIgnored() {
+    viewModel.onLocationDraftChange(ouchy)
+
+    assertNull(state.locationDraft)
+  }
+
+  @Test
+  fun clearLocation_emptiesTheCoordinatesButKeepsTheAddress() = runTest {
+    fillValidForm()
+    viewModel.onLatitudeChange("91")
+    viewModel.createEvent()
+    assertTrue(EventFormError.LATITUDE_INVALID in state.errors)
+
+    viewModel.onClearLocation()
+
+    assertEquals("Route de Saint-Cergue 312, Nyon ", state.address)
+    assertEquals("", state.latitude)
+    assertEquals("", state.longitude)
+    assertTrue(state.errors.isEmpty())
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+    assertNull(repository.events.single().location.position)
+  }
+
+  @Test
+  fun createEvent_withACoordinateThatIsNotANumber_reportsItRatherThanReadingPartOfIt() {
+    fillValidForm()
+    viewModel.onLatitudeChange("46.5069 N")
+    viewModel.onLongitudeChange("6.6266")
+
+    viewModel.createEvent()
+
+    assertEquals(setOf(EventFormError.LATITUDE_INVALID), state.errors)
+    assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun pickLocation_afterACancelledPick_opensOnTheTypedCoordinatesAgain() {
+    viewModel.onLatitudeChange("46.5069")
+    viewModel.onLongitudeChange("6.6266")
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(lausanne)
+    viewModel.onCancelLocationPicker()
+
+    viewModel.onPickLocation()
+
+    // The point moved to before cancelling is forgotten: the map opens on the typed point again.
+    assertEquals(ouchy, state.locationDraft)
+  }
+
+  @Test
+  fun confirmLocation_withoutAPoint_closesTheMapAndChangesNothing() {
+    viewModel.onPickLocation()
+
+    viewModel.onConfirmLocation()
+
+    assertFalse(state.isPickingLocation)
+    assertEquals("", state.latitude)
+    assertEquals("", state.longitude)
+  }
+
+  @Test
+  fun createEvent_afterPicking_savesThePickedPosition() = runTest {
+    fillValidForm()
+    viewModel.onPickLocation()
+    viewModel.onLocationDraftChange(ouchy)
+    viewModel.onConfirmLocation()
+
+    viewModel.createEvent()
+    dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(ouchy, repository.events.single().location.position)
   }
 }

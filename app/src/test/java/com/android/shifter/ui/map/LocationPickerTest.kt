@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +28,7 @@ import com.swent.shifter.ui.theme.ShifterTheme
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,21 +52,28 @@ class LocationPickerTest {
   /** The camera the picker opened the map with. */
   private var camera: CameraPositionState? = null
 
-  private val fakeMap: PickerMap = { markers, onMapClick, cameraPositionState ->
-    this.markers = markers
-    camera = cameraPositionState
-    // In a column, so each button is tapped on its own rather than through the one above it.
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-      Button(onClick = { onMapClick(EPFL) }, Modifier.testTag(TAP_EPFL)) { Text("EPFL") }
-      Button(onClick = { onMapClick(OUCHY) }, Modifier.testTag(TAP_OUCHY)) { Text("Ouchy") }
-    }
-  }
+  /**
+   * A stand-in map that reports itself loaded when [loads], as the real one does once it has drawn,
+   * and never otherwise, as it does with no network or no Maps key.
+   */
+  private fun fakeMap(loads: Boolean = true): PickerMap =
+      { markers, onMapClick, cameraPositionState, onMapLoaded ->
+        this.markers = markers
+        camera = cameraPositionState
+        if (loads) LaunchedEffect(Unit) { onMapLoaded() }
+        // In a column, so each button is tapped on its own rather than through the one above it.
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
+          Button(onClick = { onMapClick(EPFL) }, Modifier.testTag(TAP_EPFL)) { Text("EPFL") }
+          Button(onClick = { onMapClick(OUCHY) }, Modifier.testTag(TAP_OUCHY)) { Text("Ouchy") }
+        }
+      }
 
   /** The picker with its selection kept here, as a caller would keep it. */
   private fun show(
       initialSelection: GeoPosition? = null,
       initialCenter: GeoPosition? = null,
       onSelect: (GeoPosition) -> Unit = {},
+      map: PickerMap = fakeMap(),
   ) {
     compose.setContent {
       var selected by remember { mutableStateOf(initialSelection) }
@@ -77,7 +86,7 @@ class LocationPickerTest {
             },
             modifier = Modifier,
             initialCenter = initialCenter,
-            map = fakeMap,
+            map = map,
         )
       }
     }
@@ -190,6 +199,64 @@ class LocationPickerTest {
     compose
         .onNodeWithTag(LocationPickerTestTags.SELECTED)
         .assertTextEquals("Selected: 46.50690, 6.62660")
+  }
+
+  @Test
+  fun tappingTheMap_beforeItLoaded_isIgnoredAndAsksForTheCoordinates() {
+    var chosen: GeoPosition? = null
+    show(onSelect = { chosen = it }, map = fakeMap(loads = false))
+
+    compose.onNodeWithTag(TAP_EPFL).performClick()
+    compose.waitForIdle()
+
+    // A grey map still reports taps, which would place the point near the default centre.
+    assertNull(chosen)
+    assertEquals(emptyList<MapMarker>(), markers)
+    compose.onNodeWithTag(LocationPickerTestTags.SELECTED).assertDoesNotExist()
+    compose
+        .onNodeWithTag(LocationPickerTestTags.HINT)
+        .assertTextEquals("Loading the map… If it doesn't load, enter coordinates manually.")
+  }
+
+  @Test
+  fun opening_onAMapThatNeverLoaded_stillShowsTheSelectionItWasGiven() {
+    show(initialSelection = OUCHY, map = fakeMap(loads = false))
+
+    // The coordinates the caller already had are not lost, only the taps are dropped.
+    compose
+        .onNodeWithTag(LocationPickerTestTags.SELECTED)
+        .assertTextEquals("Selected: 46.50690, 6.62660")
+    assertEquals(listOf(OUCHY), markers.map { it.position })
+  }
+
+  @Test
+  fun parseCoordinate_acceptsAPointOrACommaWithinTheRange() {
+    assertEquals(46.5, parseCoordinate(" 46.5 ", -90.0..90.0))
+    assertEquals(-6.25, parseCoordinate("-6,25", -90.0..90.0))
+    assertNull(parseCoordinate("", -90.0..90.0))
+    assertNull(parseCoordinate("   ", -90.0..90.0))
+    assertNull(parseCoordinate("abc", -90.0..90.0))
+    assertNull(parseCoordinate("-90.5", -90.0..90.0))
+  }
+
+  @Test
+  fun parseCoordinate_atTheEdgesOfTheRange_acceptsThem() {
+    assertEquals(-90.0, parseCoordinate("-90", -90.0..90.0))
+    assertEquals(90.0, parseCoordinate("90", -90.0..90.0))
+    assertEquals(180.0, parseCoordinate("180", -180.0..180.0))
+  }
+
+  @Test
+  fun parseCoordinate_withAUnitOrAHemisphere_refusesIt() {
+    assertNull(parseCoordinate("46.5N", -90.0..90.0))
+    assertNull(parseCoordinate("46.5°", -90.0..90.0))
+  }
+
+  @Test
+  fun parseCoordinate_withNaNOrInfinity_refusesThem() {
+    // Java's number syntax has words for these; the range is what rejects them.
+    assertNull(parseCoordinate("NaN", -90.0..90.0))
+    assertNull(parseCoordinate("Infinity", -90.0..90.0))
   }
 
   private companion object {

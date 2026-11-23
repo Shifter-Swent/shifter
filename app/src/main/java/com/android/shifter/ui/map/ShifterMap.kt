@@ -72,6 +72,8 @@ private val UI_SETTINGS = MapUiSettings(zoomControlsEnabled = false, mapToolbarE
  *
  * [onMapClick] receives the point tapped anywhere but on a marker, which Maps keeps for
  * [onMarkerClick]; it is how a caller lets the user pick a place, as [LocationPicker] does.
+ * [onMapLoaded] is called once the map has actually drawn, which it never does with no network or
+ * no Maps key, although it keeps taking taps: a caller reading taps waits for it.
  *
  * [myPosition] is the user's position, drawn as a dot above the markers; a tap on it does nothing.
  */
@@ -86,6 +88,7 @@ fun ShifterMap(
     },
     markerContent: (@Composable (MapMarker) -> Unit)? = null,
     onMapClick: ((GeoPosition) -> Unit)? = null,
+    onMapLoaded: (() -> Unit)? = null,
     centerOnMarkerClick: Boolean = true,
     contentPadding: PaddingValues = PaddingValues(),
 ) {
@@ -101,6 +104,7 @@ fun ShifterMap(
       uiSettings = UI_SETTINGS,
       contentPadding = contentPadding,
       onMapClick = { onMapClick?.invoke(it.toGeoPosition()) },
+      onMapLoaded = onMapLoaded,
   ) {
     markers.forEach { marker ->
       // Keyed so each marker keeps its own state when the list changes.
