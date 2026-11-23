@@ -42,15 +42,18 @@ fun notificationTapIntent(context: Context, notification: AppNotification): Inte
 private const val NOTIFICATION_SCHEME = "shifter"
 private const val NOTIFICATION_AUTHORITY = "notification"
 
-/** Writes [target] in this intent, read back by [notificationTarget]. */
-fun Intent.putNotificationTarget(target: NotificationTarget): Intent =
+/**
+ * Writes [target] in this intent, read back by [notificationTarget]. Private, so the only intent
+ * that carries a target is [notificationTapIntent], which also sets the notification's identity.
+ */
+private fun Intent.putNotificationTarget(target: NotificationTarget): Intent =
     putExtra(
         NOTIFICATION_TARGET_EXTRA,
         Json.encodeToString(NotificationTarget.serializer(), target),
     )
 
 /**
- * The target written in this intent by [putNotificationTarget], or null when there is none, as when
+ * The target written in this intent by [notificationTapIntent], or null when there is none, as when
  * the app is opened from its icon, or when it cannot be read, such as one written by an older
  * version of the app or a `Planning` whose day is not a date: the app then opens as usual rather
  * than failing on the tap.

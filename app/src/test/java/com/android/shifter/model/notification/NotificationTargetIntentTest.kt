@@ -94,7 +94,7 @@ class NotificationTargetIntentTest {
   @Test
   fun notificationTarget_ofAPlanningWhoseDayIsNotADate_isNull() {
     val planning = NotificationTarget.Planning("e1", "Fest", day = "2026-11-27")
-    val written = Intent().putNotificationTarget(planning).getStringExtra(NOTIFICATION_TARGET_EXTRA)
+    val written = written(planning)
     val broken = Intent().putExtra(NOTIFICATION_TARGET_EXTRA, written!!.replace("2026-11-27", "x"))
 
     assertNull(broken.notificationTarget())
@@ -104,11 +104,15 @@ class NotificationTargetIntentTest {
   fun notificationTarget_ofATeamChannelWithoutItsTeam_isNull() {
     val channel =
         NotificationTarget.Channel("e1", "Fest", UserMode.VOLUNTEER, ChannelKind.TEAM, "bar")
-    val written = Intent().putNotificationTarget(channel).getStringExtra(NOTIFICATION_TARGET_EXTRA)
+    val written = written(channel)
     val broken = Intent().putExtra(NOTIFICATION_TARGET_EXTRA, written!!.replace("\"bar\"", "null"))
 
     assertNull(broken.notificationTarget())
   }
+
+  /** The JSON [notificationTapIntent] writes for [target]. */
+  private fun written(target: NotificationTarget): String? =
+      notificationTapIntent(context, notification(target)).getStringExtra(NOTIFICATION_TARGET_EXTRA)
 
   /** A notification of new applications with [key], opening [target]. */
   private fun notification(target: NotificationTarget, key: String = "e1") =
