@@ -119,6 +119,14 @@ internal fun requireDistinctAssignees(assigneeIds: List<String>) {
 }
 
 /**
+ * Throws [AssigneesAboveVolunteersException] when [assigneeCount] people do not fit in a mission
+ * that needs [volunteersNeeded], which [MissionRepository.updateAssignees] refuses.
+ */
+internal fun requireRoomInMission(volunteersNeeded: Int, assigneeCount: Int) {
+  if (assigneeCount > volunteersNeeded) throw AssigneesAboveVolunteersException(volunteersNeeded)
+}
+
+/**
  * Checks the input of [MissionRepository.updateMission] that needs no stored data: a valid
  * [mission] that was created. Its assignees are not checked, as an update keeps the stored ones.
  */
