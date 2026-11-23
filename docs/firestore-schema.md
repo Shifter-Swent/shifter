@@ -454,12 +454,19 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   by the rules: requiring the sender and each recipient to share the event would take a read per
   recipient, and a batch is allowed 20, so an announcement to a large event would be refused with
   its message. Only `senderId` is trusted, as the rules make it the writer: someone could fill an
-  inbox they know the uid of (uids cannot be listed, so mostly the people of their events), or
-  write a false name or title in `data` or `eventTitle`. A tap only opens a screen, whose data its
-  own rules still protect. Nothing bounds the size of a notification either: the number of them
-  is not bounded anyway, and a limit the writers do not know of would refuse a real action with
-  its notification. Nothing ties the keys of `data` to the `kind`. A server writing the
-  notifications (Cloud Function) would close all of it.
+  inbox they know the uid of (uids cannot be listed, so mostly the people of their events). The
+  real cost is the text, not the data: anyone sharing an event with a volunteer can send them a
+  false `ANNOUNCEMENT` ("Event cancelled, don't come") or `MISSION_CHANGED` ("07:00, gate B")
+  under the real `eventTitle`, with any name in `data`. It shows up as a system notification, and
+  people act on it without tapping it, so the rules protecting the screens it opens do not help.
+  The phone can at least show the sender's name from the public profile of `senderId` rather than
+  the one in `data`; the rest of the text cannot be checked. Neither the number nor the size of
+  the notifications is bounded. A size limit would only stop someone writing outside the app (in
+  the app, the preview comes from a chat message, at most 1000 characters, and titles and team
+  names from forms), who could still send as many short ones as they like. Refusing the requests
+  that do not come from the app (Firebase App Check) would make both much harder, which the rules
+  cannot do. Nothing ties the keys of `data` to the `kind`. A server writing the notifications
+  (Cloud Function) would close all of it.
 
 - **A mission assigned during a move keeps the volunteer.** The missions to leave are found by a
   query, which a transaction cannot run, so they are read before it: a mission of the old team
