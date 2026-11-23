@@ -2,7 +2,6 @@
 package com.swent.shifter.ui.theme
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 
 val md_theme_dark_primary = Color(0xFF2F80FF)
 val md_theme_dark_onPrimary = Color(0xFFF7F9FF)
@@ -76,11 +75,12 @@ val shifter_qrLight = Color(0xFFFFFFFF)
 // out.
 val shifter_chatBackground = Color(0xFF10171F)
 
-// Announcements: the warning amber for the tag, and a bubble of it mixed into the surface, dark
-// enough for the usual text to stay readable on it.
+// Announcements: the warning amber for the author, a dark amber card that keeps the usual text
+// readable on it, and a dimmed amber for the time.
 val shifter_announcement = shifter_warning
 val shifter_onAnnouncement = md_theme_dark_surface
-val shifter_announcementContainer = lerp(md_theme_dark_surface, shifter_warning, 0.2f)
+val shifter_announcementContainer = Color(0xFF2A2418)
+val shifter_announcementMuted = Color(0xFFA8916A)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
 
 // The tints of the Discussions, one per team or person: soft enough to read as a name on the dark

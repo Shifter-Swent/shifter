@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -16,6 +18,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
@@ -268,13 +272,40 @@ class TeamChatContentTest {
   }
 
   @Test
-  fun announcement_showsTheTagAboveTheBubble() {
+  fun announcement_showsTheCardWithItsAuthor() {
     setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, FROM_ALICE)))
 
     composeTestRule
         .onNodeWithTag(TeamChatTestTags.announcementTag(ANNOUNCEMENT.id), useUnmergedTree = true)
         .assertIsDisplayed()
-    tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).assert(hasText("Announcement"))
+        .assert(hasAnyChild(hasText("Alice")))
+    tag(TeamChatTestTags.message(ANNOUNCEMENT.id))
+        .assert(hasContentDescription("Announcement"))
+        .assert(hasText("Gates open at 9:00"))
+        .assert(hasText("09:30"))
+  }
+
+  @Test
+  fun announcement_fillsTheWidthOfTheList() {
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT)))
+
+    val list = tag(TeamChatTestTags.MESSAGES).getBoundsInRoot()
+    val card = tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).getBoundsInRoot()
+    // The list has 16dp of padding on each side.
+    assertEquals(list.width - 32.dp, card.width)
+  }
+
+  @Test
+  fun ownAnnouncement_showsYouOnTheCard() {
+    val mine = ANNOUNCEMENT.copy(isMine = true, sentAt = null, isPending = true)
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(mine)))
+
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.announcementTag(mine.id), useUnmergedTree = true)
+        .assert(hasAnyChild(hasText("You")))
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.pending(mine.id), useUnmergedTree = true)
+        .assertIsDisplayed()
   }
 
   @Test
