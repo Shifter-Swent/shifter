@@ -57,6 +57,22 @@ class NotificationTargetIntentTest {
   }
 
   @Test
+  fun notificationTapIntent_ofTheSameNotificationAgain_isTheSameIntentForAndroid() {
+    val first =
+        notificationTapIntent(
+            context,
+            notification(NotificationTarget.MyEvents(UserMode.VOLUNTEER)),
+        )
+    // Replaced under the same identity, e.g. "3 applications" after "2", with a newer target.
+    val again =
+        notificationTapIntent(context, notification(NotificationTarget.Requests("e1", "Fest")))
+
+    // So FLAG_UPDATE_CURRENT updates the target of the PendingIntent already shown.
+    assertTrue(first.filterEquals(again))
+    assertEquals(NotificationTarget.Requests("e1", "Fest"), again.notificationTarget())
+  }
+
+  @Test
   fun notificationTarget_withoutOne_isNull() {
     assertNull(Intent(context, MainActivity::class.java).notificationTarget())
   }
