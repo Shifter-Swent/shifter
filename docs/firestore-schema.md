@@ -278,6 +278,9 @@ has no name and no number of spots. The document id is the epoch milliseconds of
 A shift is never edited, only opened and closed. The mapper ignores the `teamId` and `assigneeIds`
 of the shifts of the old model, which nothing wrote.
 
+Until #593, `firestore.rules` still checks the fields of that old model (`teamId`, `assigneeIds`) and
+refuses `volunteerIds`: nothing writes shifts before then.
+
 ### `events/{eventId}/missions/{missionId}`
 
 | Field | Type | Notes |
