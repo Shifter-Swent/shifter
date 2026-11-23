@@ -37,7 +37,9 @@ class NotificationTargetIntentTest {
       val intent = notificationTapIntent(context, notification(target))
 
       assertEquals(MainActivity::class.java.name, intent.component?.className)
+      assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
       assertTrue(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
+      assertTrue(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
       assertEquals(target, intent.notificationTarget())
     }
   }

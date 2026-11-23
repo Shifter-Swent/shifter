@@ -13,7 +13,8 @@ const val NOTIFICATION_TARGET_EXTRA = "com.swent.shifter.notificationTarget"
 
 /**
  * The intent a tap on [notification] sends: it opens [MainActivity], or brings it back when it is
- * already shown (it is `singleTop`), which then opens the notification's target.
+ * already shown (it is `singleTop`), which then opens the notification's target. It starts a new
+ * task, as `PendingIntent.getActivity` asks, since a notification is tapped outside the app.
  *
  * Its data is the notification's [AppNotification.identity], as
  * `shifter://notification/<identity>`, so the intents of two notifications always differ for
@@ -30,7 +31,11 @@ fun notificationTapIntent(context: Context, notification: AppNotification): Inte
                 .appendPath(notification.identity)
                 .build()
         )
-        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        .addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
         .putNotificationTarget(notification.target)
 
 /** The scheme and authority of the data of [notificationTapIntent]. */
