@@ -269,6 +269,17 @@ class ShifterNavHostTest {
   }
 
   @Test
+  fun staffEvents_scanQrOpensJoinEventAndItsBackButtonReturns() {
+    signInAndShowApp()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.SCAN_QR_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
   fun joinEvent_keepsTheTypedCode() {
     signInAndShowApp()
 

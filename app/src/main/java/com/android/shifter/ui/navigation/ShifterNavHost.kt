@@ -279,11 +279,12 @@ private fun ShifterNavGraph(
         )
       }
       composable<Volunteer.QrApply> { entry ->
-        // The screen's own Back returns from the event to the code; the device Back on the code
-        // leaves it, back to the events list. Once a request is sent, the list confirms it.
+        // On the event, Back returns to the code; on the code, the screen's Back and the device's
+        // leave it, back to the events list. Once a request is sent, the list confirms it.
         val joinEvent = joinEventViewModel(entry, repositories, currentUserId)
         JoinEventScreen(
             viewModel = joinEvent,
+            onLeave = nav::goBack,
             onScanQrCode = {
               // The error of a code typed before would show as the result of the scan.
               joinEvent.changeCode()

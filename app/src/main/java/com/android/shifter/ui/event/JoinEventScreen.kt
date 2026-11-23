@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.plus
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -64,6 +63,7 @@ import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PrimaryButton
+import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.components.membershipStatusColors
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_inputBackground
@@ -90,12 +90,14 @@ object JoinEventScreenTestTags {
 /**
  * The join screen wired to [viewModel].
  *
+ * @param onLeave leaves the screen, from the back button of the code step.
  * @param onScanQrCode opens the scan of the event's QR code, instead of typing its code.
  * @param onRequestSent called with the event's title once a request is sent, to leave the screen.
  */
 @Composable
 fun JoinEventScreen(
     viewModel: JoinEventViewModel,
+    onLeave: () -> Unit,
     onScanQrCode: () -> Unit = {},
     onRequestSent: (eventTitle: String) -> Unit,
 ) {
@@ -113,6 +115,7 @@ fun JoinEventScreen(
       onJoinCodeChange = viewModel::onJoinCodeChange,
       onFindEvent = viewModel::findEvent,
       onBack = viewModel::changeCode,
+      onLeave = onLeave,
       onTeamSelected = viewModel::onTeamSelected,
       onApply = viewModel::applyToEvent,
       onScanQrCode = onScanQrCode,
@@ -121,8 +124,9 @@ fun JoinEventScreen(
 
 /**
  * Joining in two steps: the volunteer types the event's join code, then sees the details of the
- * event it found, picks one of its teams and applies to it. Back, on screen or on the device,
- * returns to the code.
+ * event it found, picks one of its teams and applies to it. On the event, Back, on screen or on the
+ * device, returns to the code and calls [onBack]. On the code, the back button calls [onLeave], and
+ * the device's Back is left to the navigation, which leaves the screen the same way.
  */
 @Composable
 fun JoinEventContent(
@@ -130,6 +134,7 @@ fun JoinEventContent(
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
     onBack: () -> Unit,
+    onLeave: () -> Unit,
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
     onScanQrCode: () -> Unit = {},
@@ -147,8 +152,11 @@ fun JoinEventContent(
               )
   ) {
     if (event == null) {
-      Box(Modifier.statusBarsPadding()) {
-        JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
+      Column(Modifier.fillMaxSize()) {
+        ShifterTopBar(title = stringResource(R.string.join_event_title), onBack = onLeave)
+        Box(Modifier.weight(1f)) {
+          JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
+        }
       }
     } else {
       BackHandler(onBack = onBack)
@@ -190,12 +198,6 @@ private fun JoinCodeStep(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp, Alignment.CenterVertically),
     ) {
-      Text(
-          text = stringResource(R.string.join_event_title),
-          color = colors.onBackground,
-          fontSize = 22.sp,
-          fontWeight = FontWeight.Bold,
-      )
       Text(
           text = stringResource(R.string.join_event_intro),
           color = shifter_mutedText,
@@ -360,7 +362,7 @@ internal fun JoinEventError.messageRes(): Int =
 @Preview(name = "Step 1: join code")
 @Composable
 private fun JoinEventCodePreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC234"), {}, {}, {}, {}, {}) }
+  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC234"), {}, {}, {}, {}, {}, {}) }
 }
 
 @Preview(name = "Step 2: event details and Apply")
@@ -369,6 +371,7 @@ private fun JoinEventApplyPreview() {
   ShifterTheme {
     JoinEventContent(
         JoinEventUiState(event = PREVIEW_EVENT, teams = PREVIEW_TEAMS, selectedTeamId = "welcome"),
+        {},
         {},
         {},
         {},
@@ -389,6 +392,7 @@ private fun JoinEventAppliedPreview() {
             selectedTeamId = "welcome",
             requestStatus = MembershipRequestStatus.PENDING,
         ),
+        {},
         {},
         {},
         {},

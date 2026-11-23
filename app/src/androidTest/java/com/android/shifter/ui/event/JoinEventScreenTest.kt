@@ -260,10 +260,28 @@ class JoinEventScreenTest {
   }
 
   @Test
+  fun codeStep_showsItsTitleAndLeavesWithTheBackButton() {
+    var leaves = 0
+    composeTestRule.setContent { content(uiState = JoinEventUiState(), onLeave = { leaves++ }) }
+
+    composeTestRule
+        .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
+        .assertTextEquals("Join an event")
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+    assertEquals(1, leaves)
+  }
+
+  @Test
   fun foundEvent_showsItsDetailsAndGoesBack() {
     var backClicks = 0
+    var leaves = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT), onBack = { backClicks++ })
+      content(
+          uiState = JoinEventUiState(event = EVENT),
+          onBack = { backClicks++ },
+          onLeave = { leaves++ },
+      )
     }
 
     composeTestRule.onNodeWithTag(EventDetailsTestTags.CATEGORY).assertTextEquals("Music")
@@ -274,7 +292,9 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(EventDetailsTestTags.DATE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
+    // On the event, Back returns to the code rather than leaving the screen.
     assertEquals(1, backClicks)
+    assertEquals(0, leaves)
   }
 
   @Test
@@ -338,9 +358,19 @@ class JoinEventScreenTest {
       onJoinCodeChange: (String) -> Unit = {},
       onFindEvent: () -> Unit = {},
       onBack: () -> Unit = {},
+      onLeave: () -> Unit = {},
       onTeamSelected: (String) -> Unit = {},
       onApply: () -> Unit = {},
-  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onTeamSelected, onApply)
+  ) =
+      JoinEventContent(
+          uiState,
+          onJoinCodeChange,
+          onFindEvent,
+          onBack,
+          onLeave,
+          onTeamSelected,
+          onApply,
+      )
 
   /** The code step keeping the code typed, normalized like the ViewModel does. */
   private fun showCodeStep() {

@@ -43,7 +43,8 @@ import org.junit.runner.RunWith
  * The whole join flow on the real screen and view model, with in-memory repositories: a wrong code
  * shows an error, the right one shows the event, the volunteer can go back to the code, picks a
  * team, Apply sends the request for it, and finding the event again shows that request. Once sent,
- * the request leads back to My Events with a confirmation; a failed one stays on the event.
+ * the request leads back to My Events with a confirmation; a failed one stays on the event. The
+ * back button of the code step leaves for My Events.
  */
 @RunWith(AndroidJUnit4::class)
 class JoinEventFlowTest {
@@ -118,7 +119,7 @@ class JoinEventFlowTest {
             { "volunteer-1" },
             { Instant.ofEpochSecond(600) },
         )
-    composeTestRule.setContent { JoinEventScreen(viewModel, onRequestSent = {}) }
+    composeTestRule.setContent { JoinEventScreen(viewModel, onLeave = {}, onRequestSent = {}) }
 
     typeCodeAndFind("WRNG23")
     composeTestRule
@@ -176,7 +177,7 @@ class JoinEventFlowTest {
         )
     var scans = 0
     composeTestRule.setContent {
-      JoinEventScreen(viewModel, onScanQrCode = { scans++ }, onRequestSent = {})
+      JoinEventScreen(viewModel, onLeave = {}, onScanQrCode = { scans++ }, onRequestSent = {})
     }
 
     composeTestRule
@@ -185,6 +186,16 @@ class JoinEventFlowTest {
         .performClick()
 
     assertEquals(1, scans)
+  }
+
+  @Test
+  fun back_onTheCodeStep_returnsToMyEvents() {
+    showMyEventsThenJoin()
+
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.JOIN_CODE_FIELD).assertDoesNotExist()
   }
 
   @Test
@@ -259,7 +270,7 @@ class JoinEventFlowTest {
           )
         }
         composable(JOIN) {
-          JoinEventScreen(viewModel) { eventTitle ->
+          JoinEventScreen(viewModel, onLeave = { navController.popBackStack() }) { eventTitle ->
             navController.getBackStackEntry(MY_EVENTS).savedStateHandle.putRequestSent(eventTitle)
             navController.popBackStack(MY_EVENTS, inclusive = false)
           }
