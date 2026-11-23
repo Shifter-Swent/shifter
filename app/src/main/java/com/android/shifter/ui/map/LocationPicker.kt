@@ -122,7 +122,7 @@ internal fun LocationPicker(
       }
   val description = stringResource(R.string.map_picker_description)
   // A map with no network and no Maps key stays grey and still reports the taps it is given, so a
-  // tap on it would place a point near the default centre rather than where the user meant (#483).
+  // tap on it would place a point near the default centre rather than where the user meant.
   var isMapLoaded by remember { mutableStateOf(false) }
   Box(
       modifier =
@@ -177,7 +177,7 @@ internal fun formatCoordinate(value: Double): String = String.format(Locale.ROOT
  * is accepted as well as a point, as typed on many keyboards; what is not a number at all, such as
  * a unit or a hemisphere letter, is refused rather than read in part. It is Java's number syntax,
  * so the forms a keyboard does not produce are accepted too, e.g. `1e1`, `6.6d` or a hex float:
- * harmless here, since [range] still has the last word and the field shows what was understood.
+ * harmless here, since [range] still has the last word.
  */
 internal fun parseCoordinate(text: String, range: ClosedFloatingPointRange<Double>): Double? =
     text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it in range }
