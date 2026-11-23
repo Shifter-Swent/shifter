@@ -20,10 +20,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Field validation of the `teams`, `shifts` and `missions` rules, run against the Firestore
- * emulator as the event's organizer, who may write all three: a document with the schema's fields
- * and types is accepted, and an unknown field, a wrong type or a time slot ending before it starts
- * is refused.
+ * Field validation of the `teams` and `missions` rules, run against the Firestore emulator as the
+ * event's organizer, who may write both: a document with the schema's fields and types is accepted,
+ * and an unknown field, a wrong type or a time slot ending before it starts is refused. The shifts
+ * have their own `ShiftRulesTest`.
  */
 @RunWith(AndroidJUnit4::class)
 class SubcollectionValidationRulesTest {
@@ -74,15 +74,6 @@ class SubcollectionValidationRulesTest {
     assertDenied { newDocument("teams").set(TEAM + ("checkInZone" to ZONE)).await() }
     val team = newDocument("teams").also { it.set(TEAM).await() }
     assertDenied { team.update("checkInZone", ZONE).await() }
-  }
-
-  @Test
-  fun writeShift_checksItsFieldsAndItsSlot() = emulatorTest {
-    newDocument("shifts").set(SHIFT).await()
-
-    assertDenied { newDocument("shifts").set(SHIFT + ("name" to "Morning")).await() }
-    assertDenied { newDocument("shifts").set(SHIFT + ("startAt" to "2026-07-21")).await() }
-    assertDenied { newDocument("shifts").set(SHIFT + ("endAt" to START)).await() }
   }
 
   @Test
@@ -155,15 +146,6 @@ class SubcollectionValidationRulesTest {
         )
 
     val ZONE: Map<String, Any?> = mapOf("radiusMeters" to 75.0)
-
-    val SHIFT: Map<String, Any?> =
-        mapOf(
-            "teamId" to "team-bar",
-            "assigneeIds" to listOf("user-1"),
-            "startAt" to START,
-            "endAt" to END,
-            "createdAt" to START,
-        )
 
     val LOCATION: Map<String, Any?> =
         mapOf("address" to "Place du Château, Nyon", "latitude" to 46.382, "longitude" to 6.239)

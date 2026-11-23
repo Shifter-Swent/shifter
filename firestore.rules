@@ -180,10 +180,10 @@ service cloud.firestore {
         && data.get('announcement', false) is bool;
     }
 
-    // The fields of teams, shifts and missions are checked when the organizer or a manager writes
-    // them: no field outside the schema, and each field that is there with the type the app
-    // writes. A field may be absent, as the mappers already fail loudly on a missing required one.
-    // These helpers are shared by the three blocks.
+    // The fields of teams and missions are checked when the organizer or a manager writes them: no
+    // field outside the schema, and each field that is there with the type the app writes. A field
+    // may be absent, as the mappers already fail loudly on a missing required one. These helpers
+    // are shared by the two blocks; a shift, never edited, is checked in full when it is created.
     function isAbsentOrString(data, field) {
       return !(field in data) || data[field] is string;
     }
@@ -316,7 +316,7 @@ service cloud.firestore {
 
       // Rules do not cascade into subcollections, so teams, shifts and missions each need their
       // own block. The organizer builds them; the organizer and the participants read them, except
-      // teams, which candidates read too.
+      // teams and shifts, which candidates read too.
       // Reads do not depend on the documents' content, so whole-subcollection queries are allowed.
       match /teams/{teamId} {
         // A volunteer who withdraws leaves their team on their own, deleting their request in the
@@ -629,21 +629,40 @@ service cloud.firestore {
       }
 
       match /shifts/{shiftId} {
-        // The fields of ShiftSchema.
-        function isValidShift() {
+        // A new slot of ShiftSchema: its four fields, keyed by its start, 1 to 3 whole hours long
+        // (2 h, or 1 h and 3 h on the nights the clocks change), chosen by nobody yet, opened now,
+        // and running during the event, even in part. Its start falls on a quarter of an hour,
+        // which every time zone's whole hours do; whether it is an even hour depends on the zone,
+        // which only the app knows.
+        function isNewSlot() {
           let data = request.resource.data;
-          return data.keys().hasOnly(['teamId', 'assigneeIds', 'startAt', 'endAt', 'createdAt'])
-            && isAbsentOrString(data, 'teamId')
-            && isAbsentOrList(data, 'assigneeIds')
-            && isAbsentOrTimestamp(data, 'startAt')
-            && isAbsentOrTimestamp(data, 'endAt')
-            && isAbsentOrTimestamp(data, 'createdAt')
-            && endsAfterStart(data);
+          let event = get(/databases/$(database)/documents/events/$(eventId)).data;
+          return data.keys().hasOnly(['volunteerIds', 'startAt', 'endAt', 'createdAt'])
+            && data.keys().hasAll(['volunteerIds', 'startAt', 'endAt', 'createdAt'])
+            && data.startAt is timestamp
+            && data.endAt is timestamp
+            && data.startAt.nanos() == 0
+            && data.startAt.toMillis() % 900000 == 0
+            && shiftId == string(data.startAt.toMillis())
+            && isSlotLength(data.endAt - data.startAt)
+            && data.endAt > event.startAt
+            && data.startAt < event.endAt
+            && data.volunteerIds == []
+            && data.createdAt == request.time;
         }
 
-        allow read: if canReadEventContent(eventId);
-        allow create, update: if isOrganizer(eventId) && isValidShift();
-        allow delete: if isOrganizer(eventId);
+        function isSlotLength(length) {
+          return length.seconds() in [3600, 7200, 10800] && length.nanos() == 0;
+        }
+
+        // Candidates read the shifts too, since a volunteer chooses them before applying.
+        allow read: if signedIn();
+        // A slot is never edited, only opened and closed.
+        allow create: if isOrganizer(eventId) && isNewSlot();
+        // A slot volunteers chose stays open; an absent one deletes nothing, so closing again
+        // succeeds.
+        allow delete: if isOrganizer(eventId)
+          && (resource == null || resource.data.get('volunteerIds', []).size() == 0);
       }
 
       // The organizer writes every mission; a team's manager writes the missions of their team.

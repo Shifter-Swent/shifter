@@ -30,11 +30,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Security rules of the `teams`, `shifts` and `missions` subcollections of an event, run against
- * the Firestore emulator: the organizer writes them, the organizer and the accepted participants
- * read them, and nobody else does either, except the teams, which any signed-in user reads to pick
- * one before applying. Only the organizer reads the event's participants, and a volunteer leaves
- * their team only by withdrawing.
+ * Security rules of the `teams` and `missions` subcollections of an event, run against the
+ * Firestore emulator: the organizer writes them, the organizer and the accepted participants read
+ * them, and nobody else does either, except the teams, which any signed-in user reads to pick one
+ * before applying. The shifts, never edited, have their own `ShiftRulesTest`. Only the organizer
+ * reads the event's participants, and a volunteer leaves their team only by withdrawing.
  *
  * Documents are written as raw maps with only what the rules look at (see [content]): the mappers
  * are covered by their own tests.
@@ -115,7 +115,7 @@ class EventSubcollectionRulesTest {
   }
 
   @Test
-  fun anOutsiderCanNeitherReadNorWriteShiftsAndMissions() = emulatorTest {
+  fun anOutsiderCanNeitherReadNorWriteMissions() = emulatorTest {
     val documents = PRIVATE_SUBCOLLECTIONS.associateWith { writeAsOrganizer(it) }
     signIn(outsider)
 
@@ -309,7 +309,6 @@ class EventSubcollectionRulesTest {
   private fun textField(subcollection: String): String =
       when (subcollection) {
         "missions" -> "title"
-        "shifts" -> "teamId"
         else -> "name"
       }
 
@@ -362,9 +361,9 @@ class EventSubcollectionRulesTest {
   private data class Account(val uid: String, val credential: AuthCredential)
 
   private companion object {
-    val SUBCOLLECTIONS = listOf("teams", "shifts", "missions")
+    val SUBCOLLECTIONS = listOf("teams", "missions")
 
     /** The subcollections only the organizer and the participants read. */
-    val PRIVATE_SUBCOLLECTIONS = listOf("shifts", "missions")
+    val PRIVATE_SUBCOLLECTIONS = listOf("missions")
   }
 }
