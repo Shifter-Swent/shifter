@@ -586,6 +586,67 @@ class UserRepositoryFirestoreEmulatorTest {
     }
   }
 
+  /**
+   * As for location sharing, the listener sees a choice made offline at once, while
+   * [UserRepository.setNotificationEnabled] waits for the server to confirm it.
+   */
+  @Test
+  fun observeDisabledNotifications_seesALocalChangeBeforeTheServerConfirmsIt() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    // As Settings does before showing the switches, so the device has the profile to update.
+    step("prime cache") { repository.getUser(uid) }
+    val seen = MutableStateFlow(emptyList<Set<NotificationKind>>())
+    coroutineScope {
+      val collector = launch {
+        repository.observeDisabledNotifications(uid).collect { v -> seen.update { it + listOf(v) } }
+      }
+      step("await all on") { seen.first { it.lastOrNull() == emptySet<NotificationKind>() } }
+
+      db.disableNetwork().await()
+      try {
+        val turningOff = async {
+          repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = false)
+        }
+        // The listener sees the change while the write is still queued, unconfirmed by the server.
+        step("await local off") {
+          seen.first { it.lastOrNull() == setOf(NotificationKind.ANNOUNCEMENT) }
+        }
+        assertNull(withTimeoutOrNull(OFFLINE_WAIT_MILLIS) { turningOff.await() })
+      } finally {
+        db.enableNetwork().await()
+      }
+      collector.cancel()
+    }
+  }
+
+  /**
+   * A choice made offline is queued: the call returns once the device reconnects and the server has
+   * it.
+   */
+  @Test
+  fun setNotificationEnabled_offline_savesTheChoiceOnceBackOnline() = emulatorTest {
+    step("create profile") { repository.getOrCreateUser(uid, "Ada", "ada@example.com") }
+    // As Settings does before showing the switches, so the device has the profile to update.
+    step("read profile") { repository.getUser(uid) }
+
+    db.disableNetwork().await()
+    coroutineScope {
+      val turningOff = async {
+        repository.setNotificationEnabled(uid, NotificationKind.ANNOUNCEMENT, enabled = false)
+      }
+      try {
+        // Not confirmed while offline.
+        assertNull(withTimeoutOrNull(OFFLINE_WAIT_MILLIS) { turningOff.await() })
+      } finally {
+        db.enableNetwork().await()
+      }
+      step("send the queued change") { turningOff.await() }
+    }
+
+    val stored = step("read profile") { profileRef().get(Source.SERVER).await() }
+    assertEquals(false, stored.get(FieldPath.of(NOTIFICATION_SETTINGS, "ANNOUNCEMENT")))
+  }
+
   @Test
   fun setNotificationEnabled_withoutProfile_throwsPermissionDenied() = emulatorTest {
     val thrown =
