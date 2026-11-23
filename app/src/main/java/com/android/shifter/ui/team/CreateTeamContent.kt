@@ -144,8 +144,8 @@ fun CreateTeamContent(
       }
     }
     headerAction?.let {
-      // Over the card rather than in its first line, whose bounds would cut the 48dp touch
-      // target of a button down to the line: centered on the label, in the corner.
+      // Over the card rather than in its first line, whose bounds would cut the touch target of
+      // a button down to the line: centered on the label, in the corner.
       Box(modifier = Modifier.align(Alignment.TopEnd).offset(y = HEADER_ACTION_OFFSET)) { it() }
     }
   }
@@ -196,10 +196,11 @@ private fun FieldLabel(@StringRes label: Int, modifier: Modifier = Modifier) {
 }
 
 /**
- * Lifts a 48dp header action so that its center meets the first label's: the card's 12dp padding
- * plus half the label's line, minus half the 48dp.
+ * Lowers a 32dp high header action so that its center meets the first label's: the card's 12dp
+ * padding plus half the label's 16dp line, minus half the 32dp, and its bottom stops at the row
+ * under the label.
  */
-private val HEADER_ACTION_OFFSET = (-5).dp
+private val HEADER_ACTION_OFFSET = 3.dp
 
 /**
  * The 11sp regular of the designs, which labels the fields and, in red, says what is wrong with

@@ -6,6 +6,7 @@ package com.swent.shifter.ui.team
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -43,10 +43,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -405,23 +408,32 @@ private fun NewTeamForm(
 /**
  * The red bin in the top right corner of a saved team's card, which asks to delete it, or a spinner
  * in its place while the deletion runs.
+ *
+ * Both take [BIN_TARGET]: 48dp wide, but only 32dp high, under the 48dp Material asks for, as a
+ * taller target would reach over the name field under it. It still exceeds the 24dp minimum of
+ * WCAG.
  */
 @Composable
 private fun DeleteTeamAction(team: Team, deleting: Boolean, onClick: () -> Unit) {
-  if (deleting) {
-    CircularProgressIndicator(
-        strokeWidth = 2.dp,
-        // In the 48dp of the button it replaces, so it sits where the bin was.
-        modifier =
-            Modifier.padding(12.dp)
-                .size(24.dp)
-                .testTag(TeamSetupScreenTestTags.deletingIndicator(team.id)),
-    )
-  } else {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.testTag(TeamSetupScreenTestTags.deleteButton(team.id)),
-    ) {
+  Box(
+      contentAlignment = Alignment.Center,
+      modifier =
+          Modifier.size(BIN_TARGET)
+              .then(
+                  if (deleting) Modifier
+                  else
+                      Modifier.clip(MaterialTheme.shapes.small)
+                          .clickable(role = Role.Button, onClick = onClick)
+                          .testTag(TeamSetupScreenTestTags.deleteButton(team.id))
+              ),
+  ) {
+    if (deleting) {
+      CircularProgressIndicator(
+          strokeWidth = 2.dp,
+          modifier =
+              Modifier.size(24.dp).testTag(TeamSetupScreenTestTags.deletingIndicator(team.id)),
+      )
+    } else {
       Icon(
           imageVector = Icons.Outlined.Delete,
           contentDescription = stringResource(R.string.team_setup_delete, team.name),
@@ -430,6 +442,9 @@ private fun DeleteTeamAction(team: Team, deleting: Boolean, onClick: () -> Unit)
     }
   }
 }
+
+/** The touch target of the bin, and the room of the spinner that takes its place. */
+private val BIN_TARGET = DpSize(48.dp, 32.dp)
 
 /** Why the teams could not be loaded, and the way to ask for them again. */
 @Composable
