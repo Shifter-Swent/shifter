@@ -169,8 +169,13 @@ fun OrganizerOverviewContent(
   val deleted = stringResource(R.string.overview_assign_deleted)
   LaunchedEffect(state.assignedMissionDeleted) {
     if (state.assignedMissionDeleted) {
-      snackbarHostState.showSnackbar(deleted)
-      actions.onDeletedMissionShown()
+      // In finally, so leaving the screen while it shows does not show it again on return; not
+      // before it, as clearing the key would restart this effect and cancel the snackbar.
+      try {
+        snackbarHostState.showSnackbar(deleted)
+      } finally {
+        actions.onDeletedMissionShown()
+      }
     }
   }
   Box(modifier = Modifier.fillMaxSize()) {
