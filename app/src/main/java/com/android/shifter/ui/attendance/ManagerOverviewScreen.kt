@@ -60,6 +60,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.model.time.formatDay
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.FormPrimaryButton
 import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.TeamFilterMenu
@@ -68,8 +70,6 @@ import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
-import com.swent.shifter.ui.components.time.formatDay
-import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_warning

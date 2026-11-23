@@ -29,8 +29,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.time.formatDuration
-import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.components.time.minutesLeft
 import java.time.Duration
 import java.time.Instant

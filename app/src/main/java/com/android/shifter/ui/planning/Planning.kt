@@ -55,6 +55,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.model.time.formatDay
+import com.swent.shifter.model.time.formatDayOfWeek
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DaySelection
 import com.swent.shifter.ui.components.days.DayStrip
@@ -62,9 +65,6 @@ import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.eventDays
 import com.swent.shifter.ui.components.days.groupByDay
 import com.swent.shifter.ui.components.days.rememberDaySelection
-import com.swent.shifter.ui.components.time.formatDay
-import com.swent.shifter.ui.components.time.formatDayOfWeek
-import com.swent.shifter.ui.components.time.formatTime
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import java.time.Instant

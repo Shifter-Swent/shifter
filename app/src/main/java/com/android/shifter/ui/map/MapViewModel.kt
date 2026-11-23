@@ -18,9 +18,9 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
-import com.swent.shifter.ui.components.time.formatTime
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
