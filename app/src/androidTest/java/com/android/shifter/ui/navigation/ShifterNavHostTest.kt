@@ -878,6 +878,20 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
   }
 
+  /** Without the location, the organizer is asked for it on their map too (#655). */
+  @Test
+  fun organizerMap_withoutLocationAccess_asksForIt() {
+    openMapWithAKnownPosition(
+        signIn(),
+        UserMode.ORGANIZER,
+        OrganizerEvent("event-1", EVENT_TITLE),
+        OrganizerTabs.Map,
+        status = LocationStatus.DENIED,
+    )
+
+    waitForNode(MapScreenTestTags.LOCATION_GATE)
+  }
+
   /**
    * Once their event is loaded, the organizer's map offers to center on their position, which only
    * shows when the map knows where they are. The event has only its address, as the ones created in
