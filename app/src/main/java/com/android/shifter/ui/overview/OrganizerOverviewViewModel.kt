@@ -257,31 +257,35 @@ class OrganizerOverviewViewModel(
       return
     }
     editAssigning { it.copy(isSaving = true, saveFailed = false) }
-    viewModelScope.launch {
-      try {
-        missionRepository.updateAssignees(eventId, assigning.missionId, selection.selectedIds)
-        closeAssign(assigning.missionId) { missions ->
-          // Reopening the mission before the reload answers must offer who was just saved.
-          missions.map {
-            if (it.id == assigning.missionId) it.copy(assigneeIds = selection.selectedIds) else it
-          }
+    viewModelScope.launch { storeAssignees(assigning) }
+  }
+
+  /** Stores the people picked in [assigning] and reacts to how it ends, see [saveAssignees]. */
+  private suspend fun storeAssignees(assigning: AssignState) {
+    val selectedIds = assigning.selection.selectedIds
+    try {
+      missionRepository.updateAssignees(eventId, assigning.missionId, selectedIds)
+      closeAssign(assigning.missionId) { missions ->
+        // Reopening the mission before the reload answers must offer who was just saved.
+        missions.map {
+          if (it.id == assigning.missionId) it.copy(assigneeIds = selectedIds) else it
         }
-        refresh()
-      } catch (e: CancellationException) {
-        throw e
-      } catch (_: MissionRepositoryException.NotFound) {
-        closeAssign(assigning.missionId)
-        _uiState.update { it.copy(assignedMissionDeleted = true) }
-        refresh()
-      } catch (e: AssigneesAboveVolunteersException) {
-        refuseTooMany(assigning.missionId, e.volunteersNeeded)
-        refresh()
-      } catch (_: IllegalArgumentException) {
-        closeAssign(assigning.missionId)
-        refresh()
-      } catch (_: Exception) {
-        editAssigning(assigning.missionId) { it.copy(isSaving = false, saveFailed = true) }
       }
+      refresh()
+    } catch (e: CancellationException) {
+      throw e
+    } catch (_: MissionRepositoryException.NotFound) {
+      closeAssign(assigning.missionId)
+      _uiState.update { it.copy(assignedMissionDeleted = true) }
+      refresh()
+    } catch (e: AssigneesAboveVolunteersException) {
+      refuseTooMany(assigning.missionId, e.volunteersNeeded)
+      refresh()
+    } catch (_: IllegalArgumentException) {
+      closeAssign(assigning.missionId)
+      refresh()
+    } catch (_: Exception) {
+      editAssigning(assigning.missionId) { it.copy(isSaving = false, saveFailed = true) }
     }
   }
 
