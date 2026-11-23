@@ -44,6 +44,57 @@ service cloud.firestore {
                  == request.resource.data.displayName);
 
       allow delete: if false;
+
+      // notifications/{notificationId}: the user's inbox (#613). The app of the person who acts
+      // drops a notification there in the same commit as the action; the owner's phone reads it,
+      // shows it and deletes it. It holds data, not text. Anyone signed in may write to anyone's
+      // inbox, as the rules cannot tell which actions concern whom: a notification is only trusted
+      // for its senderId, which is always the writer, never for what its data says.
+      match /notifications/{notificationId} {
+        // The names of the NotificationKinds with inInbox: the others are computed on the phone.
+        function isInboxKind(kind) {
+          return kind in ['NEW_APPLICATION', 'APPLICATION_DECIDED', 'TEAM_CHANGED',
+                          'MISSION_ASSIGNED', 'MISSION_CHANGED', 'ANNOUNCEMENT'];
+        }
+
+        // NotificationData.Key.ALL, each value a string. A rule cannot loop over a map, so every
+        // key is checked by name.
+        function isValidData(data) {
+          return data is map
+            && data.keys().hasOnly(['userName', 'decision', 'change', 'teamId', 'teamName',
+                                    'missions', 'what', 'address', 'channel', 'senderName',
+                                    'preview'])
+            && isAbsentOrString(data, 'userName')
+            && isAbsentOrString(data, 'decision')
+            && isAbsentOrString(data, 'change')
+            && isAbsentOrString(data, 'teamId')
+            && isAbsentOrString(data, 'teamName')
+            && isAbsentOrString(data, 'missions')
+            && isAbsentOrString(data, 'what')
+            && isAbsentOrString(data, 'address')
+            && isAbsentOrString(data, 'channel')
+            && isAbsentOrString(data, 'senderName')
+            && isAbsentOrString(data, 'preview');
+        }
+
+        function isValidNotification() {
+          let data = request.resource.data;
+          return data.keys().hasOnly(
+                   ['kind', 'eventId', 'eventTitle', 'senderId', 'data', 'createdAt'])
+            && isInboxKind(data.kind)
+            && data.eventId is string
+            && data.eventTitle is string
+            && data.senderId == request.auth.uid
+            && data.createdAt == request.time
+            && isValidData(data.data);
+        }
+
+        allow read, delete: if isOwner();
+        // Never in one's own inbox: the one acting is not told about their own action.
+        allow create: if signedIn() && !isOwner() && isValidNotification();
+        // A notification is handled once, then deleted, so nothing ever changes it.
+        allow update: if false;
+      }
     }
 
     // publicProfiles/{uid}: what any signed-in user may see of a user, for now their name. Read one

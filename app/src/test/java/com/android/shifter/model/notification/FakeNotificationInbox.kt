@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.update
  * It also stands for the writing side: the fake repository of an action calls [deliver] where the
  * Firestore one adds the document to its batch, and [sent] keeps everything delivered, removed or
  * not, so a test checks that the action notified the right person. Like the rules, [deliver]
- * refuses what Firestore would refuse, since that refusal would fail the whole action.
+ * refuses what Firestore would refuse, since that refusal would fail the whole action, and it
+ * leaves out the sender as [InboxDocs.documents] does.
  *
  * @param clock gives [InboxNotification.createdAt], as the server's clock would.
  */
@@ -51,35 +52,39 @@ class FakeNotificationInbox(
     }
 
   /**
-   * Puts a notification in the inbox of [recipientId], as a writer's batch would, with a new id and
-   * the [clock]'s time, and returns it. Throws [IllegalArgumentException] for what the rules
-   * refuse: a notification to its own sender, a kind computed on the phone, or a key of [data]
-   * outside [NotificationData.Key.ALL].
+   * Puts a notification in the inbox of each of [recipientIds], as [InboxDocs.documents] would,
+   * leaving out [senderId] and the duplicates the same way, each with a new id and the [clock]'s
+   * time, and returns them. Throws [IllegalArgumentException] for what the rules refuse, even when
+   * there is nobody to notify: a kind computed on the phone, or a key of [data] outside
+   * [NotificationData.Key.ALL].
    */
   fun deliver(
-      recipientId: String,
+      recipientIds: Iterable<String>,
       kind: NotificationKind,
       eventId: String,
       eventTitle: String,
       senderId: String,
       data: Map<String, String>,
-  ): InboxNotification {
-    require(senderId != recipientId) { "Nobody writes in their own inbox" }
-    val notification =
-        InboxNotification(
-            "notification-${nextId++}",
-            kind,
-            eventId,
-            eventTitle,
-            senderId,
-            data,
-            clock(),
-        )
-    delivered += Sent(recipientId, notification)
-    state.update {
-      it.copy(inboxes = it.inboxes + (recipientId to it.of(recipientId) + notification))
+  ): List<InboxNotification> {
+    requireStorable(kind, data)
+    return InboxDocs.recipients(recipientIds, senderId).map { recipientId ->
+      requireWritable(recipientId, senderId, kind, data)
+      val notification =
+          InboxNotification(
+              "notification-${nextId++}",
+              kind,
+              eventId,
+              eventTitle,
+              senderId,
+              data,
+              clock(),
+          )
+      delivered += Sent(recipientId, notification)
+      state.update {
+        it.copy(inboxes = it.inboxes + (recipientId to it.of(recipientId) + notification))
+      }
+      notification
     }
-    return notification
   }
 
   override suspend fun pending(userId: String): List<InboxNotification> =
