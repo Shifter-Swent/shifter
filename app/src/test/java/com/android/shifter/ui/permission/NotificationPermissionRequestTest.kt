@@ -3,7 +3,6 @@ package com.swent.shifter.ui.permission
 
 import android.Manifest
 import android.app.Application
-import android.app.NotificationManager
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -19,12 +18,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.annotation.Config
 
 /**
  * Covers [NotificationPermissionRequest] in a real activity: the permission is asked once the app
- * is reached past sign-in and in the foreground, once per installation, and only when Android 13 or
- * later needs it.
+ * is reached past sign-in and in the foreground, once per installation, and not when it is granted.
+ *
+ * Every test runs on the default SDK of `robolectric.properties`: another SDK would make
+ * Robolectric download its Android jar, which the CI cannot, and fail every test class of that run.
  */
 @RunWith(AndroidJUnit4::class)
 class NotificationPermissionRequestTest {
@@ -105,19 +105,6 @@ class NotificationPermissionRequestTest {
 
     inApp.value = true
     compose.waitForIdle()
-
-    assertNull(requested())
-    assertFalse(asked)
-  }
-
-  @Test
-  @Config(sdk = [32])
-  fun doesNotAsk_beforeAndroid13() {
-    // Notifications turned off, which AndroidX would otherwise report as the permission granted.
-    shadowOf(app.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
-    inApp.value = true
-
-    show()
 
     assertNull(requested())
     assertFalse(asked)
