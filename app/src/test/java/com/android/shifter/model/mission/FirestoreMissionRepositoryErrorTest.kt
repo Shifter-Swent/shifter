@@ -41,7 +41,7 @@ class FirestoreMissionRepositoryErrorTest {
     } returns Tasks.forException(error)
 
     val thrown = runCatching {
-      FirestoreMissionRepository(firestore).getMissionsByEvent("event-1")
+      FirestoreMissionRepository(firestore, mockk()).getMissionsByEvent("event-1")
     }
         .exceptionOrNull()
 

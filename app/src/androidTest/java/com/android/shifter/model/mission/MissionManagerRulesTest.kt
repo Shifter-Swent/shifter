@@ -48,7 +48,7 @@ class MissionManagerRulesTest {
 
   private val auth = FirestoreEmulator.auth
   private val db = FirestoreEmulator.firestore
-  private val missions = FirestoreMissionRepository(db)
+  private val missions = FirestoreMissionRepository(db, auth)
 
   /** Paths deleted in [cleanUp] through the emulator's admin API, whatever the rules allow. */
   private val paths = mutableSetOf<String>()

@@ -1,13 +1,19 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
+import com.swent.shifter.model.firestore.requireString
+import com.swent.shifter.model.notification.InboxDocs
+import com.swent.shifter.model.notification.NotificationData
+import com.swent.shifter.model.notification.NotificationKind
 import java.time.Clock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,11 +29,13 @@ import kotlinx.coroutines.tasks.await
  *
  * All Firebase types stay inside this class and the [toMission] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
- * Firestore errors are rethrown as [MissionRepositoryException]. [clock] tells [updateMission]
- * whether a mission is past its end, and is injected so tests can fix it.
+ * Firestore errors are rethrown as [MissionRepositoryException]. [auth] gives the signed-in user
+ * who sends the notifications of a write. [clock] tells [updateMission] and [addAssignees] whether
+ * a mission is past its end, and is injected so tests can fix it.
  */
 class FirestoreMissionRepository(
     private val firestore: FirebaseFirestore,
+    private val auth: FirebaseAuth,
     private val clock: Clock = Clock.systemUTC(),
 ) : MissionRepository {
 
@@ -149,19 +157,94 @@ class FirestoreMissionRepository(
     translatingErrors {
       firestore
           .runTransaction { transaction ->
-            val snapshot = transaction.get(document)
-            if (!snapshot.exists()) {
-              throw FirebaseFirestoreException(
-                  "Mission '$missionId' of event '$eventId' does not exist",
-                  Code.NOT_FOUND,
-              )
-            }
-            requireRoomInMission(snapshot.toMission().volunteersNeeded, assigneeIds.size)
+            val stored = transaction.get(document).toStoredMission()
+            requireRoomInMission(stored.volunteersNeeded, assigneeIds.size)
             transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
             null
           }
           .await()
     }
+  }
+
+  /**
+   * A transaction rather than a batch: for the organizer, `firestore.rules` checks neither the
+   * number of assignees nor the completion of a mission, so both are read here, with the titles and
+   * times the notifications list, and the writes go through only if none of them changed meanwhile.
+   * Every read comes before any write, as a transaction requires, and the block keeps nothing
+   * outside itself, since Firestore runs it again when a document changes in between. Like every
+   * transaction, it needs a connection.
+   *
+   * Completion is measured by [clock], the device's: the rules would not refuse it.
+   */
+  override suspend fun addAssignees(eventId: String, additions: Map<String, List<String>>) {
+    requireValidAdditions(additions)
+    val wanted = additions.filterValues { it.isNotEmpty() }
+    if (wanted.isEmpty()) return
+    val senderId = auth.currentUser?.uid ?: throw MissionRepositoryException.PermissionDenied()
+    val event = firestore.collection(EventSchema.COLLECTION).document(eventId)
+    translatingErrors {
+      firestore
+          .runTransaction { transaction ->
+            val eventTitle = transaction.get(event).toEventTitle()
+            val stored = wanted.keys.map { transaction.get(missionsOf(eventId).document(it)) }
+            val now = clock.instant()
+            val changes =
+                stored
+                    .map { it.toStoredMission() }
+                    .mapNotNull { mission ->
+                      mission.withAdded(wanted.getValue(mission.id), now)?.let { mission to it }
+                    }
+            for ((_, updated) in changes) {
+              transaction.update(
+                  missionsOf(eventId).document(updated.id),
+                  MissionSchema.ASSIGNEE_IDS,
+                  updated.assigneeIds,
+              )
+            }
+            transaction.notifyAssigned(
+                eventId,
+                eventTitle,
+                senderId,
+                NotificationData.Value.ADDED,
+                missionsByAddedPerson(changes),
+            )
+            null
+          }
+          .await()
+    }
+  }
+
+  /**
+   * Sets, for each person of [missionsByPerson], one MISSION_ASSIGNED listing their missions, in
+   * the write of [this] transaction, leaving out [senderId] as [InboxDocs.documents] does.
+   */
+  private fun Transaction.notifyAssigned(
+      eventId: String,
+      eventTitle: String,
+      senderId: String,
+      change: String,
+      missionsByPerson: Map<String, List<Mission>>,
+  ) {
+    for ((userId, missions) in missionsByPerson) {
+      InboxDocs.documents(
+              firestore,
+              listOf(userId),
+              NotificationKind.MISSION_ASSIGNED,
+              eventId,
+              eventTitle,
+              senderId,
+              missionAssignedData(change, missions),
+          )
+          .forEach { (document, fields) -> set(document, fields) }
+    }
+  }
+
+  /** The title of the event stored in this snapshot, failing with NOT_FOUND when it is missing. */
+  private fun DocumentSnapshot.toEventTitle(): String {
+    if (!exists()) {
+      throw FirebaseFirestoreException("Event '${reference.path}' does not exist", Code.NOT_FOUND)
+    }
+    return requireString("Event", EventSchema.TITLE)
   }
 
   /**
@@ -182,12 +265,12 @@ class FirestoreMissionRepository(
     requireValidUpdate(mission)
     val document = missionsOf(mission.eventId).document(mission.id)
     translatingErrors {
-      val stored = document.get().await().toStoredMission(mission)
+      val stored = document.get().await().toStoredMission()
       requireNotCompleted(stored, clock.instant())
       findConflict(stored.withEditableFieldsOf(mission))?.let { throw MissionOverlapException(it) }
       firestore
           .runTransaction { transaction ->
-            val current = transaction.get(document).toStoredMission(mission)
+            val current = transaction.get(document).toStoredMission()
             requireNotCompleted(current, clock.instant())
             requireRoomForAssignees(current, mission)
             transaction.update(document, mission.toEditableFieldsMap())
@@ -217,13 +300,10 @@ class FirestoreMissionRepository(
         .firstOrNull { it.id != mission.id && mission.conflictsWith(it) }
   }
 
-  /** The mission stored in this snapshot, failing with NOT_FOUND when [mission] does not exist. */
-  private fun DocumentSnapshot.toStoredMission(mission: Mission): Mission {
+  /** The mission stored in this snapshot, failing with NOT_FOUND when it does not exist. */
+  private fun DocumentSnapshot.toStoredMission(): Mission {
     if (!exists()) {
-      throw FirebaseFirestoreException(
-          "Mission '${mission.id}' of event '${mission.eventId}' does not exist",
-          Code.NOT_FOUND,
-      )
+      throw FirebaseFirestoreException("Mission '${reference.path}' does not exist", Code.NOT_FOUND)
     }
     return toMission()
   }

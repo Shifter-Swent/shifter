@@ -51,7 +51,7 @@ object RepositoryProviderFactory {
           eventRepository = FirestoreEventRepository(firestore),
           userRepository = UserRepositoryFirestore(firestore),
           membershipRequestRepository = MembershipRequestRepositoryFirestore(firestore),
-          missionRepository = FirestoreMissionRepository(firestore),
+          missionRepository = FirestoreMissionRepository(firestore, auth),
           teamRepository = FirestoreTeamRepository(firestore),
           checkInRepository = FirestoreCheckInRepository(firestore, auth),
           chatRepository = FirestoreChatRepository(firestore, auth),

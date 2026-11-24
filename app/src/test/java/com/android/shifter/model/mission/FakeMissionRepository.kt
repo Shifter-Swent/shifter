@@ -1,6 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.mission
 
+import com.swent.shifter.model.notification.FakeNotificationInbox
+import com.swent.shifter.model.notification.NotificationData
+import com.swent.shifter.model.notification.NotificationKind
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,8 +16,18 @@ import kotlinx.coroutines.flow.update
  * [failure] makes every call throw it, to exercise error handling. Like the real repository, it
  * refuses a mission that conflicts with one already created, and [clock] tells it, as the real one,
  * whether a mission is past its end.
+ *
+ * [addAssignees] delivers its notifications to [inbox], as sent by [senderId], the signed-in user
+ * of the real repository, with the title [eventTitle] gives, which the real one reads on the event.
+ * Having no events and nobody signed in, it never fails with NotFound for a missing event nor with
+ * PermissionDenied, as the real one may.
  */
-class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : MissionRepository {
+class FakeMissionRepository(
+    private val clock: Clock = Clock.systemUTC(),
+    val inbox: FakeNotificationInbox = FakeNotificationInbox(),
+    private val senderId: String = "organizer-1",
+    private val eventTitle: (eventId: String) -> String = { "Event $it" },
+) : MissionRepository {
 
   /** A flow, so that each write reaches the observers like a Firestore listener. */
   private val state = MutableStateFlow<List<Mission>>(emptyList())
@@ -86,6 +99,39 @@ class FakeMissionRepository(private val clock: Clock = Clock.systemUTC()) : Miss
     val mission = missions[index]
     requireRoomInMission(mission.volunteersNeeded, assigneeIds.size)
     replace(index, mission.copy(assigneeIds = assigneeIds))
+  }
+
+  /**
+   * Checks everything before changing anything, in the order of the real repository, then writes
+   * the missions in one update and delivers the notifications, so a failure leaves both untouched.
+   */
+  override suspend fun addAssignees(eventId: String, additions: Map<String, List<String>>) {
+    failure?.let { throw it }
+    requireValidAdditions(additions)
+    val wanted = additions.filterValues { it.isNotEmpty() }
+    if (wanted.isEmpty()) return
+    val stored =
+        wanted.keys.map { id ->
+          missions.firstOrNull { it.eventId == eventId && it.id == id }
+              ?: throw MissionRepositoryException.NotFound()
+        }
+    val now = clock.instant()
+    val changes = stored.mapNotNull { mission ->
+      mission.withAdded(wanted.getValue(mission.id), now)?.let { mission to it }
+    }
+    val updated = changes.associate { (_, mission) -> mission.id to mission }
+    // Ids are unique across events here, as each mission gets the next number.
+    state.update { all -> all.map { updated[it.id] ?: it } }
+    for ((userId, added) in missionsByAddedPerson(changes)) {
+      inbox.deliver(
+          listOf(userId),
+          NotificationKind.MISSION_ASSIGNED,
+          eventId,
+          eventTitle(eventId),
+          senderId,
+          missionAssignedData(NotificationData.Value.ADDED, added),
+      )
+    }
   }
 
   override suspend fun updateMission(mission: Mission) {
