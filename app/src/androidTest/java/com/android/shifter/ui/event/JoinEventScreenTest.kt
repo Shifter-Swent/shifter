@@ -380,10 +380,7 @@ class JoinEventScreenTest {
       Content(uiState = shiftsState(), onShiftPicked = { picked += it })
     }
 
-    composeTestRule
-        .onNodeWithTag(ShiftGridTestTags.slot(FRIDAY, 18))
-        .performScrollTo()
-        .performClick()
+    tapSlot(FRIDAY, 18)
 
     assertEquals(listOf(shiftAt(FRIDAY, 18).id), picked)
   }
@@ -395,10 +392,7 @@ class JoinEventScreenTest {
       Content(uiState = shiftsState(), onShiftPicked = { picked += it })
     }
 
-    composeTestRule
-        .onNodeWithTag(ShiftGridTestTags.slot(FRIDAY, 10))
-        .performScrollTo()
-        .performClick()
+    tapSlot(FRIDAY, 10)
 
     assertEquals(emptyList<String>(), picked)
   }
@@ -435,6 +429,15 @@ class JoinEventScreenTest {
 
     composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED).assertDoesNotExist()
+  }
+
+  /**
+   * Taps the slot of [day] at [hour]. The screen is scrolled to the whole grid first: scrolling to
+   * a cell only scrolls the grid's row of days sideways, which leaves it out of view.
+   */
+  private fun tapSlot(day: LocalDate, hour: Int) {
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).performScrollTo()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.slot(day, hour)).performClick()
   }
 
   /** The event of [SHIFTS], with a team picked and the shifts of [picked]. */
