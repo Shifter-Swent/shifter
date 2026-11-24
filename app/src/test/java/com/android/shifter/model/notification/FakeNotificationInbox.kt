@@ -202,3 +202,48 @@ class FakeNotificationTexts(override val zone: ZoneId) : NotificationTexts {
 
   override fun plural(id: Int, count: Int, vararg args: Any) = "$id#$count${args.toList()}"
 }
+
+/**
+ * A [Notifier] that keeps what it shows: [shown] holds every notification in order, and [active]
+ * the ones still on the phone, by identity, a new one replacing the one with its identity. A test
+ * dismisses one with [dismiss], as a user swiping it away, and sets [permitted] and [failure].
+ */
+class FakeNotifier : Notifier {
+  val shown = mutableListOf<AppNotification>()
+  val active = linkedMapOf<String, AppNotification>()
+
+  /** What [canShow] returns, false as without the permission. */
+  var permitted = true
+
+  /** When set, [show] throws it and shows nothing. */
+  var failure: Exception? = null
+
+  override fun canShow() = permitted
+
+  override fun show(notifications: List<AppNotification>) {
+    failure?.let { throw it }
+    shown += notifications
+    notifications.forEach { active[it.identity] = it }
+  }
+
+  override fun activeIdentities(): Set<String> = active.keys.toSet()
+
+  fun dismiss(identity: String) {
+    active -= identity
+  }
+}
+
+/** [ShownItems] in memory, empty at first. */
+class InMemoryShownItems : ShownItems {
+  private val byIdentity = mutableMapOf<String, List<InboxNotification>>()
+
+  override fun items(identity: String) = byIdentity[identity].orEmpty()
+
+  override fun put(identity: String, items: List<InboxNotification>) {
+    byIdentity[identity] = items
+  }
+
+  override fun retainOnly(identities: Set<String>) {
+    byIdentity.keys.retainAll(identities)
+  }
+}
