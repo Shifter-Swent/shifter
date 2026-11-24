@@ -41,9 +41,10 @@ class FakeNotificationInbox(
     get() = delivered.toList()
 
   /**
-   * When set, every reading or removing call and every new collection throws it, to simulate a
-   * backend error; [deliver] stands for the writer's batch and ignores it. Setting it while
-   * [observePending] is collected ends that flow with it too, like a failing listener.
+   * When set, every reading call and every new collection throws it, to simulate a backend error.
+   * [remove] ignores it, as the Firestore inbox records a removal on the phone without asking the
+   * backend, and [deliver] stands for the writer's batch and ignores it too. Setting it while
+   * [observePending] is collected ends that flow with it, like a failing listener.
    */
   var failure: Exception?
     get() = state.value.failure
@@ -94,7 +95,6 @@ class FakeNotificationInbox(
       state.map { it.pendingOf(userId) }.distinctUntilChanged()
 
   override suspend fun remove(userId: String, ids: Collection<String>) {
-    state.value.failure?.let { throw it }
     state.update { s ->
       s.copy(inboxes = s.inboxes + (userId to s.of(userId).filterNot { it.id in ids }))
     }

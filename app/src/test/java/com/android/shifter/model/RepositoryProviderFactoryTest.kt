@@ -9,6 +9,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.LiveLocation
@@ -16,6 +17,8 @@ import com.swent.shifter.model.location.LiveLocationRepositoryException
 import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.membership.MembershipRequestSchema
 import com.swent.shifter.model.mission.MissionSchema
+import com.swent.shifter.model.notification.InboxNotification
+import com.swent.shifter.model.notification.InboxSchema
 import com.swent.shifter.model.team.TeamSchema
 import com.swent.shifter.model.user.USERS_COLLECTION
 import io.mockk.every
@@ -132,6 +135,18 @@ class RepositoryProviderFactoryTest {
     // Nobody is signed in on the supplied auth, so there is no position of theirs to remove.
     assertTrue(removal.exceptionOrNull() is LiveLocationRepositoryException.PermissionDenied)
     verify { auth.currentUser }
+  }
+
+  @Test
+  fun create_buildsTheNotificationInboxOnTheSuppliedFirestore() = runTest {
+    val notifications = mockk<CollectionReference>()
+    val oldestFirst = mockk<Query>()
+    every { user.collection(InboxSchema.COLLECTION) } returns notifications
+    every { notifications.orderBy(InboxSchema.CREATED_AT) } returns oldestFirst
+    every { oldestFirst.get() } returns Tasks.forResult(empty)
+
+    assertEquals(emptyList<InboxNotification>(), provider.notificationInbox.pending(USER_ID))
+    verify { firestore.collection(USERS_COLLECTION) }
   }
 
   private companion object {
