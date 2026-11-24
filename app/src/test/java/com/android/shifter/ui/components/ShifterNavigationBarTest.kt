@@ -1,6 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -27,7 +30,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
@@ -53,13 +55,19 @@ class ShifterNavigationBarTest {
   }
 
   // Robolectric's default graphics mode lays no text out, so it would never report an ellipsis.
+  // The phone width is the default of robolectric.properties.
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  @Config(qualifiers = "w360dp-h720dp")
   @Test
-  fun bar_onAPhoneWidth_showsTheFiveOrganizerLabelsInFull() {
-    show(OrganizerTabs.all, OrganizerTabs.home)
+  fun bar_onAPhoneWidth_showsEachOrganizerLabelInFullOnceSelected() {
+    var selected by mutableStateOf<Tab>(OrganizerTabs.home)
+    composeTestRule.setContent {
+      ShifterTheme { ShifterNavigationBar(OrganizerTabs.all, selected, onSelect = {}) }
+    }
 
+    // A selected label is bolder, so wider: each one is checked with its tab selected.
     OrganizerTabs.all.forEach { tab ->
+      selected = tab
+      composeTestRule.waitForIdle()
       val results = mutableListOf<TextLayoutResult>()
       composeTestRule
           .onNode(
