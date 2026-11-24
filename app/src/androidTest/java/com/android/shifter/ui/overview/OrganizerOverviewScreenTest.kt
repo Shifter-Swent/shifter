@@ -5,7 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
@@ -292,51 +291,27 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun assignDialog_onSaveFailure_showsTheError() {
-    show(loaded.copy(assigning = assigning().copy(saveFailed = true)))
-
-    compose.onNodeWithTag(AssignDialogTestTags.ERROR).assertIsDisplayed()
-  }
-
-  @Test
-  fun assignDialog_whileSaving_disablesSaveAndCancel() {
-    show(loaded.copy(assigning = assigning().copy(isSaving = true)))
-
-    compose.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
-    // A save cannot be taken back, so the dialog cannot be closed until it ends.
-    compose.onNodeWithTag(AssignDialogTestTags.CANCEL).assertIsNotEnabled()
-  }
-
-  @Test
-  fun assignDialog_onCandidatesFailure_disablesSave() {
+  fun assignDialog_reportsRetryToTheOverview() {
+    var retries = 0
+    var dismissals = 0
     val failed =
         assigning().let {
           it.copy(selection = it.selection.copy(candidates = emptyList(), loadFailed = true))
         }
-    show(loaded.copy(assigning = failed))
+    show(
+        loaded.copy(assigning = failed),
+        OrganizerOverviewActions(
+            onRetryAssignees = { retries++ },
+            onDismissAssign = { dismissals++ },
+        ),
+    )
 
-    compose.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
-  }
+    compose.onNodeWithTag(AssigneePickerTestTags.RETRY).performClick()
 
-  @Test
-  fun assignDialog_overTheLoweredNeed_saysWhyAndDisablesSave() {
-    val tooMany =
-        assigning().let {
-          it.copy(limit = 1, selection = it.selection.copy(selectedIds = listOf("ana", "ben")))
-        }
-    show(loaded.copy(assigning = tooMany))
-
-    compose
-        .onNodeWithTag(AssignDialogTestTags.OVER_LIMIT)
-        .assertTextEquals("This mission now needs only 1 person. Unpick some to save.")
-    compose.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
-  }
-
-  @Test
-  fun assignDialog_withinTheLimit_showsNoLimitMessage() {
-    show(loaded.copy(assigning = assigning()))
-
-    compose.onNodeWithTag(AssignDialogTestTags.OVER_LIMIT).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(1, retries)
+      assertEquals(0, dismissals)
+    }
   }
 
   @Test

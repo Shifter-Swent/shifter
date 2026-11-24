@@ -4,10 +4,13 @@ package com.swent.shifter.ui.mission
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.ui.theme.ShifterTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -22,13 +25,15 @@ class AssignDialogTest {
 
   private fun showDialog(assigning: AssignState) {
     composeTestRule.setContent {
-      AssignDialog(
-          assigning = assigning,
-          onToggle = { calls += "toggle $it" },
-          onRetry = { calls += "retry" },
-          onSave = { calls += "save" },
-          onDismiss = { calls += "dismiss" },
-      )
+      ShifterTheme {
+        AssignDialog(
+            assigning = assigning,
+            onToggle = { calls += "toggle $it" },
+            onRetry = { calls += "retry" },
+            onSave = { calls += "save" },
+            onDismiss = { calls += "dismiss" },
+        )
+      }
     }
   }
 
@@ -36,6 +41,8 @@ class AssignDialogTest {
   fun assignDialog_reportsEachTapToItsCallback() {
     showDialog(assigning())
 
+    composeTestRule.onNodeWithTag(AssignDialogTestTags.OVER_LIMIT).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(AssignDialogTestTags.ERROR).assertDoesNotExist()
     composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u2")).performClick()
     composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsEnabled().performClick()
     composeTestRule.onNodeWithTag(AssignDialogTestTags.CANCEL).performClick()
@@ -44,19 +51,57 @@ class AssignDialogTest {
   }
 
   @Test
-  fun assignDialog_withTooManyPicked_saysSoAndCannotSave() {
-    showDialog(assigning(limit = 1, selectedIds = listOf("u1", "u2")))
+  fun retry_afterTheCandidatesFailed_isReportedAndSaveStaysOff() {
+    showDialog(assigning(candidates = emptyList(), loadFailed = true))
 
-    composeTestRule.onNodeWithTag(AssignDialogTestTags.OVER_LIMIT).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(AssigneePickerTestTags.RETRY).performClick()
+
+    assertEquals(listOf("retry"), calls)
     composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
   }
 
   @Test
-  fun assignDialog_whileSaving_cannotBeSavedNorCancelled() {
+  fun assignDialog_whileTheCandidatesLoad_cannotSave() {
+    showDialog(assigning(candidates = emptyList(), isLoading = true))
+
+    composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
+  }
+
+  @Test
+  fun assignDialog_withTooManyPicked_saysSoAndCannotSave() {
+    showDialog(assigning(limit = 1, selectedIds = listOf("u1", "u2")))
+
+    composeTestRule
+        .onNodeWithTag(AssignDialogTestTags.OVER_LIMIT)
+        .assertTextEquals("This mission now needs only 1 person. Unpick some to save.")
+    composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
+  }
+
+  @Test
+  fun assignDialog_whileSaving_cannotBeSavedCancelledNorPicked() {
     showDialog(assigning(isSaving = true))
 
     composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(AssignDialogTestTags.CANCEL).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u2")).assertIsNotEnabled()
+  }
+
+  @Test
+  fun pressBack_closesTheDialog() {
+    showDialog(assigning())
+
+    pressBack()
+
+    composeTestRule.runOnIdle { assertEquals(listOf("dismiss"), calls) }
+  }
+
+  @Test
+  fun pressBack_whileSaving_keepsTheDialogOpen() {
+    showDialog(assigning(isSaving = true))
+
+    pressBack()
+
+    composeTestRule.runOnIdle { assertEquals(emptyList<String>(), calls) }
   }
 
   @Test
@@ -67,10 +112,14 @@ class AssignDialogTest {
     composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsEnabled()
   }
 
-  /** The assignees of a mission needing [limit] people, picked among Ada and Bob. */
+  /** The people picked for a mission needing [limit] of them, among Ada and Bob by default. */
   private fun assigning(
       limit: Int = 2,
+      candidates: List<AssigneeOption> =
+          listOf(AssigneeOption("u1", "Ada"), AssigneeOption("u2", "Bob")),
       selectedIds: List<String> = listOf("u1"),
+      isLoading: Boolean = false,
+      loadFailed: Boolean = false,
       isSaving: Boolean = false,
       saveFailed: Boolean = false,
   ) =
@@ -80,8 +129,10 @@ class AssignDialogTest {
           limit = limit,
           selection =
               AssigneeSelection(
-                  candidates = listOf(AssigneeOption("u1", "Ada"), AssigneeOption("u2", "Bob")),
+                  candidates = candidates,
                   selectedIds = selectedIds,
+                  isLoading = isLoading,
+                  loadFailed = loadFailed,
               ),
           isSaving = isSaving,
           saveFailed = saveFailed,
