@@ -44,6 +44,10 @@
     <!-- ANNOUNCEMENT (#618). Prefix: notification_announcement_ -->
 
     <!-- MISSED_CHECK_IN (#611). Prefix: notification_missed_check_in_ -->
+    <!-- The text: the volunteer, the mission and its start time. -->
+    <string name="notification_missed_check_in_text">%1$s hasn\'t checked in to %2$s (%3$s).</string>
+    <!-- The same, when the volunteer's name cannot be read. -->
+    <string name="notification_missed_check_in_text_unknown">A volunteer hasn\'t checked in to %1$s (%2$s).</string>
 
     <!-- OPEN_SPOTS (#608). Prefix: notification_open_spots_ -->
     <!-- The text: the mission, its start time and how many volunteers it still needs. -->
