@@ -16,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,18 +34,29 @@ enum class PersonChipState {
 
 /**
  * A person on a mission: their initials in a disc, then their name. A proposed person is drawn in
- * the primary blue, someone already assigned in grey.
+ * the primary blue, someone already assigned in grey; screen readers say which, after the name, and
+ * skip the initials, which only repeat it.
  *
- * @param name the person's name, or null when it could not be read: the chip then says so.
+ * @param name the person's name, never blank, or null when it could not be read: the chip then says
+ *   so.
+ * @param maxInitials how many initials the disc shows, e.g. 1 for a word rather than a name.
  */
 @Composable
-fun PersonChip(name: String?, state: PersonChipState, modifier: Modifier = Modifier) {
+fun PersonChip(
+    name: String?,
+    state: PersonChipState,
+    modifier: Modifier = Modifier,
+    maxInitials: Int = 2,
+) {
   val proposed = state == PersonChipState.PROPOSED
   val colors = MaterialTheme.colorScheme
   val shape = RoundedCornerShape(50)
+  val stateText =
+      stringResource(if (proposed) R.string.person_chip_proposed else R.string.person_chip_assigned)
   Row(
       modifier =
           modifier
+              .semantics(mergeDescendants = true) { stateDescription = stateText }
               .clip(shape)
               .background(if (proposed) colors.primaryContainer else colors.surfaceVariant)
               .border(1.dp, if (proposed) colors.primary else colors.outline, shape)
@@ -53,11 +67,12 @@ fun PersonChip(name: String?, state: PersonChipState, modifier: Modifier = Modif
         modifier =
             Modifier.size(24.dp)
                 .clip(CircleShape)
-                .background(if (proposed) colors.primary else shifter_avatarBackground),
+                .background(if (proposed) colors.primary else shifter_avatarBackground)
+                .clearAndSetSemantics {},
         contentAlignment = Alignment.Center,
     ) {
       Text(
-          text = avatarInitials(name),
+          text = avatarInitials(name, maxInitials),
           fontSize = 10.sp,
           fontWeight = FontWeight.SemiBold,
           color = if (proposed) colors.onPrimary else colors.onSurfaceVariant,

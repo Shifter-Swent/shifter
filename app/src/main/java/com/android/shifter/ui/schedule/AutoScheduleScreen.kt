@@ -194,12 +194,20 @@ private fun Total(count: Int, label: String, color: Color, modifier: Modifier) {
   }
 }
 
-/** What the two kinds of chips mean, drawn with the chips themselves. */
+/** What the two kinds of chips mean, drawn with the chips themselves, of one initial. */
 @Composable
 private fun Legend() {
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-    PersonChip(stringResource(R.string.schedule_legend_proposed), PersonChipState.PROPOSED)
-    PersonChip(stringResource(R.string.schedule_legend_assigned), PersonChipState.ASSIGNED)
+    PersonChip(
+        stringResource(R.string.schedule_legend_proposed),
+        PersonChipState.PROPOSED,
+        maxInitials = 1,
+    )
+    PersonChip(
+        stringResource(R.string.schedule_legend_assigned),
+        PersonChipState.ASSIGNED,
+        maxInitials = 1,
+    )
   }
 }
 

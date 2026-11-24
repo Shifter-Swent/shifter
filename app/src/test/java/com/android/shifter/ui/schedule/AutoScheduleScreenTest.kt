@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -21,6 +22,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -151,19 +153,22 @@ class AutoScheduleScreenTest {
   fun missionCard_showsWhoIsAssignedThenWhoIsProposed() {
     showSchedule(proposal, now = at(2, "10:00"))
 
-    compose
-        .onNode(
-            hasText("Léa Petit") and
-                hasAnyAncestor(hasTestTag(AutoScheduleTestTags.assignedChip("park", 0)))
-        )
-        .assertExists()
+    val assigned =
+        compose
+            .onNodeWithTag(AutoScheduleTestTags.assignedChip("park", 0))
+            .assert(hasText("Léa Petit"))
+            .getUnclippedBoundsInRoot()
     // A name that could not be read is still a person on the mission.
-    compose
-        .onNode(
-            hasText("Unknown person") and
-                hasAnyAncestor(hasTestTag(AutoScheduleTestTags.proposedChip("park", 0)))
-        )
-        .assertExists()
+    val proposed =
+        compose
+            .onNodeWithTag(AutoScheduleTestTags.proposedChip("park", 0))
+            .assert(hasText("Unnamed volunteer"))
+            .getUnclippedBoundsInRoot()
+    assertTrue(
+        "Those already assigned come first",
+        assigned.top < proposed.top ||
+            (assigned.top == proposed.top && assigned.left < proposed.left),
+    )
     compose.onNodeWithTag(AutoScheduleTestTags.count("park")).assertTextEquals("2/2")
   }
 
