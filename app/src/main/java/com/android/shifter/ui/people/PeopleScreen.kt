@@ -46,6 +46,12 @@ object PeopleScreenTestTags {
   const val UPDATE_PROGRESS = "PeopleUpdateProgress"
 }
 
+/** The tabs of the People screen, in their order. */
+enum class PeopleTab {
+  PARTICIPANTS,
+  REQUESTS,
+}
+
 /**
  * The organizer's People tab: the event's participants by team, and the requests to join it.
  *
@@ -60,6 +66,8 @@ object PeopleScreenTestTags {
  * @param eventTitle the event's name, shown in the top bar.
  * @param onBack called to leave the event, from the back button of the top bar.
  * @param onManagerChangeFailureShown called once a failed change of manager has been reported.
+ * @param initialTab the tab shown first, such as the requests for a notification of new ones; the
+ *   tab picked afterwards survives a configuration change.
  */
 @Composable
 fun PeopleScreen(
@@ -77,9 +85,10 @@ fun PeopleScreen(
     onNavigate: (Tab) -> Unit,
     onManagerChangeFailureShown: () -> Unit,
     modifier: Modifier = Modifier,
+    initialTab: PeopleTab = PeopleTab.PARTICIPANTS,
 ) {
   val colors = MaterialTheme.colorScheme
-  var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+  var selectedTab by rememberSaveable { mutableIntStateOf(initialTab.ordinal) }
   // The card tapped, as ids so it survives a configuration change and a reload of the list.
   var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
   // The participant being moved, by id for the same reasons.
@@ -219,7 +228,7 @@ private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> U
   }
 }
 
-private const val PARTICIPANTS_TAB = 0
+private val PARTICIPANTS_TAB = PeopleTab.PARTICIPANTS.ordinal
 
 @Preview
 @Composable
