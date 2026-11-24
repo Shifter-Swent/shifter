@@ -740,9 +740,9 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 private const val OPEN_MISSION_KEY = "openMission"
 
 /**
- * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, and
- * the user's position when given a [locationProvider], and the volunteers of [watchedTeams] who
- * share their position. Without [watchedTeams], the map shows no volunteer.
+ * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, the
+ * user's position read from [locationProvider], and the volunteers of [watchedTeams] who share
+ * their position. Without [watchedTeams], the map shows no volunteer.
  */
 private inline fun <reified T : Tab, reified S : Destination, reified E : EventMode> NavGraphBuilder
     .mapTab(
@@ -751,7 +751,7 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
     navController: NavHostController,
     repositories: RepositoryProvider,
     noinline currentUserId: () -> String?,
-    locationProvider: LocationProvider? = null,
+    locationProvider: LocationProvider,
     watchedTeams: WatchedTeams? = null,
 ) {
   navigation<T>(startDestination = tab.home) {

@@ -63,7 +63,7 @@ class MapViewModelTest {
 
   private var userId: String? = USER
 
-  private fun viewModel(location: LocationProvider? = null) =
+  private fun viewModel(location: LocationProvider = FakeLocationProvider()) =
       MapViewModel(
           EVENT.id,
           events,
@@ -305,14 +305,6 @@ class MapViewModelTest {
   }
 
   @Test
-  fun myPosition_staysUnknownWithNoProvider() = runTest {
-    val viewModel = viewModel()
-    collectPosition(viewModel)
-
-    assertNull(viewModel.myPosition.value)
-  }
-
-  @Test
   fun locationStatus_followsTheProvider() = runTest {
     val location = FakeLocationProvider(LocationStatus.DENIED)
     val viewModel = viewModel(location)
@@ -321,11 +313,6 @@ class MapViewModelTest {
     location.setStatus(LocationStatus.GRANTED)
 
     assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
-  }
-
-  @Test
-  fun locationStatus_withNoProvider_isNull() = runTest {
-    assertNull(viewModel().locationStatus.value)
   }
 
   @Test
@@ -338,15 +325,6 @@ class MapViewModelTest {
 
     assertEquals(1, location.refreshCount)
     assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
-  }
-
-  @Test
-  fun refreshLocation_withNoProvider_doesNothing() = runTest {
-    val viewModel = viewModel()
-
-    viewModel.refreshLocation()
-
-    assertNull(viewModel.locationStatus.value)
   }
 
   @Test
