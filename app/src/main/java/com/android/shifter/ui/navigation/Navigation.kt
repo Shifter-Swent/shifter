@@ -18,6 +18,7 @@ import androidx.navigation.NavHostController
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.user.UserMode
 import kotlinx.serialization.Serializable
 
 /*
@@ -484,6 +485,13 @@ sealed interface OrganizerEventScreen : Destination {
  * entering it.
  */
 fun startApp(isSignedIn: Boolean): App = if (isSignedIn) Starting else SignedOut
+
+/** The app a user of [mode] enters. */
+fun appOfMode(mode: UserMode): App =
+    when (mode) {
+      UserMode.VOLUNTEER -> Volunteer
+      UserMode.ORGANIZER -> Organizer
+    }
 
 // ── Navigation actions ──────────────────────────────────────────────────────
 

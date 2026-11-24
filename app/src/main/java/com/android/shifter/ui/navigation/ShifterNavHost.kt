@@ -959,13 +959,6 @@ private fun TabPage(
   }
 }
 
-/** The app a user of [mode] enters. */
-private fun appOfMode(mode: UserMode): App =
-    when (mode) {
-      UserMode.VOLUNTEER -> Volunteer
-      UserMode.ORGANIZER -> Organizer
-    }
-
 /**
  * The join screen's ViewModel, kept in [owner], the join screen's entry, which the scan fills too.
  */
