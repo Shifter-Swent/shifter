@@ -17,6 +17,19 @@
     <!-- APPLICATION_DECIDED (#603). Prefix: notification_application_decided_ -->
 
     <!-- TEAM_CHANGED (#599). Prefix: notification_team_changed_ -->
+    <!-- Stands in for the volunteer's name when the writer could not read it. It always opens
+         the sentence, so it is capitalized. -->
+    <string name="notification_team_changed_someone">A volunteer</string>
+    <!-- The text when a volunteer joins: their name and the team. -->
+    <string name="notification_team_changed_joined">%1$s joined %2$s.</string>
+    <!-- The same when they leave, and they were on no mission of the team. -->
+    <string name="notification_team_changed_left">%1$s left %2$s.</string>
+    <!-- The same, with the missions they were taken off: their name, the team and those missions. -->
+    <string name="notification_team_changed_left_on_missions">%1$s left %2$s — was on: %3$s.</string>
+    <!-- One mission of that list: its title and its start time. -->
+    <string name="notification_team_changed_mission">%1$s %2$s</string>
+    <!-- What separates the missions of that list, kept apart so each language punctuates its own. -->
+    <string name="notification_team_changed_mission_separator">", "</string>
 
     <!-- MISSION_ASSIGNED (#617, #606). Prefix: notification_mission_assigned_ -->
 
