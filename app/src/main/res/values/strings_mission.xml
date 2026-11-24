@@ -71,4 +71,14 @@
     <string name="assignee_picker_load_failed">Could not load the people to assign.</string>
     <string name="assignee_picker_retry">Retry</string>
     <string name="assignee_picker_unknown">Unnamed volunteer</string>
+
+    <!-- The dialog that picks people for an existing mission (AssignDialog) -->
+    <string name="assign_dialog_save">Save</string>
+    <string name="assign_dialog_cancel">Cancel</string>
+    <string name="assign_dialog_failed">Could not save who is assigned. Try again.</string>
+    <!-- More people are picked than the mission needs, as its volunteers needed were lowered meanwhile. -->
+    <plurals name="assign_dialog_over_limit">
+        <item quantity="one">This mission now needs only %1$d person. Unpick some to save.</item>
+        <item quantity="other">This mission now needs only %1$d people. Unpick some to save.</item>
+    </plurals>
 </resources>

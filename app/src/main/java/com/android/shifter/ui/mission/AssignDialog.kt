@@ -89,7 +89,7 @@ internal fun AssignDialog(
             Text(
                 text =
                     pluralStringResource(
-                        R.plurals.overview_assign_over_limit,
+                        R.plurals.assign_dialog_over_limit,
                         assigning.limit,
                         assigning.limit,
                     ),
@@ -100,7 +100,7 @@ internal fun AssignDialog(
           }
           if (assigning.saveFailed) {
             Text(
-                text = stringResource(R.string.overview_assign_failed),
+                text = stringResource(R.string.assign_dialog_failed),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.testTag(AssignDialogTestTags.ERROR),
@@ -120,7 +120,7 @@ internal fun AssignDialog(
                     !assigning.overLimit,
             modifier = Modifier.testTag(AssignDialogTestTags.SAVE),
         ) {
-          Text(stringResource(R.string.overview_assign_save))
+          Text(stringResource(R.string.assign_dialog_save))
         }
       },
       dismissButton = {
@@ -129,7 +129,7 @@ internal fun AssignDialog(
             enabled = !assigning.isSaving,
             modifier = Modifier.testTag(AssignDialogTestTags.CANCEL),
         ) {
-          Text(stringResource(R.string.overview_assign_cancel))
+          Text(stringResource(R.string.assign_dialog_cancel))
         }
       },
   )
