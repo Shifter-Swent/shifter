@@ -161,7 +161,7 @@ class FirestoreNotificationInboxTest {
   }
 
   @Test
-  fun remove_ofSomeoneElsesInbox_isRefusedAndLeavesIt() = emulatorTest {
+  fun remove_ofSomeoneElsesInbox_doesNotThrow() = emulatorTest {
     val id = store(at = T0)
     signIn(other)
 
@@ -170,6 +170,7 @@ class FirestoreNotificationInboxTest {
     // Done once the server has refused the delete, which it reports as a failure.
     runCatching { db.waitForPendingWrites().await() }
 
+    // The refusal itself is checked by NotificationRulesTest.
     assertTrue(FirestoreEmulatorAdmin.documentExists(pathOf(id)))
   }
 
