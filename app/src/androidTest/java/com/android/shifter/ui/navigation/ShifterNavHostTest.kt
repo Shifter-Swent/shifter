@@ -44,6 +44,7 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.location.FakeLocationProvider
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.location.accurate
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
@@ -845,6 +846,24 @@ class ShifterNavHostTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
   }
 
+  /**
+   * The hand-off of the location status to the map (#653): a volunteer or a manager, who share the
+   * same tabs, is asked for the location on the Map tab until they grant it. The map is unit tested
+   * with a status, but nothing else fails if the screen stopped passing the ViewModel's one on.
+   */
+  @Test
+  fun volunteerMap_withoutLocationAccess_asksForIt() {
+    openMapWithAKnownPosition(
+        signIn(),
+        UserMode.VOLUNTEER,
+        VolunteerEvent("event-1", EVENT_TITLE),
+        VolunteerTabs.Map,
+        status = LocationStatus.DENIED,
+    )
+
+    waitForNode(MapScreenTestTags.LOCATION_GATE)
+  }
+
   /** The organizer's map is given the location provider too, to show them where they are (#655). */
   @Test
   fun organizerMap_followsTheUsersPosition() {
@@ -857,6 +876,20 @@ class ShifterNavHostTest {
         )
 
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { location.activeCollectors > 0 }
+  }
+
+  /** Without the location, the organizer is asked for it on their map too (#655). */
+  @Test
+  fun organizerMap_withoutLocationAccess_asksForIt() {
+    openMapWithAKnownPosition(
+        signIn(),
+        UserMode.ORGANIZER,
+        OrganizerEvent("event-1", EVENT_TITLE),
+        OrganizerTabs.Map,
+        status = LocationStatus.DENIED,
+    )
+
+    waitForNode(MapScreenTestTags.LOCATION_GATE)
   }
 
   /**
@@ -1943,17 +1976,19 @@ class ShifterNavHostTest {
 
   /**
    * Shows the app in [mode] to [user], who must be the signed-in account, with a GPS that knows
-   * where they are, and opens [mapTab], the Map tab of [event]; returns the GPS. Nothing follows it
-   * before the map opens, so whatever follows it afterwards is the map.
+   * where they are, and opens [mapTab], the Map tab of [event]; returns the GPS, whose permission
+   * is [status]. Nothing follows it before the map opens, so whatever follows it afterwards is the
+   * map.
    */
   private fun openMapWithAKnownPosition(
       user: AuthUser,
       mode: UserMode,
       event: EventMode,
       mapTab: Tab,
+      status: LocationStatus = LocationStatus.GRANTED,
   ): FakeLocationProvider {
     saveMode(user.uid, mode)
-    val location = FakeLocationProvider().apply { setPosition(accurate(GENEVA)) }
+    val location = FakeLocationProvider(status).apply { setPosition(accurate(GENEVA)) }
     lateinit var navController: NavHostController
     composeTestRule.setContent {
       navController = rememberNavController()

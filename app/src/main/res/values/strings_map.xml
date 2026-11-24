@@ -12,6 +12,12 @@
     <string name="map_error_unexpected">The map could not be loaded.</string>
     <string name="map_retry">Retry</string>
     <string name="map_close">Close</string>
+    <!-- The location gate over the map: short, so the message fits beside its button. -->
+    <string name="map_location_not_requested">Allow the location to see where you are.</string>
+    <string name="map_location_denied">Location denied: the map cannot show you.</string>
+    <string name="map_location_approximate_only">Allow the precise location to see where you are.</string>
+    <string name="map_location_permanently_denied">Location denied: allow it in the settings.</string>
+    <string name="map_location_off">Location is off: the map cannot show you.</string>
     <!-- A volunteer of the manager's teams on the map, with how old their position is. -->
     <string name="map_volunteer_unknown">Volunteer</string>
     <string name="map_volunteer_just_now">now</string>

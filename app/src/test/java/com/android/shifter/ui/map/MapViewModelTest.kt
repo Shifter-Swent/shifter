@@ -63,7 +63,7 @@ class MapViewModelTest {
 
   private var userId: String? = USER
 
-  private fun viewModel(location: LocationProvider? = null) =
+  private fun viewModel(location: LocationProvider = FakeLocationProvider()) =
       MapViewModel(
           EVENT.id,
           events,
@@ -154,6 +154,7 @@ class MapViewModelTest {
           { userId },
           FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
           UTC,
+          FakeLocationProvider(),
       )
 
   @Test
@@ -189,6 +190,7 @@ class MapViewModelTest {
             { userId },
             FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
             UTC,
+            FakeLocationProvider(),
         )
 
     // A mission not placed yet starts a reload; Water, already on the map, is opened meanwhile.
@@ -305,11 +307,41 @@ class MapViewModelTest {
   }
 
   @Test
-  fun myPosition_staysUnknownWithNoProvider() = runTest {
-    val viewModel = viewModel()
-    collectPosition(viewModel)
+  fun locationStatus_followsTheProvider() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    assertEquals(LocationStatus.DENIED, viewModel.locationStatus.value)
 
+    location.setStatus(LocationStatus.GRANTED)
+
+    assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
+  }
+
+  @Test
+  fun refreshLocation_readsTheStatusAgain() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    location.deviceStatus = LocationStatus.GRANTED
+
+    viewModel.refreshLocation()
+
+    assertEquals(1, location.refreshCount)
+    assertEquals(LocationStatus.GRANTED, viewModel.locationStatus.value)
+  }
+
+  @Test
+  fun refreshLocation_onceGranted_showsThePositionWithoutLeavingTheMap() = runTest {
+    val location = FakeLocationProvider(LocationStatus.DENIED)
+    val viewModel = viewModel(location)
+    collectPosition(viewModel)
+    location.emit(accurate(TENT.position))
     assertNull(viewModel.myPosition.value)
+
+    location.deviceStatus = LocationStatus.GRANTED
+    viewModel.refreshLocation()
+    location.emit(accurate(STAND.position))
+
+    assertEquals(STAND.position, viewModel.myPosition.value)
   }
 
   @Test
@@ -399,6 +431,7 @@ class MapViewModelTest {
           { userId },
           clock,
           UTC,
+          FakeLocationProvider(),
           liveLocations = repository,
           watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
           userRepository = userRepository,

@@ -27,6 +27,8 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.swent.shifter.model.location.GeoPosition
+import com.swent.shifter.model.location.LocationStatus
+import com.swent.shifter.ui.location.LocationPermissionTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
@@ -41,11 +43,13 @@ class MapScreenTest {
 
   private var closes = 0
   private var retries = 0
+  private var refreshes = 0
 
   private fun setContent(
       uiState: MapUiState,
       volunteers: List<VolunteerPin> = emptyList(),
       myPosition: GeoPosition? = null,
+      locationStatus: LocationStatus? = null,
   ) {
     compose.setContent {
       ShifterTheme {
@@ -56,6 +60,8 @@ class MapScreenTest {
             onRetry = { retries++ },
             myPosition = myPosition,
             volunteers = volunteers,
+            locationStatus = locationStatus,
+            onRefreshLocation = { refreshes++ },
         )
       }
     }
@@ -69,6 +75,68 @@ class MapScreenTest {
     compose.onNodeWithText("Event venue").assertIsDisplayed()
     compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.NO_MISSIONS).assertDoesNotExist()
+  }
+
+  @Test
+  fun locationDenied_showsTheGateOverTheMapAndRefreshesTheStatus() {
+    setContent(LOADED, locationStatus = LocationStatus.DENIED)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertIsDisplayed()
+    // Its action depends on the device's real permissions, which other tests may have granted.
+    compose.onNodeWithTag(LocationPermissionTestTags.ACTION).assertIsDisplayed()
+    compose.onNodeWithTag(ShifterMapTestTags.MAP).assertIsDisplayed()
+    compose.waitForIdle()
+    assertTrue(refreshes > 0)
+  }
+
+  @Test
+  fun locationOff_offersToTurnItOnWithTheMapsMessage() {
+    setContent(LOADED, locationStatus = LocationStatus.LOCATION_OFF)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertIsDisplayed()
+    compose.onNodeWithText("the map cannot show you", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("checked in", substring = true).assertDoesNotExist()
+    compose.onNodeWithText("Turn on location").assertIsDisplayed()
+  }
+
+  @Test
+  fun locationGranted_showsNoGate() {
+    setContent(LOADED, locationStatus = LocationStatus.GRANTED)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertDoesNotExist()
+  }
+
+  @Test
+  fun noLocationStatus_showsNoGate() {
+    setContent(LOADED, locationStatus = null)
+
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertDoesNotExist()
+  }
+
+  @Test
+  fun locationGranted_hidesTheGateAndShowsTheUser() {
+    var status by mutableStateOf(LocationStatus.DENIED)
+    var position by mutableStateOf<GeoPosition?>(null)
+    compose.setContent {
+      ShifterTheme {
+        MapContent(
+            uiState = LOADED,
+            onMarkerClick = {},
+            onCloseCard = {},
+            onRetry = {},
+            myPosition = position,
+            locationStatus = status,
+        )
+      }
+    }
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertIsDisplayed()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+
+    status = LocationStatus.GRANTED
+    position = ME
+
+    compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertIsDisplayed()
   }
 
   @Test
