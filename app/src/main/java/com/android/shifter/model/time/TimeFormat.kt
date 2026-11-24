@@ -14,6 +14,9 @@ fun Instant.formatTime(zone: ZoneId): String = TIME.format(atZone(zone))
 /** This local time as the app writes it everywhere, like [Instant.formatTime]: "14:00". */
 fun LocalTime.formatTime(): String = TIME.format(this)
 
+/** An hour of the day on two digits, as the hours of [formatTime] are: "08" rather than "8". */
+fun formatHour(hour: Int): String = hour.toString().padStart(2, '0')
+
 private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 
 /**

@@ -48,6 +48,13 @@ class TimeFormatTest {
   }
 
   @Test
+  fun formatHour_padsTheHourToTwoDigits() {
+    assertEquals("08", formatHour(8))
+    assertEquals("00", formatHour(0))
+    assertEquals("22", formatHour(22))
+  }
+
+  @Test
   fun formatTime_inTheZone_writesHoursAndMinutes() {
     val instant = Instant.parse("2026-11-14T08:05:00Z")
 
