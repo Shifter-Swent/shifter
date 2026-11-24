@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -108,6 +109,23 @@ class TeamChatContentTest {
     tag(TeamChatTestTags.message("0")).assert(hasText("Alice", substring = true))
     tag(TeamChatTestTags.message("1")).assert(hasText("Alice", substring = true).not())
     tag(TeamChatTestTags.message("2")).assert(hasText("Alice", substring = true).not())
+  }
+
+  @Test
+  fun group_namesTheSenderToTalkBackOnEachBubble() {
+    setContent(TeamChatUiState(isLoading = false, messages = numbered(0..2)))
+
+    // The first bubble reads its visible name, so it is not described a second time.
+    tag(TeamChatTestTags.message("0")).assert(hasContentDescription("Alice").not())
+    tag(TeamChatTestTags.message("1")).assert(hasContentDescription("Alice"))
+    tag(TeamChatTestTags.message("2")).assert(hasContentDescription("Alice"))
+  }
+
+  @Test
+  fun ownMessage_isDescribedAsYoursToTalkBack() {
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(MINE)))
+
+    tag(TeamChatTestTags.message("3")).assert(hasContentDescription("You"))
   }
 
   @Test

@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -51,9 +52,18 @@ private val AVATAR = 28.dp
 @Composable
 internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
   val message = row.message
+  // Read where no name is shown, so TalkBack still says who wrote it: "You", or the sender on the
+  // later bubbles of a group. The first bubble of a group already reads its visible name.
+  val author =
+      when {
+        message.isMine -> stringResource(R.string.chat_you)
+        row.startsGroup -> null
+        else -> message.senderName ?: stringResource(R.string.chat_unknown_sender)
+      }
   // Read as one message by TalkBack: the sender, text and time together.
   val merged =
-      Modifier.semantics(mergeDescendants = true) {}.testTag(TeamChatTestTags.message(message.id))
+      Modifier.semantics(mergeDescendants = true) { author?.let { contentDescription = it } }
+          .testTag(TeamChatTestTags.message(message.id))
   val top = if (row.startsGroup) 10.dp else 3.dp
   when {
     message.isAnnouncement -> AnnouncementMessage(message, zone, today, Modifier.padding(top = top))
