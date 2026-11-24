@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -186,35 +187,54 @@ private fun ChangeModeButton(mode: UserMode, enabled: Boolean, onClick: () -> Un
   }
 }
 
-/** Figma "Settings section" Privacy and location: a muted title over a rounded card of rows. */
+/** Figma "Settings section": a muted title over [content], its cards of rows and their notes. */
 @Composable
-private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boolean) -> Unit) {
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Text(
-        text = stringResource(R.string.settings_privacy_section).uppercase(),
+        text = title.uppercase(),
         color = shifter_mutedText,
         fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
     )
-    Column(
-        modifier =
-            Modifier.fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-    ) {
-      LocationSharingRow(state, onLocationSharingChange)
-    }
+    content()
+  }
+}
+
+/** Figma "Grouped preferences": the rows of [content] on one rounded card. */
+@Composable
+private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+  Column(
+      modifier =
+          Modifier.fillMaxWidth()
+              .clip(RoundedCornerShape(22.dp))
+              .background(MaterialTheme.colorScheme.surfaceContainer),
+      content = content,
+  )
+}
+
+/** What a section tells about its switches, in red when [isError]. */
+@Composable
+private fun SettingsNotice(message: String, isError: Boolean, testTag: String) {
+  Text(
+      text = message,
+      fontSize = 11.sp,
+      lineHeight = 16.sp,
+      color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+      modifier = Modifier.padding(horizontal = 14.dp).testTag(testTag),
+  )
+}
+
+/** Figma "Settings section" Privacy and location: the location sharing switch and its notice. */
+@Composable
+private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boolean) -> Unit) {
+  SettingsSection(stringResource(R.string.settings_privacy_section)) {
+    SettingsCard { LocationSharingRow(state, onLocationSharingChange) }
     state.locationSharingNotice?.let { notice ->
-      Text(
-          text = stringResource(notice.message),
-          fontSize = 11.sp,
-          lineHeight = 16.sp,
-          color =
-              if (notice == LocationSharingNotice.SAVED_OFFLINE) MaterialTheme.colorScheme.onSurface
-              else MaterialTheme.colorScheme.error,
-          modifier =
-              Modifier.padding(horizontal = 14.dp)
-                  .testTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE),
+      SettingsNotice(
+          message = stringResource(notice.message),
+          isError = notice != LocationSharingNotice.SAVED_OFFLINE,
+          testTag = SettingsScreenTestTags.LOCATION_SHARING_NOTICE,
       )
     }
   }
