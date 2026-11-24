@@ -49,7 +49,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
@@ -407,18 +406,15 @@ private fun NewTeamForm(
 
 /**
  * The red bin in the top right corner of a saved team's card, which asks to delete it, or a spinner
- * in its place while the deletion runs.
- *
- * Both take [BIN_TARGET]: 48dp wide, but only 32dp high, under the 48dp Material asks for, as a
- * taller target would reach over the name field under it. It still exceeds the 24dp minimum of
- * WCAG.
+ * in its place while the deletion runs. Both fill the corner the card gives them, which stops above
+ * the name field.
  */
 @Composable
 private fun DeleteTeamAction(team: Team, deleting: Boolean, onClick: () -> Unit) {
   Box(
       contentAlignment = Alignment.Center,
       modifier =
-          Modifier.size(BIN_TARGET)
+          Modifier.fillMaxSize()
               .then(
                   if (deleting) Modifier
                   else
@@ -442,9 +438,6 @@ private fun DeleteTeamAction(team: Team, deleting: Boolean, onClick: () -> Unit)
     }
   }
 }
-
-/** The touch target of the bin, and the room of the spinner that takes its place. */
-private val BIN_TARGET = DpSize(48.dp, 32.dp)
 
 /** Why the teams could not be loaded, and the way to ask for them again. */
 @Composable

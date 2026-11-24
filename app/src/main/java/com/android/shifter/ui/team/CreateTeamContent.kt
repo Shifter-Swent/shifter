@@ -53,6 +53,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
@@ -76,8 +77,8 @@ data class CreateTeamActions(
  * [CreateTeamViewModel].
  *
  * @param enabled false keeps every field read-only, e.g. while the team is being deleted.
- * @param headerAction drawn in the top right corner, at the height of the first label, e.g. the
- *   button that deletes a saved team.
+ * @param headerAction drawn in the top right corner, at the height of the first label, filling
+ *   [HEADER_ACTION_SIZE], e.g. the button that deletes a saved team.
  */
 @Composable
 fun CreateTeamContent(
@@ -145,8 +146,15 @@ fun CreateTeamContent(
     }
     headerAction?.let {
       // Over the card rather than in its first line, whose bounds would cut the touch target of
-      // a button down to the line: centered on the label, in the corner.
-      Box(modifier = Modifier.align(Alignment.TopEnd).offset(y = HEADER_ACTION_OFFSET)) { it() }
+      // a button down to the line: in the corner above the name field.
+      Box(
+          modifier =
+              Modifier.align(Alignment.TopEnd)
+                  .offset(y = HEADER_ACTION_OFFSET)
+                  .size(HEADER_ACTION_SIZE)
+      ) {
+        it()
+      }
     }
   }
 }
@@ -196,10 +204,12 @@ private fun FieldLabel(@StringRes label: Int, modifier: Modifier = Modifier) {
 }
 
 /**
- * Lowers a 32dp high header action so that its center meets the first label's: the card's 12dp
- * padding plus half the label's 16dp line, minus half the 32dp, and its bottom stops at the row
- * under the label.
+ * The corner of the header action, above the name field: 48dp wide but only 32dp high, under the
+ * 48dp Material asks for, so that it stops above the field. It still exceeds the 24dp of WCAG.
  */
+private val HEADER_ACTION_SIZE = DpSize(48.dp, 32.dp)
+
+/** Lowers the header action's corner so that its bottom stops where the name field starts. */
 private val HEADER_ACTION_OFFSET = 3.dp
 
 /**
