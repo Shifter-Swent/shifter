@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -8,6 +9,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.update
 
 /**
  * In-memory [UserRepository] for ViewModel unit tests. Set [failure] to make every call throw it.
@@ -16,7 +18,8 @@ import kotlinx.coroutines.flow.flow
  *
  * [observeLocationSharing] is live: a test changes the consent with [setLocationSharing] and the
  * flow emits the new value, as a snapshot listener would, or set [observeFailure] to make it fail
- * like a lost observation.
+ * like a lost observation. [observeDisabledNotifications] is live in the same way, with
+ * [setNotificationEnabled] and [observeNotificationsFailure].
  */
 class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepository {
 
@@ -82,6 +85,32 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   override fun observeLocationSharing(uid: String): Flow<Boolean> = flow {
     observeFailure?.let { throw it }
     emitAll(consentFlow(uid))
+  }
+
+  /** When set, [observeDisabledNotifications] fails with it, like a lost observation. */
+  var observeNotificationsFailure: UserRepositoryException? = null
+
+  /** Per-user streams of the kinds turned off, so the flow reflects [setNotificationEnabled]. */
+  private val disabledNotificationFlows =
+      mutableMapOf<String, MutableStateFlow<Set<NotificationKind>>>()
+
+  private fun disabledNotificationsFlow(uid: String): MutableStateFlow<Set<NotificationKind>> =
+      disabledNotificationFlows.getOrPut(uid) { MutableStateFlow(emptySet()) }
+
+  /** Like the rules, refuses a uid with no profile. */
+  override suspend fun setNotificationEnabled(
+      uid: String,
+      kind: NotificationKind,
+      enabled: Boolean,
+  ) {
+    failure?.let { throw it }
+    if (uid !in users) throw UserRepositoryException.PermissionDenied()
+    disabledNotificationsFlow(uid).update { if (enabled) it - kind else it + kind }
+  }
+
+  override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> = flow {
+    observeNotificationsFailure?.let { throw it }
+    emitAll(disabledNotificationsFlow(uid))
   }
 
   override suspend fun getPublicProfile(uid: String): PublicProfile? {

@@ -75,6 +75,7 @@ joinCodes/{code}
 | `locationSharingEnabled` | bool | Opt-in, always `false` at creation |
 | `createdAt` | timestamp | Set to the server time on creation. Read as `null` while the write is pending |
 | `mode` | string | `UserMode` by name: `"VOLUNTEER"` or `"ORGANIZER"`. Saved at sign-in from the screen used, when the profile has none; changed in Settings. Absent on profiles from before modes. A value the app does not know is read as no mode |
+| `notificationSettings` | map<string, bool> | Whether each kind of notification is on, keyed by `NotificationKind` name (e.g. `{"ANNOUNCEMENT": false}`). Changed one kind at a time in Settings. A missing map or kind is on. The rules accept booleans only, and a changed key must be a known kind; a kind the app does not know is skipped when read |
 
 Only its owner reads it: what others may see of a user lives in their public profile.
 
@@ -413,7 +414,7 @@ every access to it is denied.
 
 | Path | Read | Write |
 |---|---|---|
-| `users/{uid}` | The user | Create and update by the user. Only `displayName` and `locationSharingEnabled` can change; a new `displayName` must be written to the public profile in the same commit. No delete |
+| `users/{uid}` | The user | Create and update by the user. Only `displayName`, `locationSharingEnabled`, `mode` and `notificationSettings` can change; a new `displayName` must be written to the public profile in the same commit, a `mode` must be a known one, and `notificationSettings` changes on its own, with every value a boolean and every key it changes a known `NotificationKind` name (a key already stored may stay, even one the app no longer knows). No delete |
 | `users/{uid}/notifications/{id}` | The user | Create only, by any signed-in user but the owner, with only `kind` (a kind of the inbox), `eventId` and `eventTitle` strings, `senderId` equal to the signed-in user, `data` with known keys and string values, and `createdAt` equal to the request time. No update. Delete by the user |
 | `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
 | `events/{eventId}` | `get`: any signed-in user, by id. `list`: the organizer, for their own events only, so nobody collects every event and its join code | Create with yourself as `organizerId`. Update and delete by the organizer only, never changing `joinCode` |

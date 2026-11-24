@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.user
 
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -88,6 +89,35 @@ interface UserRepository {
    *   keep authorizing GPS. See `sharingConsent` for the fail-safe the app applies.
    */
   fun observeLocationSharing(uid: String): Flow<Boolean>
+
+  /**
+   * Turns notifications of [kind] on or off for [uid], on a profile created by [getOrCreateUser].
+   * Only [kind] changes: a choice made at the same time on another phone for another kind is kept.
+   * Throws [UserRepositoryException.PermissionDenied] when there is no profile.
+   *
+   * The choice lives on the profile, so it follows the user to another phone. Offline, it is queued
+   * and sent when the device reconnects. It is visible at once on this device, to
+   * [observeDisabledNotifications], only if the profile is already cached, for instance read with
+   * [getUser] or observed: without a local copy, there is nothing to apply it to until the server
+   * answers. The call only returns once the server has it, so a caller should stop waiting after a
+   * timeout, as for [setMode].
+   */
+  suspend fun setNotificationEnabled(uid: String, kind: NotificationKind, enabled: Boolean)
+
+  /**
+   * Emits the kinds of notifications [uid] turned off, then again each time they change. Every kind
+   * is on until turned off with [setNotificationEnabled], so a profile that has never changed one,
+   * or that the server says does not exist, emits an empty set. Only the signed-in user may observe
+   * their own profile, as for [getUser].
+   *
+   * As for [observeLocationSharing], the flow emits nothing until the profile is read, emits a
+   * change made on this device at once, before the server confirms it, and fails with a
+   * [UserRepositoryException] when the observation cannot continue, rather than going quiet on the
+   * last value read. Offline, a profile this device has never cached is not read yet: the flow
+   * emits nothing until the device reconnects, rather than "every kind on". It backs
+   * `NotificationPreferences`.
+   */
+  fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>>
 
   /**
    * Returns the public profile of [uid], or `null` if it does not exist yet. Unlike [getUser], it

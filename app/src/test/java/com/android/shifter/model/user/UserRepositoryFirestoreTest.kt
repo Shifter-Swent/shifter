@@ -7,17 +7,22 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Transaction
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.CREATED_AT
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.DISPLAY_NAME
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.EMAIL
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.LOCATION_SHARING_ENABLED
 import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.MODE
+import com.swent.shifter.model.user.UserRepositoryFirestore.Companion.NOTIFICATION_SETTINGS
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -25,6 +30,7 @@ import io.mockk.verify
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -502,6 +508,203 @@ class UserRepositoryFirestoreTest {
     runCurrent()
 
     assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun setNotificationEnabled_writesOnlyThatKind() = runTest {
+    val path = FieldPath.of(NOTIFICATION_SETTINGS, "ANNOUNCEMENT")
+    every { ref.update(path, false) } returns Tasks.forResult(null)
+
+    repository.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, enabled = false)
+
+    verify { ref.update(path, false) }
+  }
+
+  @Test
+  fun setNotificationEnabled_translatesFirestoreErrors() = runTest {
+    // What the rules answer when there is no profile.
+    every { ref.update(FieldPath.of(NOTIFICATION_SETTINGS, "ANNOUNCEMENT"), true) } returns
+        Tasks.forException(FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
+
+    val thrown = runCatching {
+      repository.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, enabled = true)
+    }
+        .exceptionOrNull()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun observeDisabledNotifications_emitsTheKindsTurnedOff() = runTest {
+    val settings = mapOf("ANNOUNCEMENT" to false, "OPEN_SPOTS" to true)
+
+    val seen = disabledNotificationsSeen(mapOf(NOTIFICATION_SETTINGS to settings))
+
+    assertEquals(listOf(setOf(NotificationKind.ANNOUNCEMENT)), seen)
+  }
+
+  @Test
+  fun observeDisabledNotifications_withoutChoices_emitsNoKind() = runTest {
+    assertEquals(listOf(emptySet<NotificationKind>()), disabledNotificationsSeen(mapOf()))
+  }
+
+  @Test
+  fun observeDisabledNotifications_whenTheProfileIsMissing_emitsNoKind() = runTest {
+    assertEquals(listOf(emptySet<NotificationKind>()), disabledNotificationsSeen(null))
+  }
+
+  @Test
+  fun observeDisabledNotifications_skipsAKindItDoesNotKnow() = runTest {
+    // Written by a later version, with a kind this one does not have.
+    val settings = mapOf("A_LATER_KIND" to false, "ANNOUNCEMENT" to false)
+
+    val seen = disabledNotificationsSeen(mapOf(NOTIFICATION_SETTINGS to settings))
+
+    assertEquals(listOf(setOf(NotificationKind.ANNOUNCEMENT)), seen)
+  }
+
+  @Test
+  fun observeDisabledNotifications_whenTheChoicesAreMalformed_failsWithUnknown() = runTest {
+    for (malformed in listOf("off", mapOf("ANNOUNCEMENT" to "off"))) {
+      val thrown = disabledNotificationsFailure(mapOf(NOTIFICATION_SETTINGS to malformed))
+
+      assertTrue("$malformed gave $thrown", thrown is UserRepositoryException.Unknown)
+    }
+  }
+
+  @Test
+  fun observeDisabledNotifications_whenTheListenerFails_failsWithTheMappedException() = runTest {
+    val listener = captureMetadataSnapshotListener()
+    var thrown: Throwable? = null
+    backgroundScope.launch {
+      try {
+        repository.observeDisabledNotifications(UID).collect {}
+      } catch (e: Throwable) {
+        thrown = e
+      }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(null, FirebaseFirestoreException("denied", Code.PERMISSION_DENIED))
+    runCurrent()
+
+    assertTrue(thrown is UserRepositoryException.PermissionDenied)
+  }
+
+  @Test
+  fun observeDisabledNotifications_dropsAnUnchangedSet() = runTest {
+    val listener = captureMetadataSnapshotListener()
+    val seen = mutableListOf<Set<NotificationKind>>()
+    val job = backgroundScope.launch {
+      repository.observeDisabledNotifications(UID).collect { seen += it }
+    }
+    runCurrent()
+
+    // Another field changes: the listener fires again with the same choices.
+    stored(mapOf(MODE to "VOLUNTEER"))
+    listener.captured.onEvent(snapshot, null)
+    stored(mapOf(MODE to "ORGANIZER"))
+    listener.captured.onEvent(snapshot, null)
+    stored(mapOf(MODE to "ORGANIZER", NOTIFICATION_SETTINGS to mapOf("ANNOUNCEMENT" to false)))
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    job.cancel()
+
+    assertEquals(listOf(emptySet(), setOf(NotificationKind.ANNOUNCEMENT)), seen)
+  }
+
+  @Test
+  fun observeDisabledNotifications_offlineWithoutACachedProfile_waitsForTheServer() = runTest {
+    val listener = captureMetadataSnapshotListener()
+    val seen = mutableListOf<Set<NotificationKind>>()
+    val job = backgroundScope.launch {
+      repository.observeDisabledNotifications(UID).collect { seen += it }
+    }
+    runCurrent()
+
+    // Offline, a profile this device never cached reads as missing from the cache: unknown.
+    stored(null)
+    fromCache(true)
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    assertEquals(emptyList<Set<NotificationKind>>(), seen)
+
+    // Back online, the server confirms it is missing: only the metadata changes.
+    fromCache(false)
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    job.cancel()
+
+    assertEquals(listOf(emptySet<NotificationKind>()), seen)
+  }
+
+  @Test
+  fun observeDisabledNotifications_offlineWithACachedProfile_emitsItsChoices() = runTest {
+    val settings = mapOf("ANNOUNCEMENT" to false)
+
+    val seen = disabledNotificationsSeen(mapOf(NOTIFICATION_SETTINGS to settings), cached = true)
+
+    assertEquals(listOf(setOf(NotificationKind.ANNOUNCEMENT)), seen)
+  }
+
+  /**
+   * Captures the listener [UserRepositoryFirestore.observeDisabledNotifications] registers, with
+   * metadata changes, and makes [snapshot] come from the server until [fromCache] says otherwise.
+   */
+  private fun captureMetadataSnapshotListener() =
+      slot<EventListener<DocumentSnapshot>>().also {
+        every { ref.addSnapshotListener(MetadataChanges.INCLUDE, capture(it)) } returns
+            mockk<ListenerRegistration>(relaxed = true)
+        fromCache(false)
+      }
+
+  /** Makes [snapshot] come from the local cache when [cached], else from the server. */
+  private fun fromCache(cached: Boolean) {
+    val metadata = mockk<SnapshotMetadata>()
+    every { metadata.isFromCache } returns cached
+    every { snapshot.metadata } returns metadata
+  }
+
+  /**
+   * What [UserRepositoryFirestore.observeDisabledNotifications] emits for one snapshot, from the
+   * server or, when [cached], from the local cache.
+   */
+  private fun TestScope.disabledNotificationsSeen(
+      fields: Map<String, Any?>?,
+      cached: Boolean = false,
+  ): List<Set<NotificationKind>> {
+    val listener = captureMetadataSnapshotListener()
+    stored(fields)
+    fromCache(cached)
+    val seen = mutableListOf<Set<NotificationKind>>()
+    val job = backgroundScope.launch {
+      repository.observeDisabledNotifications(UID).collect { seen += it }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    job.cancel()
+    return seen
+  }
+
+  /** What [UserRepositoryFirestore.observeDisabledNotifications] fails with for one snapshot. */
+  private fun TestScope.disabledNotificationsFailure(fields: Map<String, Any?>): Throwable? {
+    val listener = captureMetadataSnapshotListener()
+    stored(fields)
+    var thrown: Throwable? = null
+    backgroundScope.launch {
+      try {
+        repository.observeDisabledNotifications(UID).collect {}
+      } catch (e: Throwable) {
+        thrown = e
+      }
+    }
+    runCurrent()
+
+    listener.captured.onEvent(snapshot, null)
+    runCurrent()
+    return thrown
   }
 
   private companion object {
