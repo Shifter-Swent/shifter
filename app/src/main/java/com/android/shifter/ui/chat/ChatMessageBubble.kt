@@ -82,6 +82,8 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
           )
         }
     else -> {
+      // Keyed on the id, not the name: two members with the same name keep their own tint, and a
+      // renamed member keeps theirs (review of #668).
       val tint = chatTint(message.senderId)
       Row(
           modifier = Modifier.padding(top = top).fillMaxWidth().then(merged),
