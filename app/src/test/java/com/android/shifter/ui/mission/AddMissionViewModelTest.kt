@@ -1200,21 +1200,6 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun edit_overlapping_reportsTheConflict() = runTest {
-    val other = storedMission()
-    val stored = storedMission(startHour = 16)
-    openEdit(stored.id)
-
-    viewModel.onStartTimeChange(LocalTime.of(14, 0))
-    viewModel.onEndTimeChange(LocalTime.of(15, 30))
-    viewModel.save()
-    advanceUntilIdle()
-
-    assertEquals(other.title, state.conflict?.title)
-    assertNull(state.savedMission)
-  }
-
-  @Test
   fun edit_overlappingAnotherMission_namesThatMission() = runTest {
     // Its own title differs, so a conflict naming the edited mission would be caught.
     changed(storedMission()) { it.copy(title = "Unload the trucks") }

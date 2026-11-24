@@ -261,6 +261,50 @@ class FirestoreMissionUpdateTest {
     assertEquals(created, stored(created))
   }
 
+  @Test
+  fun updateMission_closedAndOverlapping_reportsCompleted() = emulatorTest {
+    val eventId = newEvent()
+    val other = create(mission(eventId, at = HALL))
+    val created = create(mission(eventId, at = HALL).copy(startAt = LATER_START, endAt = LATER_END))
+    repository.markCompleted(eventId, created.id)
+
+    val failure = runCatching {
+      repository.updateMission(created.copy(startAt = other.startAt, endAt = other.endAt))
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "a closed mission must be refused as completed before its overlap, but was: $failure",
+        failure is MissionCompletedException,
+    )
+    assertEquals(created.copy(completed = true), stored(created))
+  }
+
+  @Test
+  fun updateMission_overlappingBelowAssignees_reportsTheOverlap() = emulatorTest {
+    val eventId = newEvent()
+    val other = create(mission(eventId, at = HALL))
+    val created =
+        create(
+            mission(eventId, "user-1", "user-2", at = HALL)
+                .copy(startAt = LATER_START, endAt = LATER_END)
+        )
+
+    val failure = runCatching {
+      repository.updateMission(
+          created.copy(startAt = other.startAt, endAt = other.endAt, volunteersNeeded = 1)
+      )
+    }
+        .exceptionOrNull()
+
+    assertEquals(
+        "an overlap must be reported before the need below the assignees, but was: $failure",
+        other.id,
+        (failure as? MissionOverlapException)?.conflictingMission?.id,
+    )
+    assertEquals(created, stored(created))
+  }
+
   private suspend fun create(mission: Mission): Mission =
       step("create") { repository.createMission(mission) }
           .also {
@@ -298,5 +342,9 @@ class FirestoreMissionUpdateTest {
   private companion object {
     val HALL = MissionLocation("Salle polyvalente", GeoPosition(46.52, 6.57))
     val ENTRANCE = MissionLocation("Entrée principale", GeoPosition(46.521, 6.571))
+
+    /** A slot later the same day, clear of the one [mission] gives. */
+    val LATER_START: Instant = Instant.parse("2030-06-20T15:00:00Z")
+    val LATER_END: Instant = Instant.parse("2030-06-20T16:00:00Z")
   }
 }
