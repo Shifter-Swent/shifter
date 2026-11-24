@@ -134,8 +134,11 @@ private class Load(val candidate: ScheduleCandidate, missions: List<Mission>) {
 /** The planned length of this mission, past or completed alike. */
 private fun Mission.lengthInSeconds(): Long = Duration.between(startAt, endAt).seconds
 
-/** [slots] in order of start, the ones that touch or overlap merged into one. */
-private fun merged(slots: List<TimeSlot>): List<TimeSlot> {
+/**
+ * [slots] in order of start, the ones that touch or overlap merged into one: "Sat 10–12" and "Sat
+ * 12–14" give "Sat 10–14".
+ */
+fun merged(slots: List<TimeSlot>): List<TimeSlot> {
   val result = mutableListOf<TimeSlot>()
   for (slot in slots.sortedBy { it.start }) {
     val last = result.lastOrNull()
