@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -465,6 +466,66 @@ class NotificationEngineTest {
     // Once too old, the item that fails leaves the inbox, so it never blocks it.
     engine.run(user, now + MAX_INBOX_AGE + Duration.ofSeconds(1))
     assertTrue(inbox.pending(user).isEmpty())
+  }
+
+  @Test
+  fun runChecks_whenShowingFails_keepsTheCheckNotificationForTheNextRun() = runTest {
+    // Like OpenSpots: forgets the mission no longer short, shows and marks the one short.
+    val check =
+        object : TimedCheck {
+          override val kind = NotificationKind.OPEN_SPOTS
+
+          override suspend fun run(userId: String, now: Instant, seen: SeenStore) =
+              if (seen.wasShown("mission-1")) emptyList()
+              else {
+                seen.forget("mission-0")
+                seen.markShown("mission-1")
+                listOf(openSpots("mission-1"))
+              }
+        }
+    val seen = InMemorySeenStore().apply { markShown("mission-0") }
+    seenStores[NotificationKind.OPEN_SPOTS] = seen
+    val engine = engine(checks = listOf(check))
+    notifier.failure = IllegalStateException("notifier down")
+
+    runCatching { engine.runChecks(user, now) }
+
+    assertFalse(seen.wasShown("mission-1"))
+    assertFalse(seen.wasShown("mission-0"))
+    notifier.failure = null
+    engine.runChecks(user, now)
+    assertEquals(listOf("OPEN_SPOTS:mission-1"), notifier.shown.map { it.identity })
+    assertTrue(seen.wasShown("mission-1"))
+  }
+
+  @Test
+  fun runChecks_whenACheckFailsAfterForgettingAKey_keepsTheForgetOnly() = runTest {
+    val failure = IOException("missions offline")
+    val check =
+        object : TimedCheck {
+          override val kind = NotificationKind.OPEN_SPOTS
+
+          override suspend fun run(
+              userId: String,
+              now: Instant,
+              seen: SeenStore,
+          ): List<AppNotification> {
+            seen.forget("mission-0")
+            seen.markShown("mission-1")
+            throw failure
+          }
+        }
+    val seen = InMemorySeenStore().apply { markShown("mission-0") }
+    seenStores[NotificationKind.OPEN_SPOTS] = seen
+
+    val thrown = runCatching {
+      engine(checks = listOf(check)).runChecks(user, now)
+    }
+        .exceptionOrNull()
+
+    assertSame(failure, thrown)
+    assertFalse(seen.wasShown("mission-0"))
+    assertFalse(seen.wasShown("mission-1"))
   }
 
   @Test

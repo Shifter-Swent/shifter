@@ -43,7 +43,6 @@ private val SENDER_NAME_KEYS =
  *
  * @param formats one per kind with [NotificationKind.inInbox] at most.
  * @param checks of kinds without [NotificationKind.inInbox] only.
- * @param checks of kinds without [NotificationKind.inInbox] only.
  * @param shownItems the [ShownItems] of a user.
  * @param seenStore the [SeenStore] of a user for one kind.
  */
@@ -72,9 +71,8 @@ class NotificationEngine(
   /**
    * Handles the inbox of [userId], then runs the checks, at [now], the checks even when the inbox
    * cannot be read, since they do not depend on it. Throws the first failure once both are done,
-   * the inbox's first: the caller runs it again later. Nothing was removed from the inbox without
-   * being handled, but a check's notification whose showing failed is lost, as the check already
-   * marked it in its [SeenStore] (see [TimedCheck.run]); Android does not fail to show one.
+   * the inbox's first: the caller runs it again later, and nothing was lost: nothing left the
+   * inbox, and no check's notification was marked as shown, without being shown.
    */
   suspend fun run(userId: String, now: Instant) {
     mutex.withLock {
@@ -101,7 +99,9 @@ class NotificationEngine(
 
   /**
    * Runs every check of a kind [userId] did not turn off, at [now]. A failing check does not stop
-   * the others: the first failure is thrown once they all ran.
+   * the others: the first failure is thrown once they all ran. A check marks what it returns in its
+   * [SeenStore] (see [TimedCheck.run]), but the marks are only kept once its notifications are
+   * shown: one whose showing fails comes again at the next run.
    */
   suspend fun runChecks(userId: String, now: Instant) = mutex.withLock { checksNow(userId, now) }
 
@@ -136,11 +136,21 @@ class NotificationEngine(
     val disabled = preferences.disabledKinds(userId).first()
     var failure: Exception? = null
     for (check in checks.filter { it.kind !in disabled }) {
-      val checkFailure = failureOf {
-        notifier.show(check.run(userId, now, seenStore(userId, check.kind)))
-      }
+      val checkFailure = failureOf { runCheck(check, userId, now) }
       failure = failure ?: checkFailure
     }
+    failure?.let { throw it }
+  }
+
+  /**
+   * Runs [check] for [userId] at [now] and shows what it returns, keeping the keys it marked only
+   * once they are shown (see [PendingSeenStore]), then throws what failed. A cancellation can only
+   * stop it in the check, before anything is shown or kept: the next run does it again.
+   */
+  private suspend fun runCheck(check: TimedCheck, userId: String, now: Instant) {
+    val seen = PendingSeenStore(seenStore(userId, check.kind))
+    val failure = failureOf { notifier.show(check.run(userId, now, seen)) }
+    seen.commit(shown = failure == null)
     failure?.let { throw it }
   }
 
