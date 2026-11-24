@@ -29,8 +29,8 @@ interface ShiftRepository {
   fun observeShifts(eventId: String): Flow<List<Shift>>
 
   /**
-   * Opens [slot] in [eventId] and returns its shift, with no volunteers and opened now. The slot is
-   * built by [slotOf], since only the zone tells where it ends.
+   * Opens [slot] in [eventId] and returns its shift: a slot opened by this call has no volunteers
+   * and was created now. The slot is built by [slotOf], since only the zone tells where it ends.
    *
    * A slot already open is returned unchanged: a second tap or a retry never creates a second shift
    * nor takes its volunteers off. Returning it only reads it, which any signed-in user may do. Only
