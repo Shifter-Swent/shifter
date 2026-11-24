@@ -68,10 +68,11 @@ class ShiftFirestoreMapperTest {
 
   @After
   fun tearDown() = emulatorTest {
-    // Children first, then the events: once an event is gone, the rules refuse to delete them.
+    // As an admin: the rules refuse to delete a shift volunteers chose, as most of these are.
     step("cleanup") {
-      createdDocuments.asReversed().forEach { it.delete().await() }
-      event.delete().await()
+      (createdDocuments.asReversed() + event).forEach {
+        FirestoreEmulatorAdmin.deleteDocument(it.path)
+      }
     }
     createdDocuments.clear()
     auth.signOut()

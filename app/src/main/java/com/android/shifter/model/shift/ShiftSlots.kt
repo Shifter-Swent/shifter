@@ -67,6 +67,17 @@ fun slotOf(day: LocalDate, hour: Int, zone: ZoneId): ShiftSlot {
   )
 }
 
+/**
+ * Whether this slot runs during an event from [eventStartAt] to [eventEndAt], even in part, so its
+ * organizer can open it: the slots of the event's days that end before it starts or start after it
+ * ends are greyed out. An event from 09:00 to 23:00 can thus open 08–10 and 22–00, but not 06–08.
+ *
+ * The security rules check the same (#593), so a slot built by [slotOf] that this accepts is never
+ * refused for its time.
+ */
+fun ShiftSlot.overlaps(eventStartAt: Instant, eventEndAt: Instant): Boolean =
+    endAt > eventStartAt && startAt < eventEndAt
+
 /** The 12 slots of [day] in [zone], from 00 to 22, each ending where the next one starts. */
 fun slotsOf(day: LocalDate, zone: ZoneId): List<ShiftSlot> = SLOT_START_HOURS.map {
   slotOf(day, it, zone)

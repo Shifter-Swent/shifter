@@ -87,6 +87,32 @@ class ShiftSlotsTest {
   }
 
   @Test
+  fun overlaps_acceptsTheSlotsThatRunDuringTheEventEvenInPart() {
+    // An event from 09:00 to 23:00: the slots it touches cover it entirely.
+    val eventStartAt = DAY.atTime(9, 0).atZone(ZURICH).toInstant()
+    val eventEndAt = DAY.atTime(23, 0).atZone(ZURICH).toInstant()
+
+    val open = slotsOf(DAY, ZURICH).filter { it.overlaps(eventStartAt, eventEndAt) }
+
+    assertEquals(
+        (8..22 step 2).toList(),
+        open.map { it.startAt.atZone(ZURICH).toLocalTime().hour },
+    )
+  }
+
+  @Test
+  fun overlaps_refusesASlotThatOnlyTouchesTheEventsEdges() {
+    val eventStartAt = DAY.atTime(10, 0).atZone(ZURICH).toInstant()
+    val eventEndAt = DAY.atTime(20, 0).atZone(ZURICH).toInstant()
+
+    // 08–10 ends as the event starts, and 20–22 starts as it ends: neither runs during it.
+    assertFalse(slotOf(DAY, 8, ZURICH).overlaps(eventStartAt, eventEndAt))
+    assertFalse(slotOf(DAY, 20, ZURICH).overlaps(eventStartAt, eventEndAt))
+    assertTrue(slotOf(DAY, 10, ZURICH).overlaps(eventStartAt, eventEndAt))
+    assertTrue(slotOf(DAY, 18, ZURICH).overlaps(eventStartAt, eventEndAt))
+  }
+
+  @Test
   fun shiftIdOf_isTheEpochMillisecondsOfTheStart() {
     val startAt = Instant.parse("2026-07-18T08:00:00Z")
 
