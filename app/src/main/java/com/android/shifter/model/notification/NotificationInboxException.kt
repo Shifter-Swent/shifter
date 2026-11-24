@@ -16,7 +16,10 @@ sealed class NotificationInboxException(message: String, cause: Throwable? = nul
   class Unavailable(cause: Throwable? = null) :
       NotificationInboxException("The notification inbox is unavailable", cause)
 
-  /** Any other failure, including a stored notification that cannot be read. */
+  /**
+   * Any other failure: a backend error that is neither a refusal nor an outage, or an id no
+   * document can have, such as an empty one or one holding a `/`.
+   */
   class Unknown(cause: Throwable? = null) :
       NotificationInboxException("Unexpected error while accessing the notification inbox", cause)
 }

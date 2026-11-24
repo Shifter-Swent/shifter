@@ -42,7 +42,7 @@ class RepositoryProvider(
     val checkInRepository: CheckInRepository,
     val chatRepository: ChatRepository,
     val liveLocationRepository: LiveLocationRepository,
-    /** The signed-in user's inbox, read and emptied by the notification engine (#614). */
+    /** Each user's notification inbox, read and emptied by the notification engine (#614). */
     val notificationInbox: NotificationInbox,
     /**
      * The volunteer's just-made location-sharing decision, shared between Settings and the
