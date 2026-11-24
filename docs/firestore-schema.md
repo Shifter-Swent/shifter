@@ -308,7 +308,7 @@ only a path: no document is stored there.
 
 A slot of the event that its organizer opened, for volunteers to choose when they apply (#585). It
 has no name and no number of spots. The document id is the epoch milliseconds of `startAt`
-(`shiftIdOf`), so a slot can never be stored twice, and opening it again writes the same document.
+(`shiftIdOf`), so a slot can never be stored twice, and opening it again gives the same document.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -319,6 +319,12 @@ has no name and no number of spots. The document id is the epoch milliseconds of
 
 A shift is never edited, only opened and closed. The mapper ignores the `teamId` and `assigneeIds`
 of the shifts of the old model, which nothing wrote.
+
+`FirestoreShiftRepository` opens a slot in a transaction that creates the shift only if it does not
+exist, since the rules refuse any update: opening a slot twice leaves the shift as it was. A
+transaction needs the backend, so a slot cannot be opened offline. The shift is then read back from
+the server, the only one to know its `createdAt`; if another device closed it in between, it is
+opened once more.
 
 ### `events/{eventId}/missions/{missionId}`
 
