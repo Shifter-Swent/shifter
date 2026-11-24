@@ -228,7 +228,7 @@ object VolunteerTabs : TabSet {
     override val home
       get() = VolunteerEventScreen.Discussions
 
-    override val label = "Discussions"
+    override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
     override val testTag = NavigationTestTags.DISCUSSIONS_TAB
     override val set
@@ -271,7 +271,7 @@ sealed interface VolunteerEventScreen : Destination {
 
   @Serializable
   data object Discussions : VolunteerEventScreen {
-    override val title = "Discussions"
+    override val title = "Chat"
     override val tab
       get() = VolunteerTabs.Discussions
   }
@@ -387,7 +387,7 @@ object OrganizerTabs : TabSet {
     override val home
       get() = OrganizerEventScreen.Discussions
 
-    override val label = "Discussions"
+    override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
     override val testTag = NavigationTestTags.DISCUSSIONS_TAB
     override val set
@@ -457,7 +457,7 @@ sealed interface OrganizerEventScreen : Destination {
 
   @Serializable
   data object Discussions : OrganizerEventScreen {
-    override val title = "Discussions"
+    override val title = "Chat"
     override val tab
       get() = OrganizerTabs.Discussions
   }
