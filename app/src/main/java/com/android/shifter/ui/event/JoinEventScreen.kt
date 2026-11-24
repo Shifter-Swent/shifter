@@ -75,6 +75,8 @@ object JoinEventScreenTestTags {
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
   const val CODE_HINT = "JoinEventCodeHint"
   const val NO_TEAMS = "JoinEventNoTeams"
+  const val SHIFTS_PICKED = "JoinEventShiftsPicked"
+  const val PICK_A_SHIFT = "JoinEventPickAShift"
 
   fun teamOption(teamId: String) = "JoinEventTeam_$teamId"
 
@@ -113,14 +115,16 @@ fun JoinEventScreen(
       onTeamSelected = viewModel::onTeamSelected,
       onApply = viewModel::applyToEvent,
       onScanQrCode = onScanQrCode,
+      onShiftPicked = viewModel::onShiftPicked,
   )
 }
 
 /**
  * Joining in two steps: the volunteer types the event's join code, then sees the details of the
- * event it found, picks one of its teams and applies to it. On the event, Back, on screen or on the
- * device, returns to the code and calls [onBack]. On the code, the back button calls [onLeave], and
- * the device's Back is left to the navigation, which leaves the screen the same way.
+ * event it found, picks one of its teams and, when it has shifts, the ones they can work, and
+ * applies. On the event, Back, on screen or on the device, returns to the code and calls [onBack].
+ * On the code, the back button calls [onLeave], and the device's Back is left to the navigation,
+ * which leaves the screen the same way.
  */
 @Composable
 fun JoinEventContent(
@@ -132,6 +136,7 @@ fun JoinEventContent(
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
     onScanQrCode: () -> Unit = {},
+    onShiftPicked: (String) -> Unit = {},
 ) {
   val event = uiState.event
   Box(
@@ -164,6 +169,9 @@ fun JoinEventContent(
           onBack = onBack,
           onTeamSelected = onTeamSelected,
           onApply = onApply,
+          canApply = uiState.canApply,
+          shiftPicking = uiState.shiftPicking,
+          onShiftPicked = onShiftPicked,
       )
     }
   }

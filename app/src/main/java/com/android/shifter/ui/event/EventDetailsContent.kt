@@ -47,6 +47,7 @@ import com.swent.shifter.model.time.formatWeekday
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_warning
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -66,7 +67,12 @@ object EventDetailsTestTags {
  * profiles cannot be read by other users.
  *
  * @param teams the teams of [event], of which the volunteer picks the one they apply to.
- * @param selectedTeamId the team picked; Apply stays disabled until there is one.
+ * @param selectedTeamId the team picked.
+ * @param shiftPicking the shifts of [event], of which the volunteer picks the ones they can work,
+ *   and the ones picked. The grid is only shown for an event with shifts, and once a request is
+ *   sent, only when it holds some.
+ * @param canApply whether Apply is enabled: once a team is picked and, for an event with shifts, at
+ *   least one of them.
  * @param requestStatus the status of the volunteer's request once sent, shown in place of Apply.
  * @param hasEnded whether the event has ended: it no longer takes applications, so it offers no
  *   team to pick and no Apply, unless the volunteer applied before (#409).
@@ -83,6 +89,9 @@ fun EventDetailsContent(
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
     hasEnded: Boolean,
+    canApply: Boolean,
+    shiftPicking: ShiftPicking = ShiftPicking(),
+    onShiftPicked: (String) -> Unit = {},
 ) {
   val closed = hasEnded && requestStatus == null
   val colors = MaterialTheme.colorScheme
@@ -140,6 +149,11 @@ fun EventDetailsContent(
             enabled = !isLoading && requestStatus == null,
             onTeamSelected = onTeamSelected,
         )
+        // A request sent before the event had shifts holds none: there is nothing to show.
+        val sentWithoutShifts = requestStatus != null && shiftPicking.pickedShiftIds.isEmpty()
+        if (shiftPicking.shifts.isNotEmpty() && !sentWithoutShifts) {
+          ShiftSelector(event, shiftPicking, onShiftPicked)
+        }
       }
       // An ended event takes no request, so nothing invites to send one.
       if (!closed) {
@@ -150,7 +164,15 @@ fun EventDetailsContent(
         )
       }
     }
-    ApplyBar(isLoading, requestStatus, error, canApply = selectedTeamId != null, onApply, closed)
+    ApplyBar(
+        isLoading = isLoading,
+        requestStatus = requestStatus,
+        error = error,
+        canApply = canApply,
+        lacksAShift = shiftPicking.lacksAPick,
+        onApply = onApply,
+        closed = closed,
+    )
   }
 }
 
@@ -218,7 +240,8 @@ private fun IconLabel(icon: ImageVector, text: String, color: Color) {
 
 /**
  * Apply pinned to the bottom, enabled once [canApply], and replaced by the request's status once it
- * is sent.
+ * is sent. Under it, what applying does, or, while [lacksAShift], that a shift must be picked
+ * first.
  */
 @Composable
 private fun ApplyBar(
@@ -226,6 +249,7 @@ private fun ApplyBar(
     requestStatus: MembershipRequestStatus?,
     error: JoinEventError?,
     canApply: Boolean,
+    lacksAShift: Boolean,
     onApply: () -> Unit,
     closed: Boolean,
 ) {
@@ -259,12 +283,21 @@ private fun ApplyBar(
               )
         }
       }
+      // An ended event takes no request, so nothing is said about sending one.
       if (!closed) {
+        val pickAShift = lacksAShift && requestStatus == null
         Text(
-            text = stringResource(R.string.event_details_apply_hint),
-            color = shifter_mutedText,
+            text =
+                stringResource(
+                    if (pickAShift) R.string.join_event_pick_a_shift
+                    else R.string.event_details_apply_hint
+                ),
+            color = if (pickAShift) shifter_warning else shifter_mutedText,
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
+            modifier =
+                if (pickAShift) Modifier.testTag(JoinEventScreenTestTags.PICK_A_SHIFT)
+                else Modifier,
         )
       }
     }
