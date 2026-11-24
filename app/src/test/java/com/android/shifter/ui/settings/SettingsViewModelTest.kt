@@ -469,6 +469,7 @@ class SettingsViewModelTest {
           mockk(),
           mockk(),
           mockk(),
+          mockk(),
       )
 
   /** Builds [viewModel] and lets it read the profile. */

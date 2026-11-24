@@ -3,6 +3,7 @@
 package com.swent.shifter.model.shift
 
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.swent.shifter.model.firestore.invalidField
 import com.swent.shifter.model.firestore.requireInstant
 import com.swent.shifter.model.firestore.requireParentEventId
@@ -37,6 +38,18 @@ internal fun Shift.toFirestoreMap(): Map<String, Any?> =
         ShiftSchema.START_AT to startAt.toFirestoreTimestamp(),
         ShiftSchema.END_AT to endAt.toFirestoreTimestamp(),
         ShiftSchema.CREATED_AT to createdAt.toFirestoreTimestamp(),
+    )
+
+/**
+ * The document body that opens [this] slot: nobody chose it yet, and [Shift.createdAt] is the
+ * server's time, which the security rules require so an opening cannot be backdated.
+ */
+internal fun ShiftSlot.toNewShiftFields(): Map<String, Any?> =
+    mapOf(
+        ShiftSchema.VOLUNTEER_IDS to emptyList<String>(),
+        ShiftSchema.START_AT to startAt.toFirestoreTimestamp(),
+        ShiftSchema.END_AT to endAt.toFirestoreTimestamp(),
+        ShiftSchema.CREATED_AT to FieldValue.serverTimestamp(),
     )
 
 /**

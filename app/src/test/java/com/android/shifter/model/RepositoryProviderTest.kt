@@ -31,6 +31,7 @@ class RepositoryProviderTest {
             mockk(),
             mockk(),
             mockk(),
+            mockk(),
         )
 
     assertEquals(
