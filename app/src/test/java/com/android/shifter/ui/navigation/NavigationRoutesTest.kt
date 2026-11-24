@@ -57,7 +57,7 @@ class NavigationRoutesTest {
   @Test
   fun tabSets_listTheirTabsInOrder() {
     assertEquals(
-        listOf(VolunteerTabs.Overview, VolunteerTabs.Map, VolunteerTabs.Discussions),
+        listOf(VolunteerTabs.Overview, VolunteerTabs.Map, VolunteerTabs.Chat),
         VolunteerTabs.all,
     )
     assertEquals(
@@ -65,7 +65,7 @@ class NavigationRoutesTest {
             OrganizerTabs.Overview,
             OrganizerTabs.People,
             OrganizerTabs.Map,
-            OrganizerTabs.Discussions,
+            OrganizerTabs.Chat,
             OrganizerTabs.Sharing,
         ),
         OrganizerTabs.all,

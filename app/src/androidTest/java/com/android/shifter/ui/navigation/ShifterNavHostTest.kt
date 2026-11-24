@@ -812,9 +812,9 @@ class ShifterNavHostTest {
     signIn(volunteerAccount)
     val nav = NavigationActions(showSignedInApp())
     openEvent(event)
-    // The general channel is left open in Discussions, as it was when the bug sent messages there.
-    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
-    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+    // The general channel is left open in the Chat tab, as it was when the bug sent messages there.
+    waitForNode(NavigationTestTags.CHAT_TAB)
+    composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
     waitForNode(ChatChannelsTestTags.GENERAL)
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.GENERAL).performClick()
     waitForNode(TeamChatTestTags.INPUT)
@@ -1478,13 +1478,13 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun organizerDiscussions_opensTheChannelOfTheTeamPicked() {
+  fun organizerChat_opensTheChannelOfTheTeamPicked() {
     val event = createEvent(signIn())
     val bar = createTeam(event, "Bar")
     openOrganizerEvent(event)
-    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+    waitForNode(NavigationTestTags.CHAT_TAB)
 
-    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
 
     // Every team of the event is listed, under the general and admin channels.
     waitForNode(ChatChannelsTestTags.channel(bar.id))
@@ -1499,13 +1499,13 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun volunteerDiscussions_withASingleTeam_listsItAndTheGeneralChannelButNotTheAdminOne() {
+  fun volunteerChat_withASingleTeam_listsItAndTheGeneralChannelButNotTheAdminOne() {
     val event = acceptedEvent(asManager = false)
     showApp()
     openEvent(event)
-    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+    waitForNode(NavigationTestTags.CHAT_TAB)
 
-    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
 
     // The list is shown even with a single team, with the general channel above it.
     waitForNode(ChatChannelsTestTags.GENERAL)
@@ -1545,13 +1545,13 @@ class ShifterNavHostTest {
   }
 
   @Test
-  fun managerDiscussions_opensTheAdminChannel() {
+  fun managerChat_opensTheAdminChannel() {
     val event = acceptedEvent(asManager = true)
     showApp()
     openEvent(event)
-    waitForNode(NavigationTestTags.DISCUSSIONS_TAB)
+    waitForNode(NavigationTestTags.CHAT_TAB)
 
-    composeTestRule.onNodeWithTag(NavigationTestTags.DISCUSSIONS_TAB).performClick()
+    composeTestRule.onNodeWithTag(NavigationTestTags.CHAT_TAB).performClick()
 
     waitForNode(ChatChannelsTestTags.ADMIN)
     composeTestRule.onNodeWithTag(ChatChannelsTestTags.ADMIN).performClick()

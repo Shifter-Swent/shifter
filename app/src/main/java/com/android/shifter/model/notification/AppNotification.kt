@@ -82,7 +82,7 @@ sealed interface NotificationTarget {
       val missionId: String,
   ) : NotificationTarget
 
-  /** A channel of the event, named as in the Discussions routes: [teamId] for a team's only. */
+  /** A channel of the event, named as in the Chat routes: [teamId] for a team's only. */
   @Serializable
   data class Channel(
       val eventId: String,

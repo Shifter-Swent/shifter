@@ -84,7 +84,7 @@ val shifter_announcementBorder = shifter_announcement.copy(alpha = 0.15f)
 val shifter_announcementMuted = Color(0xFFA8916A)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
 
-// The tints of the Discussions, one per team or person: soft enough to read as a name on the dark
+// The tints of the chat, one per team or person: soft enough to read as a name on the dark
 // surface and to carry dark text as an avatar.
 val shifter_chatTintPink = Color(0xFFF4B4B4)
 val shifter_chatTintGreen = Color(0xFFB5E3A8)

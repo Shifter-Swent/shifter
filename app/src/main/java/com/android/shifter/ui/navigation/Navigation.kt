@@ -31,11 +31,11 @@ import kotlinx.serialization.Serializable
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply (+ Scan)
  *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission, EditMission),
- *       Map, Discussions (+ Channel)
+ *       Map, Chat (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
  *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
- *       Discussions (+ Channel), Sharing
+ *       Chat (+ Channel), Sharing
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -65,10 +65,10 @@ sealed interface TabSet {
 }
 
 /**
- * A chat channel opened on top of the Discussions tab of either mode: the channel of the team
- * [teamId] for [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its
- * [name] is in the route, so the bar shows it without loading the team; a team's channel opened
- * without it, as from the now card, shows the name of the team once read.
+ * A chat channel opened on top of the Chat tab of either mode: the channel of the team [teamId] for
+ * [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its [name] is in
+ * the route, so the bar shows it without loading the team; a team's channel opened without it, as
+ * from the now card, shows the name of the team once read.
  */
 sealed interface ChannelScreen : Destination {
   val kind: ChannelKind
@@ -194,7 +194,7 @@ data class VolunteerEvent(override val eventId: String, override val eventTitle:
 
 object VolunteerTabs : TabSet {
   override val all
-    get() = listOf(Overview, Map, Discussions)
+    get() = listOf(Overview, Map, Chat)
 
   override val home
     get() = Overview
@@ -224,13 +224,13 @@ object VolunteerTabs : TabSet {
   }
 
   @Serializable
-  data object Discussions : Tab {
+  data object Chat : Tab {
     override val home
-      get() = VolunteerEventScreen.Discussions
+      get() = VolunteerEventScreen.Chat
 
     override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
-    override val testTag = NavigationTestTags.DISCUSSIONS_TAB
+    override val testTag = NavigationTestTags.CHAT_TAB
     override val set
       get() = VolunteerTabs
   }
@@ -270,13 +270,13 @@ sealed interface VolunteerEventScreen : Destination {
   }
 
   @Serializable
-  data object Discussions : VolunteerEventScreen {
+  data object Chat : VolunteerEventScreen {
     override val title = "Chat"
     override val tab
-      get() = VolunteerTabs.Discussions
+      get() = VolunteerTabs.Chat
   }
 
-  /** A chat channel, opened from Discussions. */
+  /** A chat channel, opened from the Chat tab. */
   @Serializable
   data class Channel(
       override val kind: ChannelKind,
@@ -284,7 +284,7 @@ sealed interface VolunteerEventScreen : Destination {
       override val name: String?,
   ) : VolunteerEventScreen, ChannelScreen {
     override val tab
-      get() = VolunteerTabs.Discussions
+      get() = VolunteerTabs.Chat
   }
 }
 
@@ -341,7 +341,7 @@ data class OrganizerEvent(override val eventId: String, override val eventTitle:
 
 object OrganizerTabs : TabSet {
   override val all
-    get() = listOf(Overview, People, Map, Discussions, Sharing)
+    get() = listOf(Overview, People, Map, Chat, Sharing)
 
   override val home
     get() = Overview
@@ -383,13 +383,13 @@ object OrganizerTabs : TabSet {
   }
 
   @Serializable
-  data object Discussions : Tab {
+  data object Chat : Tab {
     override val home
-      get() = OrganizerEventScreen.Discussions
+      get() = OrganizerEventScreen.Chat
 
     override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
-    override val testTag = NavigationTestTags.DISCUSSIONS_TAB
+    override val testTag = NavigationTestTags.CHAT_TAB
     override val set
       get() = OrganizerTabs
   }
@@ -456,10 +456,10 @@ sealed interface OrganizerEventScreen : Destination {
   }
 
   @Serializable
-  data object Discussions : OrganizerEventScreen {
+  data object Chat : OrganizerEventScreen {
     override val title = "Chat"
     override val tab
-      get() = OrganizerTabs.Discussions
+      get() = OrganizerTabs.Chat
   }
 
   /** The event's join code and its QR code, to share with volunteers. */
@@ -470,7 +470,7 @@ sealed interface OrganizerEventScreen : Destination {
       get() = OrganizerTabs.Sharing
   }
 
-  /** A chat channel, opened from Discussions. */
+  /** A chat channel, opened from the Chat tab. */
   @Serializable
   data class Channel(
       override val kind: ChannelKind,
@@ -478,7 +478,7 @@ sealed interface OrganizerEventScreen : Destination {
       override val name: String?,
   ) : OrganizerEventScreen, ChannelScreen {
     override val tab
-      get() = OrganizerTabs.Discussions
+      get() = OrganizerTabs.Chat
   }
 }
 
@@ -566,8 +566,8 @@ open class NavigationActions(private val navController: NavHostController) {
   }
 
   /**
-   * Opens [channel] on top of the root of the Discussions [tab] of the mode, wherever the user is:
-   * a channel left open there is dropped, so the one asked for gets its own screen rather than
+   * Opens [channel] on top of the root of the Chat [tab] of the mode, wherever the user is: a
+   * channel left open there is dropped, so the one asked for gets its own screen rather than
    * reusing that channel's.
    */
   open fun openChannel(tab: Tab, channel: ChannelScreen) {
@@ -603,12 +603,12 @@ open class NavigationActions(private val navController: NavHostController) {
         when (event) {
           is VolunteerEvent ->
               openChannel(
-                  VolunteerTabs.Discussions,
+                  VolunteerTabs.Chat,
                   VolunteerEventScreen.Channel(target.kind, target.teamId, name),
               )
           is OrganizerEvent ->
               openChannel(
-                  OrganizerTabs.Discussions,
+                  OrganizerTabs.Chat,
                   OrganizerEventScreen.Channel(target.kind, target.teamId, name),
               )
         }
