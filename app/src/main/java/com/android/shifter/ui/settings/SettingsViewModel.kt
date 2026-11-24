@@ -52,13 +52,7 @@ enum class LocationSharingNotice {
   SAVED_OFFLINE,
 }
 
-/**
- * What the Notifications section has to tell the user: under the section for [LOAD_FAILED], under
- * the switch that changed for [SAVE_FAILED] (see [SettingsUiState.notificationsNoticeKind]).
- *
- * Unlike location sharing, a change waiting for the server is not told: Firestore applies it on
- * this phone at once, where the notifications follow it, so only the user's other phones wait.
- */
+/** A notice of the Notifications section: [SAVE_FAILED] goes under its switch. */
 enum class NotificationsNotice {
   /** The choices could not be read, so the switches stay disabled. */
   LOAD_FAILED,
@@ -85,24 +79,13 @@ data class SettingsUiState(
     val locationSharingNotice: LocationSharingNotice? = null,
     /** The kinds of notifications turned off on the profile, as last read; `null` until read. */
     val savedDisabledNotifications: Set<NotificationKind>? = null,
-    /**
-     * The changes the server has not confirmed yet, each kind to whether it is turned on, the last
-     * one when several: offline, until the device reconnects.
-     */
+    /** The last change of each kind the server has not confirmed yet: whether it is turned on. */
     val pendingNotifications: Map<NotificationKind, Boolean> = emptyMap(),
     val notificationsNotice: NotificationsNotice? = null,
-    /**
-     * The kind whose last change [notificationsNotice] is about, shown under its switch, where the
-     * user just tapped; `null` when it is about the whole section.
-     */
+    /** The kind [notificationsNotice] is about, shown under its switch; `null` for the section. */
     val notificationsNoticeKind: NotificationKind? = null,
 ) {
-  /**
-   * The kinds shown turned off: those read from the profile, changed by those being saved. A switch
-   * shows the user's choice until its save ends, then what the profile has, which Firestore already
-   * updated on this device, or put back if the change was refused. `null` until the profile is
-   * read.
-   */
+  /** The kinds shown turned off: those read from the profile, changed by those being saved. */
   val disabledNotifications: Set<NotificationKind>?
     get() = savedDisabledNotifications?.let { saved ->
       pendingNotifications.entries.fold(saved) { kinds, (kind, enabled) ->
@@ -133,7 +116,7 @@ class SettingsViewModel(
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-  /** The last save started for each kind of notification, read and written on the main thread. */
+  /** The last save started for each kind of notification, used on the main thread only. */
   private val lastNotificationSaves = mutableMapOf<NotificationKind, Any>()
 
   init {
@@ -309,15 +292,9 @@ class SettingsViewModel(
   }
 
   /**
-   * Follows the kinds of notifications the user turned off: a choice made on another phone shows at
-   * once, and a queued change the server refuses later switches back by itself, since Firestore
-   * undoes it on this device.
-   *
-   * Offline, a profile this device never read gives nothing (see
-   * [UserRepository.observeDisabledNotifications]): after [LOAD_TIMEOUT_MILLIS], the user is told
-   * the switches wait. A lost connection is told the same way and the observation is tried again
-   * every [RETRY_DELAY_MILLIS], as `catch` would end it until Settings is opened again. A refusal
-   * or a malformed profile does not get better by waiting: it is told once, and not tried again.
+   * Follows the kinds turned off, so a change made on another phone, or undone by Firestore after a
+   * refusal, shows at once. Nothing read after [LOAD_TIMEOUT_MILLIS] is told; a lost connection is
+   * told and tried again every [RETRY_DELAY_MILLIS], any other failure only told.
    */
   private fun observeNotifications() {
     val uid = repository.currentUser()?.uid ?: return
@@ -364,16 +341,9 @@ class SettingsViewModel(
   }
 
   /**
-   * Turns notifications of [kind] on or off. The switch moves at once and the change applies on
-   * this phone at once, as a switch should: Firestore writes it to its local cache first, and sends
-   * it to the server now or, offline, once the device reconnects. Nothing is told meanwhile. If the
-   * server refuses it, whenever that is, the switch shows what the profile has again (see
-   * [SettingsUiState.disabledNotifications]) and the refusal is told under it.
-   *
-   * No switch waits for its save: each change writes only its own kind, and Firestore sends the
-   * writes in order, so the last tap always wins on the server. Only the last save of [kind] ends
-   * its pending change and tells a refusal. Leaving Settings only stops the wait: nothing is read
-   * first, so the write is already queued.
+   * Turns notifications of [kind] on or off, at once and without waiting for the server: Firestore
+   * applies it on this phone first and sends it when it can, the writes in order. Only the last
+   * save of [kind] ends its pending change, and tells under its switch if the server refused it.
    */
   fun setNotificationEnabled(kind: NotificationKind, enabled: Boolean) {
     val uid = repository.currentUser()?.uid
@@ -398,9 +368,7 @@ class SettingsViewModel(
             Log.w(TAG, "Could not save the notification choice", e)
             NotificationsNotice.SAVE_FAILED
           }
-      // A later change of the same kind is still being saved: that one ends it, and tells if
-      // refused.
-      if (lastNotificationSaves[kind] !== save) return@launch
+      if (lastNotificationSaves[kind] !== save) return@launch // A later change of kind ends it.
       lastNotificationSaves.remove(kind)
       _uiState.update {
         val told =
@@ -460,12 +428,10 @@ class SettingsViewModel(
      */
     const val SAVE_TIMEOUT_MILLIS = 10_000L
 
-    /** How long the notification choices may take to load before the user is told they wait. */
+    /** How long the notification choices may take to load before it is told. */
     internal const val LOAD_TIMEOUT_MILLIS = 10_000L
 
-    /**
-     * How long to wait before observing the notification choices again once the network is lost.
-     */
+    /** How long to wait before observing the notification choices again, the network lost. */
     internal const val RETRY_DELAY_MILLIS = 10_000L
 
     /**

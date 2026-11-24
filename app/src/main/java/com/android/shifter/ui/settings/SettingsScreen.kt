@@ -147,8 +147,6 @@ fun SettingsRoute(
  * location sharing switch, then the change of mode and the Sign out action.
  *
  * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switches.
- * The location sharing switch is disabled while its setting is unknown or being saved, a
- * notification switch only until the choices are read.
  */
 @Composable
 fun SettingsScreen(
@@ -268,9 +266,8 @@ private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boo
 }
 
 /**
- * Figma "Settings section" Notifications: one switch per kind, in the groups of the mode the user
- * is in (see [NotificationGroup.shownIn]), then where the choices are saved, and the notice of the
- * whole section, when the choices could not be read. The notice of a change goes under its switch.
+ * Figma "Settings section" Notifications: one switch per kind, in the groups of the mode (see
+ * [NotificationGroup.shownIn]), then where the choices are saved and why they could not be read.
  */
 @Composable
 private fun NotificationsSection(
@@ -323,13 +320,8 @@ private fun NotificationsSection(
 }
 
 /**
- * Figma "Settings row" of a kind of notification: its name and when it is sent, the refusal of its
- * last change if any, then its switch. Until the choices are read, the switch shows the default,
- * on, but cannot be used; it never waits for a save (see
- * [SettingsViewModel.setNotificationEnabled]).
- *
- * The whole row toggles, so a tap on the text works and TalkBack reads the name, the notice and the
- * state together; the switch only shows it.
+ * Figma "Settings row" of a kind: its name, when it is sent and a refusal, then its switch, shown
+ * on but disabled until the choices are read. The whole row toggles, so TalkBack reads it as one.
  */
 @Composable
 private fun NotificationRow(
