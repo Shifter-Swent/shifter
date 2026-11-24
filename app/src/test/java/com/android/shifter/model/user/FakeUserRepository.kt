@@ -65,7 +65,10 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   /** The teams whose position the last [setLocationSharing] turning sharing off deleted. */
   var positionsRemovedFrom: List<Team> = emptyList()
 
-  /** When set, [setLocationSharing] waits for it after saving, as Firestore does offline. */
+  /**
+   * When set, [setLocationSharing] and [setNotificationEnabled] wait for it after saving, as
+   * Firestore does offline.
+   */
   var unconfirmedWrite: CompletableDeferred<Unit>? = null
 
   /** Like the rules, refuses a uid with no profile. */
@@ -106,6 +109,7 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
     failure?.let { throw it }
     if (uid !in users) throw UserRepositoryException.PermissionDenied()
     disabledNotificationsFlow(uid).update { if (enabled) it - kind else it + kind }
+    unconfirmedWrite?.await()
   }
 
   override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> = flow {

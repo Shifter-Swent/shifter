@@ -19,6 +19,7 @@ import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.FakeMembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
@@ -30,6 +31,7 @@ import com.swent.shifter.model.user.UserRepositoryException
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
+import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
@@ -37,6 +39,10 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -204,6 +210,7 @@ class SettingsViewModelTest {
     val offline = mockk<UserRepository>()
     coEvery { offline.setMode(UID, UserMode.ORGANIZER) } coAnswers { awaitCancellation() }
     coEvery { offline.setMode(UID, UserMode.VOLUNTEER) } just runs
+    every { offline.observeDisabledNotifications(UID) } returns emptyFlow()
     val waiting =
         SettingsViewModel(repository, offline, requests, teams, UserMode.VOLUNTEER, consent)
 
@@ -228,6 +235,7 @@ class SettingsViewModelTest {
     val pending = CompletableDeferred<Unit>()
     val slow = mockk<UserRepository>()
     coEvery { slow.setMode(any(), any()) } coAnswers { pending.await() }
+    every { slow.observeDisabledNotifications(UID) } returns emptyFlow()
     val changing = SettingsViewModel(repository, slow, requests, teams, UserMode.VOLUNTEER, consent)
 
     changing.changeMode()
@@ -431,6 +439,184 @@ class SettingsViewModelTest {
 
     assertFalse(viewModel.uiState.value.savingLocationSharing)
     assertFalse(users.users.getValue(UID).locationSharingEnabled)
+  }
+
+  @Test
+  fun notifications_areReadFromTheProfile() {
+    runBlocking { users.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, false) }
+    idle(viewModel)
+
+    assertEquals(
+        setOf(NotificationKind.ANNOUNCEMENT),
+        viewModel.uiState.value.disabledNotifications,
+    )
+    assertNull(viewModel.uiState.value.notificationsNotice)
+  }
+
+  @Test
+  fun notifications_followAChangeMadeOnAnotherPhone() {
+    idle(viewModel)
+
+    runBlocking { users.setNotificationEnabled(UID, NotificationKind.TEAM_CHANGED, false) }
+    idle()
+
+    assertEquals(
+        setOf(NotificationKind.TEAM_CHANGED),
+        viewModel.uiState.value.disabledNotifications,
+    )
+  }
+
+  @Test
+  fun notifications_whenTheObservationFails_saySoAndTryAgain() {
+    users.observeNotificationsFailure = UserRepositoryException.Unavailable()
+    idle(viewModel)
+    assertNull(viewModel.uiState.value.disabledNotifications)
+    assertEquals(NotificationsNotice.LOAD_FAILED, viewModel.uiState.value.notificationsNotice)
+
+    users.observeNotificationsFailure = null
+    shadowOf(Looper.getMainLooper())
+        .idleFor(Duration.ofMillis(SettingsViewModel.RETRY_DELAY_MILLIS))
+
+    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
+    assertNull(viewModel.uiState.value.notificationsNotice)
+  }
+
+  @Test
+  fun notifications_whenRefused_saySoWithoutTryingAgain() {
+    users.observeNotificationsFailure = UserRepositoryException.PermissionDenied()
+    idle(viewModel)
+    assertEquals(NotificationsNotice.LOAD_FAILED, viewModel.uiState.value.notificationsNotice)
+
+    users.observeNotificationsFailure = null
+    shadowOf(Looper.getMainLooper())
+        .idleFor(Duration.ofMillis(SettingsViewModel.RETRY_DELAY_MILLIS))
+
+    assertNull(viewModel.uiState.value.disabledNotifications)
+  }
+
+  @Test
+  fun notifications_withoutAnswer_sayTheyCouldNotBeLoaded() {
+    // Offline, on a phone that never read the profile, the observation stays silent.
+    val offline = mockk<UserRepository>()
+    every { offline.observeDisabledNotifications(UID) } returns
+        flow<Set<NotificationKind>> { awaitCancellation() }
+    val waiting =
+        SettingsViewModel(repository, offline, requests, teams, UserMode.VOLUNTEER, consent)
+
+    idle(waiting)
+    assertNull(waiting.uiState.value.notificationsNotice)
+    shadowOf(Looper.getMainLooper())
+        .idleFor(Duration.ofMillis(SettingsViewModel.LOAD_TIMEOUT_MILLIS))
+
+    assertNull(waiting.uiState.value.disabledNotifications)
+    assertEquals(NotificationsNotice.LOAD_FAILED, waiting.uiState.value.notificationsNotice)
+  }
+
+  @Test
+  fun setNotificationEnabled_off_savesItOnTheProfile() {
+    idle(viewModel)
+
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    idle()
+
+    val state = viewModel.uiState.value
+    assertEquals(setOf(NotificationKind.ANNOUNCEMENT), state.disabledNotifications)
+    assertTrue(state.pendingNotifications.isEmpty())
+    assertNull(state.notificationsNotice)
+    assertEquals(
+        setOf(NotificationKind.ANNOUNCEMENT),
+        runBlocking { users.observeDisabledNotifications(UID).first() },
+    )
+  }
+
+  @Test
+  fun setNotificationEnabled_whileSaving_ignoresThatKindOnly() {
+    users.unconfirmedWrite = CompletableDeferred()
+    idle(viewModel)
+
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    idle()
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, true)
+    viewModel.setNotificationEnabled(NotificationKind.TEAM_CHANGED, false)
+    idle()
+
+    val both = setOf(NotificationKind.ANNOUNCEMENT, NotificationKind.TEAM_CHANGED)
+    assertEquals(both, viewModel.uiState.value.disabledNotifications)
+    assertEquals(both, viewModel.uiState.value.pendingNotifications.keys)
+
+    users.unconfirmedWrite?.complete(Unit)
+    idle()
+
+    assertEquals(both, viewModel.uiState.value.disabledNotifications)
+    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
+  }
+
+  @Test
+  fun setNotificationEnabled_whileSaving_showsTheChoiceThenWhatTheProfileHas() {
+    val serverAnswer = CompletableDeferred<Unit>()
+    users.unconfirmedWrite = serverAnswer
+    idle(viewModel)
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    idle()
+
+    // Another phone turns it back on, and its write reaches the profile last.
+    users.unconfirmedWrite = null
+    runBlocking { users.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, true) }
+    idle()
+    assertEquals(
+        setOf(NotificationKind.ANNOUNCEMENT),
+        viewModel.uiState.value.disabledNotifications,
+    )
+
+    serverAnswer.complete(Unit)
+    idle()
+
+    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
+  }
+
+  @Test
+  fun setNotificationEnabled_whenRefused_switchesBackAndSaysSo() {
+    idle(viewModel)
+    users.failure = UserRepositoryException.PermissionDenied()
+
+    viewModel.setNotificationEnabled(NotificationKind.MISSION_CHANGED, false)
+    idle()
+
+    val state = viewModel.uiState.value
+    assertEquals(emptySet<NotificationKind>(), state.disabledNotifications)
+    assertTrue(state.pendingNotifications.isEmpty())
+    assertEquals(NotificationsNotice.SAVE_FAILED, state.notificationsNotice)
+  }
+
+  @Test
+  fun setNotificationEnabled_unconfirmed_keepsTheChangeAndSaysItIsSavedOffline() {
+    users.unconfirmedWrite = CompletableDeferred()
+    idle(viewModel)
+
+    viewModel.setNotificationEnabled(NotificationKind.OPEN_SPOTS, false)
+    shadowOf(Looper.getMainLooper())
+        .idleFor(Duration.ofMillis(SettingsViewModel.SAVE_TIMEOUT_MILLIS + 1))
+
+    val state = viewModel.uiState.value
+    assertEquals(setOf(NotificationKind.OPEN_SPOTS), state.disabledNotifications)
+    assertTrue(state.pendingNotifications.isEmpty())
+    assertEquals(NotificationsNotice.SAVED_OFFLINE, state.notificationsNotice)
+  }
+
+  @Test
+  fun setNotificationEnabled_beforeTheChoicesAreRead_doesNothing() {
+    users.observeNotificationsFailure = UserRepositoryException.Unavailable()
+    idle(viewModel)
+
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    idle()
+
+    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
+    users.observeNotificationsFailure = null
+    assertEquals(
+        emptySet<NotificationKind>(),
+        runBlocking { users.observeDisabledNotifications(UID).first() },
+    )
   }
 
   private fun request(eventId: String, status: MembershipRequestStatus) =
