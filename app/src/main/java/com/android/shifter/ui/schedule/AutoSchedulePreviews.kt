@@ -28,6 +28,7 @@ private val FESTIVAL = at(0, "08:00")..at(2, "23:00")
 /** The missions of Saturday in the Figma frame, and one on Sunday with someone already on it. */
 private val PROPOSAL =
     AutoScheduleUiState(
+        isLoading = false,
         eventPeriod = FESTIVAL,
         missions =
             listOf(
@@ -36,6 +37,7 @@ private val PROPOSAL =
                     title = "Set up the stands",
                     startAt = at(1, "08:00"),
                     endAt = at(1, "11:00"),
+                    isGeneral = false,
                     teamName = "Logistics",
                     volunteersNeeded = 4,
                     proposed = listOf("Maya Bernard", "Sam Keller"),
@@ -46,28 +48,34 @@ private val PROPOSAL =
                     title = "Serve at the bar",
                     startAt = at(1, "12:00"),
                     endAt = at(1, "16:00"),
+                    isGeneral = false,
                     teamName = "Bar",
                     volunteersNeeded = 3,
                     proposed = listOf("Alex Laurent", "Sam Dupont", "Inès Moreau"),
+                    missing = 0,
                 ),
                 ProposedMission(
                     id = "night",
                     title = "Bar · night service",
                     startAt = at(1, "20:00"),
                     endAt = at(1, "23:00"),
+                    isGeneral = false,
                     teamName = "Bar",
                     volunteersNeeded = 2,
                     proposed = listOf("Claire Dubois", "Bob Rossi"),
+                    missing = 0,
                 ),
                 ProposedMission(
                     id = "park",
                     title = "Clean the park",
                     startAt = at(2, "09:00"),
                     endAt = at(2, "12:00"),
+                    isGeneral = false,
                     teamName = "Logistics",
                     volunteersNeeded = 3,
                     assigned = listOf("Léa Petit"),
                     proposed = listOf("Maya Bernard", "Sam Keller"),
+                    missing = 0,
                 ),
             ),
     )
@@ -88,8 +96,8 @@ private fun SaturdayPreview() = PreviewHost(PROPOSAL)
 @Preview(name = "Nothing to propose", widthDp = 390, heightDp = 844)
 @Composable
 private fun NothingToProposePreview() =
-    PreviewHost(AutoScheduleUiState(eventPeriod = FESTIVAL, missions = emptyList()))
+    PreviewHost(AutoScheduleUiState(isLoading = false, eventPeriod = FESTIVAL))
 
 @Preview(name = "Saving failed", widthDp = 390, heightDp = 988)
 @Composable
-private fun SaveFailedPreview() = PreviewHost(PROPOSAL.copy(saveFailed = true))
+private fun SaveFailedPreview() = PreviewHost(PROPOSAL.copy(saveError = ScheduleSaveError.RETRY))

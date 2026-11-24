@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -36,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,11 +64,14 @@ object AutoScheduleTestTags {
   const val NEW_ASSIGNMENTS = "AutoScheduleNewAssignments"
   const val MISSIONS_TO_FINISH = "AutoScheduleMissionsToFinish"
   const val LOADING = "AutoScheduleLoading"
+  const val RELOADING = "AutoScheduleReloading"
   const val LOAD_ERROR = "AutoScheduleLoadError"
   const val RETRY = "AutoScheduleRetry"
   const val NOTHING_TO_PROPOSE = "AutoScheduleNothingToPropose"
   const val EMPTY_DAY = "AutoScheduleEmptyDay"
   const val SAVE_ERROR = "AutoScheduleSaveError"
+  const val SAVE_RELOAD = "AutoScheduleSaveReload"
+  const val SAVING = "AutoScheduleSaving"
   const val CANCEL = "AutoScheduleCancel"
   const val ACCEPT = "AutoScheduleAccept"
 
@@ -96,8 +102,8 @@ fun AutoScheduleContent(
     now: Instant,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
-  val dayPicker =
-      rememberEventDayPicker(state.eventPeriod, state.missions.map { it.startAt }, now, zone)
+  val starts = state.missions.map { it.startAt }
+  val dayPicker = rememberEventDayPicker(state.eventPeriod, starts, now, zone)
   // An event without days read yet is still accepted as a whole: "Accept", not "Accept all 0 days".
   val dayCount = dayPicker.days.size.coerceAtLeast(1)
   Column(modifier = Modifier.fillMaxSize().testTag(AutoScheduleTestTags.SCREEN)) {
@@ -107,7 +113,7 @@ fun AutoScheduleContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       when {
-        state.isLoading && state.missions.isEmpty() ->
+        state.missions.isEmpty() && state.isLoading ->
             CircularProgressIndicator(
                 modifier =
                     Modifier.align(Alignment.CenterHorizontally)
@@ -115,27 +121,40 @@ fun AutoScheduleContent(
                         .testTag(AutoScheduleTestTags.LOADING),
                 strokeWidth = 2.dp,
             )
-        state.loadFailed -> LoadError(actions.onRetry)
+        state.missions.isEmpty() && state.loadFailed -> LoadError(actions.onRetry)
         state.nothingToPropose -> NothingToPropose()
-        else -> Proposal(state, dayPicker, dayCount, zone)
+        else -> {
+          // A reload, or one that failed, keeps the proposal already shown under it.
+          if (state.isLoading) {
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().testTag(AutoScheduleTestTags.RELOADING)
+            )
+          }
+          if (state.loadFailed) LoadError(actions.onRetry)
+          Proposal(state, starts, dayPicker, dayCount, zone)
+        }
       }
     }
     BottomBar(state, actions, dayCount)
   }
 }
 
-/** The summary, the legend, the day strip and the missions of the day shown. */
+/**
+ * The summary, the day strip and the missions of the day shown. The strip marks every day with a
+ * mission, as on the Overview, since a day can have missions to finish by hand without anyone
+ * proposed.
+ */
 @Composable
 private fun Proposal(
     state: AutoScheduleUiState,
+    starts: List<Instant>,
     dayPicker: EventDayPicker,
     dayCount: Int,
     zone: ZoneId,
 ) {
   Summary(state, dayCount)
-  Legend()
   if (dayPicker.showsStrip) {
-    EventDayStrip(dayPicker, dayPicker.daysOf(state.missions.map { it.startAt }))
+    EventDayStrip(dayPicker, dayPicker.daysOf(starts))
   }
   val missions = state.missions.filter { dayPicker.isShown(it.startAt) }
   if (missions.isEmpty()) {
@@ -144,7 +163,7 @@ private fun Proposal(
   missions.forEach { MissionCard(it, zone) }
 }
 
-/** What the proposal adds over the whole event, and what stays to do by hand. */
+/** What the proposal adds over the whole event, what stays to do by hand, and the legend. */
 @Composable
 private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
   ScheduleCard(Modifier.testTag(AutoScheduleTestTags.SUMMARY)) {
@@ -172,6 +191,7 @@ private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
             modifier = Modifier.weight(1f).testTag(AutoScheduleTestTags.MISSIONS_TO_FINISH),
         )
       }
+      Legend()
       Text(
           text = stringResource(R.string.schedule_nothing_saved),
           style = MaterialTheme.typography.labelSmall,
@@ -181,10 +201,10 @@ private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
   }
 }
 
-/** A number of the summary, in large, above what it counts. */
+/** A number of the summary, in large, above what it counts, read as one: "9, new assignments". */
 @Composable
 private fun Total(count: Int, label: String, color: Color, modifier: Modifier) {
-  Column(modifier = modifier) {
+  Column(modifier = modifier.semantics(mergeDescendants = true) {}) {
     Text(text = count.toString(), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = color)
     Text(
         text = label,
@@ -213,12 +233,17 @@ private fun Legend() {
 
 /**
  * A mission of the day shown: its title, slot and team, how many people it has once the proposal is
- * accepted, then who is already on it, in grey, and who the proposal adds, in blue.
+ * accepted, then who is already on it, in grey, and who the proposal adds, in blue. A mission still
+ * short of people has its count and border in amber, and screen readers say how many are missing.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MissionCard(mission: ProposedMission, zone: ZoneId) {
-  ScheduleCard(Modifier.testTag(AutoScheduleTestTags.mission(mission.id))) {
+  val short = mission.missing > 0
+  ScheduleCard(
+      modifier = Modifier.testTag(AutoScheduleTestTags.mission(mission.id)),
+      borderColor = if (short) shifter_warning else MaterialTheme.colorScheme.outline,
+  ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Row(verticalAlignment = Alignment.Top) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -237,19 +262,36 @@ private fun MissionCard(mission: ProposedMission, zone: ZoneId) {
                           mission.startAt.formatTime(zone),
                           mission.endAt.formatTime(zone),
                       ),
-                      mission.teamName ?: stringResource(R.string.schedule_team_general),
+                      when {
+                        mission.isGeneral -> stringResource(R.string.schedule_team_general)
+                        else -> mission.teamName ?: stringResource(R.string.schedule_team_unknown)
+                      },
                   ),
               style = MaterialTheme.typography.labelSmall,
               color = shifter_mutedText,
           )
         }
         val filled = mission.assigned.size + mission.proposed.size
+        val people =
+            pluralStringResource(
+                R.plurals.schedule_count_description,
+                mission.volunteersNeeded,
+                filled,
+                mission.volunteersNeeded,
+            )
+        // Read as "2 of 4 people, 2 to fill by hand" rather than "2 slash 4", and not only shown
+        // by the colour.
+        val description =
+            if (short) stringResource(R.string.schedule_count_to_fill, people, mission.missing)
+            else people
         Text(
             text = stringResource(R.string.schedule_count, filled, mission.volunteersNeeded),
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (mission.missing > 0) shifter_warning else shifter_success,
-            modifier = Modifier.testTag(AutoScheduleTestTags.count(mission.id)),
+            color = if (short) shifter_warning else shifter_success,
+            modifier =
+                Modifier.semantics { contentDescription = description }
+                    .testTag(AutoScheduleTestTags.count(mission.id)),
         )
       }
       if (mission.assigned.isNotEmpty() || mission.proposed.isNotEmpty()) {
@@ -325,8 +367,8 @@ private fun LoadError(onRetry: () -> Unit) {
 }
 
 /**
- * Cancel, and Accept for every day at once. Accept is off while there is nothing to accept, and
- * while the proposal is prepared or saved.
+ * Why the last save failed, if it did, then Cancel and Accept for every day at once. Accept is on
+ * only when [AutoScheduleUiState.canAccept], and shows a spinner while the proposal is saved.
  */
 @Composable
 private fun BottomBar(state: AutoScheduleUiState, actions: AutoScheduleActions, dayCount: Int) {
@@ -336,14 +378,7 @@ private fun BottomBar(state: AutoScheduleUiState, actions: AutoScheduleActions, 
         modifier = Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-      if (state.saveFailed) {
-        Text(
-            text = stringResource(R.string.schedule_save_failed),
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.testTag(AutoScheduleTestTags.SAVE_ERROR),
-        )
-      }
+      state.saveError?.let { SaveError(it, actions.onRetry) }
       Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedButton(
             onClick = actions.onCancel,
@@ -355,16 +390,53 @@ private fun BottomBar(state: AutoScheduleUiState, actions: AutoScheduleActions, 
         }
         Button(
             onClick = actions.onAccept,
-            enabled =
-                !state.isSaving && !state.isLoading && !state.loadFailed && !state.nothingToPropose,
+            enabled = state.canAccept,
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.weight(1f).height(52.dp).testTag(AutoScheduleTestTags.ACCEPT),
         ) {
-          Text(
-              text = pluralStringResource(R.plurals.schedule_accept, dayCount, dayCount),
-              fontWeight = FontWeight.SemiBold,
-          )
+          if (state.isSaving) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp).testTag(AutoScheduleTestTags.SAVING),
+                strokeWidth = 2.dp,
+            )
+          } else {
+            Text(
+                text = pluralStringResource(R.plurals.schedule_accept, dayCount, dayCount),
+                fontWeight = FontWeight.SemiBold,
+            )
+          }
         }
+      }
+    }
+  }
+}
+
+/**
+ * Why saving failed: an outdated proposal is prepared again from here, since accepting it again
+ * would fail the same way.
+ */
+@Composable
+private fun SaveError(error: ScheduleSaveError, onReload: () -> Unit) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Text(
+        text =
+            stringResource(
+                when (error) {
+                  ScheduleSaveError.RETRY -> R.string.schedule_save_failed
+                  ScheduleSaveError.OUTDATED -> R.string.schedule_save_outdated
+                  ScheduleSaveError.TOO_LARGE -> R.string.schedule_save_too_large
+                }
+            ),
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.weight(1f).testTag(AutoScheduleTestTags.SAVE_ERROR),
+    )
+    if (error == ScheduleSaveError.OUTDATED) {
+      TextButton(
+          onClick = onReload,
+          modifier = Modifier.testTag(AutoScheduleTestTags.SAVE_RELOAD),
+      ) {
+        Text(stringResource(R.string.schedule_reload))
       }
     }
   }
@@ -372,7 +444,11 @@ private fun BottomBar(state: AutoScheduleUiState, actions: AutoScheduleActions, 
 
 /** A rounded, outlined block of the screen, as on the organizer's Overview. */
 @Composable
-private fun ScheduleCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+private fun ScheduleCard(
+    modifier: Modifier = Modifier,
+    borderColor: Color = MaterialTheme.colorScheme.outline,
+    content: @Composable () -> Unit,
+) {
   val shape = RoundedCornerShape(18.dp)
   Box(
       modifier =
@@ -380,7 +456,7 @@ private fun ScheduleCard(modifier: Modifier = Modifier, content: @Composable () 
               .fillMaxWidth()
               .clip(shape)
               .background(MaterialTheme.colorScheme.surfaceVariant)
-              .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+              .border(1.dp, borderColor, shape)
               .padding(16.dp)
   ) {
     content()
