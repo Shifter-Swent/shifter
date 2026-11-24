@@ -1200,17 +1200,77 @@ class AddMissionViewModelTest {
   }
 
   @Test
-  fun edit_overlapping_reportsTheConflict() = runTest {
-    val other = storedMission()
+  fun edit_overlappingAnotherMission_namesThatMission() = runTest {
+    // Its own title differs, so a conflict naming the edited mission would be caught.
+    changed(storedMission()) { it.copy(title = "Unload the trucks") }
     val stored = storedMission(startHour = 16)
     openEdit(stored.id)
+
+    viewModel.onStartTimeChange(LocalTime.of(14, 30))
+    viewModel.onEndTimeChange(LocalTime.of(16, 0))
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals(
+        MissionConflict(
+            "Unload the trucks",
+            eventDay.atTime(14, 0),
+            eventDay.atTime(15, 30),
+        ),
+        state.conflict,
+    )
+    assertNull(state.savedMission)
+  }
+
+  @Test
+  fun edit_afterAssigneesChangedMeanwhile_keepsThem() = runTest {
+    val stored = storedMission("ana")
+    openEdit(stored.id)
+    // Ben is assigned from the Overview while the form is open.
+    missions.updateAssignees(event.id, stored.id, listOf("ana", "ben"))
+
+    viewModel.onTitleChange("Welcome the donors")
+    viewModel.save()
+    advanceUntilIdle()
+
+    val saved = missions.created.single()
+    assertEquals("Welcome the donors", saved.title)
+    assertEquals(listOf("ana", "ben"), saved.assigneeIds)
+  }
+
+  @Test
+  fun edit_overlappingBelowTheAssignees_reportsTheConflict() = runTest {
+    storedMission()
+    val stored = storedMission("ana", "ben", startHour = 16)
+    openEdit(stored.id)
+    // Cléo is assigned meanwhile, so the need below is also too low.
+    missions.updateAssignees(event.id, stored.id, listOf("ana", "ben", "cleo"))
+
+    viewModel.onDecreaseVolunteers()
+    viewModel.onStartTimeChange(LocalTime.of(14, 0))
+    viewModel.onEndTimeChange(LocalTime.of(15, 30))
+    viewModel.save()
+    advanceUntilIdle()
+
+    assertEquals("Sort the food donations", state.conflict?.title)
+    assertNull(state.belowAssignees)
+    assertNull(state.savedMission)
+  }
+
+  @Test
+  fun edit_completedWhileOpenAndOverlapping_saysItIsCompleted() = runTest {
+    storedMission()
+    val stored = storedMission(startHour = 16)
+    openEdit(stored.id)
+    missions.markCompleted(event.id, stored.id)
 
     viewModel.onStartTimeChange(LocalTime.of(14, 0))
     viewModel.onEndTimeChange(LocalTime.of(15, 30))
     viewModel.save()
     advanceUntilIdle()
 
-    assertEquals(other.title, state.conflict?.title)
+    assertTrue(state.missionCompleted)
+    assertNull(state.conflict)
     assertNull(state.savedMission)
   }
 

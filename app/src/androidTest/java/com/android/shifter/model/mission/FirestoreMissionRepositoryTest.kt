@@ -146,6 +146,8 @@ class FirestoreMissionRepositoryTest {
               valid.copy(endAt = valid.startAt.minusSeconds(3600)),
               valid.copy(endAt = valid.startAt),
               valid.copy(volunteersNeeded = 0),
+              valid.copy(volunteersNeeded = 1, assigneeIds = listOf("user-1", "user-2")),
+              valid.copy(volunteersNeeded = 2, assigneeIds = listOf("user-1", "user-1")),
           )
       for (mission in invalid) {
         val failure = runCatching { repository.createMission(mission) }.exceptionOrNull()
