@@ -2,7 +2,9 @@
 package com.swent.shifter.ui.navigation
 
 import android.Manifest
+import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -23,6 +25,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -38,6 +43,7 @@ import com.swent.shifter.firebase.signInForFirestore
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.authentication.AuthUser
+import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
@@ -52,6 +58,7 @@ import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
+import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.scan.TestQrScanner
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
@@ -74,6 +81,7 @@ import com.swent.shifter.ui.map.MapScreenTestTags
 import com.swent.shifter.ui.mission.AddMissionScreenTestTags
 import com.swent.shifter.ui.overview.OrganizerOverviewScreenTestTags
 import com.swent.shifter.ui.people.ParticipantsListTestTags
+import com.swent.shifter.ui.people.PeopleScreenTestTags
 import com.swent.shifter.ui.planning.PlanningTestTags
 import com.swent.shifter.ui.scan.ScanScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
@@ -1552,6 +1560,80 @@ class ShifterNavHostTest {
   }
 
   /** The texts of the messages of [channel] as the signed-in user reads them now. */
+  @Test
+  fun notificationTarget_signedIn_opensItsScreenOverTheEventsList() {
+    val event = createEvent(signIn())
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, UserMode.ORGANIZER)
+
+    showAppTapping(
+        NotificationTarget.EventOverview(event.id, event.title, UserMode.ORGANIZER, teamId = null)
+    )
+
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
+    assertEventTabSelected(OrganizerTabs.Overview, event.title)
+    assertEquals(1, targetsOpened)
+    // Opened as if from the list: Back returns there.
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+  }
+
+  @Test
+  fun notificationTarget_ofTheOtherMode_entersItWithoutChangingTheSavedMode() {
+    val organizer = signIn()
+    val event = createEvent(organizer)
+    saveMode(organizer.uid, UserMode.VOLUNTEER)
+
+    showAppTapping(NotificationTarget.Requests(event.id, event.title))
+
+    waitForNode(PeopleScreenTestTags.REQUESTS_TAB)
+    composeTestRule.onNodeWithText("Requests").assertIsSelected()
+    composeTestRule.onNodeWithTag(OrganizerTabs.People.testTag).assertIsSelected()
+    val saved = runBlocking { repositories.userRepository.getUser(organizer.uid) }
+    assertEquals(UserMode.VOLUNTEER, saved?.mode)
+  }
+
+  @Test
+  fun notificationTarget_whileInTheApp_opensAtOnce() {
+    val event = createEvent(signIn())
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, UserMode.ORGANIZER)
+    showAppTapping(target = null)
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+
+    composeTestRule.runOnUiThread {
+      tapped.value =
+          NotificationTarget.Channel(
+              event.id,
+              event.title,
+              UserMode.ORGANIZER,
+              ChannelKind.GENERAL,
+              teamId = null,
+          )
+    }
+
+    waitForNode(TeamChatTestTags.INPUT)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals("General")
+    assertEquals(1, targetsOpened)
+    assertNull(tapped.value)
+  }
+
+  @Test
+  fun notificationTarget_signedOut_opensOnceSignedIn() {
+    val account = googleCredential()
+    val user = signIn(account)
+    saveMode(user.uid, UserMode.VOLUNTEER)
+    AuthEmulator.auth.signOut()
+    val target = NotificationTarget.MyEvents(UserMode.ORGANIZER)
+
+    showAppTapping(target, isSignedIn = false, credential = account)
+    waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
+    assertEquals(0, targetsOpened)
+    composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).performClick()
+
+    // The saved mode is Volunteer: only the target leads to the organizer's events.
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    assertEquals(1, targetsOpened)
+  }
+
   private fun texts(channel: ChatChannelId): List<String> = runBlocking {
     repositories.chatRepository.messages(channel).first().map { it.text }
   }
@@ -1945,6 +2027,50 @@ class ShifterNavHostTest {
     } finally {
       AuthEmulator.auth.signOut()
     }
+  }
+
+  /** The notification tapped, as `MainActivity` holds it until the app has opened it. */
+  private val tapped = mutableStateOf<NotificationTarget?>(null)
+
+  /** How many times the app reported [tapped] open. */
+  private var targetsOpened = 0
+
+  /**
+   * Launches the app as `MainActivity` does after a tap on a notification of [target], with the
+   * profile already saved. Signed out, the account picker answers with [credential].
+   */
+  private fun showAppTapping(
+      target: NotificationTarget?,
+      isSignedIn: Boolean = true,
+      credential: GoogleIdTokenCredential = googleCredential(),
+  ) {
+    tapped.value = target
+    composeTestRule.setContent {
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = isSignedIn,
+            repositories = repositories,
+            credentialManager = AnsweringCredentialManager(credential),
+            qrScanner = qrScanner,
+            notificationTarget = tapped.value,
+            onNotificationTargetOpened = {
+              tapped.value = null
+              targetsOpened++
+            },
+        )
+      }
+    }
+  }
+
+  /** A [CredentialManager] whose account picker answers with [credential] at once. */
+  private class AnsweringCredentialManager(private val credential: GoogleIdTokenCredential) :
+      CredentialManager by CredentialManager.create(
+          InstrumentationRegistry.getInstrumentation().targetContext
+      ) {
+    override suspend fun getCredential(
+        context: Context,
+        request: GetCredentialRequest,
+    ): GetCredentialResponse = GetCredentialResponse(credential)
   }
 
   /**

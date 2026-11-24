@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.location.FusedLocationProvider
 import com.swent.shifter.model.location.LocationProvider
+import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.scan.CameraQrScanner
 import com.swent.shifter.model.scan.QrScanner
 import com.swent.shifter.model.user.UserMode
@@ -92,6 +94,7 @@ import com.swent.shifter.ui.overview.OrganizerOverviewViewModel
 import com.swent.shifter.ui.overview.VolunteerOverview
 import com.swent.shifter.ui.people.ParticipantsViewModel
 import com.swent.shifter.ui.people.PeopleScreen
+import com.swent.shifter.ui.people.PeopleTab
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.scan.ScanScreen
 import com.swent.shifter.ui.scan.toScanResult
@@ -120,6 +123,10 @@ import kotlinx.coroutines.flow.filter
  * @param eventSharer What sends an event's join code to another app from its Sharing tab. A test
  *   passes a fake, as the system share sheet cannot be driven.
  * @param qrScanner The camera that reads the event's QR code to join it. A test passes a fake one.
+ * @param notificationTarget The screen of the notification tapped, opened once the user is in the
+ *   app: at once when they already are, else once signed in and their mode read or chosen.
+ * @param onNotificationTargetOpened Called once [notificationTarget] is open, so it is not opened
+ *   again.
  */
 @Composable
 fun ShifterNavHost(
@@ -141,6 +148,8 @@ fun ShifterNavHost(
         LocalContext.current.let { context ->
           remember(context) { CameraQrScanner(context.applicationContext) }
         },
+    notificationTarget: NotificationTarget? = null,
+    onNotificationTargetOpened: () -> Unit = {},
 ) {
   val nav = rememberNavigationActions(navController)
   val locationSharing: LocationSharingViewModel =
@@ -175,6 +184,8 @@ fun ShifterNavHost(
         locationProvider,
         eventSharer,
         qrScanner,
+        notificationTarget,
+        onNotificationTargetOpened,
     )
   }
 }
@@ -191,6 +202,8 @@ private fun ShifterNavGraph(
     locationProvider: LocationProvider,
     eventSharer: EventSharer,
     qrScanner: QrScanner,
+    notificationTarget: NotificationTarget?,
+    onNotificationTargetOpened: () -> Unit,
 ) {
   val auth = repositories.authRepository
   // Read on every load, so the lists follow the account signed in at that time.
@@ -201,6 +214,32 @@ private fun ShifterNavGraph(
   // session already gone at launch. exitToSignIn does nothing when already on sign-in.
   LaunchedEffect(auth, nav) { auth.authState.filter { it == null }.collect { nav.exitToSignIn() } }
 
+  val channelNames =
+      ChannelNames(
+          general = stringResource(R.string.chat_channel_general),
+          admin = stringResource(R.string.chat_channel_admin),
+      )
+  val waitingTarget by rememberUpdatedState(notificationTarget)
+  val onTargetOpened by rememberUpdatedState(onNotificationTargetOpened)
+  // Enters the app of the user's mode, or the screen of the notification tapped, in its own mode,
+  // when one waits for the user to be signed in.
+  val enterAppOrTarget = { mode: UserMode ->
+    val target = waitingTarget
+    if (target == null) nav.enterApp(appOfMode(mode))
+    else {
+      nav.openTarget(target, channelNames)
+      onTargetOpened()
+    }
+  }
+  // A notification tapped while in the app opens at once. On sign-in, while the mode is read or
+  // chosen, it waits for enterAppOrTarget.
+  LaunchedEffect(notificationTarget) {
+    if (notificationTarget != null && nav.isInEitherApp()) {
+      nav.openTarget(notificationTarget, channelNames)
+      onTargetOpened()
+    }
+  }
+
   NavHost(navController, startDestination = start, modifier = modifier) {
     navigation<SignedOut>(startDestination = SignedOut.SignIn) {
       // The user enters the mode saved on their profile, or chooses one without a profile.
@@ -209,7 +248,7 @@ private fun ShifterNavGraph(
             authViewModel =
                 viewModel(factory = SignInViewModel.factory(auth, repositories.userRepository)),
             credentialManager = credentialManager,
-            onSignedIn = { saved -> nav.enterApp(appOfMode(saved)) },
+            onSignedIn = { saved -> enterAppOrTarget(saved) },
             onNewAccount = { nav.enterApp(ChoosingMode) },
         )
       }
@@ -220,7 +259,7 @@ private fun ShifterNavGraph(
         StartScreen(
             viewModel =
                 viewModel(factory = StartViewModel.factory(auth, repositories.userRepository)),
-            onModeRead = { mode -> nav.enterApp(appOfMode(mode)) },
+            onModeRead = { mode -> enterAppOrTarget(mode) },
             onNoProfile = { nav.enterApp(ChoosingMode) },
         )
       }
@@ -231,7 +270,7 @@ private fun ShifterNavGraph(
         ChooseModeScreen(
             viewModel =
                 viewModel(factory = ChooseModeViewModel.factory(auth, repositories.userRepository)),
-            onModeChosen = { mode -> nav.enterApp(appOfMode(mode)) },
+            onModeChosen = { mode -> enterAppOrTarget(mode) },
         )
       }
     }
@@ -618,6 +657,14 @@ private fun ShifterNavGraph(
             // The event's id is in the route of the event graph this screen belongs to.
             val event = eventRoute<OrganizerEvent>(navController, entry)
             val eventId = event.eventId
+            // Asked by a notification of new requests. Read once: the tab picked is then saved by
+            // the screen, so coming back to People later shows the tab left.
+            val initialTab =
+                remember(entry) {
+                  val handle = navController.getBackStackEntry<OrganizerEvent>().savedStateHandle
+                  if (handle.remove<Boolean>(OPEN_REQUESTS_KEY) == true) PeopleTab.REQUESTS
+                  else PeopleTab.PARTICIPANTS
+                }
             val requests: MembershipRequestVM =
                 viewModel(
                     factory =
@@ -656,6 +703,7 @@ private fun ShifterNavGraph(
                 onBack = { nav.leaveEvent(OrganizerTabs) },
                 onNavigate = nav::switchTab,
                 onManagerChangeFailureShown = participants::onManagerChangeFailureShown,
+                initialTab = initialTab,
             )
           }
         }

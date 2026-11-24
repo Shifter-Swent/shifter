@@ -18,6 +18,7 @@ import androidx.navigation.NavHostController
 import com.swent.shifter.model.chat.ChannelKind
 import com.swent.shifter.model.chat.ChatChannelId
 import com.swent.shifter.model.mission.Mission
+import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.user.UserMode
 import kotlinx.serialization.Serializable
 
@@ -493,6 +494,18 @@ fun appOfMode(mode: UserMode): App =
       UserMode.ORGANIZER -> Organizer
     }
 
+/**
+ * The names of an event's own channels, shown in the bar of one a notification opens, as the list
+ * of channels names them.
+ */
+data class ChannelNames(val general: String, val admin: String)
+
+/**
+ * The key, in the saved state of an organizer's event graph, asking its People tab to open on the
+ * membership requests rather than the participants, as a notification of new requests does.
+ */
+const val OPEN_REQUESTS_KEY = "openRequests"
+
 // ── Navigation actions ──────────────────────────────────────────────────────
 
 @Composable
@@ -554,6 +567,69 @@ open class NavigationActions(private val navController: NavHostController) {
     switchTab(tab)
     navigateTo(channel)
   }
+
+  /**
+   * Opens the screen of a notification tapped, [target], on top of the events list of its mode, so
+   * Back leads there as if the user had opened it. A target of the other mode enters that mode for
+   * this visit only: the mode saved on the profile does not change, so this works offline.
+   *
+   * @param channelNames the names of the event's own channels, for the bar of a channel opened.
+   */
+  open fun openTarget(target: NotificationTarget, channelNames: ChannelNames) {
+    when (target) {
+      is NotificationTarget.MyEvents -> enterApp(appOfMode(target.mode))
+      is NotificationTarget.EventOverview ->
+          enterEventOf(target.mode, target.eventId, target.eventTitle)
+      is NotificationTarget.Planning ->
+          enterEventOf(UserMode.VOLUNTEER, target.eventId, target.eventTitle)
+      is NotificationTarget.Mission -> enterEventOf(target.mode, target.eventId, target.eventTitle)
+      is NotificationTarget.Channel -> {
+        val event = enterEventOf(target.mode, target.eventId, target.eventTitle)
+        // A team's channel is opened without a name, so its bar shows the team's once read.
+        val name =
+            when (target.kind) {
+              ChannelKind.TEAM -> null
+              ChannelKind.GENERAL -> channelNames.general
+              ChannelKind.ADMIN -> channelNames.admin
+            }
+        when (event) {
+          is VolunteerEvent ->
+              openChannel(
+                  VolunteerTabs.Discussions,
+                  VolunteerEventScreen.Channel(target.kind, target.teamId, name),
+              )
+          is OrganizerEvent ->
+              openChannel(
+                  OrganizerTabs.Discussions,
+                  OrganizerEventScreen.Channel(target.kind, target.teamId, name),
+              )
+        }
+      }
+      is NotificationTarget.Requests -> {
+        enterEventOf(UserMode.ORGANIZER, target.eventId, target.eventTitle)
+        navController.getBackStackEntry<OrganizerEvent>().savedStateHandle[OPEN_REQUESTS_KEY] = true
+        switchTab(OrganizerTabs.People)
+      }
+    }
+  }
+
+  /** Enters the app of [mode], then opens the event [eventId] in it, on its Overview. */
+  private fun enterEventOf(mode: UserMode, eventId: String, eventTitle: String): EventMode {
+    enterApp(appOfMode(mode))
+    val event =
+        when (mode) {
+          UserMode.VOLUNTEER -> VolunteerEvent(eventId, eventTitle)
+          UserMode.ORGANIZER -> OrganizerEvent(eventId, eventTitle)
+        }
+    enterEvent(event)
+    return event
+  }
+
+  /**
+   * Whether the user is in the Volunteer or the Organizer app, where the screen of a notification
+   * may open, rather than signing in or choosing their mode.
+   */
+  open fun isInEitherApp(): Boolean = isInApp(Volunteer) || isInApp(Organizer)
 
   open fun navigateTo(destination: Destination) {
     navController.navigate(destination) { launchSingleTop = true }
