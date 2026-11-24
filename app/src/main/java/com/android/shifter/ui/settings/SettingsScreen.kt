@@ -15,8 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -38,12 +42,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import com.swent.shifter.R
+import com.swent.shifter.model.notification.NotificationKind
+import com.swent.shifter.model.notification.channelDescription
+import com.swent.shifter.model.notification.channelDescriptionArgs
+import com.swent.shifter.model.notification.channelName
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.components.ShifterTopBar
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -57,6 +66,11 @@ object SettingsScreenTestTags {
   const val CHANGE_MODE_BUTTON = "SettingsChangeModeButton"
   const val LOCATION_SHARING_SWITCH = "SettingsLocationSharingSwitch"
   const val LOCATION_SHARING_NOTICE = "SettingsLocationSharingNotice"
+  const val NOTIFICATIONS_NOTICE = "SettingsNotificationsNotice"
+
+  fun notificationGroup(group: NotificationGroup) = "SettingsNotificationGroup_${group.name}"
+
+  fun notificationSwitch(kind: NotificationKind) = "SettingsNotificationSwitch_${kind.name}"
 }
 
 /**
@@ -122,16 +136,18 @@ fun SettingsRoute(
       onChangeMode = viewModel::changeMode,
       onSignOut = { viewModel.signOut(credentialManager) },
       onLocationSharingChange = viewModel::setLocationSharing,
+      onNotificationChange = viewModel::setNotificationEnabled,
       snackbarHostState = snackbarHostState,
   )
 }
 
 /**
- * Profile & Settings screen (Figma "Shifter · Settings"): the Privacy and location section, with
- * the location sharing switch, the change of mode and the Sign out action.
+ * Profile & Settings screen (Figma "Shifter · Settings"): the Notifications section, with one
+ * switch per kind of notification of the mode, then the Privacy and location section, with the
+ * location sharing switch, then the change of mode and the Sign out action.
  *
- * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switch.
- * The switch is disabled while the setting is unknown or being saved.
+ * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switches.
+ * A switch is disabled while its setting is unknown or being saved.
  */
 @Composable
 fun SettingsScreen(
@@ -141,6 +157,7 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
     onLocationSharingChange: (Boolean) -> Unit = {},
+    onNotificationChange: (NotificationKind, Boolean) -> Unit = { _, _ -> },
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
   Scaffold(
@@ -150,9 +167,12 @@ fun SettingsScreen(
       snackbarHost = { SnackbarHost(snackbarHostState) },
   ) { padding ->
     Column(
-        modifier = Modifier.padding(padding).padding(16.dp),
+        modifier = Modifier.padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
+      NotificationsSection(state, onNotificationChange)
+      // In both modes: the position is published whatever the mode, since the same account may
+      // volunteer at another event, and the sharing indicator opens this screen to stop it.
       PrivacySection(state, onLocationSharingChange)
       ChangeModeButton(mode = state.mode, enabled = !state.changingMode, onClick = onChangeMode)
       // Signing out while a change of location sharing is saved would make its remaining reads
@@ -240,6 +260,107 @@ private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boo
   }
 }
 
+/**
+ * Figma "Settings section" Notifications: one switch per kind, in the groups of the mode the user
+ * is in (see [NotificationGroup.shownIn]), then where the choices are saved, and the notice of the
+ * last change.
+ */
+@Composable
+private fun NotificationsSection(
+    state: SettingsUiState,
+    onChange: (NotificationKind, Boolean) -> Unit,
+) {
+  SettingsSection(stringResource(R.string.settings_notifications_section)) {
+    NotificationGroup.shownIn(state.mode).forEach { group ->
+      Column(
+          modifier = Modifier.testTag(SettingsScreenTestTags.notificationGroup(group)),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+            text = stringResource(group.title),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        SettingsCard {
+          group.kinds.forEachIndexed { index, kind ->
+            if (index > 0) {
+              HorizontalDivider(
+                  modifier = Modifier.padding(horizontal = 14.dp),
+                  color = MaterialTheme.colorScheme.outlineVariant,
+              )
+            }
+            NotificationRow(kind, state, onChange)
+          }
+        }
+      }
+    }
+    Text(
+        text = stringResource(R.string.settings_notifications_help),
+        color = shifter_mutedText,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+    )
+    state.notificationsNotice?.let { notice ->
+      SettingsNotice(
+          message = stringResource(notice.message),
+          isError = notice != NotificationsNotice.SAVED_OFFLINE,
+          testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
+      )
+    }
+  }
+}
+
+/**
+ * Figma "Settings row" of a kind of notification: its name and when it is sent, then its switch.
+ * Until the choices are read, the switch shows the default, on, but cannot be used.
+ *
+ * The whole row toggles, so a tap on the text works and TalkBack reads the name with the state; the
+ * switch only shows it.
+ */
+@Composable
+private fun NotificationRow(
+    kind: NotificationKind,
+    state: SettingsUiState,
+    onChange: (NotificationKind, Boolean) -> Unit,
+) {
+  val disabled = state.disabledNotifications
+  val checked = kind !in disabled.orEmpty()
+  val enabled = disabled != null && kind !in state.pendingNotifications
+  Row(
+      modifier =
+          Modifier.fillMaxWidth()
+              .toggleable(
+                  value = checked,
+                  enabled = enabled,
+                  role = Role.Switch,
+                  onValueChange = { onChange(kind, it) },
+              )
+              .padding(14.dp)
+              .testTag(SettingsScreenTestTags.notificationSwitch(kind)),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+      Text(
+          text = stringResource(kind.channelName),
+          color = MaterialTheme.colorScheme.onSurface,
+          fontSize = 13.sp,
+          lineHeight = 18.sp,
+          fontWeight = FontWeight.SemiBold,
+      )
+      Text(
+          text = stringResource(kind.channelDescription, *kind.channelDescriptionArgs),
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          fontSize = 11.sp,
+          lineHeight = 16.sp,
+      )
+    }
+    Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+  }
+}
+
 /** Figma "Settings row" Location: an icon, the setting and its explanation, then the switch. */
 @Composable
 private fun LocationSharingRow(state: SettingsUiState, onChange: (Boolean) -> Unit) {
@@ -289,6 +410,14 @@ private val LocationSharingNotice.message: Int
         LocationSharingNotice.SAVED_OFFLINE -> R.string.settings_location_sharing_saved_offline
       }
 
+private val NotificationsNotice.message: Int
+  get() =
+      when (this) {
+        NotificationsNotice.LOAD_FAILED -> R.string.settings_notifications_load_failed
+        NotificationsNotice.SAVE_FAILED -> R.string.settings_notifications_save_failed
+        NotificationsNotice.SAVED_OFFLINE -> R.string.settings_notifications_saved_offline
+      }
+
 @Composable
 private fun SignOutButton(enabled: Boolean, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -318,7 +447,11 @@ private fun SignOutButton(enabled: Boolean, onClick: () -> Unit) {
 private fun SettingsScreenPreview() {
   ShifterTheme {
     SettingsScreen(
-        state = SettingsUiState(locationSharing = true),
+        state =
+            SettingsUiState(
+                locationSharing = true,
+                savedDisabledNotifications = setOf(NotificationKind.ANNOUNCEMENT),
+            ),
         onBack = {},
         onChangeMode = {},
         onSignOut = {},

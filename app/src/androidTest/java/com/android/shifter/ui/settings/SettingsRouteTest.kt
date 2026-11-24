@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,7 +85,10 @@ class SettingsRouteTest {
       }
     }
 
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+        .performScrollTo()
+        .performClick()
 
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { signedOut == 1 }
     assertNull(AuthEmulator.auth.currentUser)
@@ -97,7 +101,7 @@ class SettingsRouteTest {
     val changedTo = mutableListOf<UserMode>()
     setRoute(modes, onModeChanged = { changedTo += it })
 
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+    changeModeButton().performClick()
 
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { changedTo.isNotEmpty() }
     assertEquals(listOf(UserMode.ORGANIZER), modes.saved)
@@ -111,7 +115,7 @@ class SettingsRouteTest {
     setRoute(modes, onModeChanged = { changedTo += it })
     val error = context.getString(R.string.settings_change_mode_error)
 
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+    changeModeButton().performClick()
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
       composeTestRule.onAllNodesWithText(error).fetchSemanticsNodes().isNotEmpty()
     }
@@ -122,6 +126,10 @@ class SettingsRouteTest {
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { changedTo.isNotEmpty() }
     assertEquals(listOf(UserMode.ORGANIZER), changedTo)
   }
+
+  /** The screen scrolls since the Notifications section (#620): the button may be out of view. */
+  private fun changeModeButton() =
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performScrollTo()
 
   private fun setRoute(modes: ModeRecorder, onModeChanged: (UserMode) -> Unit) {
     runBlocking { repository.signInWithGoogle(googleCredential()).getOrThrow() }
