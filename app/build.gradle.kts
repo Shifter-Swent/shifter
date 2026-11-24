@@ -247,7 +247,8 @@ dependencies {
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
   testImplementation(libs.mockk)
-  testImplementation(libs.kotlinx.serialization.json)
+  // The target of a notification, written as JSON in the intent its tap opens (#612)
+  implementation(libs.kotlinx.serialization.json)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
