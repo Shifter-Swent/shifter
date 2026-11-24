@@ -472,6 +472,8 @@ class SettingsViewModelTest {
     idle(viewModel)
     assertNull(viewModel.uiState.value.disabledNotifications)
     assertEquals(NotificationsNotice.LOAD_FAILED, viewModel.uiState.value.notificationsNotice)
+    // About the whole section, not a switch.
+    assertNull(viewModel.uiState.value.notificationsNoticeKind)
 
     users.observeNotificationsFailure = null
     shadowOf(Looper.getMainLooper())
@@ -530,8 +532,10 @@ class SettingsViewModelTest {
   }
 
   @Test
-  fun setNotificationEnabled_whileSaving_ignoresThatKindOnly() {
-    users.unconfirmedWrite = CompletableDeferred()
+  fun setNotificationEnabled_whileSaving_keepsTheLastChoice() {
+    // Offline, the saves are not confirmed: the switches can still be changed meanwhile.
+    val serverAnswer = CompletableDeferred<Unit>()
+    users.unconfirmedWrite = serverAnswer
     idle(viewModel)
 
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
@@ -540,15 +544,19 @@ class SettingsViewModelTest {
     viewModel.setNotificationEnabled(NotificationKind.TEAM_CHANGED, false)
     idle()
 
-    val both = setOf(NotificationKind.ANNOUNCEMENT, NotificationKind.TEAM_CHANGED)
-    assertEquals(both, viewModel.uiState.value.disabledNotifications)
-    assertEquals(both, viewModel.uiState.value.pendingNotifications.keys)
+    val teamChanged = setOf(NotificationKind.TEAM_CHANGED)
+    assertEquals(teamChanged, viewModel.uiState.value.disabledNotifications)
+    assertEquals(
+        mapOf(NotificationKind.ANNOUNCEMENT to true, NotificationKind.TEAM_CHANGED to false),
+        viewModel.uiState.value.pendingNotifications,
+    )
 
-    users.unconfirmedWrite?.complete(Unit)
+    serverAnswer.complete(Unit)
     idle()
 
-    assertEquals(both, viewModel.uiState.value.disabledNotifications)
+    assertEquals(teamChanged, viewModel.uiState.value.disabledNotifications)
     assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
+    assertEquals(teamChanged, runBlocking { users.observeDisabledNotifications(UID).first() })
   }
 
   @Test
@@ -586,6 +594,7 @@ class SettingsViewModelTest {
     assertEquals(emptySet<NotificationKind>(), state.disabledNotifications)
     assertTrue(state.pendingNotifications.isEmpty())
     assertEquals(NotificationsNotice.SAVE_FAILED, state.notificationsNotice)
+    assertEquals(NotificationKind.MISSION_CHANGED, state.notificationsNoticeKind)
   }
 
   @Test
@@ -601,6 +610,7 @@ class SettingsViewModelTest {
     assertEquals(setOf(NotificationKind.OPEN_SPOTS), state.disabledNotifications)
     assertTrue(state.pendingNotifications.isEmpty())
     assertEquals(NotificationsNotice.SAVED_OFFLINE, state.notificationsNotice)
+    assertEquals(NotificationKind.OPEN_SPOTS, state.notificationsNoticeKind)
   }
 
   @Test

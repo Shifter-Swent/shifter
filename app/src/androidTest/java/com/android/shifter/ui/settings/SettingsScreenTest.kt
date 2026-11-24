@@ -10,6 +10,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -77,6 +79,17 @@ class SettingsScreenTest {
           .onNodeWithTag(SettingsScreenTestTags.notificationSwitch(kind))
           .performScrollTo()
 
+  /** The notice of the Notifications section, or of a switch, whose row merges it into itself. */
+  private fun notificationsNotice() =
+      composeTestRule.onNodeWithTag(
+          SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
+          useUnmergedTree = true,
+      )
+
+  private fun noticeUnder(kind: NotificationKind) =
+      hasTestTag(SettingsScreenTestTags.NOTIFICATIONS_NOTICE) and
+          hasAnyAncestor(hasTestTag(SettingsScreenTestTags.notificationSwitch(kind)))
+
   private fun text(id: Int, vararg args: Any) =
       composeTestRule.onNodeWithText(context.getString(id, *args)).performScrollTo()
 
@@ -129,38 +142,64 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun notifications_whileUnknownOrSaving_cannotBeChanged() {
+  fun notifications_whileUnknown_cannotBeChanged() {
     setScreen()
-    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsNotEnabled()
 
-    state =
-        SettingsUiState(
-            savedDisabledNotifications = emptySet(),
-            pendingNotifications = mapOf(NotificationKind.ANNOUNCEMENT to false),
-        )
-
-    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsNotEnabled()
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOn().assertIsNotEnabled()
     notificationSwitch(NotificationKind.ANNOUNCEMENT).performClick()
-    notificationSwitch(NotificationKind.MISSION_CHANGED).assertIsEnabled()
+
     assertEquals(emptyList<Pair<NotificationKind, Boolean>>(), notificationChanges)
   }
 
   @Test
-  fun notifications_showEachNotice() {
+  fun notifications_whileSaving_showTheChoiceAndCanChangeAgain() {
+    setScreen(
+        SettingsUiState(
+            savedDisabledNotifications = emptySet(),
+            pendingNotifications = mapOf(NotificationKind.ANNOUNCEMENT to false),
+        )
+    )
+
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsEnabled()
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).performClick()
+
+    assertEquals(listOf(NotificationKind.ANNOUNCEMENT to true), notificationChanges)
+  }
+
+  @Test
+  fun notifications_whenNotLoaded_sayItUnderTheSection() {
+    setScreen()
+    notificationsNotice().assertDoesNotExist()
+
+    state = SettingsUiState(notificationsNotice = NotificationsNotice.LOAD_FAILED)
+
+    notificationsNotice()
+        .assertTextEquals(context.getString(R.string.settings_notifications_load_failed))
+    composeTestRule
+        .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
+        .assertDoesNotExist()
+  }
+
+  @Test
+  fun notifications_afterAChange_tellItUnderItsSwitch() {
     setScreen(SettingsUiState(savedDisabledNotifications = emptySet()))
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.NOTIFICATIONS_NOTICE).assertDoesNotExist()
     val messages =
         mapOf(
-            NotificationsNotice.LOAD_FAILED to R.string.settings_notifications_load_failed,
             NotificationsNotice.SAVE_FAILED to R.string.settings_notifications_save_failed,
             NotificationsNotice.SAVED_OFFLINE to R.string.settings_notifications_saved_offline,
         )
 
     for ((notice, message) in messages) {
-      state = SettingsUiState(notificationsNotice = notice)
+      state =
+          SettingsUiState(
+              savedDisabledNotifications = emptySet(),
+              notificationsNotice = notice,
+              notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
+          )
 
+      // Under the switch just tapped, so it shows where the user is, wherever the screen scrolled.
       composeTestRule
-          .onNodeWithTag(SettingsScreenTestTags.NOTIFICATIONS_NOTICE)
+          .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
           .assertTextEquals(context.getString(message))
     }
   }

@@ -147,7 +147,8 @@ fun SettingsRoute(
  * location sharing switch, then the change of mode and the Sign out action.
  *
  * Stateless: the caller changes the mode, signs the user out and navigates, and saves the switches.
- * A switch is disabled while its setting is unknown or being saved.
+ * The location sharing switch is disabled while its setting is unknown or being saved, a
+ * notification switch only until the choices are read.
  */
 @Composable
 fun SettingsScreen(
@@ -235,13 +236,18 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 
 /** What a section tells about its switches, in red when [isError]. */
 @Composable
-private fun SettingsNotice(message: String, isError: Boolean, testTag: String) {
+private fun SettingsNotice(
+    message: String,
+    isError: Boolean,
+    testTag: String,
+    modifier: Modifier = Modifier,
+) {
   Text(
       text = message,
       fontSize = 11.sp,
       lineHeight = 16.sp,
       color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-      modifier = Modifier.padding(horizontal = 14.dp).testTag(testTag),
+      modifier = modifier.testTag(testTag),
   )
 }
 
@@ -255,6 +261,7 @@ private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boo
           message = stringResource(notice.message),
           isError = notice != LocationSharingNotice.SAVED_OFFLINE,
           testTag = SettingsScreenTestTags.LOCATION_SHARING_NOTICE,
+          modifier = Modifier.padding(horizontal = 14.dp),
       )
     }
   }
@@ -263,7 +270,7 @@ private fun PrivacySection(state: SettingsUiState, onLocationSharingChange: (Boo
 /**
  * Figma "Settings section" Notifications: one switch per kind, in the groups of the mode the user
  * is in (see [NotificationGroup.shownIn]), then where the choices are saved, and the notice of the
- * last change.
+ * whole section, when the choices could not be read. The notice of a change goes under its switch.
  */
 @Composable
 private fun NotificationsSection(
@@ -302,22 +309,26 @@ private fun NotificationsSection(
         fontSize = 11.sp,
         lineHeight = 16.sp,
     )
-    state.notificationsNotice?.let { notice ->
-      SettingsNotice(
-          message = stringResource(notice.message),
-          isError = notice != NotificationsNotice.SAVED_OFFLINE,
-          testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
-      )
-    }
+    state.notificationsNotice
+        ?.takeIf { state.notificationsNoticeKind == null }
+        ?.let { notice ->
+          SettingsNotice(
+              message = stringResource(notice.message),
+              isError = notice != NotificationsNotice.SAVED_OFFLINE,
+              testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
+              modifier = Modifier.padding(horizontal = 14.dp),
+          )
+        }
   }
 }
 
 /**
- * Figma "Settings row" of a kind of notification: its name and when it is sent, then its switch.
- * Until the choices are read, the switch shows the default, on, but cannot be used.
+ * Figma "Settings row" of a kind of notification: its name and when it is sent, the notice of its
+ * last change, then its switch. Until the choices are read, the switch shows the default, on, but
+ * cannot be used; it never waits for a save (see [SettingsViewModel.setNotificationEnabled]).
  *
- * The whole row toggles, so a tap on the text works and TalkBack reads the name with the state; the
- * switch only shows it.
+ * The whole row toggles, so a tap on the text works and TalkBack reads the name, the notice and the
+ * state together; the switch only shows it.
  */
 @Composable
 private fun NotificationRow(
@@ -327,7 +338,7 @@ private fun NotificationRow(
 ) {
   val disabled = state.disabledNotifications
   val checked = kind !in disabled.orEmpty()
-  val enabled = disabled != null && kind !in state.pendingNotifications
+  val enabled = disabled != null
   Row(
       modifier =
           Modifier.fillMaxWidth()
@@ -356,6 +367,15 @@ private fun NotificationRow(
           fontSize = 11.sp,
           lineHeight = 16.sp,
       )
+      state.notificationsNotice
+          ?.takeIf { state.notificationsNoticeKind == kind }
+          ?.let { notice ->
+            SettingsNotice(
+                message = stringResource(notice.message),
+                isError = notice != NotificationsNotice.SAVED_OFFLINE,
+                testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
+            )
+          }
     }
     Switch(checked = checked, onCheckedChange = null, enabled = enabled)
   }

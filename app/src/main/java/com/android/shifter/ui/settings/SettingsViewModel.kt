@@ -52,7 +52,10 @@ enum class LocationSharingNotice {
   SAVED_OFFLINE,
 }
 
-/** What the Notifications section has to tell the user, under its switches. */
+/**
+ * What the Notifications section has to tell the user: under the section for [LOAD_FAILED], under
+ * the switch that changed for the others (see [SettingsUiState.notificationsNoticeKind]).
+ */
 enum class NotificationsNotice {
   /** The choices could not be read, so the switches stay disabled. */
   LOAD_FAILED,
@@ -81,9 +84,14 @@ data class SettingsUiState(
     val locationSharingNotice: LocationSharingNotice? = null,
     /** The kinds of notifications turned off on the profile, as last read; `null` until read. */
     val savedDisabledNotifications: Set<NotificationKind>? = null,
-    /** The changes being saved, each kind to whether it is turned on: only their switch waits. */
+    /** The changes being saved, each kind to whether it is turned on, the last one when several. */
     val pendingNotifications: Map<NotificationKind, Boolean> = emptyMap(),
     val notificationsNotice: NotificationsNotice? = null,
+    /**
+     * The kind whose last change [notificationsNotice] is about, shown under its switch, where the
+     * user just tapped; `null` when it is about the whole section.
+     */
+    val notificationsNoticeKind: NotificationKind? = null,
 ) {
   /**
    * The kinds shown turned off: those read from the profile, changed by those being saved. A switch
@@ -120,6 +128,9 @@ class SettingsViewModel(
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+
+  /** The last save started for each kind of notification, read and written on the main thread. */
+  private val lastNotificationSaves = mutableMapOf<NotificationKind, Any>()
 
   init {
     loadLocationSharing()
@@ -350,22 +361,26 @@ class SettingsViewModel(
 
   /**
    * Turns notifications of [kind] on or off. The switch moves at once, then shows what the profile
-   * has once the change is saved or refused (see [SettingsUiState.disabledNotifications]). The
-   * other switches stay usable meanwhile: each change writes only its own kind.
+   * has once the change is saved or refused (see [SettingsUiState.disabledNotifications]), and the
+   * outcome is told under it.
    *
-   * Offline, the server does not confirm the change before [SAVE_TIMEOUT_MILLIS]: it is then kept
-   * as saved, since Firestore sends it when the device reconnects, and the user is told so. Leaving
-   * Settings only stops the wait: nothing is read first, so the write is already queued.
+   * No switch waits for its save: each change writes only its own kind, and Firestore sends the
+   * writes in order, so the last tap always wins on the server. Only the last save of [kind] ends
+   * its pending change and tells its outcome. Offline, a save is not confirmed before
+   * [SAVE_TIMEOUT_MILLIS]: it is then kept as saved, since Firestore sends it when the device
+   * reconnects, and the user is told so. Leaving Settings only stops the wait: nothing is read
+   * first, so the write is already queued.
    */
   fun setNotificationEnabled(kind: NotificationKind, enabled: Boolean) {
-    val state = _uiState.value
     val uid = repository.currentUser()?.uid
-    if (uid == null || state.savedDisabledNotifications == null) return
-    if (kind in state.pendingNotifications) return
+    if (uid == null || _uiState.value.savedDisabledNotifications == null) return
+    val save = Any()
+    lastNotificationSaves[kind] = save
     _uiState.update {
       it.copy(
           pendingNotifications = it.pendingNotifications + (kind to enabled),
           notificationsNotice = null,
+          notificationsNoticeKind = null,
       )
     }
     viewModelScope.launch {
@@ -382,11 +397,14 @@ class SettingsViewModel(
             Log.w(TAG, "Could not save the notification choice", e)
             NotificationsNotice.SAVE_FAILED
           }
+      // A later change of the same kind is still being saved: that one ends it and tells.
+      if (lastNotificationSaves[kind] !== save) return@launch
+      lastNotificationSaves.remove(kind)
       _uiState.update {
-        it.copy(
-            pendingNotifications = it.pendingNotifications - kind,
-            notificationsNotice = notice ?: it.notificationsNotice,
-        )
+        val told =
+            if (notice == null) it
+            else it.copy(notificationsNotice = notice, notificationsNoticeKind = kind)
+        told.copy(pendingNotifications = it.pendingNotifications - kind)
       }
     }
   }
