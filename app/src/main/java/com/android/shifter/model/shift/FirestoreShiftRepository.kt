@@ -69,21 +69,22 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
    * a transaction, the write never reaches the local cache before the server has set that time, so
    * a listener never sees a shift without it.
    *
-   * Another device may close the slot between the transaction and that read: the slot is then
-   * opened again, as the organizer asked, once. Closed again, it fails with
-   * [ShiftRepositoryException.Unknown], whose cause says so, rather than passing for a malformed
-   * shift.
+   * Another device may close the slot between the transaction and that read. Its closing stands:
+   * this fails with [ShiftRepositoryException.Unknown], whose cause says so, rather than opening
+   * the slot again or passing for a malformed shift.
    */
   override suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift = translatingErrors {
     val document = shiftsOf(eventId).document(slot.shiftId)
-    repeat(OPEN_ATTEMPTS) {
-      createIfAbsent(document, slot)
-      val stored = document.get(Source.SERVER).await()
-      if (stored.exists()) return@translatingErrors stored.toShiftOrThrow()
+    createIfAbsent(document, slot)
+    val stored = document.get(Source.SERVER).await()
+    if (!stored.exists()) {
+      throw ShiftRepositoryException.Unknown(
+          IllegalStateException(
+              "The slot ${slot.shiftId} of event $eventId was closed as it opened"
+          )
+      )
     }
-    throw ShiftRepositoryException.Unknown(
-        IllegalStateException("The slot ${slot.shiftId} of event $eventId was closed as it opened")
-    )
+    stored.toShiftOrThrow()
   }
 
   /** Creates the shift of [slot] at [document] unless it exists, in one transaction. */
@@ -115,9 +116,6 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
       }
 
   companion object {
-    /** How many times [openSlot] opens a slot that another device keeps closing. */
-    private const val OPEN_ATTEMPTS = 2
-
     /** Translates a Firestore error into the [ShiftRepositoryException] callers handle. */
     internal fun toRepositoryException(e: FirebaseFirestoreException): ShiftRepositoryException =
         when (e.code) {

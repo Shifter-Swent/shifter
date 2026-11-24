@@ -323,8 +323,8 @@ of the shifts of the old model, which nothing wrote.
 `FirestoreShiftRepository` opens a slot in a transaction that creates the shift only if it does not
 exist, since the rules refuse any update: opening a slot twice leaves the shift as it was. A
 transaction needs the backend, so a slot cannot be opened offline. The shift is then read back from
-the server, the only one to know its `createdAt`; if another device closed it in between, it is
-opened once more.
+the server, the only one to know its `createdAt`; if another device closed it in between, the
+closing stands and the opening fails.
 
 ### `events/{eventId}/missions/{missionId}`
 

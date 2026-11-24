@@ -15,7 +15,6 @@ import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
-import com.swent.shifter.model.firestore.toFirestoreTimestamp
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -27,8 +26,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Error translation and the reopening of a slot closed as it opens, with Firestore mocked; the
- * emulator tests cover the real SDK and the rules.
+ * Error translation, and a slot closed as it opens, with Firestore mocked; the emulator tests cover
+ * the real SDK and the rules.
  */
 class FirestoreShiftRepositoryErrorTest {
 
@@ -84,26 +83,15 @@ class FirestoreShiftRepositoryErrorTest {
   }
 
   @Test
-  fun openSlot_whenClosedBeforeTheReadBack_opensItAgain() = runTest {
-    // Another device closes the slot between the transaction and the read: it is opened again.
-    every { shiftDocument.get(Source.SERVER) } returnsMany
-        listOf(Tasks.forResult(absent()), Tasks.forResult(openedShift()))
-
-    val opened = repository.openSlot(EVENT_ID, SLOT)
-
-    assertEquals(SLOT.shiftId, opened.id)
-    verify(exactly = 2) { firestore.runTransaction(any<Transaction.Function<Any?>>()) }
-  }
-
-  @Test
-  fun openSlot_whenClosedEachTime_throwsUnknownSayingSo() = runTest {
+  fun openSlot_whenClosedBeforeTheReadBack_throwsUnknownSayingSo() = runTest {
+    // Another device closes the slot between the transaction and the read: its closing stands.
     every { shiftDocument.get(Source.SERVER) } returns Tasks.forResult(absent())
 
     val thrown = runCatching { repository.openSlot(EVENT_ID, SLOT) }.exceptionOrNull()
 
     assertTrue("expected Unknown, but was: $thrown", thrown is ShiftRepositoryException.Unknown)
     assertTrue(thrown!!.cause?.message.orEmpty().contains("closed"))
-    verify(exactly = 2) { firestore.runTransaction(any<Transaction.Function<Any?>>()) }
+    verify(exactly = 1) { firestore.runTransaction(any<Transaction.Function<Any?>>()) }
   }
 
   @Test
@@ -141,18 +129,6 @@ class FirestoreShiftRepositoryErrorTest {
 
   private fun absent(): DocumentSnapshot =
       mockk<DocumentSnapshot>().also { every { it.exists() } returns false }
-
-  /** The shift of [SLOT], as the server stores it once opened. */
-  private fun openedShift(): DocumentSnapshot =
-      mockk<DocumentSnapshot>().also {
-        every { it.exists() } returns true
-        every { it.id } returns SLOT.shiftId
-        every { it.reference.parent.parent?.id } returns EVENT_ID
-        every { it.contains(ShiftSchema.VOLUNTEER_IDS) } returns false
-        every { it.get(ShiftSchema.START_AT) } returns SLOT.startAt.toFirestoreTimestamp()
-        every { it.get(ShiftSchema.END_AT) } returns SLOT.endAt.toFirestoreTimestamp()
-        every { it.get(ShiftSchema.CREATED_AT) } returns SLOT.startAt.toFirestoreTimestamp()
-      }
 
   /** A shift document whose every field is missing. */
   private fun malformedShift(): DocumentSnapshot =
