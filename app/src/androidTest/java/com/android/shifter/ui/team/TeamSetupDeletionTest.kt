@@ -105,13 +105,26 @@ class TeamSetupDeletionTest {
   fun bin_answersATapPastItsIcon() {
     open()
 
-    // A tap 18dp up and right of the bin's center, past its 24dp icon but within its 48dp touch
-    // target, over the card's padding, still opens the dialog.
+    // 18dp right of the bin's center and 14dp up: past its 24dp icon, within its 48 x 32dp target.
     node(TeamSetupScreenTestTags.deleteButton("team-1")).performScrollTo().performTouchInput {
-      click(center + Offset(18.dp.toPx(), -18.dp.toPx()))
+      click(center + Offset(18.dp.toPx(), -14.dp.toPx()))
     }
 
     node(DeleteTeamDialogTestTags.DIALOG).assertIsDisplayed()
+  }
+
+  @Test
+  fun nameField_tappedAtItsTopRightCorner_doesNotOpenTheDialog() {
+    open()
+
+    // The corner right under the bin, which a taller touch target would cover.
+    composeTestRule
+        .onAllNodesWithTag(CreateTeamFormTestTags.NAME_FIELD)
+        .filterToOne(hasAnyAncestor(hasTestTag(TeamSetupScreenTestTags.savedTeam("team-1"))))
+        .performScrollTo()
+        .performTouchInput { click(Offset(width - 2.dp.toPx(), 2.dp.toPx())) }
+
+    node(DeleteTeamDialogTestTags.DIALOG).assertDoesNotExist()
   }
 
   @Test
