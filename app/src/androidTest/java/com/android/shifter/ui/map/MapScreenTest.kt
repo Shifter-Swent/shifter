@@ -221,10 +221,11 @@ class MapScreenTest {
   }
 
   @Test
-  fun centerOnMeButton_secondTap_zoomsInOnTheUser() {
-    val camera = setContentWithCamera(myPosition = ME)
+  fun centerOnMeButton_onceCentred_zoomsInOnTheUser() {
+    // Parked there by a move rather than by a first tap, whose animation the map reports frame by
+    // frame: a second tap could read a camera not yet at rest and the test would be flaky.
+    val camera = setContentWithCamera(myPosition = ME, start = cameraAt(ME, 15f))
 
-    tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 15f)
     tapAndWait(MapScreenTestTags.CENTER_ON_ME_BUTTON, camera, ME, zoom = 16.5f)
   }
 
@@ -263,10 +264,12 @@ class MapScreenTest {
   }
 
   @Test
-  fun recenterButton_secondTap_zoomsInOnTheEvent() {
+  fun recenterButton_onceCentred_zoomsInOnTheEvent() {
     val camera = setContentWithCamera(myPosition = null)
+    // The map opens on the event at this zoom, so the camera is parked away first, then moved back
+    // there: a move, as for the user's button, so the tap reads a camera at rest.
+    parkTheCamera(camera, cameraAt(EVENT, 15f))
 
-    tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 15f)
     tapAndWait(MapScreenTestTags.RECENTER_BUTTON, camera, EVENT, zoom = 16.5f)
   }
 
@@ -326,6 +329,14 @@ class MapScreenTest {
     compose.waitUntil(timeoutMillis = 20_000) {
       compose.runOnUiThread { camera.projection != null }
     }
+    parkTheCamera(camera, start)
+  }
+
+  /**
+   * Moves the camera of the bound map to [start] and waits for the map to report it. A move jumps
+   * there, so the map reports no position on the way, unlike an animation.
+   */
+  private fun parkTheCamera(camera: CameraPositionState, start: CameraPosition) {
     val target = start.target.toGeoPosition()
     compose.runOnIdle {
       // Else the camera the state had before the map would pass for the map's report.
