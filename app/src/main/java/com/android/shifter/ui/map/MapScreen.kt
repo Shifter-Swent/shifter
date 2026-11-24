@@ -285,8 +285,8 @@ fun MapContent(
         // move would undo a tap, and an event that failed to load leaves nothing to center on. The
         // user when the map knows where they are; the event when it has a center.
         val center = uiState.center
-        val isLoaded = center != null || (!uiState.isLoading && uiState.error == null)
-        if (isLoaded) {
+        val offersCenterOnMe = center != null || (!uiState.isLoading && uiState.error == null)
+        if (offersCenterOnMe) {
           myPosition?.let {
             MapButton(
                 icon = Icons.Outlined.MyLocation,
