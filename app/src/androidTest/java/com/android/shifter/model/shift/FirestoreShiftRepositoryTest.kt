@@ -12,6 +12,7 @@ import com.swent.shifter.firebase.step
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.firestore.toFirestoreTimestamp
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.produceIn
@@ -28,7 +29,8 @@ import org.junit.runner.RunWith
  * the organizer of a scratch event from 09:00 to 23:00 UTC. The slots are taken in UTC, where the
  * even hours of `slotOf` are the same whatever the device's zone.
  *
- * A slot volunteers chose is written as an admin: only #594 lets volunteers write the shifts.
+ * A slot volunteers chose is written as an admin: only #594 lets volunteers write the shifts. A
+ * test that needs someone else signs in with a new account, deleted in [tearDown].
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreShiftRepositoryTest {
@@ -59,8 +61,9 @@ class FirestoreShiftRepositoryTest {
     // Children first, then the event: once it is gone, the rules refuse to delete them.
     step("cleanup") {
       SLOTS.forEach { FirestoreEmulatorAdmin.deleteDocument(shiftPath(it)) }
-      event.delete().await()
+      FirestoreEmulatorAdmin.deleteDocument(event.path)
     }
+    auth.currentUser?.takeUnless { it.isAnonymous }?.delete()?.await()
     auth.signOut()
   }
 
@@ -101,6 +104,28 @@ class FirestoreShiftRepositoryTest {
     val opened = repository.openSlot(eventId, TEN)
 
     assertEquals(listOf("user-volunteer"), opened.volunteerIds)
+  }
+
+  @Test
+  fun openSlot_ofAnOpenSlotBySomeoneElse_returnsItUnchanged() = emulatorTest {
+    val opened = repository.openSlot(eventId, TEN)
+    signInAsSomeoneElse()
+
+    // Only a read: any signed-in user may get a slot already open.
+    assertEquals(opened, repository.openSlot(eventId, TEN))
+  }
+
+  @Test
+  fun openSlot_ofAClosedSlotBySomeoneElse_isRefused() = emulatorTest {
+    signInAsSomeoneElse()
+
+    val failure = runCatching { repository.openSlot(eventId, TEN) }.exceptionOrNull()
+
+    assertTrue(
+        "expected PermissionDenied, but was: $failure",
+        failure is ShiftRepositoryException.PermissionDenied,
+    )
+    assertEquals(emptyList<Shift>(), repository.getShifts(eventId))
   }
 
   @Test
@@ -170,6 +195,13 @@ class FirestoreShiftRepositoryTest {
     }
   }
 
+  /** Signs in with a new account, which is not the organizer of the event. */
+  private suspend fun signInAsSomeoneElse() {
+    val email = "shift-repository-${UUID.randomUUID()}@example.test"
+    // Creating the account signs it in, so Firestore switches to it too.
+    auth.signInForFirestore { auth.createUserWithEmailAndPassword(email, PASSWORD).await() }
+  }
+
   /** Stores the shift of [slot] with [volunteerIds], as #594 will once they apply. */
   private suspend fun writeChosenSlot(slot: ShiftSlot, volunteerIds: List<String>) {
     step("write a chosen slot") {
@@ -199,6 +231,8 @@ class FirestoreShiftRepositoryTest {
   }
 
   private companion object {
+    const val PASSWORD = "test-password-123"
+
     // In the future, in UTC: the rules only accept a slot during the event.
     val EVENT_START: Instant = Instant.parse("2036-07-18T09:00:00Z")
     val EVENT_END: Instant = Instant.parse("2036-07-18T23:00:00Z")
