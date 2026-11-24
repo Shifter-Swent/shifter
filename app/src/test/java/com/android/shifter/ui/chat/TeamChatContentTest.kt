@@ -150,10 +150,12 @@ class TeamChatContentTest {
   }
 
   @Test
-  fun sendFailed_showsTheError() {
+  fun sendFailed_showsTheErrorAndKeepsTheDraft() {
     setContent(TeamChatUiState(isLoading = false, draft = "Hi", sendFailed = true))
 
     tag(TeamChatTestTags.SEND_FAILED).assertIsDisplayed()
+    tag(TeamChatTestTags.ANNOUNCEMENT_REFUSED).assertDoesNotExist()
+    tag(TeamChatTestTags.INPUT).assert(hasText("Hi"))
   }
 
   @Test
@@ -244,6 +246,13 @@ class TeamChatContentTest {
     setContent(TeamChatUiState(isLoading = false))
 
     tag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE).assertDoesNotExist()
+  }
+
+  @Test
+  fun announcementOption_whenNotAllowed_keepsTheMessagePlaceholder() {
+    setContent(TeamChatUiState(isLoading = false, asAnnouncement = true))
+
+    tag(TeamChatTestTags.INPUT).assert(hasText("Write a message"))
   }
 
   @Test

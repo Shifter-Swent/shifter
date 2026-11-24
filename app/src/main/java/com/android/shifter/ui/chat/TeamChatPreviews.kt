@@ -117,3 +117,18 @@ private fun TeamChatAnnouncingPreview() {
       )
   )
 }
+
+@Preview(showBackground = true, backgroundColor = 0xFF151D27, heightDp = 640)
+@Composable
+private fun TeamChatAnnouncementRefusedPreview() {
+  PreviewHost(
+      TeamChatUiState(
+          isLoading = false,
+          messages = MESSAGES,
+          draft = "Lunch break at noon",
+          canAnnounce = true,
+          asAnnouncement = true,
+          announcementRefused = true,
+      )
+  )
+}
