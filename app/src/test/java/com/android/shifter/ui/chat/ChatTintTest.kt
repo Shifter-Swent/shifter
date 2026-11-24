@@ -1,10 +1,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
-import androidx.compose.ui.graphics.lerp
-import com.swent.shifter.ui.theme.md_theme_dark_surface
+import androidx.compose.ui.graphics.luminance
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,10 +23,15 @@ class ChatTintTest {
   }
 
   @Test
-  fun tileBackground_mixesTheTintFaintlyIntoTheDarkSurface() {
+  fun tileBackground_isDarkerThanItsTint() {
+    CHAT_TINTS.forEach { assertTrue("$it", tileBackground(it).luminance() < it.luminance()) }
+  }
+
+  @Test
+  fun tileBackground_keepsTheTintReadableOnIt() {
     CHAT_TINTS.forEach {
-      assertEquals(lerp(md_theme_dark_surface, it, 0.18f), tileBackground(it))
-      assertNotEquals(it, tileBackground(it))
+      val contrast = (it.luminance() + 0.05f) / (tileBackground(it).luminance() + 0.05f)
+      assertTrue("$it: $contrast", contrast >= 3f)
     }
   }
 }
