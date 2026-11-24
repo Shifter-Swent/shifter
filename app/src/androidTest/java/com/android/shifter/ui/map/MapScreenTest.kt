@@ -211,6 +211,7 @@ class MapScreenTest {
 
   @Test
   fun reloading_anEventWithACenter_keepsBothButtons() {
+    // Guards against showing the user's button on a plain !isLoading, which would hide it here.
     setContent(LOADED.copy(isLoading = true), myPosition = ME)
 
     compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertIsDisplayed()
