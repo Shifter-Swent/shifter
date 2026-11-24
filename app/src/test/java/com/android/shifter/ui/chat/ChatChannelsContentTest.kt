@@ -70,7 +70,7 @@ class ChatChannelsContentTest {
 
   @Test
   fun list_asVolunteer_groupsTheEventChannelsAboveTheirTeam() {
-    setContent(ChatChannelsUiState(channels = CHANNELS, isLoading = false))
+    setContent(ChatChannelsUiState(channels = CHANNELS.take(1), isLoading = false))
 
     composeTestRule.onNodeWithText("Discussions").assertIsDisplayed()
     composeTestRule.onNodeWithText("Event").assertIsDisplayed()
@@ -82,7 +82,6 @@ class ChatChannelsContentTest {
             ChatChannelsTestTags.GENERAL,
             ChatChannelsTestTags.TEAMS_HEADER,
             ChatChannelsTestTags.channel("bar"),
-            ChatChannelsTestTags.channel("kitchen"),
         ),
         rows(),
     )
@@ -93,7 +92,7 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun list_asOrganizer_listsTheAdminChannelUnderEvent_andTheirTeams() {
+  fun list_asOrganizer_showsTheAdminChannelAndTheTeams() {
     setContent(
         ChatChannelsUiState(
             asOrganizer = true,
@@ -103,7 +102,7 @@ class ChatChannelsContentTest {
         )
     )
 
-    composeTestRule.onNodeWithText("Your teams").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Teams").assertIsDisplayed()
     assertEquals(
         listOf(
             ChatChannelsTestTags.TITLE,
@@ -123,10 +122,20 @@ class ChatChannelsContentTest {
   }
 
   @Test
-  fun list_asManager_headsTheTeamsAsTheirs() {
-    setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
+  fun list_asManagerOfOneTeam_headsItAsTheirs() {
+    setContent(
+        ChatChannelsUiState(channels = CHANNELS.take(1), showsAdmin = true, isLoading = false)
+    )
 
     tag(ChatChannelsTestTags.ADMIN).assertIsDisplayed()
+    composeTestRule.onNodeWithText("Your team").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Teams").assertDoesNotExist()
+  }
+
+  @Test
+  fun list_inSeveralTeams_headsThemInThePlural() {
+    setContent(ChatChannelsUiState(channels = CHANNELS, showsAdmin = true, isLoading = false))
+
     composeTestRule.onNodeWithText("Your teams").assertIsDisplayed()
     composeTestRule.onNodeWithText("Your team").assertDoesNotExist()
   }
@@ -157,7 +166,9 @@ class ChatChannelsContentTest {
     tag(ChatChannelsTestTags.EMPTY)
         .assertIsDisplayed()
         .assertTextContains("No team yet")
-        .assertTextContains("Your team's channel shows up here once a manager puts you in a team.")
+        .assertTextContains(
+            "Your team's channel shows up here once the organizer accepts you into a team."
+        )
   }
 
   @Test

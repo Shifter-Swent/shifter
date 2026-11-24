@@ -39,9 +39,9 @@ internal data class ChannelTint(val background: Color, val icon: Color)
 
 /** The title of a group of channels, so the event's and the teams' channels read apart. */
 @Composable
-internal fun GroupHeader(@StringRes text: Int, tag: String) {
+internal fun GroupHeader(text: String, tag: String) {
   Text(
-      stringResource(text),
+      text,
       color = shifter_mutedText,
       style = MaterialTheme.typography.labelLarge,
       modifier =

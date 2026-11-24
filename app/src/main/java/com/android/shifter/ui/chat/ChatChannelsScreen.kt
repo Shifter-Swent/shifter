@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -128,7 +129,10 @@ private fun Channels(state: ChatChannelsUiState, onOpenChannel: OpenChannel) {
       )
     }
     item(key = ChatChannelsTestTags.EVENT_HEADER) {
-      GroupHeader(R.string.chat_channels_event, ChatChannelsTestTags.EVENT_HEADER)
+      GroupHeader(
+          stringResource(R.string.chat_channels_event),
+          ChatChannelsTestTags.EVENT_HEADER,
+      )
     }
     item(key = ChatChannelsTestTags.GENERAL) {
       ChannelRow(
@@ -153,11 +157,15 @@ private fun Channels(state: ChatChannelsUiState, onOpenChannel: OpenChannel) {
       }
     }
     item(key = ChatChannelsTestTags.TEAMS_HEADER) {
-      // The admin channel is shown exactly to the organizer and the managers, who see several
-      // teams, where a volunteer sees the one they are in.
+      // The organizer sees every team of the event, in none of which they are, where a volunteer
+      // or a manager sees the teams they are in or manage, one or several. With none, it stays
+      // singular, above the card saying they are in no team yet.
       GroupHeader(
-          if (state.showsAdmin) R.string.chat_channels_your_teams
-          else R.string.chat_channels_your_team,
+          if (state.asOrganizer) stringResource(R.string.chat_channels_teams)
+          else {
+            val count = state.channels.size.coerceAtLeast(1)
+            pluralStringResource(R.plurals.chat_channels_your_teams, count)
+          },
           ChatChannelsTestTags.TEAMS_HEADER,
       )
     }
