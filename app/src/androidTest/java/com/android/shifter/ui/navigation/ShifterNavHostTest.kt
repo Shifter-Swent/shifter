@@ -104,6 +104,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
@@ -165,30 +166,31 @@ class ShifterNavHostTest {
     // As after a first sign-in left before choosing: the session is open, but no profile exists.
     val user = signIn(googleCredential("Ada"))
     createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    val navController = showAppWithNavController()
     waitForNode(ChooseModeTestTags.SCREEN)
+    // Not yet in the app: MainActivity does not ask for the notification permission here.
+    assertFalse(navController.currentBackStackEntry!!.isInEventsApp())
 
     composeTestRule.onNodeWithTag(ChooseModeTestTags.ORGANIZER).performClick()
 
     waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
     val saved = runBlocking { repositories.userRepository.getUser(user.uid) }
     assertEquals(UserMode.ORGANIZER, saved?.mode)
+    assertTrue(navController.currentBackStackEntry!!.isInEventsApp())
   }
 
   @Test
   fun signedIn_volunteerChoice_entersVolunteerEvents() {
     val user = signIn(googleCredential("Ada"))
     createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
-    composeTestRule.setContent {
-      ShifterTheme { ShifterNavHost(isSignedIn = true, repositories = repositories) }
-    }
+    val navController = showAppWithNavController()
 
     waitForNode(ChooseModeTestTags.VOLUNTEER)
+    assertFalse(navController.currentBackStackEntry!!.isInEventsApp())
     composeTestRule.onNodeWithTag(ChooseModeTestTags.VOLUNTEER).performClick()
 
     waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    assertTrue(navController.currentBackStackEntry!!.isInEventsApp())
   }
 
   @Test
@@ -2087,6 +2089,23 @@ class ShifterNavHostTest {
         context: Context,
         request: GetCredentialRequest,
     ): GetCredentialResponse = GetCredentialResponse(credential)
+  }
+
+  /** Shows the app signed in, with a navigation controller the test reads. */
+  private fun showAppWithNavController(): NavHostController {
+    lateinit var navController: NavHostController
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      ShifterTheme {
+        ShifterNavHost(
+            isSignedIn = true,
+            repositories = repositories,
+            navController = navController,
+        )
+      }
+    }
+    composeTestRule.waitForIdle()
+    return navController
   }
 
   /**

@@ -1,11 +1,13 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter
 
+import android.Manifest
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.rule.GrantPermissionRule
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
@@ -67,7 +69,13 @@ class MainActivitySignedInTest {
         }
       }
 
-  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
+  // Granted before launch, so the system dialog MainActivity opens once My Events is shown
+  // (NotificationPermissionRequest) does not cover the screens under test.
+  @get:Rule(order = 1)
+  val notifications: GrantPermissionRule =
+      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
+
+  @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun launch_withRestoredSession_opensTheVolunteerEvents() {

@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavHostController
@@ -505,6 +506,13 @@ data class ChannelNames(val general: String, val admin: String)
  * membership requests rather than the participants, as a notification of new requests does.
  */
 const val OPEN_REQUESTS_KEY = "openRequests"
+
+/**
+ * Whether this screen is in the Volunteer or the Organizer side of the app: past sign-in, the
+ * loading of the profile and the choice of a mode, from My Events on.
+ */
+fun NavBackStackEntry.isInEventsApp(): Boolean =
+    destination.hierarchy.any { it.hasRoute(Volunteer::class) || it.hasRoute(Organizer::class) }
 
 // ── Navigation actions ──────────────────────────────────────────────────────
 

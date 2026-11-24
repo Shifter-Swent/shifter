@@ -11,10 +11,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.navigation.compose.rememberNavController
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.notification.notificationTarget
@@ -22,8 +24,11 @@ import com.swent.shifter.model.notification.notificationTargetToOpen
 import com.swent.shifter.model.notification.putNotificationTargetToOpen
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.navigation.ShifterNavHost
+import com.swent.shifter.ui.navigation.isInEventsApp
+import com.swent.shifter.ui.permission.NotificationPermissionRequest
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.enableShifterEdgeToEdge
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
 
@@ -47,12 +52,21 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
+          val navController = rememberNavController()
           ShifterNavHost(
               isSignedIn = isSignedIn,
               repositories = repositories,
+              navController = navController,
               notificationTarget = notificationTarget,
               onNotificationTargetOpened = { notificationTarget = null },
           )
+          // Here rather than in ShifterNavHost, so the tests that build the graph never open the
+          // system dialog.
+          val inApp =
+              remember(navController) {
+                navController.currentBackStackEntryFlow.map { it.isInEventsApp() }
+              }
+          NotificationPermissionRequest(inApp)
         }
       }
     }
