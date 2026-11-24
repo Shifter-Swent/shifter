@@ -53,7 +53,6 @@ import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.time.rememberNow
 import com.swent.shifter.ui.mission.AssignDialog
-import com.swent.shifter.ui.mission.AssignDialogTestTags
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import java.time.Instant
@@ -73,11 +72,6 @@ object OrganizerOverviewScreenTestTags {
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
   const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
-  const val ASSIGN_DIALOG = AssignDialogTestTags.DIALOG
-  const val ASSIGN_SAVE = AssignDialogTestTags.SAVE
-  const val ASSIGN_CANCEL = AssignDialogTestTags.CANCEL
-  const val ASSIGN_ERROR = AssignDialogTestTags.ERROR
-  const val ASSIGN_OVER_LIMIT = AssignDialogTestTags.OVER_LIMIT
   const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"

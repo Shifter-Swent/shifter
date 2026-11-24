@@ -17,16 +17,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 
-/**
- * Test tags of [AssignDialog]. They keep the values they had when the dialog belonged to the
- * organizer's Overview, which its tests and the Figma's Testing boards use.
- */
+/** Test tags of [AssignDialog], the same on every screen that shows it. */
 object AssignDialogTestTags {
-  const val DIALOG = "OrganizerOverviewAssignDialog"
-  const val SAVE = "OrganizerOverviewAssignSave"
-  const val CANCEL = "OrganizerOverviewAssignCancel"
-  const val ERROR = "OrganizerOverviewAssignError"
-  const val OVER_LIMIT = "OrganizerOverviewAssignOverLimit"
+  const val DIALOG = "AssignDialog"
+  const val SAVE = "AssignDialogSave"
+  const val CANCEL = "AssignDialogCancel"
+  const val ERROR = "AssignDialogError"
+  const val OVER_LIMIT = "AssignDialogOverLimit"
 }
 
 /**
