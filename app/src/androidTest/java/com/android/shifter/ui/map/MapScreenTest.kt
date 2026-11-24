@@ -223,6 +223,7 @@ class MapScreenTest {
 
     compose.onNodeWithTag(MapScreenTestTags.ERROR).assertIsDisplayed()
     compose.onNodeWithTag(MapScreenTestTags.CENTER_ON_ME_BUTTON).assertDoesNotExist()
+    compose.onNodeWithTag(MapScreenTestTags.RECENTER_BUTTON).assertDoesNotExist()
   }
 
   @Test
