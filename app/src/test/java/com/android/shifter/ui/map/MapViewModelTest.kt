@@ -154,6 +154,7 @@ class MapViewModelTest {
           { userId },
           FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
           UTC,
+          FakeLocationProvider(),
       )
 
   @Test
@@ -189,6 +190,7 @@ class MapViewModelTest {
             { userId },
             FakeMinuteClock(DAY.plusSeconds(12 * 3600L)),
             UTC,
+            FakeLocationProvider(),
         )
 
     // A mission not placed yet starts a reload; Water, already on the map, is opened meanwhile.
@@ -429,6 +431,7 @@ class MapViewModelTest {
           { userId },
           clock,
           UTC,
+          FakeLocationProvider(),
           liveLocations = repository,
           watchedTeams = { eventId, user -> teams.getTeamsManagedBy(eventId, user) },
           userRepository = userRepository,
