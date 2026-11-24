@@ -281,9 +281,10 @@ fun MapContent(
             cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(target.toLatLng(), zoom))
           }
         }
-        // Once the event is loaded, or its center kept from a previous load: before, the opening
-        // move would undo a tap, and an event that failed to load leaves nothing to center on. The
-        // user when the map knows where they are; the event when it has a center.
+        // The user once the event is loaded, or its center kept from a previous load: before, the
+        // opening move would undo a tap. Not after a failed load either: offline, a successful
+        // Retry may bring a center whose opening move would undo it, and a missing event leaves a
+        // dead map. The event when it has a center.
         val center = uiState.center
         val offersCenterOnMe = center != null || (!uiState.isLoading && uiState.error == null)
         if (offersCenterOnMe) {
