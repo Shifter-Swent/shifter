@@ -107,7 +107,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun noLocationProvider_showsNoGate() {
+  fun noLocationStatus_showsNoGate() {
     setContent(LOADED, locationStatus = null)
 
     compose.onNodeWithTag(MapScreenTestTags.LOCATION_GATE).assertDoesNotExist()
