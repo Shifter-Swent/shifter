@@ -32,7 +32,8 @@ interface LocationProvider {
    * Emits the current position at regular intervals while collected, and stops the updates when the
    * collection is cancelled. It follows [status]: updates run only while it is
    * [LocationStatus.GRANTED] and resume when it becomes so again, so the flow never completes and
-   * emits nothing while the location is denied or turned off.
+   * emits nothing while the location is denied or turned off. A failed request does not end it
+   * either: it is made again.
    *
    * Each position comes with its accuracy, so a consumer can tell a reliable measure from a noisy
    * one.

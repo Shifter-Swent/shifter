@@ -20,6 +20,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.retryWhen
 
 /**
  * [LocationProvider] backed by the fused location provider of Google Play services.
@@ -36,7 +38,8 @@ import kotlinx.coroutines.flow.flatMapLatest
  * Only the fine permission counts as granted: an approximate position is too coarse to tell whether
  * a volunteer is in a mission's zone, so the coarse permission alone is [LocationStatus.DENIED].
  *
- * @param intervalMillis how often a position is requested while [positions] is collected.
+ * @param intervalMillis how often a position is requested while [positions] is collected, and how
+ *   long a failed request waits before it is made again.
  */
 class FusedLocationProvider(
     context: Context,
@@ -74,13 +77,24 @@ class FusedLocationProvider(
     try {
       refreshStatus()
       status
-          .flatMapLatest { if (it == LocationStatus.GRANTED) updates() else emptyFlow() }
+          .flatMapLatest { if (it == LocationStatus.GRANTED) retriedUpdates() else emptyFlow() }
           .collect { send(it) }
     } finally {
       appContext.unregisterReceiver(modeReceiver)
     }
   }
       .conflate()
+
+  /**
+   * [updates], requested again [intervalMillis] after a failure, as one failed request must not end
+   * [positions]. A change of the status cancels the wait like the updates.
+   */
+  private fun retriedUpdates(): Flow<MeasuredPosition> =
+      updates().retryWhen { cause, _ ->
+        if (cause !is Exception) return@retryWhen false
+        delay(intervalMillis)
+        true
+      }
 
   // Only collected while the status is GRANTED, which readStatus checked just before.
   @SuppressLint("MissingPermission")
