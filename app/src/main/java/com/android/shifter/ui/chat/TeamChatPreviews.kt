@@ -43,6 +43,14 @@ private val MESSAGES =
             false,
         ),
         ChatMessageItem(
+            "6",
+            "Bring your badge.",
+            senderId = "alice",
+            senderName = "Alice",
+            at("07:46"),
+            false,
+        ),
+        ChatMessageItem(
             "2",
             "On my way, 5 min.",
             senderId = "liam",
