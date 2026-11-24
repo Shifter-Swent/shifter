@@ -343,6 +343,14 @@ class TeamChatContentTest {
     assertEquals("20 Jun 2026, 09:30", sentAtLabel(at.minusYears(1), TODAY))
   }
 
+  @Test
+  fun initialOf_takesTheFirstCodePoint() {
+    assertEquals("A", initialOf("  alice "))
+    assertEquals("\uD83D\uDE00", initialOf("\uD83D\uDE00 Smiley"))
+    assertEquals(null, initialOf(" "))
+    assertEquals(null, initialOf(null))
+  }
+
   private fun numbered(ids: IntRange) = ids.map {
     ChatMessageItem(
         "$it",

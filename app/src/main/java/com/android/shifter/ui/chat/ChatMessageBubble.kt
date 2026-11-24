@@ -131,12 +131,22 @@ private fun Avatar(name: String?, tint: Color) {
       contentAlignment = Alignment.Center,
   ) {
     Text(
-        name?.trim()?.firstOrNull()?.uppercase() ?: "?",
+        initialOf(name) ?: stringResource(R.string.chat_unknown_initial),
         color = md_theme_dark_surface,
         style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.Bold,
     )
   }
+}
+
+/**
+ * The first character of [name], upper-cased, or null when it is blank. It takes a whole code
+ * point, so a name starting with an emoji keeps it whole.
+ */
+internal fun initialOf(name: String?): String? {
+  val trimmed = name?.trim()
+  if (trimmed.isNullOrEmpty()) return null
+  return String(Character.toChars(trimmed.codePointAt(0))).uppercase()
 }
 
 /** The text of [message], with its time when it [showsTime] or while it is being sent. */
