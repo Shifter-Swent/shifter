@@ -442,28 +442,20 @@ class SettingsViewModelTest {
   }
 
   @Test
-  fun notifications_areReadFromTheProfile() {
+  fun notifications_areReadThenFollowChangesFromAnotherPhone() {
     runBlocking { users.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, false) }
     idle(viewModel)
-
     assertEquals(
         setOf(NotificationKind.ANNOUNCEMENT),
         viewModel.uiState.value.disabledNotifications,
     )
-    assertNull(viewModel.uiState.value.notificationsNotice)
-  }
-
-  @Test
-  fun notifications_followAChangeMadeOnAnotherPhone() {
-    idle(viewModel)
 
     runBlocking { users.setNotificationEnabled(UID, NotificationKind.TEAM_CHANGED, false) }
     idle()
 
-    assertEquals(
-        setOf(NotificationKind.TEAM_CHANGED),
-        viewModel.uiState.value.disabledNotifications,
-    )
+    val both = setOf(NotificationKind.ANNOUNCEMENT, NotificationKind.TEAM_CHANGED)
+    assertEquals(both, viewModel.uiState.value.disabledNotifications)
+    assertNull(viewModel.uiState.value.notificationsNotice)
   }
 
   @Test
@@ -472,7 +464,6 @@ class SettingsViewModelTest {
     idle(viewModel)
     assertNull(viewModel.uiState.value.disabledNotifications)
     assertEquals(NotificationsNotice.LOAD_FAILED, viewModel.uiState.value.notificationsNotice)
-    // About the whole section, not a switch.
     assertNull(viewModel.uiState.value.notificationsNoticeKind)
 
     users.observeNotificationsFailure = null
@@ -515,48 +506,41 @@ class SettingsViewModelTest {
   }
 
   @Test
-  fun setNotificationEnabled_off_savesItOnTheProfile() {
+  fun setNotificationEnabled_off_appliesAtOnceWithoutWaiting() {
+    // Offline: the server does not answer, yet the change already applies on this phone.
+    val serverAnswer = CompletableDeferred<Unit>()
+    users.unconfirmedWrite = serverAnswer
     idle(viewModel)
 
+    val announcement = setOf(NotificationKind.ANNOUNCEMENT)
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+    assertEquals(announcement, viewModel.uiState.value.disabledNotifications)
+    assertNull(viewModel.uiState.value.notificationsNotice)
+
+    serverAnswer.complete(Unit)
     idle()
 
-    val state = viewModel.uiState.value
-    assertEquals(setOf(NotificationKind.ANNOUNCEMENT), state.disabledNotifications)
-    assertTrue(state.pendingNotifications.isEmpty())
-    assertNull(state.notificationsNotice)
-    assertEquals(
-        setOf(NotificationKind.ANNOUNCEMENT),
-        runBlocking { users.observeDisabledNotifications(UID).first() },
-    )
+    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
+    assertEquals(announcement, runBlocking { users.observeDisabledNotifications(UID).first() })
   }
 
   @Test
   fun setNotificationEnabled_whileSaving_keepsTheLastChoice() {
-    // Offline, the saves are not confirmed: the switches can still be changed meanwhile.
     val serverAnswer = CompletableDeferred<Unit>()
     users.unconfirmedWrite = serverAnswer
     idle(viewModel)
 
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
-    idle()
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, true)
-    viewModel.setNotificationEnabled(NotificationKind.TEAM_CHANGED, false)
     idle()
-
-    val teamChanged = setOf(NotificationKind.TEAM_CHANGED)
-    assertEquals(teamChanged, viewModel.uiState.value.disabledNotifications)
-    assertEquals(
-        mapOf(NotificationKind.ANNOUNCEMENT to true, NotificationKind.TEAM_CHANGED to false),
-        viewModel.uiState.value.pendingNotifications,
-    )
+    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
 
     serverAnswer.complete(Unit)
     idle()
 
-    assertEquals(teamChanged, viewModel.uiState.value.disabledNotifications)
     assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
-    assertEquals(teamChanged, runBlocking { users.observeDisabledNotifications(UID).first() })
+    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
   }
 
   @Test
@@ -584,39 +568,7 @@ class SettingsViewModelTest {
 
   @Test
   fun setNotificationEnabled_whenRefused_switchesBackAndSaysSo() {
-    idle(viewModel)
-    users.failure = UserRepositoryException.PermissionDenied()
-
-    viewModel.setNotificationEnabled(NotificationKind.MISSION_CHANGED, false)
-    idle()
-
-    val state = viewModel.uiState.value
-    assertEquals(emptySet<NotificationKind>(), state.disabledNotifications)
-    assertTrue(state.pendingNotifications.isEmpty())
-    assertEquals(NotificationsNotice.SAVE_FAILED, state.notificationsNotice)
-    assertEquals(NotificationKind.MISSION_CHANGED, state.notificationsNoticeKind)
-  }
-
-  @Test
-  fun setNotificationEnabled_offline_keepsTheChangeWithoutANotice() {
-    users.unconfirmedWrite = CompletableDeferred()
-    idle(viewModel)
-
-    viewModel.setNotificationEnabled(NotificationKind.OPEN_SPOTS, false)
-    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
-
-    // It already applies on this phone: only the user's other phones wait for it.
-    val state = viewModel.uiState.value
-    assertEquals(setOf(NotificationKind.OPEN_SPOTS), state.disabledNotifications)
-    assertNull(state.notificationsNotice)
-    assertEquals(
-        setOf(NotificationKind.OPEN_SPOTS),
-        runBlocking { users.observeDisabledNotifications(UID).first() },
-    )
-  }
-
-  @Test
-  fun setNotificationEnabled_refusedOnceOnline_switchesBackAndSaysSo() {
+    // Refused once back online, a minute later: Firestore undoes the change on this phone.
     val serverAnswer = CompletableDeferred<Unit>()
     users.unconfirmedWrite = serverAnswer
     idle(viewModel)

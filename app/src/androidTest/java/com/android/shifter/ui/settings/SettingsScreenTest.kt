@@ -132,13 +132,22 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun notificationClick_asksToTurnThatKindOff() {
-    setScreen(SettingsUiState(savedDisabledNotifications = setOf(NotificationKind.ANNOUNCEMENT)))
+  fun notificationClick_asksForTheOtherValueEvenWhileSaving() {
+    // ANNOUNCEMENT is being turned off: it shows the choice, and can be changed again.
+    setScreen(
+        SettingsUiState(
+            savedDisabledNotifications = emptySet(),
+            pendingNotifications = mapOf(NotificationKind.ANNOUNCEMENT to false),
+        )
+    )
 
-    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff()
     notificationSwitch(NotificationKind.MISSION_CHANGED).assertIsOn().performClick()
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsEnabled().performClick()
 
-    assertEquals(listOf(NotificationKind.MISSION_CHANGED to false), notificationChanges)
+    assertEquals(
+        listOf(NotificationKind.MISSION_CHANGED to false, NotificationKind.ANNOUNCEMENT to true),
+        notificationChanges,
+    )
   }
 
   @Test
@@ -152,43 +161,20 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun notifications_whileSaving_showTheChoiceAndCanChangeAgain() {
-    setScreen(
-        SettingsUiState(
-            savedDisabledNotifications = emptySet(),
-            pendingNotifications = mapOf(NotificationKind.ANNOUNCEMENT to false),
-        )
-    )
-
-    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsEnabled()
-    notificationSwitch(NotificationKind.ANNOUNCEMENT).performClick()
-
-    assertEquals(listOf(NotificationKind.ANNOUNCEMENT to true), notificationChanges)
-  }
-
-  @Test
-  fun notifications_whenNotLoaded_sayItUnderTheSection() {
-    setScreen()
-    notificationsNotice().assertDoesNotExist()
-
-    state = SettingsUiState(notificationsNotice = NotificationsNotice.LOAD_FAILED)
-
+  fun notifications_showEachNoticeWhereItBelongs() {
+    setScreen(SettingsUiState(notificationsNotice = NotificationsNotice.LOAD_FAILED))
     notificationsNotice()
         .assertTextEquals(context.getString(R.string.settings_notifications_load_failed))
     composeTestRule
         .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
         .assertDoesNotExist()
-  }
 
-  @Test
-  fun notifications_whenAChangeIsRefused_sayItUnderItsSwitch() {
-    setScreen(
+    state =
         SettingsUiState(
             savedDisabledNotifications = emptySet(),
             notificationsNotice = NotificationsNotice.SAVE_FAILED,
             notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
         )
-    )
 
     // Under the switch just tapped, so it shows where the user is, wherever the screen scrolled.
     composeTestRule
