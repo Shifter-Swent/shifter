@@ -18,7 +18,7 @@ robolectric = "4.16.1"
 sonar = "7.5.0.8588"
 coroutines = "1.11.0"
 # The version navigation-compose brings for the routes; JSON writes and reads the targets of the
-# notifications in their tap intents (#612), and tests read the routes back.
+# notifications in their tap intents (#612), and tests read the targets back.
 serializationJson = "1.7.3"
 mockk = "1.14.9"
 mapsCompose = "9.0.1"
