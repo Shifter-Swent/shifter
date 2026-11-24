@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.shift
 
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -11,6 +12,7 @@ import com.swent.shifter.model.event.EventSchema
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
@@ -54,6 +56,8 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
     // Keeps the flow open while collected, then removes the listener so Firestore stops it.
     awaitClose { registration.remove() }
   }
+      // Each emission holds every shift, so a slow collector only needs the latest one.
+      .conflate()
       .distinctUntilChanged()
 
   /**
@@ -64,9 +68,26 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
    * The shift is then read back from the server, the only one to know its [Shift.createdAt]. Being
    * a transaction, the write never reaches the local cache before the server has set that time, so
    * a listener never sees a shift without it.
+   *
+   * Another device may close the slot between the transaction and that read: the slot is then
+   * opened again, as the organizer asked, once. Closed again, it fails with
+   * [ShiftRepositoryException.Unknown], whose cause says so, rather than passing for a malformed
+   * shift.
    */
   override suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift = translatingErrors {
     val document = shiftsOf(eventId).document(slot.shiftId)
+    repeat(OPEN_ATTEMPTS) {
+      createIfAbsent(document, slot)
+      val stored = document.get(Source.SERVER).await()
+      if (stored.exists()) return@translatingErrors stored.toShiftOrThrow()
+    }
+    throw ShiftRepositoryException.Unknown(
+        IllegalStateException("The slot ${slot.shiftId} of event $eventId was closed as it opened")
+    )
+  }
+
+  /** Creates the shift of [slot] at [document] unless it exists, in one transaction. */
+  private suspend fun createIfAbsent(document: DocumentReference, slot: ShiftSlot) {
     firestore
         .runTransaction { transaction ->
           if (!transaction.get(document).exists()) {
@@ -75,7 +96,6 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
           null
         }
         .await()
-    document.get(Source.SERVER).await().toShiftOrThrow()
   }
 
   /**
@@ -95,6 +115,9 @@ class FirestoreShiftRepository(private val firestore: FirebaseFirestore) : Shift
       }
 
   companion object {
+    /** How many times [openSlot] opens a slot that another device keeps closing. */
+    private const val OPEN_ATTEMPTS = 2
+
     /** Translates a Firestore error into the [ShiftRepositoryException] callers handle. */
     internal fun toRepositoryException(e: FirebaseFirestoreException): ShiftRepositoryException =
         when (e.code) {

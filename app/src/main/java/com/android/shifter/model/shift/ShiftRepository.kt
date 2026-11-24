@@ -33,8 +33,9 @@ interface ShiftRepository {
    * built by [slotOf], since only the zone tells where it ends.
    *
    * A slot already open is returned unchanged: a second tap or a retry never creates a second shift
-   * nor takes its volunteers off. Only the organizer can open a slot: security rules deny anyone
-   * else with [ShiftRepositoryException.PermissionDenied].
+   * nor takes its volunteers off. Returning it only reads it, which any signed-in user may do. Only
+   * creating it needs the organizer: security rules deny anyone else opening a slot that is not
+   * open yet with [ShiftRepositoryException.PermissionDenied].
    */
   suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift
 
