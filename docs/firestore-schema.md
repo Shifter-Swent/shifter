@@ -486,8 +486,8 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   `assigneeIds` against `volunteersNeeded` for a manager only, and let a completed mission's
   assignees change. `addAssignees` (#606) refuses a full or completed mission in its transaction,
   completion measured by the device's clock, so an app with a wrong clock, or a write from outside
-  the app, can go past them. Nor does it check that a volunteer is still a participant or free at
-  that time: a transaction cannot query their other missions.
+  the app, can go past them (#753). Nor does it check that a volunteer is still a participant or
+  free at that time: a transaction cannot query their other missions.
 
 - **A mission assigned during a move keeps the volunteer.** The missions to leave are found by a
   query, which a transaction cannot run, so they are read before it: a mission of the old team

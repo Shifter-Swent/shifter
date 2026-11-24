@@ -164,9 +164,13 @@ class MissionTest {
     assertThrows(IllegalArgumentException::class.java) {
       requireValidAdditions(mapOf("" to listOf("ana")))
     }
-    assertThrows(IllegalArgumentException::class.java) {
-      requireValidAdditions(mapOf("m1/checkIns/ana" to listOf("ana")))
+    for (id in listOf("m1/checkIns/ana", ".", "..", "__m1__")) {
+      assertThrows(id, IllegalArgumentException::class.java) {
+        requireValidAdditions(mapOf(id to listOf("ana")))
+      }
     }
+    // Only a whole id made of dots, or wrapped in double underscores, is refused.
+    requireValidAdditions(mapOf("..." to listOf("ana"), "__m1" to listOf("ana")))
   }
 
   @Test

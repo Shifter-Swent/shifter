@@ -128,8 +128,9 @@ internal fun requireRoomInMission(volunteersNeeded: Int, assigneeCount: Int) {
 
 /**
  * The most missions one [MissionRepository.addAssignees] call takes. Its transaction reads them one
- * after another, a round trip each, as the Android SDK reads no batch of documents in a transaction;
- * this keeps that wait bounded, while leaving room for a whole event's proposed schedule.
+ * after another, a round trip each, as the Android SDK reads no batch of documents in a
+ * transaction; this keeps that wait bounded, while leaving room for a whole event's proposed
+ * schedule.
  */
 private const val MAX_MISSIONS_PER_ADDITION = 100
 
@@ -139,14 +140,24 @@ private const val MAX_MISSIONS_PER_ADDITION = 100
  * names a person once, and at most [MAX_MISSIONS_PER_ADDITION] missions get someone.
  */
 internal fun requireValidAdditions(additions: Map<String, List<String>>) {
-  // A slash would make Firestore read another document of the path, such as a check-in.
-  additions.keys.forEach { require(it.isNotEmpty() && '/' !in it) { "Invalid mission id '$it'" } }
+  additions.keys.forEach { require(isDocumentId(it)) { "Invalid mission id '$it'" } }
   additions.values.forEach { requireDistinctAssignees(it) }
   val missions = additions.values.count { it.isNotEmpty() }
   require(missions <= MAX_MISSIONS_PER_ADDITION) {
     "$missions missions are more than the $MAX_MISSIONS_PER_ADDITION one write takes"
   }
 }
+
+/**
+ * Whether Firestore takes [id] as a document id. A slash would make it read another document of the
+ * path, such as a check-in; the others it refuses only once on the server.
+ */
+private fun isDocumentId(id: String): Boolean =
+    id.isNotEmpty() &&
+        '/' !in id &&
+        id != "." &&
+        id != ".." &&
+        !(id.length >= 4 && id.startsWith("__") && id.endsWith("__"))
 
 /**
  * This mission with [userIds] added after its assignees, or null when they are all assigned

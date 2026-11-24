@@ -85,8 +85,9 @@ interface MissionRepository {
    * The checks run in this order, so every implementation reports the same error first. Nothing is
    * written when one fails.
    *
-   * @throws IllegalArgumentException when a mission id is empty or holds a `/`, a list names
-   *   someone twice, or more than 100 missions get someone; nothing is read then.
+   * @throws IllegalArgumentException when a mission id is not one Firestore accepts (empty, with a
+   *   `/`, `.`, `..` or `__…__`), a list names someone twice, or more than 100 missions get
+   *   someone; nothing is read then.
    * @throws MissionRepositoryException.PermissionDenied when nobody is signed in, or when the
    *   backend refuses the write, e.g. to someone who is not the event's organizer.
    * @throws MissionRepositoryException.NotFound when the event or one of the missions does not

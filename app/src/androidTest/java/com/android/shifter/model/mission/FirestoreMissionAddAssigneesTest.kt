@@ -36,7 +36,7 @@ import org.junit.runner.RunWith
  * The organizer and the volunteers are real accounts, since only the owner of an inbox may read it:
  * each inbox is read signed in as its owner, then the organizer signs in again. Kept apart from
  * [FirestoreMissionAssigneesTest], which covers [FirestoreMissionRepository.updateAssignees]. Every
- * document created is deleted in [cleanUp], whatever the rules say.
+ * document created is deleted in [cleanUp], whatever the rules say, then every account.
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreMissionAddAssigneesTest {
@@ -47,6 +47,9 @@ class FirestoreMissionAddAssigneesTest {
 
   /** The documents this test created, deleted in [cleanUp]. */
   private val paths = mutableSetOf<String>()
+
+  /** The accounts this test created, deleted in [cleanUp]. */
+  private val accounts = mutableListOf<Account>()
 
   private lateinit var organizer: Account
   private lateinit var alice: Account
@@ -74,7 +77,14 @@ class FirestoreMissionAddAssigneesTest {
     try {
       paths.forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
     } finally {
-      auth.signOut()
+      try {
+        accounts.forEach { account ->
+          signIn(account)
+          checkNotNull(auth.currentUser).delete().await()
+        }
+      } finally {
+        auth.signOut()
+      }
     }
   }
 
@@ -292,7 +302,9 @@ class FirestoreMissionAddAssigneesTest {
                 .signInForFirestore { auth.createUserWithEmailAndPassword(email, password).await() }
                 .user
         )
-    return Account(user.uid, EmailAuthProvider.getCredential(email, password))
+    return Account(user.uid, EmailAuthProvider.getCredential(email, password)).also {
+      accounts += it
+    }
   }
 
   private suspend fun signIn(user: Account) {
