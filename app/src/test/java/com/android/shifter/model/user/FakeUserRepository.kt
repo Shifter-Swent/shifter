@@ -67,7 +67,8 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
 
   /**
    * When set, [setLocationSharing] and [setNotificationEnabled] wait for it after saving, as
-   * Firestore does offline.
+   * Firestore does offline. Completed with a [UserRepositoryException], it is the server refusing
+   * the write once online.
    */
   var unconfirmedWrite: CompletableDeferred<Unit>? = null
 
@@ -100,7 +101,10 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   private fun disabledNotificationsFlow(uid: String): MutableStateFlow<Set<NotificationKind>> =
       disabledNotificationFlows.getOrPut(uid) { MutableStateFlow(emptySet()) }
 
-  /** Like the rules, refuses a uid with no profile. */
+  /**
+   * Like the rules, refuses a uid with no profile. Like Firestore, applies the change on the device
+   * at once, and undoes it when [unconfirmedWrite] says the server refused it.
+   */
   override suspend fun setNotificationEnabled(
       uid: String,
       kind: NotificationKind,
@@ -108,8 +112,15 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   ) {
     failure?.let { throw it }
     if (uid !in users) throw UserRepositoryException.PermissionDenied()
-    disabledNotificationsFlow(uid).update { if (enabled) it - kind else it + kind }
-    unconfirmedWrite?.await()
+    val choices = disabledNotificationsFlow(uid)
+    val wasDisabled = kind in choices.value
+    choices.update { if (enabled) it - kind else it + kind }
+    try {
+      unconfirmedWrite?.await()
+    } catch (e: UserRepositoryException) {
+      choices.update { if (wasDisabled) it + kind else it - kind }
+      throw e
+    }
   }
 
   override fun observeDisabledNotifications(uid: String): Flow<Set<NotificationKind>> = flow {

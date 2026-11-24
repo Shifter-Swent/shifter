@@ -598,18 +598,38 @@ class SettingsViewModelTest {
   }
 
   @Test
-  fun setNotificationEnabled_unconfirmed_keepsTheChangeAndSaysItIsSavedOffline() {
+  fun setNotificationEnabled_offline_keepsTheChangeWithoutANotice() {
     users.unconfirmedWrite = CompletableDeferred()
     idle(viewModel)
 
     viewModel.setNotificationEnabled(NotificationKind.OPEN_SPOTS, false)
-    shadowOf(Looper.getMainLooper())
-        .idleFor(Duration.ofMillis(SettingsViewModel.SAVE_TIMEOUT_MILLIS + 1))
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
 
+    // It already applies on this phone: only the user's other phones wait for it.
     val state = viewModel.uiState.value
     assertEquals(setOf(NotificationKind.OPEN_SPOTS), state.disabledNotifications)
+    assertNull(state.notificationsNotice)
+    assertEquals(
+        setOf(NotificationKind.OPEN_SPOTS),
+        runBlocking { users.observeDisabledNotifications(UID).first() },
+    )
+  }
+
+  @Test
+  fun setNotificationEnabled_refusedOnceOnline_switchesBackAndSaysSo() {
+    val serverAnswer = CompletableDeferred<Unit>()
+    users.unconfirmedWrite = serverAnswer
+    idle(viewModel)
+    viewModel.setNotificationEnabled(NotificationKind.OPEN_SPOTS, false)
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(1))
+
+    serverAnswer.completeExceptionally(UserRepositoryException.PermissionDenied())
+    idle()
+
+    val state = viewModel.uiState.value
+    assertEquals(emptySet<NotificationKind>(), state.disabledNotifications)
     assertTrue(state.pendingNotifications.isEmpty())
-    assertEquals(NotificationsNotice.SAVED_OFFLINE, state.notificationsNotice)
+    assertEquals(NotificationsNotice.SAVE_FAILED, state.notificationsNotice)
     assertEquals(NotificationKind.OPEN_SPOTS, state.notificationsNoticeKind)
   }
 

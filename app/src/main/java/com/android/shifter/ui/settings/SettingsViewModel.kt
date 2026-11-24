@@ -54,15 +54,16 @@ enum class LocationSharingNotice {
 
 /**
  * What the Notifications section has to tell the user: under the section for [LOAD_FAILED], under
- * the switch that changed for the others (see [SettingsUiState.notificationsNoticeKind]).
+ * the switch that changed for [SAVE_FAILED] (see [SettingsUiState.notificationsNoticeKind]).
+ *
+ * Unlike location sharing, a change waiting for the server is not told: Firestore applies it on
+ * this phone at once, where the notifications follow it, so only the user's other phones wait.
  */
 enum class NotificationsNotice {
   /** The choices could not be read, so the switches stay disabled. */
   LOAD_FAILED,
-  /** The change was refused: the switch is back where it was. */
+  /** The server refused the change: the switch is back where it was. */
   SAVE_FAILED,
-  /** The change is saved on the device but the server has not confirmed it yet. */
-  SAVED_OFFLINE,
 }
 
 data class SettingsUiState(
@@ -84,7 +85,10 @@ data class SettingsUiState(
     val locationSharingNotice: LocationSharingNotice? = null,
     /** The kinds of notifications turned off on the profile, as last read; `null` until read. */
     val savedDisabledNotifications: Set<NotificationKind>? = null,
-    /** The changes being saved, each kind to whether it is turned on, the last one when several. */
+    /**
+     * The changes the server has not confirmed yet, each kind to whether it is turned on, the last
+     * one when several: offline, until the device reconnects.
+     */
     val pendingNotifications: Map<NotificationKind, Boolean> = emptyMap(),
     val notificationsNotice: NotificationsNotice? = null,
     /**
@@ -360,15 +364,15 @@ class SettingsViewModel(
   }
 
   /**
-   * Turns notifications of [kind] on or off. The switch moves at once, then shows what the profile
-   * has once the change is saved or refused (see [SettingsUiState.disabledNotifications]), and the
-   * outcome is told under it.
+   * Turns notifications of [kind] on or off. The switch moves at once and the change applies on
+   * this phone at once, as a switch should: Firestore writes it to its local cache first, and sends
+   * it to the server now or, offline, once the device reconnects. Nothing is told meanwhile. If the
+   * server refuses it, whenever that is, the switch shows what the profile has again (see
+   * [SettingsUiState.disabledNotifications]) and the refusal is told under it.
    *
    * No switch waits for its save: each change writes only its own kind, and Firestore sends the
    * writes in order, so the last tap always wins on the server. Only the last save of [kind] ends
-   * its pending change and tells its outcome. Offline, a save is not confirmed before
-   * [SAVE_TIMEOUT_MILLIS]: it is then kept as saved, since Firestore sends it when the device
-   * reconnects, and the user is told so. Leaving Settings only stops the wait: nothing is read
+   * its pending change and tells a refusal. Leaving Settings only stops the wait: nothing is read
    * first, so the write is already queued.
    */
   fun setNotificationEnabled(kind: NotificationKind, enabled: Boolean) {
@@ -386,18 +390,16 @@ class SettingsViewModel(
     viewModelScope.launch {
       val notice =
           try {
-            val confirmed =
-                withTimeoutOrNull(SAVE_TIMEOUT_MILLIS.milliseconds) {
-                  userRepository.setNotificationEnabled(uid, kind, enabled)
-                } != null
-            if (confirmed) null else NotificationsNotice.SAVED_OFFLINE
+            userRepository.setNotificationEnabled(uid, kind, enabled)
+            null
           } catch (e: CancellationException) {
             throw e
           } catch (e: Exception) {
             Log.w(TAG, "Could not save the notification choice", e)
             NotificationsNotice.SAVE_FAILED
           }
-      // A later change of the same kind is still being saved: that one ends it and tells.
+      // A later change of the same kind is still being saved: that one ends it, and tells if
+      // refused.
       if (lastNotificationSaves[kind] !== save) return@launch
       lastNotificationSaves.remove(kind)
       _uiState.update {

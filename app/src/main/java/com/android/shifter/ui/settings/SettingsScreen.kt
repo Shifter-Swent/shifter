@@ -314,7 +314,7 @@ private fun NotificationsSection(
         ?.let { notice ->
           SettingsNotice(
               message = stringResource(notice.message),
-              isError = notice != NotificationsNotice.SAVED_OFFLINE,
+              isError = true,
               testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
               modifier = Modifier.padding(horizontal = 14.dp),
           )
@@ -323,9 +323,10 @@ private fun NotificationsSection(
 }
 
 /**
- * Figma "Settings row" of a kind of notification: its name and when it is sent, the notice of its
- * last change, then its switch. Until the choices are read, the switch shows the default, on, but
- * cannot be used; it never waits for a save (see [SettingsViewModel.setNotificationEnabled]).
+ * Figma "Settings row" of a kind of notification: its name and when it is sent, the refusal of its
+ * last change if any, then its switch. Until the choices are read, the switch shows the default,
+ * on, but cannot be used; it never waits for a save (see
+ * [SettingsViewModel.setNotificationEnabled]).
  *
  * The whole row toggles, so a tap on the text works and TalkBack reads the name, the notice and the
  * state together; the switch only shows it.
@@ -372,7 +373,7 @@ private fun NotificationRow(
           ?.let { notice ->
             SettingsNotice(
                 message = stringResource(notice.message),
-                isError = notice != NotificationsNotice.SAVED_OFFLINE,
+                isError = true,
                 testTag = SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
             )
           }
@@ -435,7 +436,6 @@ private val NotificationsNotice.message: Int
       when (this) {
         NotificationsNotice.LOAD_FAILED -> R.string.settings_notifications_load_failed
         NotificationsNotice.SAVE_FAILED -> R.string.settings_notifications_save_failed
-        NotificationsNotice.SAVED_OFFLINE -> R.string.settings_notifications_saved_offline
       }
 
 @Composable

@@ -17,8 +17,7 @@
     <string name="settings_notifications_as_organizer">As an organizer</string>
     <string name="settings_notifications_help">Saved on your account: your choices follow you to another phone.</string>
     <string name="settings_notifications_load_failed">Your notification choices could not be loaded.</string>
-    <string name="settings_notifications_save_failed">The change could not be saved. Check your connection and try again.</string>
-    <string name="settings_notifications_saved_offline">Saved on this phone. It will reach your account once you are back online.</string>
+    <string name="settings_notifications_save_failed">The change could not be saved.</string>
 
     <!-- Location sharing (#404) -->
     <string name="settings_privacy_section">Privacy and location</string>

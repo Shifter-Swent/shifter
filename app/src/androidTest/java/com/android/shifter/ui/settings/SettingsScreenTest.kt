@@ -181,27 +181,19 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun notifications_afterAChange_tellItUnderItsSwitch() {
-    setScreen(SettingsUiState(savedDisabledNotifications = emptySet()))
-    val messages =
-        mapOf(
-            NotificationsNotice.SAVE_FAILED to R.string.settings_notifications_save_failed,
-            NotificationsNotice.SAVED_OFFLINE to R.string.settings_notifications_saved_offline,
+  fun notifications_whenAChangeIsRefused_sayItUnderItsSwitch() {
+    setScreen(
+        SettingsUiState(
+            savedDisabledNotifications = emptySet(),
+            notificationsNotice = NotificationsNotice.SAVE_FAILED,
+            notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
         )
+    )
 
-    for ((notice, message) in messages) {
-      state =
-          SettingsUiState(
-              savedDisabledNotifications = emptySet(),
-              notificationsNotice = notice,
-              notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
-          )
-
-      // Under the switch just tapped, so it shows where the user is, wherever the screen scrolled.
-      composeTestRule
-          .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
-          .assertTextEquals(context.getString(message))
-    }
+    // Under the switch just tapped, so it shows where the user is, wherever the screen scrolled.
+    composeTestRule
+        .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
+        .assertTextEquals(context.getString(R.string.settings_notifications_save_failed))
   }
 
   @Test
