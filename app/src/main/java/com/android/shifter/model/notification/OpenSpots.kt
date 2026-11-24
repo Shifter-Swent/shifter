@@ -11,8 +11,11 @@ import com.swent.shifter.model.user.UserMode
 import java.time.Duration
 import java.time.Instant
 
-/** How long before its start a mission short of volunteers is notified. */
-private val OPEN_SPOTS_WINDOW: Duration = Duration.ofHours(24)
+/**
+ * How long before its start a mission short of volunteers is notified. Also written in the text of
+ * its switch in Settings (see [channelDescriptionArgs]), so the text follows it.
+ */
+internal val OPEN_SPOTS_WINDOW: Duration = Duration.ofHours(24)
 
 /**
  * Whether this mission is short of volunteers at [now] in a way worth telling its organizer: it
