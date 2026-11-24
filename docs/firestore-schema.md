@@ -479,9 +479,13 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   can read the uids of its volunteers in its teams and send them a false `ANNOUNCEMENT` ("Event cancelled, don't come") or `MISSION_CHANGED` ("07:00, gate B")
   under the real `eventTitle`, with any name in `data`. It shows up as a system notification, and
   people act on it without tapping it, so the rules protecting the screens it opens do not help.
-  The phone can at least show the sender's name from the public profile of `senderId` rather than
-  the one in `data`; the rest of the text cannot be checked. Neither the number nor the size of
-  the notifications is bounded. A size limit would only stop someone writing outside the app (in
+  The phone shows the sender's name from the public profile of `senderId` rather than the one in
+  `data` when it can read it (`NotificationEngine`, #614), and the one in `data` otherwise, such
+  as offline with the profile not cached; the rest of the text cannot be checked. Neither the number
+  nor the size of the notifications is bounded, not even on the phone: dropping a sender's
+  notifications past a number would also drop real ones, such as six missions assigned while the
+  phone was offline, and the format grouping them by event already limits how many the shade
+  shows. A size limit would only stop someone writing outside the app (in
   the app, the preview comes from a chat message, at most 1000 characters, and titles and team
   names from forms), who could still send as many short ones as they like. Refusing the requests
   that do not come from the app (Firebase App Check) would make both much harder, which the rules
