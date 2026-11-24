@@ -27,12 +27,12 @@ object AssignDialogTestTags {
 }
 
 /**
- * Who is being assigned to the mission [missionId], while the organizer edits it.
+ * Who is being picked for the mission [missionId], while the dialog is open.
  *
- * @property limit the most people that can be picked, the mission's volunteers needed, as last
- *   known: a refused save sets it to what the stored mission needs.
- * @property isSaving whether the picked people are being stored.
- * @property saveFailed whether storing them failed; the selection is kept to try again.
+ * @property title the dialog's title.
+ * @property limit the most people that can be picked; the caller decides what it counts.
+ * @property isSaving whether the picked people are being saved.
+ * @property saveFailed whether saving them failed; the selection is kept to try again.
  */
 data class AssignState(
     val missionId: String,
@@ -43,8 +43,8 @@ data class AssignState(
     val saveFailed: Boolean = false,
 ) {
   /**
-   * Whether more people are picked than the mission needs now, after its volunteers needed were
-   * lowered: nothing can be saved until some are unpicked. Derived rather than stored, so it holds
+   * Whether more people are picked than [limit], e.g. after the limit was lowered while they were
+   * picked: nothing can be saved until some are unpicked. Derived rather than stored, so it holds
    * until the selection fits, however many are unpicked.
    */
   val overLimit: Boolean
@@ -52,11 +52,12 @@ data class AssignState(
 }
 
 /**
- * Edits who is assigned to the mission of [assigning]; nothing is stored until Save.
+ * Picks people for the mission of [assigning]; nothing is saved until Save.
  *
  * Stateless: it shows [assigning] and reports each tap on a candidate through [onToggle], with the
- * candidate's id, a retry of the candidates through [onRetry], Save through [onSave], and Cancel or
- * a tap outside through [onDismiss].
+ * candidate's id, a retry of the candidates through [onRetry], Save through [onSave], and Cancel,
+ * Back or a tap outside through [onDismiss]. While it saves, none of these closes it and no
+ * candidate can be tapped.
  */
 @Composable
 internal fun AssignDialog(
