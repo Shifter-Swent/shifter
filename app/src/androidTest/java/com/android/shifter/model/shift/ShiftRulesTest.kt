@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -20,6 +21,7 @@ import com.swent.shifter.model.firestore.toFirestoreTimestamp
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -108,6 +110,16 @@ class ShiftRulesTest {
   }
 
   @Test
+  fun read_bySomeoneSignedOut_isDenied() = emulatorTest {
+    val shift = open(slot(10))
+
+    signOut()
+
+    assertDenied { shift.get(Source.SERVER).await() }
+    assertDenied { shifts().get(Source.SERVER).await() }
+  }
+
+  @Test
   fun openAndClose_byTheOrganizer_areAllowed() = emulatorTest {
     val shift = open(slot(10))
 
@@ -184,6 +196,9 @@ class ShiftRulesTest {
     // 07–09 ends just as it starts, so it does not run during it: `overlaps` refuses it too.
     val touching = ShiftSlot(at(7), at(9))
     assertDenied { document(touching).set(fields(touching)).await() }
+    // 23–01 starts just as it ends, the same edge on the other side.
+    val afterTheEnd = ShiftSlot(at(23), at(25))
+    assertDenied { document(afterTheEnd).set(fields(afterTheEnd)).await() }
     val nextDay = ShiftSlot(at(24), at(26))
     assertDenied { document(nextDay).set(fields(nextDay)).await() }
   }
@@ -192,8 +207,10 @@ class ShiftRulesTest {
   fun open_withAWrongLength_isDenied() = emulatorTest {
     val fourHours = slot(10) to at(14)
     val twoAndAHalf = slot(10) to at(12).plusSeconds(1800)
+    val noLength = slot(10) to at(10)
+    val endingBeforeItStarts = slot(10) to at(8)
 
-    for ((slot, endAt) in listOf(fourHours, twoAndAHalf)) {
+    for ((slot, endAt) in listOf(fourHours, twoAndAHalf, noLength, endingBeforeItStarts)) {
       assertDenied { document(slot).set(fields(slot) + (ShiftSchema.END_AT to endAt.ts())).await() }
     }
   }
@@ -244,6 +261,13 @@ class ShiftRulesTest {
       document(slot).set(fields(slot) + (ShiftSchema.CREATED_AT to EVENT_START.ts())).await()
     }
     assertDenied { document(slot).set(fields(slot) + ("teamId" to "team-bar")).await() }
+    assertDenied {
+      document(slot).set(fields(slot) + (ShiftSchema.START_AT to "2036-07-18T10:00:00Z")).await()
+    }
+    assertDenied {
+      document(slot).set(fields(slot) + (ShiftSchema.END_AT to "2036-07-18T12:00:00Z")).await()
+    }
+    assertDenied { document(slot).set(fields(slot) + (ShiftSchema.VOLUNTEER_IDS to "")).await() }
     assertDenied { document(slot).set(fields(slot) - ShiftSchema.VOLUNTEER_IDS).await() }
   }
 
@@ -301,6 +325,25 @@ class ShiftRulesTest {
 
   private suspend fun signIn(user: Account) {
     auth.signInForFirestore { auth.signInWithCredential(user.credential).await() }
+  }
+
+  /**
+   * Signs out and waits until Firestore knows it, which it learns asynchronously, as
+   * [signInForFirestore] explains: a read sent right after could still go as the previous user.
+   */
+  private suspend fun signOut() {
+    val signedOut = CompletableDeferred<Unit>()
+    // Called at once with the user still signed in, then again once they are signed out.
+    val listener = FirebaseAuth.IdTokenListener {
+      if (it.currentUser == null) signedOut.complete(Unit)
+    }
+    auth.addIdTokenListener(listener)
+    try {
+      auth.signOut()
+      step("sign-out") { signedOut.await() }
+    } finally {
+      auth.removeIdTokenListener(listener)
+    }
   }
 
   private suspend fun assertDenied(block: suspend () -> Unit) {
