@@ -29,9 +29,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
-import com.swent.shifter.ui.theme.md_theme_dark_surface
 import com.swent.shifter.ui.theme.shifter_announcement
 import com.swent.shifter.ui.theme.shifter_mutedText
+import com.swent.shifter.ui.theme.shifter_onAnnouncement
 
 /**
  * The field and its round send button, grey until there is text. Those who may announce get a
@@ -64,7 +64,7 @@ internal fun ChatComposer(
                   containerColor = colors.surfaceVariant,
                   contentColor = shifter_mutedText,
                   checkedContainerColor = shifter_announcement,
-                  checkedContentColor = md_theme_dark_surface,
+                  checkedContentColor = shifter_onAnnouncement,
               ),
           modifier = Modifier.size(44.dp).testTag(TeamChatTestTags.ANNOUNCEMENT_TOGGLE),
       ) {
@@ -86,10 +86,8 @@ internal fun ChatComposer(
             TextFieldDefaults.colors(
                 focusedContainerColor = colors.surfaceVariant,
                 unfocusedContainerColor = colors.surfaceVariant,
-                disabledContainerColor = colors.surfaceVariant,
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
             ),
         modifier = Modifier.weight(1f).testTag(TeamChatTestTags.INPUT),
     )
@@ -100,7 +98,7 @@ internal fun ChatComposer(
         colors =
             IconButtonDefaults.filledIconButtonColors(
                 containerColor = if (announcing) shifter_announcement else colors.primary,
-                contentColor = if (announcing) md_theme_dark_surface else colors.onPrimary,
+                contentColor = if (announcing) shifter_onAnnouncement else colors.onPrimary,
                 disabledContainerColor = colors.surfaceVariant,
                 disabledContentColor = shifter_mutedText,
             ),

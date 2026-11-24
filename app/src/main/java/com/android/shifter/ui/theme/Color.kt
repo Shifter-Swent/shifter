@@ -73,6 +73,7 @@ val shifter_qrLight = Color(0xFFFFFFFF)
 // Announcements: the warning amber for the tag, and a bubble of it mixed into the surface, dark
 // enough for the usual text to stay readable on it.
 val shifter_announcement = shifter_warning
+val shifter_onAnnouncement = md_theme_dark_surface
 val shifter_announcementContainer = lerp(md_theme_dark_surface, shifter_warning, 0.2f)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
 
