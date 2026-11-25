@@ -521,7 +521,7 @@ class SettingsViewModelTest {
     serverAnswer.complete(Unit)
     idle()
 
-    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
+    assertEquals(announcement, viewModel.uiState.value.disabledNotifications)
     assertEquals(announcement, runBlocking { users.observeDisabledNotifications(UID).first() })
   }
 
@@ -535,30 +535,6 @@ class SettingsViewModelTest {
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, true)
     idle()
     assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
-
-    serverAnswer.complete(Unit)
-    idle()
-
-    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
-    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
-  }
-
-  @Test
-  fun setNotificationEnabled_whileSaving_showsTheChoiceThenWhatTheProfileHas() {
-    val serverAnswer = CompletableDeferred<Unit>()
-    users.unconfirmedWrite = serverAnswer
-    idle(viewModel)
-    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
-    idle()
-
-    // Another phone turns it back on, and its write reaches the profile last.
-    users.unconfirmedWrite = null
-    runBlocking { users.setNotificationEnabled(UID, NotificationKind.ANNOUNCEMENT, true) }
-    idle()
-    assertEquals(
-        setOf(NotificationKind.ANNOUNCEMENT),
-        viewModel.uiState.value.disabledNotifications,
-    )
 
     serverAnswer.complete(Unit)
     idle()
@@ -580,7 +556,6 @@ class SettingsViewModelTest {
 
     val state = viewModel.uiState.value
     assertEquals(emptySet<NotificationKind>(), state.disabledNotifications)
-    assertTrue(state.pendingNotifications.isEmpty())
     assertEquals(NotificationsNotice.SAVE_FAILED, state.notificationsNotice)
     assertEquals(NotificationKind.OPEN_SPOTS, state.notificationsNoticeKind)
   }
@@ -593,7 +568,6 @@ class SettingsViewModelTest {
     viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
     idle()
 
-    assertTrue(viewModel.uiState.value.pendingNotifications.isEmpty())
     users.observeNotificationsFailure = null
     assertEquals(
         emptySet<NotificationKind>(),

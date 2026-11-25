@@ -95,7 +95,7 @@ class SettingsScreenTest {
 
   @Test
   fun notifications_inVolunteerMode_showTheVolunteerAndManagerGroups() {
-    setScreen(SettingsUiState(savedDisabledNotifications = emptySet()))
+    setScreen(SettingsUiState(disabledNotifications = emptySet()))
 
     for (group in listOf(NotificationGroup.VOLUNTEER, NotificationGroup.MANAGER)) {
       text(group.title).assertIsDisplayed()
@@ -111,7 +111,7 @@ class SettingsScreenTest {
 
   @Test
   fun notifications_inOrganizerMode_showTheOrganizerGroupOnly() {
-    setScreen(SettingsUiState(mode = UserMode.ORGANIZER, savedDisabledNotifications = emptySet()))
+    setScreen(SettingsUiState(mode = UserMode.ORGANIZER, disabledNotifications = emptySet()))
 
     text(R.string.settings_notifications_as_organizer).assertIsDisplayed()
     for (kind in NotificationGroup.ORGANIZER.kinds) notificationSwitch(kind).assertIsOn()
@@ -132,14 +132,8 @@ class SettingsScreenTest {
   }
 
   @Test
-  fun notificationClick_asksForTheOtherValueEvenWhileSaving() {
-    // ANNOUNCEMENT is being turned off: it shows the choice, and can be changed again.
-    setScreen(
-        SettingsUiState(
-            savedDisabledNotifications = emptySet(),
-            pendingNotifications = mapOf(NotificationKind.ANNOUNCEMENT to false),
-        )
-    )
+  fun notificationClick_asksForTheOtherValue() {
+    setScreen(SettingsUiState(disabledNotifications = setOf(NotificationKind.ANNOUNCEMENT)))
 
     notificationSwitch(NotificationKind.MISSION_CHANGED).assertIsOn().performClick()
     notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsEnabled().performClick()
@@ -171,7 +165,7 @@ class SettingsScreenTest {
 
     state =
         SettingsUiState(
-            savedDisabledNotifications = emptySet(),
+            disabledNotifications = emptySet(),
             notificationsNotice = NotificationsNotice.SAVE_FAILED,
             notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
         )

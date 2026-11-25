@@ -77,22 +77,15 @@ data class SettingsUiState(
     /** True while a change of [locationSharing] is being saved: the switch waits for it. */
     val savingLocationSharing: Boolean = false,
     val locationSharingNotice: LocationSharingNotice? = null,
-    /** The kinds of notifications turned off on the profile, as last read; `null` until read. */
-    val savedDisabledNotifications: Set<NotificationKind>? = null,
-    /** The last change of each kind the server has not confirmed yet: whether it is turned on. */
-    val pendingNotifications: Map<NotificationKind, Boolean> = emptyMap(),
+    /**
+     * The kinds of notifications turned off on the profile, with the changes made on this phone
+     * that the server has not confirmed yet; `null` until read.
+     */
+    val disabledNotifications: Set<NotificationKind>? = null,
     val notificationsNotice: NotificationsNotice? = null,
     /** The kind [notificationsNotice] is about, shown under its switch; `null` for the section. */
     val notificationsNoticeKind: NotificationKind? = null,
-) {
-  /** The kinds shown turned off: those read from the profile, changed by those being saved. */
-  val disabledNotifications: Set<NotificationKind>?
-    get() = savedDisabledNotifications?.let { saved ->
-      pendingNotifications.entries.fold(saved) { kinds, (kind, enabled) ->
-        kinds.withEnabled(kind, enabled)
-      }
-    }
-}
+)
 
 /**
  * Signs the user out, changes the mode saved on their profile from [mode] to the other one, turns
@@ -292,9 +285,10 @@ class SettingsViewModel(
   }
 
   /**
-   * Follows the kinds turned off, so a change made on another phone, or undone by Firestore after a
-   * refusal, shows at once. Nothing read after [LOAD_TIMEOUT_MILLIS] is told; a lost connection is
-   * told and tried again every [RETRY_DELAY_MILLIS], any other failure only told.
+   * Follows the kinds turned off, so a change shows at once, whether made on this phone or another
+   * one, or undone by Firestore after a refusal. Nothing read after [LOAD_TIMEOUT_MILLIS] is told;
+   * a lost connection is told and tried again every [RETRY_DELAY_MILLIS], any other failure only
+   * told.
    */
   private fun observeNotifications() {
     val uid = repository.currentUser()?.uid ?: return
@@ -321,7 +315,7 @@ class SettingsViewModel(
           .collect { saved ->
             _uiState.update {
               it.copy(
-                  savedDisabledNotifications = saved,
+                  disabledNotifications = saved,
                   notificationsNotice =
                       it.notificationsNotice.takeUnless { notice ->
                         notice == NotificationsNotice.LOAD_FAILED
@@ -335,28 +329,23 @@ class SettingsViewModel(
   /** Tells the choices could not be loaded, unless they were: the last ones read stay usable. */
   private fun reportNotificationsNotLoaded() {
     _uiState.update {
-      if (it.savedDisabledNotifications != null) it
+      if (it.disabledNotifications != null) it
       else it.copy(notificationsNotice = NotificationsNotice.LOAD_FAILED)
     }
   }
 
   /**
-   * Turns notifications of [kind] on or off, at once and without waiting for the server: Firestore
-   * applies it on this phone first and sends it when it can, the writes in order. Only the last
-   * save of [kind] ends its pending change, and tells under its switch if the server refused it.
+   * Turns notifications of [kind] on or off without waiting for the server: Firestore applies the
+   * change on this phone at once, so [observeNotifications] moves the switch, and sends it when it
+   * can, the writes in order. Only the last save of [kind] tells under its switch if the server
+   * refused it.
    */
   fun setNotificationEnabled(kind: NotificationKind, enabled: Boolean) {
     val uid = repository.currentUser()?.uid
-    if (uid == null || _uiState.value.savedDisabledNotifications == null) return
+    if (uid == null || _uiState.value.disabledNotifications == null) return
     val save = Any()
     lastNotificationSaves[kind] = save
-    _uiState.update {
-      it.copy(
-          pendingNotifications = it.pendingNotifications + (kind to enabled),
-          notificationsNotice = null,
-          notificationsNoticeKind = null,
-      )
-    }
+    _uiState.update { it.copy(notificationsNotice = null, notificationsNoticeKind = null) }
     viewModelScope.launch {
       val notice =
           try {
@@ -368,13 +357,10 @@ class SettingsViewModel(
             Log.w(TAG, "Could not save the notification choice", e)
             NotificationsNotice.SAVE_FAILED
           }
-      if (lastNotificationSaves[kind] !== save) return@launch // A later change of kind ends it.
+      if (lastNotificationSaves[kind] !== save) return@launch // A later change of kind tells.
       lastNotificationSaves.remove(kind)
-      _uiState.update {
-        val told =
-            if (notice == null) it
-            else it.copy(notificationsNotice = notice, notificationsNoticeKind = kind)
-        told.copy(pendingNotifications = it.pendingNotifications - kind)
+      if (notice != null) {
+        _uiState.update { it.copy(notificationsNotice = notice, notificationsNoticeKind = kind) }
       }
     }
   }
@@ -453,7 +439,3 @@ class SettingsViewModel(
         }
   }
 }
-
-/** The kinds turned off once [kind] is turned on or off. */
-private fun Set<NotificationKind>.withEnabled(kind: NotificationKind, enabled: Boolean) =
-    if (enabled) this - kind else this + kind

@@ -462,7 +462,7 @@ private fun SettingsScreenPreview() {
         state =
             SettingsUiState(
                 locationSharing = true,
-                savedDisabledNotifications = setOf(NotificationKind.ANNOUNCEMENT),
+                disabledNotifications = setOf(NotificationKind.ANNOUNCEMENT),
             ),
         onBack = {},
         onChangeMode = {},
