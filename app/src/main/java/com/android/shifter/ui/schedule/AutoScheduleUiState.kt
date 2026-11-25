@@ -61,7 +61,8 @@ enum class ScheduleSaveError {
  *   the event but the completed ones. A mission already started or with more people than it needs
  *   is listed too, with what [ProposedMission.missing] says.
  * @property isSaving whether the proposal is being saved.
- * @property saveError why saving it failed, or null when it did not; the proposal is kept.
+ * @property saveError why saving it failed, or null when it did not; the proposal is kept. It is
+ *   cleared when the proposal is prepared or accepted again.
  * @property saved whether the proposal was saved: the caller then leaves the screen or says so, and
  *   it cannot be accepted again.
  */
