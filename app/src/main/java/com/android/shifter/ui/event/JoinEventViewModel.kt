@@ -281,18 +281,8 @@ class JoinEventViewModel(
         block()
       } catch (e: CancellationException) {
         throw e
-      } catch (e: EventRepositoryException.Unavailable) {
-        showError(JoinEventError.OFFLINE)
-      } catch (e: MembershipRequestRepositoryException.Unavailable) {
-        showError(JoinEventError.OFFLINE)
-      } catch (e: ShiftRepositoryException.Unavailable) {
-        showError(JoinEventError.OFFLINE)
-      } catch (e: ShiftRepositoryException.PermissionDenied) {
-        showError(JoinEventError.PERMISSION_DENIED)
-      } catch (e: MembershipRequestRepositoryException.PermissionDenied) {
-        showError(JoinEventError.PERMISSION_DENIED)
       } catch (e: Exception) {
-        showError(JoinEventError.UNEXPECTED)
+        showError(errorOf(e))
       } finally {
         // Once cancelled, the loading flag was already lowered, and another lookup may run by now.
         if (isActive) _uiState.update { it.copy(isLoading = false) }
@@ -301,6 +291,17 @@ class JoinEventViewModel(
   }
 
   private fun showError(error: JoinEventError) = _uiState.update { it.copy(error = error) }
+
+  /** The error the screen shows for [e], a failure of a repository or an unexpected one. */
+  private fun errorOf(e: Exception): JoinEventError =
+      when (e) {
+        is EventRepositoryException.Unavailable,
+        is MembershipRequestRepositoryException.Unavailable,
+        is ShiftRepositoryException.Unavailable -> JoinEventError.OFFLINE
+        is MembershipRequestRepositoryException.PermissionDenied,
+        is ShiftRepositoryException.PermissionDenied -> JoinEventError.PERMISSION_DENIED
+        else -> JoinEventError.UNEXPECTED
+      }
 
   companion object {
     /**
