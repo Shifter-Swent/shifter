@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.shift.FakeShiftRepository
@@ -19,9 +20,11 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -128,6 +131,10 @@ class ShiftsViewModelTest {
 
     assertTrue(state.isLoading)
     assertFalse("the grid must not flash its empty state while loading", state.isEmpty)
+    // Nor may it be edited: a tap would act on a list of slots that has not arrived.
+    assertFalse(state.canEdit)
+    viewModel.setMode(ShiftsMode.EDIT)
+    assertEquals(ShiftsMode.VIEW, state.mode)
   }
 
   @Test
@@ -332,14 +339,15 @@ class ShiftsViewModelTest {
   }
 
   @Test
-  fun toggleSlot_beforeTheEventIsKnown_writesNothing() = runTest {
-    // Without the event, a slot cannot be told to run during it, so nothing is written.
+  fun setMode_beforeTheEventIsKnown_refusesEditAndWritesNothing() = runTest {
+    // Without the event, no slot can be told to run during it, so Edit is not offered at all.
     start(seeded = listOf(shift(sat, 10)), event = null)
     edit()
 
+    assertFalse(state.canEdit)
+    assertEquals(ShiftsMode.VIEW, state.mode)
     viewModel.toggleSlot(sat, 12)
     advanceUntilIdle()
-
     assertEquals(listOf(shift(sat, 10)), shifts.shifts)
     assertNull(state.error)
   }
@@ -382,28 +390,73 @@ class ShiftsViewModelTest {
 
   @Test
   fun load_whenTheEventCannotBeRead_keepsTheSlotsAndReportsIt() = runTest {
-    events.failure = RuntimeException("offline")
+    events.failure = EventRepositoryException.Unavailable()
     start(seeded = listOf(shift(sat, 10)))
 
     // The days the open slots fall on still draw a grid; only the empty days around them go.
     assertEquals(listOf(shift(sat, 10)), state.shifts)
     assertEquals(listOf(sat), state.days)
-    assertEquals(ShiftsError.LOAD_FAILED, state.error)
+    assertEquals(ShiftsError.OFFLINE, state.error)
   }
 
   @Test
-  fun load_whenTheShiftsCannotBeRead_reportsItAndStopsLoading() = runTest {
+  fun load_whenTheShiftsCannotBeRead_saysOfflineAndStaysUnread() = runTest {
     shifts.failure = ShiftRepositoryException.Unavailable()
     start()
 
     assertFalse(state.isLoading)
-    assertEquals(ShiftsError.LOAD_FAILED, state.error)
+    assertTrue(state.shiftsFailed)
+    assertEquals(ShiftsError.OFFLINE, state.error)
     assertFalse("a failed load is not an event without slots", state.isEmpty)
     assertEquals(listOf(fri, sat, sun), state.days)
+
+    // Showing the message drops it, but not the failure: the screen never offers "Open slots"
+    // for a list it never read.
+    viewModel.messageShown()
+    assertNull(state.error)
+    assertFalse(state.isEmpty)
+    assertTrue(state.shiftsFailed)
   }
 
   @Test
-  fun toggleSlot_whenTheSaveFails_keepsTheGridAndReportsIt() = runTest {
+  fun observeShifts_failingAfterTheShiftsArrived_keepsTheGridAndStopsEditing() = runTest {
+    // A listener delivering, then cut off while the organizer is in Edit: `failure` alone cannot
+    // be that, as it would throw before the first emission.
+    val cut = CompletableDeferred<Unit>()
+    val cutOff =
+        object : ShiftRepository by shifts {
+          override fun observeShifts(eventId: String) =
+              flow<List<Shift>> {
+                emit(shifts.shifts)
+                cut.await()
+                throw ShiftRepositoryException.Unknown()
+              }
+        }
+    start(seeded = listOf(shift(sat, 10, volunteers = 1)), repository = cutOff)
+    edit()
+
+    cut.complete(Unit)
+    advanceUntilIdle()
+
+    // The grid keeps the shifts it last had, behind the message.
+    assertEquals(listOf(shift(sat, 10, volunteers = 1)), state.shifts)
+    assertTrue(state.shiftsFailed)
+    assertEquals(ShiftsError.LOAD_FAILED, state.error)
+
+    // A tap in Edit no longer writes, nor names the volunteers of a grid that is standing still,
+    // and Edit is not entered again once left.
+    viewModel.toggleSlot(sat, 10)
+    viewModel.toggleSlot(sat, 12)
+    advanceUntilIdle()
+    assertNull(state.keptSlot)
+    assertEquals(listOf(shift(sat, 10, volunteers = 1)), shifts.shifts)
+    viewModel.setMode(ShiftsMode.VIEW)
+    viewModel.setMode(ShiftsMode.EDIT)
+    assertEquals(ShiftsMode.VIEW, state.mode)
+  }
+
+  @Test
+  fun toggleSlot_whenTheSaveCannotReachTheBackend_keepsTheGridAndSaysOffline() = runTest {
     start(seeded = listOf(shift(sat, 10)))
     edit()
     shifts.failure = ShiftRepositoryException.Unavailable()
@@ -412,7 +465,7 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(listOf(shift(sat, 10)), state.shifts)
-    assertEquals(ShiftsError.SAVE_FAILED, state.error)
+    assertEquals(ShiftsError.OFFLINE, state.error)
     assertNull(state.keptSlot)
   }
 

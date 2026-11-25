@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
+import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.shift.Shift
 import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
@@ -20,7 +21,6 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -38,6 +38,8 @@ enum class ShiftsError {
   LOAD_FAILED,
   /** A slot could not be opened or closed. */
   SAVE_FAILED,
+  /** The backend could not be reached: the device is offline. */
+  OFFLINE,
 }
 
 /**
@@ -50,6 +52,8 @@ data class KeptSlot(val startAt: Instant, val volunteers: Int)
  * State of the organizer's Shifts screen.
  *
  * @property isLoading whether the first read of the shifts is still running.
+ * @property shiftsFailed whether the shifts followed ended on a failure. Unlike [error], which the
+ *   screen clears once shown, this stays: the grid keeps its last slots and writing stops.
  * @property period when the event runs, its end excluded, or null while unknown: the screen greys
  *   out the slots of [days] that `ShiftSlot.overlaps(start, endInclusive)` refuses, as do the
  *   rules.
@@ -63,6 +67,7 @@ data class KeptSlot(val startAt: Instant, val volunteers: Int)
  */
 data class ShiftsUiState(
     val isLoading: Boolean = true,
+    val shiftsFailed: Boolean = false,
     val mode: ShiftsMode = ShiftsMode.VIEW,
     val period: ClosedRange<Instant>? = null,
     val days: List<LocalDate> = emptyList(),
@@ -71,9 +76,16 @@ data class ShiftsUiState(
     val error: ShiftsError? = null,
     val keptSlot: KeptSlot? = null,
 ) {
-  /** Whether the event is known to have no slot open: not while loading, nor after a failure. */
+  /** Whether the event is known to have no slot open: only once a read has answered with none. */
   val isEmpty: Boolean
-    get() = !isLoading && error == null && shifts.isEmpty()
+    get() = !isLoading && !shiftsFailed && shifts.isEmpty()
+
+  /**
+   * Whether the slots may be opened and closed: the shifts are in and still followed, and the event
+   * says which slots it runs through. The screen offers "Open slots" on this.
+   */
+  val canEdit: Boolean
+    get() = !isLoading && !shiftsFailed && period != null
 
   /** The hours every open slot adds up to: the "26 h" of "26 h open over 3 days". */
   val openHours: Long
@@ -115,8 +127,9 @@ class ShiftsViewModel(
 
   /**
    * Opens the slot of [day] at [hour] when it is closed, closes it when it is open, saved at once.
-   * Does nothing outside [ShiftsMode.EDIT], while that slot is already being saved, nor for a slot
-   * the event does not run through, which the rules refuse.
+   * Does nothing outside [ShiftsMode.EDIT], while that slot is already being saved, while the slots
+   * cannot be edited ([ShiftsUiState.canEdit]), nor for a slot the event does not run through,
+   * which the rules refuse.
    *
    * A slot volunteers chose is never closed: it stays and [ShiftsUiState.keptSlot] names it,
    * whether this ViewModel already knew them or the backend refuses the close because someone chose
@@ -126,9 +139,10 @@ class ShiftsViewModel(
     val state = _uiState.value
     if (state.mode != ShiftsMode.EDIT) return
     val slot = slotOf(day, hour, zone)
-    // Before the slot is read: an invalid tap must not name volunteers it will not act on.
+    // Before the slot is read: a grid still loading, or left behind by a follow that ended, would
+    // name volunteers who may no longer be on it.
     val period = state.period ?: return
-    if (!slot.overlaps(period.start, period.endInclusive)) return
+    if (!state.canEdit || !slot.overlaps(period.start, period.endInclusive)) return
     val open = shiftOf(slot.shiftId)
     if (open != null && open.volunteerIds.isNotEmpty()) {
       keep(open)
@@ -141,21 +155,25 @@ class ShiftsViewModel(
         else shiftRepository.closeSlot(eventId, slot.shiftId)
       } catch (e: CancellationException) {
         throw e
-      } catch (_: ShiftRepositoryException.PermissionDenied) {
+      } catch (e: ShiftRepositoryException.PermissionDenied) {
         // Either a volunteer chose the slot just before the close, which the flow has already
         // brought in, or the signed-in user is not the organizer: the backend tells no difference.
         val chosen = shiftOf(slot.shiftId)?.takeIf { it.volunteerIds.isNotEmpty() }
-        if (chosen != null) keep(chosen) else fail()
-      } catch (_: Exception) {
-        fail()
+        if (chosen != null) keep(chosen) else fail(e)
+      } catch (e: Exception) {
+        fail(e)
       } finally {
         saving -= slot.shiftId
       }
     }
   }
 
-  /** Switches between reading the slots and editing them, e.g. "Open slots" and "Done". */
+  /**
+   * Switches between reading the slots and editing them, e.g. "Open slots" and "Done". Edit is
+   * refused while [ShiftsUiState.canEdit] is false.
+   */
   fun setMode(mode: ShiftsMode) {
+    if (mode == ShiftsMode.EDIT && !_uiState.value.canEdit) return
     _uiState.update { it.copy(mode = mode) }
   }
 
@@ -171,22 +189,29 @@ class ShiftsViewModel(
       _uiState.update { it.copy(period = period).withDaysAndHours() }
     } catch (e: CancellationException) {
       throw e
-    } catch (_: Exception) {
+    } catch (e: Exception) {
       // The days the open slots fall on still draw a grid; only the empty days around them go.
-      _uiState.update { it.copy(error = ShiftsError.LOAD_FAILED) }
+      _uiState.update { it.copy(error = errorOf(e, ShiftsError.LOAD_FAILED)) }
     }
   }
 
+  /**
+   * A try/catch around the collection, as the other ViewModels do it, so a flow failing before its
+   * first emission and one failing after are caught alike.
+   */
   private suspend fun observeShifts() {
-    shiftRepository
-        .observeShifts(eventId)
-        .catch { e ->
-          if (e is CancellationException) throw e
-          _uiState.update { it.copy(isLoading = false, error = ShiftsError.LOAD_FAILED) }
-        }
-        .collect { shifts ->
-          _uiState.update { it.copy(isLoading = false, shifts = shifts).withDaysAndHours() }
-        }
+    try {
+      shiftRepository.observeShifts(eventId).collect { shifts ->
+        _uiState.update { it.copy(isLoading = false, shifts = shifts).withDaysAndHours() }
+      }
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      // The grid keeps the shifts it last had; only writing stops, as nothing would follow one.
+      _uiState.update {
+        it.copy(isLoading = false, shiftsFailed = true, error = errorOf(e, ShiftsError.LOAD_FAILED))
+      }
+    }
   }
 
   /** The days of the grid and the hours each holds, both read from the slots of this state. */
@@ -227,9 +252,15 @@ class ShiftsViewModel(
     _uiState.update { it.copy(keptSlot = KeptSlot(shift.startAt, shift.volunteerIds.size)) }
   }
 
-  private fun fail() {
-    _uiState.update { it.copy(error = ShiftsError.SAVE_FAILED) }
+  private fun fail(e: Throwable) {
+    _uiState.update { it.copy(error = errorOf(e, ShiftsError.SAVE_FAILED)) }
   }
+
+  /** [ShiftsError.OFFLINE] when the backend could not be reached, [otherwise] for anything else. */
+  private fun errorOf(e: Throwable, otherwise: ShiftsError): ShiftsError =
+      if (e is ShiftRepositoryException.Unavailable || e is EventRepositoryException.Unavailable)
+          ShiftsError.OFFLINE
+      else otherwise
 
   companion object {
     /**
