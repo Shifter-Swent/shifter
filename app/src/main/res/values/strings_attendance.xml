@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Co-authored-by: Claude Opus 5 <noreply@anthropic.com> -->
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
 <resources>
     <!-- The manager's live attendance of the missions of their teams. These are the screen's own
          wording, not the organizer's overview_* strings: rewording one screen must not reword the
@@ -56,7 +57,8 @@
     </plurals>
     <string name="attendance_check_in_not_allowed">%1$s can no longer be checked in to this mission.</string>
     <string name="attendance_check_in_failed">Could not check %1$s in. Try again.</string>
-    <string name="attendance_check_in_outside_window">%1$s can\'t be checked in now: check-in is open from 15 minutes before the mission until its end.</string>
+    <!-- %2$s: CheckInRules.OPENS_BEFORE_START, as formatDuration writes it, such as "15 min". -->
+    <string name="attendance_check_in_outside_window">%1$s can\'t be checked in now: check-in is open from %2$s before the mission until its end.</string>
     <string name="attendance_expand">Show who is present</string>
     <string name="attendance_collapse">Hide who is present</string>
     <!-- The manager's now card: is the team where it should be, now? -->

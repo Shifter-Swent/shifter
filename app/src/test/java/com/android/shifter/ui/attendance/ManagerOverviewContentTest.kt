@@ -3,6 +3,8 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
+import android.content.Context
+import android.content.res.Resources
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -36,11 +38,15 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.swent.shifter.R
+import com.swent.shifter.model.checkin.CheckInRules
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
 import com.swent.shifter.ui.components.isIndeterminateSpinner
+import com.swent.shifter.ui.components.time.formatDuration
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Duration
 import java.time.Instant
@@ -58,6 +64,8 @@ import org.robolectric.annotation.Config
 class ManagerOverviewContentTest {
 
   @get:Rule val compose = createComposeRule()
+
+  private val resources: Resources = ApplicationProvider.getApplicationContext<Context>().resources
 
   private val start = Instant.parse("2027-06-20T09:00:00Z")
   // Five minutes in: the check-in of "Set up" is open, the one of "Serve drinks" is not.
@@ -383,7 +391,7 @@ class ManagerOverviewContentTest {
   }
 
   @Test
-  fun checkInOutsideTheWindow_saysWhy() {
+  fun checkInOutsideTheWindow_showsTheWindowOfTheRule() {
     show(
         loaded.copy(
             checkInErrors =
@@ -391,12 +399,22 @@ class ManagerOverviewContentTest {
         )
     )
 
+    val window = formatDuration(resources, CheckInRules.OPENS_BEFORE_START)
     compose
         .onNodeWithText(
-            "Emma Dubois can't be checked in now: check-in is open from 15 minutes before the " +
+            "Emma Dubois can't be checked in now: check-in is open from $window before the " +
                 "mission until its end."
         )
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun outsideWindowMessage_writesTheWindowItIsGiven() {
+    // A window written by hand in the string would ignore its argument.
+    val message =
+        resources.getString(R.string.attendance_check_in_outside_window, "Emma Dubois", "7 min")
+
+    assertTrue(message.contains("from 7 min before the mission"))
   }
 
   @Test
