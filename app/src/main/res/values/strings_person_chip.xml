@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com> -->
+<resources>
+    <!-- A person on a mission (PersonChip), whose name could not be read, as on the other screens -->
+    <string name="person_chip_unknown">Unnamed volunteer</string>
+    <!-- Read by screen readers after the name, as the chip's colour shows it -->
+    <string name="person_chip_proposed">Proposed</string>
+    <string name="person_chip_assigned">Already assigned</string>
+</resources>
