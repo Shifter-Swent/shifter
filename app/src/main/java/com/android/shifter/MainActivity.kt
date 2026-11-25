@@ -18,6 +18,8 @@ import androidx.compose.ui.semantics.testTag
 import com.swent.shifter.model.RepositoryProviderFactory
 import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.notification.notificationTarget
+import com.swent.shifter.model.notification.notificationTargetToOpen
+import com.swent.shifter.model.notification.putNotificationTargetToOpen
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.navigation.ShifterNavHost
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -25,15 +27,16 @@ import com.swent.shifter.ui.theme.enableShifterEdgeToEdge
 
 class MainActivity : ComponentActivity() {
 
-  /** The screen of the notification tapped, until the app has opened it (#612). */
+  /**
+   * The screen of the notification tapped, until the app has opened it (#612). Saved when the
+   * activity is recreated, so a target waiting for the sign-in is not lost.
+   */
   private var notificationTarget by mutableStateOf<NotificationTarget?>(null)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableShifterEdgeToEdge()
-    // Only on a fresh start: recreated, e.g. after a rotation, the activity keeps its intent, and
-    // the target it held is already open.
-    if (savedInstanceState == null) notificationTarget = intent.notificationTarget()
+    notificationTarget = notificationTargetToOpen(intent, savedInstanceState)
     val repositories = RepositoryProviderFactory.production
     // Firebase restores the previous session synchronously, so a returning user skips sign-in.
     val isSignedIn = repositories.authRepository.currentUser() != null
@@ -53,6 +56,11 @@ class MainActivity : ComponentActivity() {
         }
       }
     }
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    outState.putNotificationTargetToOpen(notificationTarget)
   }
 
   /** A notification tapped while the app is open, which brings this activity back. */

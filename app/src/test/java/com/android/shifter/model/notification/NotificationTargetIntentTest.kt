@@ -3,6 +3,7 @@ package com.swent.shifter.model.notification
 
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import androidx.test.core.app.ApplicationProvider
 import com.swent.shifter.MainActivity
 import com.swent.shifter.model.chat.ChannelKind
@@ -109,6 +110,48 @@ class NotificationTargetIntentTest {
 
     assertNull(broken.notificationTarget())
   }
+
+  @Test
+  fun notificationTargetToOpen_onAFreshStart_isTheTapped() {
+    val target = NotificationTarget.Requests("e1", "Fest")
+
+    assertEquals(target, notificationTargetToOpen(tap(target), savedInstanceState = null))
+  }
+
+  @Test
+  fun notificationTargetToOpen_fromTheAppIcon_isNull() {
+    assertNull(notificationTargetToOpen(Intent(context, MainActivity::class.java), null))
+  }
+
+  @Test
+  fun notificationTargetToOpen_reopenedFromRecents_isNull() {
+    // Android 9 to 11 create the activity again with the intent of the tap, already opened.
+    val reopened =
+        tap(NotificationTarget.Requests("e1", "Fest"))
+            .addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+
+    assertNull(notificationTargetToOpen(reopened, savedInstanceState = null))
+  }
+
+  @Test
+  fun notificationTargetToOpen_recreatedBeforeItOpened_isTheSavedOne() {
+    // Tapped signed out, then rotated on Sign-in: the intent is not read again, the state is.
+    val waiting = NotificationTarget.MyEvents(UserMode.ORGANIZER)
+    val saved = Bundle().apply { putNotificationTargetToOpen(waiting) }
+
+    assertEquals(waiting, notificationTargetToOpen(tap(waiting), saved))
+  }
+
+  @Test
+  fun notificationTargetToOpen_recreatedOnceItOpened_isNull() {
+    // Nothing left to open is saved, and the intent's target is not opened twice.
+    val saved = Bundle().apply { putNotificationTargetToOpen(null) }
+
+    assertNull(notificationTargetToOpen(tap(NotificationTarget.Requests("e1", "Fest")), saved))
+  }
+
+  /** The intent of a tap on a notification opening [target]. */
+  private fun tap(target: NotificationTarget) = notificationTapIntent(context, notification(target))
 
   /** The JSON [notificationTapIntent] writes for [target]. */
   private fun written(target: NotificationTarget): String? =
