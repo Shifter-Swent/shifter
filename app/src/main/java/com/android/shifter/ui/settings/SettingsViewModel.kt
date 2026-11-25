@@ -286,15 +286,15 @@ class SettingsViewModel(
 
   /**
    * Follows the kinds turned off, so a change shows at once, whether made on this phone or another
-   * one, or undone by Firestore after a refusal. Nothing read after [LOAD_TIMEOUT_MILLIS] is told;
-   * a lost connection is told and tried again every [RETRY_DELAY_MILLIS], any other failure only
-   * told.
+   * one, or undone by Firestore after a refusal. Nothing read after [LOAD_TIMEOUT_MILLIS] is told.
+   * A failure, even after a first value, disables the switches: a lost connection is told and tried
+   * again every [RETRY_DELAY_MILLIS], any other failure only told.
    */
   private fun observeNotifications() {
     val uid = repository.currentUser()?.uid ?: return
     viewModelScope.launch {
       delay(LOAD_TIMEOUT_MILLIS)
-      reportNotificationsNotLoaded()
+      if (_uiState.value.disabledNotifications == null) reportNotificationsNotLoaded()
     }
     viewModelScope.launch {
       userRepository
@@ -326,11 +326,17 @@ class SettingsViewModel(
     }
   }
 
-  /** Tells the choices could not be loaded, unless they were: the last ones read stay usable. */
+  /**
+   * Tells under the section that the choices could not be loaded, and disables the switches until
+   * they are read again: no longer followed, they would not move when tapped.
+   */
   private fun reportNotificationsNotLoaded() {
     _uiState.update {
-      if (it.disabledNotifications != null) it
-      else it.copy(notificationsNotice = NotificationsNotice.LOAD_FAILED)
+      it.copy(
+          disabledNotifications = null,
+          notificationsNotice = NotificationsNotice.LOAD_FAILED,
+          notificationsNoticeKind = null,
+      )
     }
   }
 
