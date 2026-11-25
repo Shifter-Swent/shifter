@@ -49,4 +49,14 @@
     <!-- The shifts could not be read and none is known, so the grid has nothing to draw -->
     <string name="shifts_load_failed_title">The shifts could not be read</string>
     <string name="shifts_load_failed_body">Leave the screen and open it again to try once more.</string>
+    <!-- Tapping a slot volunteers chose: "Sat 10:00 stays" over "3 volunteers chose it." -->
+    <string name="shifts_kept_title">%1$s stays</string>
+    <plurals name="shifts_kept_reason">
+        <item quantity="one">%1$d volunteer chose it.</item>
+        <item quantity="other">%1$d volunteers chose it.</item>
+    </plurals>
+    <!-- The one-off messages of a failure -->
+    <string name="shifts_error_load">The shifts could not be read.</string>
+    <string name="shifts_error_save">The slot could not be saved.</string>
+    <string name="shifts_error_offline">You are offline. Open a slot once you are back online.</string>
 </resources>

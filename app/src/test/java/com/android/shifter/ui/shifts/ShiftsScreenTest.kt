@@ -1,10 +1,14 @@
 // Co-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>
 package com.swent.shifter.ui.shifts
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -35,6 +39,7 @@ class ShiftsScreenTest {
 
   private val modes = mutableListOf<ShiftsMode>()
   private val taps = mutableListOf<ShiftSlot>()
+  private var messagesShown = 0
 
   private fun show(state: ShiftsUiState, zone: ZoneId = ZONE) {
     compose.setContent {
@@ -44,6 +49,7 @@ class ShiftsScreenTest {
             onBack = {},
             onSetMode = { modes += it },
             onToggleSlot = { taps += it },
+            onMessageShown = { messagesShown++ },
             zone = zone,
         )
       }
@@ -181,14 +187,82 @@ class ShiftsScreenTest {
   }
 
   @Test
-  fun edit_aSlotOutsideTheEvent_isNotTapped() {
-    // The period reaches the grid: the event starts Saturday 08:00, so its 00-02 slot is outside
-    // it and the rules refuse it.
-    show(loaded(mode = ShiftsMode.EDIT))
+  fun edit_aSlotOutsideTheEventOrBeingSaved_isNotTapped() {
+    // The period and the slots being saved reach the grid: the event starts Saturday 08:00, so
+    // 00-02 is outside it, and 10-12 is already being written.
+    show(loaded(mode = ShiftsMode.EDIT, savingShiftIds = setOf(slotOf(sat, 10, ZONE).shiftId)))
 
     cell(sat, 0).performClick()
+    cell(sat, 10).performClick()
 
-    assertTrue("a slot outside the event must report nothing, but reported $taps", taps.isEmpty())
+    assertTrue("neither slot may be tapped, but reported $taps", taps.isEmpty())
+  }
+
+  // ------------------------------------------------------------- The messages
+
+  @Test
+  fun keptSlot_namesTheSlotAndItsVolunteers_thenIsShown() {
+    val kept = KeptSlot(slotOf(sat, 10, ZONE).startAt, 3)
+    var state by
+        mutableStateOf(loaded(shifts = listOf(shift(sat, 10, volunteers = 3)), keptSlot = kept))
+    compose.setContent {
+      ShifterTheme {
+        ShiftsContent(state, {}, { modes += it }, { taps += it }, { messagesShown++ }, ZONE)
+      }
+    }
+
+    compose.onNodeWithTag(ShiftsScreenTestTags.LOCKED_MESSAGE).assertIsDisplayed()
+    compose.onNodeWithText("Sat 10:00 stays").assertIsDisplayed()
+    compose.onNodeWithText("3 volunteers chose it.").assertIsDisplayed()
+
+    // Three quarters through its turn on screen, a change that says nothing new about the message
+    // arrives: it must not take the message off and put it back, which would show it twice.
+    compose.mainClock.autoAdvance = false
+    compose.mainClock.advanceTimeBy(SHORT_SNACKBAR_MILLIS * 3 / 4)
+    state = loaded(shifts = listOf(shift(sat, 10, volunteers = 3), shift(sat, 12)), keptSlot = kept)
+    compose.mainClock.advanceTimeByFrame()
+
+    // Once it has been read, the screen says so, so the ViewModel drops it and it never sticks.
+    compose.mainClock.advanceTimeBy(SNACKBAR_MILLIS)
+    assertEquals("the message is reported as shown once", 1, messagesShown)
+  }
+
+  @Test
+  fun messages_whenASaveFailsWhileASlotIsKept_showBothBeforeEitherIsDropped() {
+    val kept = KeptSlot(slotOf(sat, 10, ZONE).startAt, 3)
+    var state by mutableStateOf(loaded(keptSlot = kept))
+    compose.setContent {
+      ShifterTheme {
+        ShiftsContent(state, {}, { modes += it }, { taps += it }, { messagesShown++ }, ZONE)
+      }
+    }
+    compose.onNodeWithTag(ShiftsScreenTestTags.LOCKED_MESSAGE).assertIsDisplayed()
+
+    // A save fails while the kept slot is on screen: the ViewModel then holds both, and
+    // messageShown() clears both, so neither may be reported before it has been shown.
+    state = loaded(keptSlot = kept, error = ShiftsError.OFFLINE)
+    compose.waitForIdle()
+    assertEquals("a message was consumed before it showed", 0, messagesShown)
+
+    compose.onNodeWithTag(ShiftsScreenTestTags.LOCKED_MESSAGE).assertIsDisplayed()
+
+    // The kept slot is shown out, then the failure takes its place, still unreported.
+    compose.waitUntil(SNACKBAR_MILLIS) {
+      compose.onAllNodesWithText(OFFLINE).fetchSemanticsNodes().isNotEmpty()
+    }
+    assertEquals("the failure must wait its turn", 0, messagesShown)
+
+    compose.waitUntil(SNACKBAR_MILLIS) { messagesShown == 1 }
+  }
+
+  @Test
+  fun error_whenTheBackendCannotBeReached_saysSoOverTheGridItKeeps() {
+    show(loaded(shifts = listOf(shift(sat, 10)), error = ShiftsError.OFFLINE))
+
+    compose.onNodeWithTag(ShiftsScreenTestTags.MESSAGE).assertIsDisplayed()
+    compose.onNodeWithText(OFFLINE).assertIsDisplayed()
+    // The slots already read stay on screen behind the message.
+    compose.onNodeWithTag(ShiftGridTestTags.GRID).assertIsDisplayed()
   }
 
   // -------------------------------------------------------- A follow that died
@@ -245,6 +319,18 @@ class ShiftsScreenTest {
   }
 
   @Test
+  fun pendingWrite_doesNotPassForAnEventWithoutSlots() {
+    // Offline, closing the last slot empties the grid at once while the delete is still pending:
+    // leaving Edit then must not claim the event has no shift.
+    show(loaded(savingShiftIds = setOf(slotOf(sat, 10, ZONE).shiftId)))
+
+    compose.onNodeWithTag(ShiftsScreenTestTags.EMPTY).assertDoesNotExist()
+    compose.onNodeWithTag(ShiftGridTestTags.GRID).assertIsDisplayed()
+    // In View the slot being deleted has already left the grid, so the header says so instead.
+    compose.onNodeWithTag(ShiftsScreenTestTags.SAVING).assertIsDisplayed()
+  }
+
+  @Test
   fun beforeTheEventIsKnown_editIsNotOffered() {
     // Without the period no slot can be told to run during the event, so the ViewModel refuses
     // Edit and the screen does not offer it.
@@ -254,6 +340,14 @@ class ShiftsScreenTest {
   }
 
   private companion object {
+    /** Longer than a short snackbar, so the screen reports it as shown. */
+    const val SNACKBAR_MILLIS = 10_000L
+
+    /** What a short snackbar lasts: half of it is not long enough to report one as shown. */
+    const val SHORT_SNACKBAR_MILLIS = 4_000L
+
+    const val OFFLINE = "You are offline. Open a slot once you are back online."
+
     val ZONE: ZoneId = ZoneId.of("Europe/Zurich")
     val sat: LocalDate = LocalDate.parse("2026-06-20")
     val sun: LocalDate = LocalDate.parse("2026-06-21")
