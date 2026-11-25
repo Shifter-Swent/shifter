@@ -596,7 +596,7 @@ class MapScreenTest {
             markers = listOf(WATER),
             isLoading = false,
         )
-    /** An event created in the app: no venue position and no located mission. */
+    /** An event with an address alone: no venue position and no located mission. */
     val NO_CENTER = MapUiState(venue = "Place Bellecour", isLoading = false)
   }
 }
