@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -97,7 +98,51 @@ class TeamChatContentTest {
     tag(TeamChatTestTags.message("1")).assert(hasText("Hello", substring = true))
     tag(TeamChatTestTags.message("1")).assert(hasText("09:30", substring = true))
     tag(TeamChatTestTags.message("2")).assert(hasText("Unnamed member", substring = true))
-    tag(TeamChatTestTags.message("3")).assert(hasText("You", substring = true))
+    tag(TeamChatTestTags.message("3")).assert(hasText("Hi", substring = true))
+    tag(TeamChatTestTags.message("3")).assert(hasText("Liam", substring = true).not())
+  }
+
+  @Test
+  fun group_showsTheNameOnlyOnItsFirstBubble() {
+    setContent(TeamChatUiState(isLoading = false, messages = numbered(0..2)))
+
+    tag(TeamChatTestTags.message("0")).assert(hasText("Alice", substring = true))
+    tag(TeamChatTestTags.message("1")).assert(hasText("Alice", substring = true).not())
+    tag(TeamChatTestTags.message("2")).assert(hasText("Alice", substring = true).not())
+  }
+
+  @Test
+  fun group_namesTheSenderToTalkBackOnEachBubble() {
+    setContent(TeamChatUiState(isLoading = false, messages = numbered(0..2)))
+
+    // The first bubble reads its visible name, so it is not described a second time.
+    tag(TeamChatTestTags.message("0")).assert(hasContentDescription("Alice").not())
+    tag(TeamChatTestTags.message("1")).assert(hasContentDescription("Alice"))
+    tag(TeamChatTestTags.message("2")).assert(hasContentDescription("Alice"))
+  }
+
+  @Test
+  fun ownMessage_isDescribedAsYoursToTalkBack() {
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(MINE)))
+
+    tag(TeamChatTestTags.message("3")).assert(hasContentDescription("You"))
+  }
+
+  @Test
+  fun group_showsTheTimeOnlyOnItsLastBubble() {
+    setContent(TeamChatUiState(isLoading = false, messages = numbered(0..2)))
+
+    tag(TeamChatTestTags.message("0")).assert(hasText("09:30", substring = true).not())
+    tag(TeamChatTestTags.message("1")).assert(hasText("09:30", substring = true).not())
+    tag(TeamChatTestTags.message("2")).assert(hasText("09:30", substring = true))
+  }
+
+  @Test
+  fun sameName_fromAnotherMember_startsAGroup() {
+    val other = FROM_ALICE.copy(id = "5", senderId = "alice2")
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(FROM_ALICE, other)))
+
+    tag(TeamChatTestTags.message("5")).assert(hasText("Alice", substring = true))
   }
 
   @Test
@@ -298,21 +343,39 @@ class TeamChatContentTest {
     assertEquals("20 Jun 2026, 09:30", sentAtLabel(at.minusYears(1), TODAY))
   }
 
+  @Test
+  fun initialOf_takesTheFirstCodePoint() {
+    assertEquals("A", initialOf("  alice "))
+    assertEquals("\uD83D\uDE00", initialOf("\uD83D\uDE00 Smiley"))
+    assertEquals(null, initialOf(" "))
+    assertEquals(null, initialOf(null))
+  }
+
   private fun numbered(ids: IntRange) = ids.map {
-    ChatMessageItem("$it", "Message $it", "Alice", AT, isMine = false)
+    ChatMessageItem(
+        "$it",
+        "Message $it",
+        senderId = "alice",
+        senderName = "Alice",
+        AT,
+        isMine = false,
+    )
   }
 
   private companion object {
     val AT: Instant = Instant.parse("2027-06-20T09:30:00Z")
     val TODAY: LocalDate = LocalDate.of(2027, 6, 20)
-    val FROM_ALICE = ChatMessageItem("1", "Hello", "Alice", AT, isMine = false)
-    val UNNAMED = ChatMessageItem("2", "Hey", null, AT, isMine = false)
-    val MINE = ChatMessageItem("3", "Hi", "Liam", AT, isMine = true)
+    val FROM_ALICE =
+        ChatMessageItem("1", "Hello", senderId = "alice", senderName = "Alice", AT, isMine = false)
+    val UNNAMED =
+        ChatMessageItem("2", "Hey", senderId = "unnamed", senderName = null, AT, isMine = false)
+    val MINE = ChatMessageItem("3", "Hi", senderId = "liam", senderName = "Liam", AT, isMine = true)
     val ANNOUNCEMENT =
         ChatMessageItem(
             "4",
             "Gates open at 9:00",
-            "Alice",
+            senderId = "alice",
+            senderName = "Alice",
             AT,
             isMine = false,
             isAnnouncement = true,

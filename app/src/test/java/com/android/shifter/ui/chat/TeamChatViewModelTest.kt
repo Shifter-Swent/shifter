@@ -164,6 +164,17 @@ class TeamChatViewModelTest {
   }
 
   @Test
+  fun load_givesEachMessageTheIdOfItsSender() = runTest {
+    receive("1", OTHER, "Hello")
+    receive("2", ME, "Hi")
+    receive("3", NAMELESS, "Hey")
+
+    val state = viewModel().uiState.value
+
+    assertEquals(listOf(OTHER, ME, NAMELESS), state.messages.map { it.senderId })
+  }
+
+  @Test
   fun load_withAnEmptyChannel_showsNoMessages() = runTest {
     val state = viewModel().uiState.value
 

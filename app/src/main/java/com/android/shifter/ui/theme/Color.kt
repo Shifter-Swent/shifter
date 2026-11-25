@@ -47,6 +47,8 @@ val shifter_warning = Color(0xFFF5A623)
 val shifter_warningContainer = Color(0xFF2A2000)
 val shifter_inputBackground = Color(0xFF101722)
 val shifter_mutedText = Color(0xFF6B85A1)
+/** Muted text on the primary blue, such as the time of the user's own message. */
+val shifter_onPrimaryMuted = Color(0xB3D6E6FF)
 /** Text that is there but has nothing behind it, such as a day without missions. */
 val shifter_dimmedText = Color(0xFF3D4F66)
 val shifter_tabInactive = Color(0xFF4A5E78)
