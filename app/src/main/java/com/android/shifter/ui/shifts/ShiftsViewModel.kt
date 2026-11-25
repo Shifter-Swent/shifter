@@ -11,7 +11,6 @@ import com.swent.shifter.model.shift.Shift
 import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
 import com.swent.shifter.model.shift.slotOf
-import com.swent.shifter.ui.components.days.eventDays
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -84,9 +83,8 @@ data class ShiftsUiState(
  * on their own phone shows here on its own, and a slot that cannot be closed because someone just
  * chose it already lists them, with nothing to reload.
  *
- * The days are the event's, as [eventDays] gives them. A slot counts under the day whose column it
- * is drawn in, the calendar day [slotOf] built it from, so the hours reported for a day are the
- * ones the grid shows under it.
+ * The days are calendar days, the ones the grid draws its columns of, so an event running past
+ * midnight gets a column for the night it ends on.
  *
  * @param zone the zone the slots are read in, the phone's, which the event's days already use.
  */
@@ -191,7 +189,7 @@ class ShiftsViewModel(
     // rows of 00:00 and 02:00 under the day before and disagree with their own column.
     val byDay = shifts.groupBy { it.startAt.atZone(zone).toLocalDate() }
     return copy(
-        days = eventDays(period, byDay.keys, zone),
+        days = calendarDays(byDay.keys),
         // From each slot's start and end, never from the 2 h of the clock: on a night the clocks
         // change a slot lasts 1 h or 3 h.
         openHoursByDay =
@@ -199,6 +197,20 @@ class ShiftsViewModel(
               ofTheDay.sumOf { Duration.between(it.startAt, it.endAt).toHours() }
             },
     )
+  }
+
+  /**
+   * The columns of the grid: every calendar day from the first to the last that the event or an
+   * open slot falls on. Calendar days, not the event days of `eventDays`, whose boundary is 04:00,
+   * since the grid draws the rows of 00:00 and 02:00 in the column of their own date. The end is
+   * when the event is over, so one ending at midnight sharp ends with the day before.
+   */
+  private fun calendarDays(slotDays: Set<LocalDate>): List<LocalDate> {
+    val ends = period?.let { listOf(it.start, it.endInclusive.minusNanos(1)) }.orEmpty()
+    val dates = slotDays + ends.map { it.atZone(zone).toLocalDate() }
+    val first = dates.minOrNull() ?: return emptyList()
+    val last = dates.max()
+    return generateSequence(first) { it.plusDays(1) }.takeWhile { it <= last }.toList()
   }
 
   private fun shiftOf(shiftId: String): Shift? =

@@ -71,6 +71,16 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
   }
 
+  /**
+   * The days a ViewModel over [event] draws, with [seeded] open. Seeded slots stay for the next
+   * call, so a test seeds on its last one.
+   */
+  private fun TestScope.daysOf(event: Event, seeded: List<Shift> = emptyList()): List<LocalDate> {
+    events.events.clear()
+    start(seeded = seeded, event = event)
+    return state.days.also { viewModel.viewModelScope.cancel() }
+  }
+
   private fun TestScope.edit() {
     viewModel.setMode(ShiftsMode.EDIT)
     advanceUntilIdle()
@@ -88,15 +98,23 @@ class ShiftsViewModelTest {
     )
   }
 
-  private fun eventFrom(first: LocalDate, last: LocalDate) =
+  /**
+   * An event running from [first] at [firstHour] to [last] at [lastHour], on the clock of [ZONE].
+   */
+  private fun eventFrom(
+      first: LocalDate,
+      last: LocalDate,
+      firstHour: Int = 8,
+      lastHour: Int = 22,
+  ) =
       Event(
           id = EVENT_ID,
           organizerId = "organizer-1",
           title = "Summer Festival",
           description = "Three days by the lake",
           type = EventType.MUSIC,
-          startAt = slotOf(first, 8, ZONE).startAt,
-          endAt = slotOf(last, 22, ZONE).startAt,
+          startAt = slotOf(first, firstHour, ZONE).startAt,
+          endAt = slotOf(last, lastHour, ZONE).startAt,
           location = EventLocation(address = "Lakeside Park"),
           createdAt = Instant.EPOCH,
       )
@@ -153,6 +171,25 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
 
     assertEquals(2, state.shifts.single().volunteerIds.size)
+  }
+
+  // --------------------------------------------------------------------- Days
+
+  @Test
+  fun days_ofAnEventRunningPastMidnight_areItsCalendarDays() = runTest {
+    // Event days start at 04:00, calendar days do not: an event from Sat 18:00 to Sun 02:00 has
+    // both ends on Saturday's event day, so its Sunday 00-02 slot would get no column to be
+    // opened in, and one starting Sun 02:00 would get a Saturday of twelve slots outside it.
+    assertEquals("ends after midnight", listOf(sat, sun), daysOf(eventFrom(sat, sun, 18, 2)))
+    assertEquals("starts after midnight", listOf(sun), daysOf(eventFrom(sun, sun, 2, 22)))
+    // The end is when the event is over, so nothing of it runs on the Sunday.
+    assertEquals("ends at midnight", listOf(sat), daysOf(eventFrom(sat, sun, 18, 0)))
+    // A slot open after midnight makes its own date a column, even past the event's last day.
+    assertEquals(
+        "a slot after midnight",
+        listOf(sat, sun),
+        daysOf(eventFrom(sat, sat, 18, 22), seeded = listOf(shift(sun, 0))),
+    )
   }
 
   // ------------------------------------------------------------------- Modes
@@ -270,16 +307,6 @@ class ShiftsViewModelTest {
 
     assertEquals(mapOf(sat to 6L, sun to 2L), state.openHoursByDay)
     assertEquals(8L, state.openHours)
-  }
-
-  @Test
-  fun openHours_ofTheSlotsAfterMidnight_countUnderTheirOwnDay() = runTest {
-    // The grid draws 00:00 and 02:00 in the column of their own date, so their hours count there,
-    // not under the evening before as an event day, which starts at 04:00, would have them.
-    start(seeded = listOf(shift(sat, 0), shift(sat, 2), shift(sat, 10)))
-
-    assertEquals(mapOf(sat to 6L), state.openHoursByDay)
-    assertEquals(6L, state.openHours)
   }
 
   @Test
