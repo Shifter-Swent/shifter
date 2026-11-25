@@ -10,6 +10,7 @@ import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.shift.Shift
 import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
+import com.swent.shifter.model.shift.overlaps
 import com.swent.shifter.model.shift.slotOf
 import java.time.Duration
 import java.time.Instant
@@ -49,6 +50,9 @@ data class KeptSlot(val startAt: Instant, val volunteers: Int)
  * State of the organizer's Shifts screen.
  *
  * @property isLoading whether the first read of the shifts is still running.
+ * @property period when the event runs, its end excluded, or null while unknown: the screen greys
+ *   out the slots of [days] that `ShiftSlot.overlaps(start, endInclusive)` refuses, as do the
+ *   rules.
  * @property days the days of the event, the columns of the grid, in order.
  * @property shifts the slots that are open, sorted by start, each with the volunteers who chose it.
  * @property openHoursByDay the hours the open slots add up to, by the day of [days] they are drawn
@@ -60,6 +64,7 @@ data class KeptSlot(val startAt: Instant, val volunteers: Int)
 data class ShiftsUiState(
     val isLoading: Boolean = true,
     val mode: ShiftsMode = ShiftsMode.VIEW,
+    val period: ClosedRange<Instant>? = null,
     val days: List<LocalDate> = emptyList(),
     val shifts: List<Shift> = emptyList(),
     val openHoursByDay: Map<LocalDate, Long> = emptyMap(),
@@ -98,9 +103,6 @@ class ShiftsViewModel(
   private val _uiState = MutableStateFlow(ShiftsUiState())
   val uiState: StateFlow<ShiftsUiState> = _uiState.asStateFlow()
 
-  /** When the event runs, which widens the days past the slots already open. Null until read. */
-  private var period: ClosedRange<Instant>? = null
-
   /** The slots whose open or close is running, so a second tap on one does nothing. */
   private val saving = mutableSetOf<String>()
 
@@ -113,15 +115,20 @@ class ShiftsViewModel(
 
   /**
    * Opens the slot of [day] at [hour] when it is closed, closes it when it is open, saved at once.
-   * Does nothing outside [ShiftsMode.EDIT], nor while that slot is already being saved.
+   * Does nothing outside [ShiftsMode.EDIT], while that slot is already being saved, nor for a slot
+   * the event does not run through, which the rules refuse.
    *
    * A slot volunteers chose is never closed: it stays and [ShiftsUiState.keptSlot] names it,
    * whether this ViewModel already knew them or the backend refuses the close because someone chose
    * it in between.
    */
   fun toggleSlot(day: LocalDate, hour: Int) {
-    if (_uiState.value.mode != ShiftsMode.EDIT) return
+    val state = _uiState.value
+    if (state.mode != ShiftsMode.EDIT) return
     val slot = slotOf(day, hour, zone)
+    // Before the slot is read: an invalid tap must not name volunteers it will not act on.
+    val period = state.period ?: return
+    if (!slot.overlaps(period.start, period.endInclusive)) return
     val open = shiftOf(slot.shiftId)
     if (open != null && open.volunteerIds.isNotEmpty()) {
       keep(open)
@@ -160,8 +167,8 @@ class ShiftsViewModel(
   /** Reads when the event runs, then widens the days to it. Its failure leaves the grid alone. */
   private suspend fun loadPeriod() {
     try {
-      period = eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
-      _uiState.update { it.withDaysAndHours() }
+      val period = eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
+      _uiState.update { it.copy(period = period).withDaysAndHours() }
     } catch (e: CancellationException) {
       throw e
     } catch (_: Exception) {
@@ -205,7 +212,7 @@ class ShiftsViewModel(
    * since the grid draws the rows of 00:00 and 02:00 in the column of their own date. The end is
    * when the event is over, so one ending at midnight sharp ends with the day before.
    */
-  private fun calendarDays(slotDays: Set<LocalDate>): List<LocalDate> {
+  private fun ShiftsUiState.calendarDays(slotDays: Set<LocalDate>): List<LocalDate> {
     val ends = period?.let { listOf(it.start, it.endInclusive.minusNanos(1)) }.orEmpty()
     val dates = slotDays + ends.map { it.atZone(zone).toLocalDate() }
     val first = dates.minOrNull() ?: return emptyList()

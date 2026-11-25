@@ -14,6 +14,7 @@ import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
 import com.swent.shifter.model.shift.ShiftSlot
 import com.swent.shifter.model.shift.slotOf
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -150,6 +151,7 @@ class ShiftsViewModelTest {
     assertTrue(state.isEmpty)
     assertEquals(0L, state.openHours)
     assertEquals(ShiftsMode.VIEW, state.mode)
+    assertEquals(slotOf(fri, 8, ZONE).startAt..slotOf(sun, 22, ZONE).startAt, state.period)
   }
 
   @Test
@@ -294,6 +296,52 @@ class ShiftsViewModelTest {
 
     assertEquals(1, counting.opens)
     assertEquals(listOf(shift(sat, 10)), state.shifts)
+  }
+
+  // --------------------------------------------------- Slots outside the event
+
+  @Test
+  fun toggleSlot_atTheEdgesOfTheEvent_opensOnlyTheSlotsItRunsThrough() = runTest {
+    // Friday 08:00 to Sunday 22:00: 00-02 is well before it, 06-08 ends as it starts and Sunday's
+    // 22-00 starts as it ends, so the rules refuse all three (#593) and the taps are dropped
+    // before any call rather than coming back as a failed save. 08-10 and 20-22 do run in it.
+    start()
+    edit()
+
+    listOf(fri to 0, fri to 6, fri to 8, sun to 20, sun to 22).forEach { (day, hour) ->
+      viewModel.toggleSlot(day, hour)
+    }
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(fri, 8), shift(sun, 20)), shifts.shifts.sortedBy { it.startAt })
+    assertNull(state.error)
+  }
+
+  @Test
+  fun toggleSlot_onASlotTheEventOnlyRunsPartOf_opensIt() = runTest {
+    // The event stops at 01:00, halfway through the 00-02 slot, which it still runs through.
+    val event = eventFrom(sat, sun, firstHour = 18, lastHour = 0)
+    start(event = event.copy(endAt = event.endAt.plus(Duration.ofHours(1))))
+    edit()
+
+    viewModel.toggleSlot(sun, 0)
+    viewModel.toggleSlot(sun, 2)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sun, 0)), shifts.shifts)
+  }
+
+  @Test
+  fun toggleSlot_beforeTheEventIsKnown_writesNothing() = runTest {
+    // Without the event, a slot cannot be told to run during it, so nothing is written.
+    start(seeded = listOf(shift(sat, 10)), event = null)
+    edit()
+
+    viewModel.toggleSlot(sat, 12)
+    advanceUntilIdle()
+
+    assertEquals(listOf(shift(sat, 10)), shifts.shifts)
+    assertNull(state.error)
   }
 
   // ------------------------------------------------------------- Hours open
