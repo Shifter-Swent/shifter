@@ -16,7 +16,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
-/** The preferences file remembering that the notification permission was asked, for the phone. */
+/**
+ * The preferences file remembering that the notification permission was asked, for the phone.
+ *
+ * Internal rather than private, with [NOTIFICATION_PERMISSION_ASKED], because tests really need
+ * direct access: the record outlives the activity and the test, so they clear or set it before
+ * launching MainActivity, and read it to see whether the question was asked, which no public API
+ * tells.
+ */
 internal const val NOTIFICATION_PERMISSION_PREFERENCES = "notification_permission"
 
 /** Its key: true once the permission was asked. */
