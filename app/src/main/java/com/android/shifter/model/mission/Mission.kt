@@ -132,7 +132,7 @@ internal fun requireRoomInMission(volunteersNeeded: Int, assigneeCount: Int) {
  * transaction; this keeps that wait bounded, while leaving room for a whole event's proposed
  * schedule.
  */
-private const val MAX_MISSIONS_PER_ADDITION = 100
+const val MAX_MISSIONS_PER_ADDITION = 100
 
 /**
  * Checks the input of [MissionRepository.addAssignees] that needs no stored data, with an

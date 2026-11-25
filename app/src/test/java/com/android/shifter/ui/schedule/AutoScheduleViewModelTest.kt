@@ -15,6 +15,7 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.FakeMissionRepository
+import com.swent.shifter.model.mission.MAX_MISSIONS_PER_ADDITION
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
@@ -253,15 +254,34 @@ class AutoScheduleViewModelTest {
   }
 
   @Test
-  fun accept_aboveTheLimit_isTooLarge() = runTest {
+  fun accept_whenAVolunteerWasAssignedMeanwhile_isOutdated() = runTest {
     festival()
     open()
 
-    missions.failure = IllegalArgumentException("More than 100 missions")
+    // Ben, proposed for "Bar" at 10:00, was put by hand on "Gate", at the same time.
+    missions.updateAssignees(eventId, "mission-2", listOf("ben"))
+    viewModel.accept()
+
+    assertEquals(ScheduleSaveError.OUTDATED, state.saveError)
+    assertFalse(state.isSaving)
+    assertEquals(listOf("ana"), missions.getMission(eventId, "mission-1")?.assigneeIds)
+  }
+
+  @Test
+  fun accept_aboveTheLimit_isTooLarge() = runTest {
+    val crew = (0..MAX_MISSIONS_PER_ADDITION).map { "volunteer-$it" }
+    teams.teams += team("crew", "Crew", memberIds = crew)
+    crew.forEach { userId ->
+      addMission("Crew", "crew", hour = 2)
+      accepted(userId)
+    }
+    open()
+
     viewModel.accept()
 
     assertEquals(ScheduleSaveError.TOO_LARGE, state.saveError)
     assertFalse(state.canAccept)
+    assertTrue(missions.getMissionsByEvent(eventId).all { it.assigneeIds.isEmpty() })
   }
 
   @Test

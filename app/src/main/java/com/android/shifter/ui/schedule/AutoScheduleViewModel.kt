@@ -8,12 +8,13 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.membership.MembershipRequestRepository
-import com.swent.shifter.model.mission.AssigneesAboveVolunteersException
+import com.swent.shifter.model.mission.MAX_MISSIONS_PER_ADDITION
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionCompletedException
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.mission.isCompleted
+import com.swent.shifter.model.schedule.ScheduleCandidate
 import com.swent.shifter.model.schedule.ScheduleProposal
 import com.swent.shifter.model.schedule.proposeSchedule
 import com.swent.shifter.model.schedule.scheduleCandidates
@@ -54,6 +55,9 @@ class AutoScheduleViewModel(
   // only by a load that succeeds, so a failed one never leaves a proposal nobody sees.
   private var proposed: Map<String, List<String>> = emptyMap()
 
+  // The volunteers that proposal was made for, so Accept can check it against fresh missions.
+  private var candidates: List<ScheduleCandidate> = emptyList()
+
   // The load running, cancelled by the next one so an older answer never overwrites a newer one.
   private var loadJob: Job? = null
 
@@ -74,22 +78,27 @@ class AutoScheduleViewModel(
    * Saves the people the proposal adds, for every day at once, then prepares it again, so they show
    * as already assigned. Ignored unless [AutoScheduleUiState.canAccept].
    *
-   * A mission of the proposal that started while the screen was open fails it as
-   * [ScheduleSaveError.OUTDATED] without saving anything: nobody is proposed for a mission already
-   * running.
+   * More missions than one write takes fail it as [ScheduleSaveError.TOO_LARGE]. Before saving, it
+   * reads the missions again and runs [proposeSchedule] for the same volunteers: if the missions
+   * changed the proposal meanwhile, e.g. a mission started or one of its people was assigned to
+   * another at the same time, it fails as [ScheduleSaveError.OUTDATED] without saving anything, so
+   * nobody is booked twice.
    */
   fun accept() {
-    val state = _uiState.value
-    if (!state.canAccept) return
+    if (!_uiState.value.canAccept) return
     val additions = proposed
-    val at = now()
-    if (state.missions.any { it.proposed.isNotEmpty() && at >= it.startAt }) {
-      _uiState.update { it.copy(saveError = ScheduleSaveError.OUTDATED) }
+    if (additions.count { it.value.isNotEmpty() } > MAX_MISSIONS_PER_ADDITION) {
+      _uiState.update { it.copy(saveError = ScheduleSaveError.TOO_LARGE) }
       return
     }
     _uiState.update { it.copy(isSaving = true, saveError = null) }
     viewModelScope.launch {
       try {
+        val missions = missionRepository.getMissionsByEvent(eventId)
+        if (proposeSchedule(missions, candidates, now()).proposed != additions) {
+          _uiState.update { it.copy(isSaving = false, saveError = ScheduleSaveError.OUTDATED) }
+          return@launch
+        }
         missionRepository.addAssignees(eventId, additions)
         _uiState.update { it.copy(isSaving = false, saved = true) }
         load()
@@ -118,7 +127,8 @@ class AutoScheduleViewModel(
         val missions = missionRepository.getMissionsByEvent(eventId)
         val teams = teamRepository.getTeamsByEvent(eventId)
         val requests = membershipRequestRepository.getMembershipRequestsByEId(eventId)
-        val proposal = proposeSchedule(missions, scheduleCandidates(requests, teams), now)
+        val volunteers = scheduleCandidates(requests, teams)
+        val proposal = proposeSchedule(missions, volunteers, now)
         val shown =
             missions
                 .filterNot { isCompleted(it.completed, it.endAt, now) }
@@ -126,6 +136,7 @@ class AutoScheduleViewModel(
         val names = readNames(shown.flatMap { it.assigneeIds + proposal.proposed[it.id].orEmpty() })
         val teamNames = teams.associate { it.id to it.name }
         proposed = proposal.proposed
+        candidates = volunteers
         _uiState.update { state ->
           state.copy(
               isLoading = false,
@@ -194,18 +205,16 @@ class AutoScheduleViewModel(
 }
 
 /**
- * Why saving the proposal failed, as `MissionRepository.addAssignees` reports it. A mission filled,
- * completed or deleted meanwhile makes it outdated, and too many missions make it too large;
- * anything else may work on a second try, including a refused write, which the contract has no
- * better value for.
+ * Why saving the proposal failed, as `MissionRepository.addAssignees` reports it. A refused input,
+ * such as a mission filled meanwhile, or a mission completed or deleted makes it outdated, so a new
+ * proposal is made; anything else may work on a second try, including a refused write, which the
+ * contract has no better value for.
  */
 private fun saveErrorOf(e: Exception): ScheduleSaveError =
     when (e) {
-      // Before IllegalArgumentException, which AssigneesAboveVolunteersException extends.
-      is AssigneesAboveVolunteersException,
+      is IllegalArgumentException,
       is MissionCompletedException,
       is MissionRepositoryException.NotFound -> ScheduleSaveError.OUTDATED
-      is IllegalArgumentException -> ScheduleSaveError.TOO_LARGE
       else -> ScheduleSaveError.RETRY
     }
 
