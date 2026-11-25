@@ -46,8 +46,6 @@ sealed interface App {
 
 sealed interface Destination {
   val title: String
-  val tab: Tab?
-    get() = null
 }
 
 sealed interface Tab {
@@ -240,16 +238,12 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object Overview : VolunteerEventScreen {
     override val title = "Overview"
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   /** Mission creation form of a manager, opened on top of the event's Overview. */
   @Serializable
   data object AddMission : VolunteerEventScreen {
     override val title = "Add mission"
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   /** The same form editing [missionId], a mission of a team the manager leads. */
@@ -257,23 +251,16 @@ sealed interface VolunteerEventScreen : Destination {
   data class EditMission(val missionId: String) : VolunteerEventScreen {
     override val title
       get() = "Edit mission"
-
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   @Serializable
   data object Map : VolunteerEventScreen {
     override val title = "Map"
-    override val tab
-      get() = VolunteerTabs.Map
   }
 
   @Serializable
   data object Chat : VolunteerEventScreen {
     override val title = "Chat"
-    override val tab
-      get() = VolunteerTabs.Chat
   }
 
   /** A chat channel, opened from the Chat tab. */
@@ -282,10 +269,7 @@ sealed interface VolunteerEventScreen : Destination {
       override val kind: ChannelKind,
       override val teamId: String?,
       override val name: String?,
-  ) : VolunteerEventScreen, ChannelScreen {
-    override val tab
-      get() = VolunteerTabs.Chat
-  }
+  ) : VolunteerEventScreen, ChannelScreen
 }
 
 // ── Organizer ───────────────────────────────────────────────────────────────
@@ -411,16 +395,12 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object Overview : OrganizerEventScreen {
     override val title = "Overview"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Mission creation form, opened on top of the event's Overview. */
   @Serializable
   data object AddMission : OrganizerEventScreen {
     override val title = "Add mission"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Edit form of the mission [missionId], opened on top of the event's Overview. */
@@ -428,46 +408,33 @@ sealed interface OrganizerEventScreen : Destination {
   data class EditMission(val missionId: String) : OrganizerEventScreen {
     override val title
       get() = "Edit mission"
-
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Teams of an event that already exists, opened on top of its Overview. */
   @Serializable
   data object ManageTeams : OrganizerEventScreen {
     override val title = "Manage teams"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   @Serializable
   data object People : OrganizerEventScreen {
     override val title = "People"
-    override val tab
-      get() = OrganizerTabs.People
   }
 
   @Serializable
   data object Map : OrganizerEventScreen {
     override val title = "Map"
-    override val tab
-      get() = OrganizerTabs.Map
   }
 
   @Serializable
   data object Chat : OrganizerEventScreen {
     override val title = "Chat"
-    override val tab
-      get() = OrganizerTabs.Chat
   }
 
   /** The event's join code and its QR code, to share with volunteers. */
   @Serializable
   data object Sharing : OrganizerEventScreen {
     override val title = "Share"
-    override val tab
-      get() = OrganizerTabs.Sharing
   }
 
   /** A chat channel, opened from the Chat tab. */
@@ -476,10 +443,7 @@ sealed interface OrganizerEventScreen : Destination {
       override val kind: ChannelKind,
       override val teamId: String?,
       override val name: String?,
-  ) : OrganizerEventScreen, ChannelScreen {
-    override val tab
-      get() = OrganizerTabs.Chat
-  }
+  ) : OrganizerEventScreen, ChannelScreen
 }
 
 /**
