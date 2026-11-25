@@ -620,6 +620,25 @@ class SettingsViewModelTest {
   }
 
   @Test
+  fun setNotificationEnabled_whenAnEarlierChangeIsRefused_saysNothing() {
+    // Turned off then on again offline: once online, the off is refused and the on saved.
+    val off = CompletableDeferred<Unit>()
+    val on = CompletableDeferred<Unit>()
+    users.notificationWriteAnswers += listOf(off, on)
+    idle(viewModel)
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, false)
+    viewModel.setNotificationEnabled(NotificationKind.ANNOUNCEMENT, true)
+    idle()
+
+    off.completeExceptionally(UserRepositoryException.PermissionDenied())
+    on.complete(Unit)
+    idle()
+
+    assertEquals(emptySet<NotificationKind>(), viewModel.uiState.value.disabledNotifications)
+    assertNull(viewModel.uiState.value.notificationsNotice)
+  }
+
+  @Test
   fun setNotificationEnabled_beforeTheChoicesAreRead_doesNothing() {
     users.observeNotificationsFailure = UserRepositoryException.Unavailable()
     idle(viewModel)

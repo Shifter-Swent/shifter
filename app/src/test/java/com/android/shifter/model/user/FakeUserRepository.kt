@@ -102,8 +102,15 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
       disabledNotificationFlows.getOrPut(uid) { MutableStateFlow(emptySet()) }
 
   /**
+   * The server's answers to the next [setNotificationEnabled] calls, one per write and in order,
+   * taken before [unconfirmedWrite].
+   */
+  val notificationWriteAnswers = ArrayDeque<CompletableDeferred<Unit>>()
+
+  /**
    * Like the rules, refuses a uid with no profile. Like Firestore, applies the change on the device
-   * at once, and undoes it when [unconfirmedWrite] says the server refused it.
+   * at once, and undoes it when its answer, from [notificationWriteAnswers] or [unconfirmedWrite],
+   * says the server refused it.
    */
   override suspend fun setNotificationEnabled(
       uid: String,
@@ -112,11 +119,12 @@ class FakeUserRepository(initialUsers: List<User> = emptyList()) : UserRepositor
   ) {
     failure?.let { throw it }
     if (uid !in users) throw UserRepositoryException.PermissionDenied()
+    val answer = notificationWriteAnswers.removeFirstOrNull() ?: unconfirmedWrite
     val choices = disabledNotificationsFlow(uid)
     val wasDisabled = kind in choices.value
     choices.update { if (enabled) it - kind else it + kind }
     try {
-      unconfirmedWrite?.await()
+      answer?.await()
     } catch (e: UserRepositoryException) {
       choices.update { if (wasDisabled) it + kind else it - kind }
       throw e
