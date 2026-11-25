@@ -658,7 +658,9 @@ private fun ShifterNavGraph(
             val event = eventRoute<OrganizerEvent>(navController, entry)
             val eventId = event.eventId
             // Asked by a notification of new requests. Read once: the tab picked is then saved by
-            // the screen, so coming back to People later shows the tab left.
+            // the screen, so coming back to People later shows the tab left. Read in composition,
+            // as openTarget always enters the app afresh: People is then a new entry, never one
+            // already shown.
             val initialTab =
                 remember(entry) {
                   val handle = navController.getBackStackEntry<OrganizerEvent>().savedStateHandle
