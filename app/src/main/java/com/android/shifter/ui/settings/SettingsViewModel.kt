@@ -299,7 +299,7 @@ class SettingsViewModel(
     viewModelScope.launch {
       userRepository
           .observeDisabledNotifications(uid)
-          .retryWhen { cause, _ ->
+          .retryWhen { cause, _ -> // NOSONAR: only SharedFlow.retryWhen is deprecated (S1874)
             val retry = cause is UserRepositoryException.Unavailable
             if (retry) {
               reportNotificationsNotLoaded()
