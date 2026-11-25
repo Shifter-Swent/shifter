@@ -34,14 +34,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.model.time.formatDay
 import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.theme.md_theme_dark_surface
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_onPrimaryMuted
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZonedDateTime
 
 private val AVATAR = 28.dp
 
@@ -50,7 +47,7 @@ private val AVATAR = 28.dp
  * and avatar in their own tint, and an announcement apart, in amber.
  */
 @Composable
-internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
+internal fun MessageRow(row: ChatRow.Message, zone: ZoneId) {
   val message = row.message
   // Read where no name is shown, so TalkBack still says who wrote it: "You", or the sender on the
   // later bubbles of a group. The first bubble of a group already reads its visible name.
@@ -66,13 +63,12 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
           .testTag(TeamChatTestTags.message(message.id))
   val top = if (row.startsGroup) 10.dp else 3.dp
   when {
-    message.isAnnouncement -> AnnouncementCard(message, zone, today, Modifier.padding(top = top))
+    message.isAnnouncement -> AnnouncementCard(message, zone, Modifier.padding(top = top))
     message.isMine ->
         Box(modifier = Modifier.padding(top = top).fillMaxWidth()) {
           ChatMessageBubble(
               message,
               zone,
-              today,
               showsTime = row.endsGroup,
               background = MaterialTheme.colorScheme.primary,
               textColor = MaterialTheme.colorScheme.onPrimary,
@@ -104,7 +100,6 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
           ChatMessageBubble(
               message,
               zone,
-              today,
               showsTime = row.endsGroup,
               background = MaterialTheme.colorScheme.surfaceVariant,
               textColor = MaterialTheme.colorScheme.onSurface,
@@ -156,7 +151,6 @@ internal fun initialOf(name: String?): String? {
 private fun ChatMessageBubble(
     message: ChatMessageItem,
     zone: ZoneId,
-    today: LocalDate,
     showsTime: Boolean,
     background: Color,
     textColor: Color,
@@ -176,16 +170,18 @@ private fun ChatMessageBubble(
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.align(Alignment.Start),
     )
-    if (message.isPending || showsTime) MessageStatus(message, zone, today, statusColor)
+    if (message.isPending || showsTime) MessageStatus(message, zone, statusColor)
   }
 }
 
-/** The time of [message], or a clock and "Sending…" while it is being sent. */
+/**
+ * The time of [message], or a clock and "Sending…" while it is being sent. Its day is the chip
+ * above it.
+ */
 @Composable
 internal fun MessageStatus(
     message: ChatMessageItem,
     zone: ZoneId,
-    today: LocalDate,
     color: Color,
     modifier: Modifier = Modifier,
 ) {
@@ -210,7 +206,7 @@ internal fun MessageStatus(
         }
     message.sentAt != null ->
         Text(
-            sentAtLabel(message.sentAt.atZone(zone), today),
+            message.sentAt.atZone(zone).toLocalTime().formatTime(),
             color = color,
             style = statusStyle(),
             modifier = modifier.padding(top = 2.dp),
@@ -226,13 +222,3 @@ private fun statusStyle(): TextStyle =
         lineHeight = 13.sp,
         letterSpacing = 0.sp,
     )
-
-/**
- * The time of a message sent [today], or its day and time otherwise: the channel stays open after
- * the event, which can last several days, so an old instruction must not read as a current one.
- */
-internal fun sentAtLabel(sentAt: ZonedDateTime, today: LocalDate): String {
-  val time = sentAt.toLocalTime().formatTime()
-  val day = sentAt.toLocalDate()
-  return if (day == today) time else "${day.formatDay(withYear = day.year != today.year)}, $time"
-}

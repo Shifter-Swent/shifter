@@ -30,7 +30,6 @@ import com.swent.shifter.ui.theme.shifter_announcementBorder
 import com.swent.shifter.ui.theme.shifter_announcementContainer
 import com.swent.shifter.ui.theme.shifter_announcementMuted
 import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
-import java.time.LocalDate
 import java.time.ZoneId
 
 private val CardShape = RoundedCornerShape(18.dp)
@@ -50,7 +49,6 @@ private val OWN_CARD_INSET = 48.dp
 internal fun AnnouncementCard(
     message: ChatMessageItem,
     zone: ZoneId,
-    today: LocalDate,
     modifier: Modifier = Modifier,
 ) {
   val shape = if (message.isMine) OwnCardShape else CardShape
@@ -79,7 +77,6 @@ internal fun AnnouncementCard(
     MessageStatus(
         message,
         zone,
-        today,
         color = shifter_announcementMuted,
         modifier = Modifier.align(Alignment.End),
     )

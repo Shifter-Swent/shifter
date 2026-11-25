@@ -107,6 +107,33 @@ class TeamChatContentTest {
   }
 
   @Test
+  fun messagesOfSeveralDays_areSplitByTheirDayChips() {
+    val older = FROM_ALICE.copy(id = "0", sentAt = AT.minusSeconds(3 * 86_400))
+    val yesterday = FROM_ALICE.copy(id = "5", sentAt = AT.minusSeconds(86_400))
+    val lastYear = FROM_ALICE.copy(id = "6", sentAt = AT.minusSeconds(400 * 86_400))
+    setContent(
+        TeamChatUiState(
+            isLoading = false,
+            messages = listOf(lastYear, older, yesterday, FROM_ALICE),
+        )
+    )
+
+    tag(TeamChatTestTags.day(TODAY)).assert(hasText("Today"))
+    tag(TeamChatTestTags.day(TODAY.minusDays(1))).assert(hasText("Yesterday"))
+    tag(TeamChatTestTags.day(TODAY.minusDays(3))).assert(hasText("17 Jun"))
+    tag(TeamChatTestTags.day(TODAY.minusDays(400))).assert(hasText("16 May 2026"))
+  }
+
+  @Test
+  fun messageOfAnotherDay_showsOnlyItsTime() {
+    val yesterday = FROM_ALICE.copy(sentAt = AT.minusSeconds(86_400))
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(yesterday)))
+
+    tag(TeamChatTestTags.message("1")).assert(hasText("09:30"))
+    tag(TeamChatTestTags.message("1")).assert(hasText("Jun", substring = true).not())
+  }
+
+  @Test
   fun group_showsTheNameOnlyOnItsFirstBubble() {
     setContent(TeamChatUiState(isLoading = false, messages = numbered(0..2)))
 
@@ -376,15 +403,6 @@ class TeamChatContentTest {
     tag(TeamChatTestTags.ANNOUNCEMENT_REFUSED).assertIsDisplayed()
     tag(TeamChatTestTags.SEND_FAILED).assertDoesNotExist()
     tag(TeamChatTestTags.INPUT).assert(hasText("Gates open at 9:00"))
-  }
-
-  @Test
-  fun sentAtLabel_showsTheDayOnlyForAnotherDay() {
-    val at = AT.atZone(ZoneOffset.UTC)
-
-    assertEquals("09:30", sentAtLabel(at, TODAY))
-    assertEquals("19 Jun, 09:30", sentAtLabel(at.minusDays(1), TODAY))
-    assertEquals("20 Jun 2026, 09:30", sentAtLabel(at.minusYears(1), TODAY))
   }
 
   @Test
