@@ -59,8 +59,8 @@ sealed interface NotificationTarget {
 
   /**
    * The volunteer's Planning of the event, on [day]: the event day of the mission's start,
-   * `startAt.eventDay(zone)` (`ui/components/days/GroupByDay.kt`), not its calendar date, since the
-   * Planning lists a day from 04:00 to 04:00 (#558) and a mission at 02:00 is under the day before.
+   * `startAt.eventDay(zone)` (`model/time/EventDay.kt`), not its calendar date, since the Planning
+   * lists a day from 04:00 to 04:00 (#558) and a mission at 02:00 is under the day before.
    *
    * Written by `LocalDate.toString()`, such as `2026-11-27`: a target that is not a date is refused
    * when built, and when read back from an intent, rather than failing on the tap.

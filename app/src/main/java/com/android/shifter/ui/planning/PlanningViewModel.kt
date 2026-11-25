@@ -13,8 +13,8 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionRepository
 import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.time.MinuteClock
-import com.swent.shifter.ui.components.days.eventDay
-import com.swent.shifter.ui.components.days.runsOnEventDay
+import com.swent.shifter.model.time.eventDay
+import com.swent.shifter.model.time.runsOnEventDay
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.components.nowcard.nowStates
 import java.time.Instant

@@ -81,7 +81,7 @@ internal constructor(
  * The day shown among [days], kept through a rotation.
  *
  * @param days the days that can be shown, in order, e.g. from [eventDays].
- * @param today the event day it is now, see [eventDay].
+ * @param today the event day it is now, see [com.swent.shifter.model.time.eventDay].
  */
 @Composable
 fun rememberDaySelection(days: List<LocalDate>, today: LocalDate): DaySelection {

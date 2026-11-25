@@ -122,7 +122,7 @@ object PlanningTestTags {
  * @param missions the missions to show, in any order.
  * @param eventPeriod when the event starts and ends, or null when unknown: the strip then runs from
  *   the first to the last day with missions.
- * @param today the event day it is now, see [com.swent.shifter.ui.components.days.eventDay].
+ * @param today the event day it is now, see [com.swent.shifter.model.time.eventDay].
  * @param zone the time zone the days and hours are counted in, replaceable in tests.
  * @param expandedMissionId the mission whose row shows its description, brought into view when it
  *   expands; none when null.
