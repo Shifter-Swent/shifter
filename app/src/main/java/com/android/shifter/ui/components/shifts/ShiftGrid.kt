@@ -161,9 +161,9 @@ private val CHIP_JOINED_CORNER = 3.dp
  * @param pickedShiftIds in [ShiftGridMode.PICK], the ids of the shifts the volunteer has picked:
  *   the caller owns them, the grid only shows them.
  * @param onSlot the slot whose cell was tapped: in [ShiftGridMode.EDIT] one to open when it is
- *   closed and to close when it is open, in [ShiftGridMode.PICK] one to pick or to let go. Never
- *   called in [ShiftGridMode.VIEW], for a closed slot in [ShiftGridMode.PICK], for a slot
- *   volunteers already chose in [ShiftGridMode.EDIT], nor for one outside [period] or being saved.
+ *   closed, to close when it is open, and one volunteers chose for the caller to say why it stays;
+ *   in [ShiftGridMode.PICK] one to pick or to let go. Never called in [ShiftGridMode.VIEW], for a
+ *   closed slot in [ShiftGridMode.PICK], nor for a slot outside [period] or being saved.
  */
 @Composable
 fun ShiftGrid(
@@ -362,9 +362,9 @@ private fun DayColumnHeader(day: LocalDate, openHours: Long?, width: Dp) {
 /**
  * One slot of the grid, 48 dp tall whatever it draws, so every cell can be tapped and read out.
  *
- * Only a cell the mode acts on carries an action: a volunteer never taps a closed slot, an
- * organizer never closes one volunteers chose, which its lock shows, and neither taps one [outside]
- * the event or already being [saving].
+ * Only a cell the mode acts on carries an action: a volunteer never taps a closed slot, and an
+ * organizer taps none [outside] the event or already being [saving]. A locked slot does report its
+ * tap, for the caller to say why it stays; closing it is the caller's to refuse.
  */
 @Composable
 private fun SlotCell(
@@ -388,7 +388,7 @@ private fun SlotCell(
   val action =
       when {
         saving -> Modifier
-        mode == ShiftGridMode.EDIT && !locked && !outside ->
+        mode == ShiftGridMode.EDIT && !outside ->
             Modifier.clickable(role = Role.Button) { onSlot(slot) }
         mode == ShiftGridMode.PICK && shift != null ->
             Modifier.toggleable(value = picked, role = Role.Checkbox) { onSlot(slot) }

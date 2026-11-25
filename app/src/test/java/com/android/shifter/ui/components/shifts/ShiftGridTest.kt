@@ -143,16 +143,17 @@ class ShiftGridTest {
   }
 
   @Test
-  fun edit_aSlotVolunteersChose_showsItsLockAndCannotBeClosed() {
+  fun edit_aSlotVolunteersChose_showsItsLockAndOffersNoClose() {
     show(ShiftGridMode.EDIT, shifts = listOf(shiftOf(sat, 10, volunteers = 3)))
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
     mark(ShiftGridTestTags.CLOSE_ACTION, sat, 10).assertDoesNotExist()
     cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
-    cell(sat, 10).assertHasNoClickAction()
+    // It reports the tap, for the caller to say why the slot stays; closing it is the caller's to
+    // refuse, as ShiftsViewModel does.
     cell(sat, 10).performClick()
 
-    assertTrue("a locked slot must report nothing, but reported $tapped", tapped.isEmpty())
+    assertEquals(listOf(slotOf(sat, 10, ZONE)), tapped)
   }
 
   @Test
@@ -410,7 +411,7 @@ class ShiftGridTest {
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
     cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
-    cell(sat, 10).assertHasNoClickAction()
+    mark(ShiftGridTestTags.CLOSE_ACTION, sat, 10).assertDoesNotExist()
   }
 
   @Test
