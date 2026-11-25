@@ -226,13 +226,13 @@ class TeamChatViewModel(
    */
   private fun giveBack(message: Sending, refused: Boolean) {
     _uiState.update {
-      val restored =
+      val withDraft =
           if (it.draft.isBlank()) {
             it.copy(draft = message.text, asAnnouncement = message.announcement)
           } else {
             it
           }
-      restored.copy(sendFailed = !refused, announcementRefused = refused)
+      withDraft.copy(sendFailed = !refused, announcementRefused = refused)
     }
     // In a team's channel, the manager may have been replaced meanwhile: without the right any
     // more, the option goes, so the same announcement is not refused again and again.
