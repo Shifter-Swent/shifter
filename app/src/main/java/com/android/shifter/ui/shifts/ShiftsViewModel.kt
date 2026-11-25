@@ -135,10 +135,16 @@ class ShiftsViewModel(
    * whether this ViewModel already knew them or the backend refuses the close because someone chose
    * it in between.
    */
-  fun toggleSlot(day: LocalDate, hour: Int) {
+  fun toggleSlot(day: LocalDate, hour: Int) = toggleSlot(slotOf(day, hour, zone))
+
+  /**
+   * The same, for the slot itself: the grid draws a cell from [slotOf] and reports it back, so the
+   * slot written is the one tapped even on a night the clocks change, where the cell of 02:00
+   * starts at 03:00 and no hour could name it again.
+   */
+  fun toggleSlot(slot: ShiftSlot) {
     val state = _uiState.value
     if (state.mode != ShiftsMode.EDIT) return
-    val slot = slotOf(day, hour, zone)
     if (slot.shiftId in state.savingShiftIds) return
     // Before the slot is read: a grid still loading, or left behind by a follow that ended, would
     // name volunteers who may no longer be on it.
