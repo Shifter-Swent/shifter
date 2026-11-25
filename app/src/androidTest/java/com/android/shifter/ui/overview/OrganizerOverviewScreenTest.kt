@@ -5,7 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
@@ -19,6 +18,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.days.DayStripTestTags
+import com.swent.shifter.ui.mission.AssignDialogTestTags
+import com.swent.shifter.ui.mission.AssignState
 import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.ui.mission.AssigneePickerTestTags
 import com.swent.shifter.ui.mission.AssigneeSelection
@@ -276,11 +277,11 @@ class OrganizerOverviewScreenTest {
         ),
     )
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_DIALOG).assertIsDisplayed()
+    compose.onNodeWithTag(AssignDialogTestTags.DIALOG).assertIsDisplayed()
     compose.onNodeWithTag(AssigneePickerTestTags.option("ana")).assertIsOn()
     compose.onNodeWithTag(AssigneePickerTestTags.option("ben")).performClick()
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).performClick()
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL).performClick()
+    compose.onNodeWithTag(AssignDialogTestTags.SAVE).performClick()
+    compose.onNodeWithTag(AssignDialogTestTags.CANCEL).performClick()
 
     compose.runOnIdle {
       assertEquals(listOf("ben"), toggled)
@@ -290,51 +291,27 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun assignDialog_onSaveFailure_showsTheError() {
-    show(loaded.copy(assigning = assigning().copy(saveFailed = true)))
-
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_ERROR).assertIsDisplayed()
-  }
-
-  @Test
-  fun assignDialog_whileSaving_disablesSaveAndCancel() {
-    show(loaded.copy(assigning = assigning().copy(isSaving = true)))
-
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
-    // A save cannot be taken back, so the dialog cannot be closed until it ends.
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_CANCEL).assertIsNotEnabled()
-  }
-
-  @Test
-  fun assignDialog_onCandidatesFailure_disablesSave() {
+  fun assignDialog_reportsRetryToTheOverview() {
+    var retries = 0
+    var dismissals = 0
     val failed =
         assigning().let {
           it.copy(selection = it.selection.copy(candidates = emptyList(), loadFailed = true))
         }
-    show(loaded.copy(assigning = failed))
+    show(
+        loaded.copy(assigning = failed),
+        OrganizerOverviewActions(
+            onRetryAssignees = { retries++ },
+            onDismissAssign = { dismissals++ },
+        ),
+    )
 
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
-  }
+    compose.onNodeWithTag(AssigneePickerTestTags.RETRY).performClick()
 
-  @Test
-  fun assignDialog_overTheLoweredNeed_saysWhyAndDisablesSave() {
-    val tooMany =
-        assigning().let {
-          it.copy(limit = 1, selection = it.selection.copy(selectedIds = listOf("ana", "ben")))
-        }
-    show(loaded.copy(assigning = tooMany))
-
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT)
-        .assertTextEquals("This mission now needs only 1 person. Unpick some to save.")
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_SAVE).assertIsNotEnabled()
-  }
-
-  @Test
-  fun assignDialog_withinTheLimit_showsNoLimitMessage() {
-    show(loaded.copy(assigning = assigning()))
-
-    compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ASSIGN_OVER_LIMIT).assertDoesNotExist()
+    compose.runOnIdle {
+      assertEquals(1, retries)
+      assertEquals(0, dismissals)
+    }
   }
 
   @Test
