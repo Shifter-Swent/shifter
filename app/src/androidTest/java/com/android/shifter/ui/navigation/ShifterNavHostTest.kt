@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -60,6 +62,8 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.scan.TestQrScanner
+import com.swent.shifter.model.shift.SLOT_HOURS
+import com.swent.shifter.model.shift.slotOf
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.team.TeamRepositoryException
@@ -72,6 +76,7 @@ import com.swent.shifter.ui.chat.TeamChatTestTags
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayHeaderTestTags
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
+import com.swent.shifter.ui.components.shifts.ShiftGridTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
 import com.swent.shifter.ui.event.JoinEventScreenTestTags
@@ -87,6 +92,7 @@ import com.swent.shifter.ui.scan.ScanScreenTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.sharing.EventSharer
 import com.swent.shifter.ui.sharing.SharingScreenTestTags
+import com.swent.shifter.ui.shifts.ShiftsScreenTestTags
 import com.swent.shifter.ui.team.CreateTeamFormTestTags
 import com.swent.shifter.ui.team.TeamIcon
 import com.swent.shifter.ui.team.TeamSetupScreenTestTags
@@ -560,6 +566,50 @@ class ShifterNavHostTest {
         .performClick()
     composeTestRule.onNodeWithTag(TeamSetupScreenTestTags.SECTION_TITLE).assertIsDisplayed()
 
+    pressBack()
+
+    waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
+  }
+
+  @Test
+  fun organizerEvent_overviewOpensTheShiftsAndBackReturnsToIt() {
+    val event = createEvent(signIn())
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON)
+
+    composeTestRule.onNodeWithTag(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON).performClick()
+
+    // The event has no slot open yet, so the screen offers to open the first ones.
+    waitForNode(ShiftsScreenTestTags.EMPTY)
+    composeTestRule.onNodeWithTag(ShiftsScreenTestTags.EDIT).performClick()
+
+    // The slot the event starts in: the rules accept it, and the grid draws its day first.
+    val start = event.startAt.atZone(ZoneId.systemDefault())
+    val day = start.toLocalDate()
+    val hour = start.hour - start.hour % SLOT_HOURS
+    val slot = ShiftGridTestTags.slot(day, hour)
+
+    waitForNode(slot)
+    val openSlots = {
+      runBlocking { repositories.shiftRepository.getShifts(event.id) }.map { it.id }
+    }
+
+    composeTestRule.onNodeWithTag(slot).performScrollTo().performClick()
+
+    // Opened in Firestore, and the cell follows the listener without being asked again.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      openSlots() == listOf(slotOf(day, hour, ZoneId.systemDefault()).shiftId)
+    }
+    composeTestRule.onNodeWithTag(slot).assert(hasContentDescription(", open", substring = true))
+
+    composeTestRule.onNodeWithTag(slot).performScrollTo().performClick()
+
+    // Closed again, in Firestore and in the grid.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) { openSlots().isEmpty() }
+    composeTestRule.onNodeWithTag(slot).assert(hasContentDescription(", closed", substring = true))
+
+    composeTestRule.onNodeWithTag(ShiftsScreenTestTags.DONE).performClick()
     pressBack()
 
     waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
