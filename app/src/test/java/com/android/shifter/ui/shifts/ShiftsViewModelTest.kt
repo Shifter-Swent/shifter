@@ -276,20 +276,6 @@ class ShiftsViewModelTest {
     assertNull(state.error)
   }
 
-  @Test
-  fun toggleSlot_tappedTwiceBeforeItIsSaved_opensTheSlotOnce() = runTest {
-    val counting = CountingShifts(shifts)
-    start(repository = counting)
-    edit()
-
-    viewModel.toggleSlot(sat, 10)
-    viewModel.toggleSlot(sat, 10)
-    advanceUntilIdle()
-
-    assertEquals(1, counting.opens)
-    assertEquals(listOf(shift(sat, 10)), state.shifts)
-  }
-
   // --------------------------------------------------- Slots outside the event
 
   @Test
@@ -307,6 +293,7 @@ class ShiftsViewModelTest {
 
     assertEquals(listOf(shift(fri, 8), shift(sun, 20)), shifts.shifts.sortedBy { it.startAt })
     assertNull(state.error)
+    assertEquals(emptySet<String>(), state.savingShiftIds)
   }
 
   @Test
@@ -337,28 +324,49 @@ class ShiftsViewModelTest {
     assertNull(state.error)
   }
 
+  // ------------------------------------------------------------ Pending writes
+
+  @Test
+  fun toggleSlot_whileItsWriteIsInFlight_marksItPendingAndDropsFurtherTaps() = runTest {
+    val counting = CountingOpens(shifts)
+    start(repository = counting)
+    edit()
+
+    // The writes are launched but have not run yet: a slot is pending before its write starts,
+    // a second tap on it is dropped, and another slot is still editable on its own.
+    viewModel.toggleSlot(sat, 10)
+    viewModel.toggleSlot(sat, 10)
+    viewModel.toggleSlot(sat, 12)
+    assertEquals(
+        setOf(slotOf(sat, 10, ZONE).shiftId, slotOf(sat, 12, ZONE).shiftId),
+        state.savingShiftIds,
+    )
+    advanceUntilIdle()
+
+    assertEquals(2, counting.opens)
+    assertEquals(emptySet<String>(), state.savingShiftIds)
+    assertEquals(listOf(shift(sat, 10), shift(sat, 12)), state.shifts)
+  }
+
   // ------------------------------------------------------------- Hours open
 
   @Test
-  fun openHours_perDayAndInAll_followTheSlotsThatAreOpen() = runTest {
+  fun openHours_followTheSlotsThatAreOpen() = runTest {
     start(
         seeded =
             listOf(shift(sat, 10), shift(sat, 12), shift(sat, 18), shift(sun, 10, volunteers = 1))
     )
 
-    assertEquals(mapOf(sat to 6L, sun to 2L), state.openHoursByDay)
     assertEquals(8L, state.openHours)
   }
 
   @Test
   fun openHours_onTheNightTheClocksGoForward_countTheHourItReallyLasts() = runTest {
-    // 02:00 never comes that night, so the slot of 02:00 starts at 03:00 and lasts one hour. It is
-    // still drawn in the column of the 29th, where its hour counts.
+    // 02:00 never comes that night, so the slot of 02:00 starts at 03:00 and lasts one hour.
     val night = LocalDate.parse("2026-03-29")
     start(seeded = listOf(shift(night, 2)), event = eventFrom(night.minusDays(1), night))
 
     assertEquals(1L, state.openHours)
-    assertEquals(mapOf(night to 1L), state.openHoursByDay)
   }
 
   @Test
@@ -368,7 +376,6 @@ class ShiftsViewModelTest {
     start(seeded = listOf(shift(night, 2)), event = eventFrom(night.minusDays(1), night))
 
     assertEquals(3L, state.openHours)
-    assertEquals(mapOf(night to 3L), state.openHoursByDay)
   }
 
   // -------------------------------------------------------------- Failures
@@ -435,6 +442,7 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
     assertNull(state.keptSlot)
     assertEquals(listOf(shift(sat, 10, volunteers = 1)), shifts.shifts)
+    assertEquals(emptySet<String>(), state.savingShiftIds)
     viewModel.setMode(ShiftsMode.VIEW)
     viewModel.setMode(ShiftsMode.EDIT)
     assertEquals(ShiftsMode.VIEW, state.mode)
@@ -452,7 +460,10 @@ class ShiftsViewModelTest {
     assertEquals(listOf(shift(sat, 10)), state.shifts)
     assertEquals(ShiftsError.OFFLINE, state.error)
     assertNull(state.keptSlot)
+    assertEquals(emptySet<String>(), state.savingShiftIds)
   }
+
+  // -------------------------------------------------- A close the backend refuses
 
   @Test
   fun toggleSlot_whenTheCloseIsRefusedBeforeTheSlotComesBack_readsWhoKeptIt() = runTest {
@@ -572,6 +583,7 @@ class ShiftsViewModelTest {
 
     assertNull(state.error)
     assertEquals(listOf(shift(sat, 10)), state.shifts)
+    assertEquals(emptySet<String>(), state.savingShiftIds)
   }
 
   @Test
@@ -602,8 +614,7 @@ class ShiftsViewModelTest {
   }
 
   /** Counts the slots opened, to check a second tap on one does not send a second write. */
-  private class CountingShifts(private val delegate: ShiftRepository) :
-      ShiftRepository by delegate {
+  private class CountingOpens(private val delegate: ShiftRepository) : ShiftRepository by delegate {
     var opens = 0
 
     override suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift {

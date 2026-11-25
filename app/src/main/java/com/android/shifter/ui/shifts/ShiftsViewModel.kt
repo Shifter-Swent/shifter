@@ -60,9 +60,8 @@ data class KeptSlot(val startAt: Instant, val volunteers: Int)
  *   rules.
  * @property days the days of the event, the columns of the grid, in order.
  * @property shifts the slots that are open, sorted by start, each with the volunteers who chose it.
- * @property openHoursByDay the hours the open slots add up to, by the day of [days] they are drawn
- *   under, a day with none open being absent. Counted from each slot's start and end, so a day the
- *   clocks change holds the 23 or 25 h it really does.
+ * @property savingShiftIds the slots whose open or close is in flight, for the screen to show them
+ *   as pending; a further tap on one does nothing until it is answered.
  * @property error the last load or save that failed, until the screen has shown it.
  * @property keptSlot the last slot that could not be closed, until the screen has shown it.
  */
@@ -73,7 +72,7 @@ data class ShiftsUiState(
     val period: ClosedRange<Instant>? = null,
     val days: List<LocalDate> = emptyList(),
     val shifts: List<Shift> = emptyList(),
-    val openHoursByDay: Map<LocalDate, Long> = emptyMap(),
+    val savingShiftIds: Set<String> = emptySet(),
     val error: ShiftsError? = null,
     val keptSlot: KeptSlot? = null,
 ) {
@@ -88,9 +87,12 @@ data class ShiftsUiState(
   val canEdit: Boolean
     get() = !isLoading && !shiftsFailed && period != null
 
-  /** The hours every open slot adds up to: the "26 h" of "26 h open over 3 days". */
+  /**
+   * The hours every open slot adds up to: the "26 h" of "26 h open over 3 days", from each slot's
+   * own start and end, so one lasts the 1 h or 3 h it really does on a night the clocks change.
+   */
   val openHours: Long
-    get() = openHoursByDay.values.sum()
+    get() = shifts.sumOf { Duration.between(it.startAt, it.endAt).toHours() }
 }
 
 /**
@@ -116,9 +118,6 @@ class ShiftsViewModel(
   private val _uiState = MutableStateFlow(ShiftsUiState())
   val uiState: StateFlow<ShiftsUiState> = _uiState.asStateFlow()
 
-  /** The slots whose open or close is running, so a second tap on one does nothing. */
-  private val saving = mutableSetOf<String>()
-
   init {
     // Two reads: the grid appears as soon as the shifts arrive, and the event only widens its days
     // to those the organizer has not opened a slot on yet.
@@ -140,6 +139,7 @@ class ShiftsViewModel(
     val state = _uiState.value
     if (state.mode != ShiftsMode.EDIT) return
     val slot = slotOf(day, hour, zone)
+    if (slot.shiftId in state.savingShiftIds) return
     // Before the slot is read: a grid still loading, or left behind by a follow that ended, would
     // name volunteers who may no longer be on it.
     val period = state.period ?: return
@@ -149,7 +149,7 @@ class ShiftsViewModel(
       keep(open)
       return
     }
-    if (!saving.add(slot.shiftId)) return
+    _uiState.update { it.copy(savingShiftIds = it.savingShiftIds + slot.shiftId) }
     viewModelScope.launch {
       try {
         if (open == null) shiftRepository.openSlot(eventId, slot)
@@ -162,7 +162,7 @@ class ShiftsViewModel(
       } catch (e: Exception) {
         fail(e)
       } finally {
-        saving -= slot.shiftId
+        _uiState.update { it.copy(savingShiftIds = it.savingShiftIds - slot.shiftId) }
       }
     }
   }
@@ -185,7 +185,7 @@ class ShiftsViewModel(
   private suspend fun loadPeriod() {
     try {
       val period = eventRepository.getEvent(eventId)?.let { it.startAt..it.endAt }
-      _uiState.update { it.copy(period = period).withDaysAndHours() }
+      _uiState.update { it.copy(period = period).withDays() }
     } catch (e: CancellationException) {
       throw e
     } catch (e: Exception) {
@@ -201,7 +201,7 @@ class ShiftsViewModel(
   private suspend fun observeShifts() {
     try {
       shiftRepository.observeShifts(eventId).collect { shifts ->
-        _uiState.update { it.copy(isLoading = false, shifts = shifts).withDaysAndHours() }
+        _uiState.update { it.copy(isLoading = false, shifts = shifts).withDays() }
       }
     } catch (e: CancellationException) {
       throw e
@@ -213,35 +213,18 @@ class ShiftsViewModel(
     }
   }
 
-  /** The days of the grid and the hours each holds, both read from the slots of this state. */
-  private fun ShiftsUiState.withDaysAndHours(): ShiftsUiState {
-    // The day a slot counts under is the calendar day its start falls on, the one slotOf built
-    // it from and the grid draws it in. An event day, which starts at 04:00, would put the
-    // rows of 00:00 and 02:00 under the day before and disagree with their own column.
-    val byDay = shifts.groupBy { it.startAt.atZone(zone).toLocalDate() }
-    return copy(
-        days = calendarDays(byDay.keys),
-        // From each slot's start and end, never from the 2 h of the clock: on a night the clocks
-        // change a slot lasts 1 h or 3 h.
-        openHoursByDay =
-            byDay.mapValues { (_, ofTheDay) ->
-              ofTheDay.sumOf { Duration.between(it.startAt, it.endAt).toHours() }
-            },
-    )
-  }
-
   /**
    * The columns of the grid: every calendar day from the first to the last that the event or an
    * open slot falls on. Calendar days, not the event days of `eventDays`, whose boundary is 04:00,
    * since the grid draws the rows of 00:00 and 02:00 in the column of their own date. The end is
    * when the event is over, so one ending at midnight sharp ends with the day before.
    */
-  private fun ShiftsUiState.calendarDays(slotDays: Set<LocalDate>): List<LocalDate> {
+  private fun ShiftsUiState.withDays(): ShiftsUiState {
     val ends = period?.let { listOf(it.start, it.endInclusive.minusNanos(1)) }.orEmpty()
-    val dates = slotDays + ends.map { it.atZone(zone).toLocalDate() }
-    val first = dates.minOrNull() ?: return emptyList()
+    val dates = (shifts.map { it.startAt } + ends).map { it.atZone(zone).toLocalDate() }
+    val first = dates.minOrNull() ?: return copy(days = emptyList())
     val last = dates.max()
-    return generateSequence(first) { it.plusDays(1) }.takeWhile { it <= last }.toList()
+    return copy(days = generateSequence(first) { it.plusDays(1) }.takeWhile { it <= last }.toList())
   }
 
   /**
