@@ -150,20 +150,26 @@ class ShiftsViewModel(
       return
     }
     _uiState.update { it.copy(savingShiftIds = it.savingShiftIds + slot.shiftId) }
-    viewModelScope.launch {
-      try {
-        if (open == null) shiftRepository.openSlot(eventId, slot)
-        else shiftRepository.closeSlot(eventId, slot.shiftId)
-      } catch (e: CancellationException) {
-        throw e
-      } catch (e: ShiftRepositoryException.PermissionDenied) {
-        // A refused open is the user not being the organizer; only a close has volunteers to find.
-        if (open == null) fail(e) else keepOrFail(slot, e)
-      } catch (e: Exception) {
-        fail(e)
-      } finally {
-        _uiState.update { it.copy(savingShiftIds = it.savingShiftIds - slot.shiftId) }
-      }
+    viewModelScope.launch { saveSlot(slot, open) }
+  }
+
+  /**
+   * Opens [slot], or closes it when [open] is the shift it already holds, and takes it out of
+   * [ShiftsUiState.savingShiftIds] once the backend has answered, failed or been cancelled.
+   */
+  private suspend fun saveSlot(slot: ShiftSlot, open: Shift?) {
+    try {
+      if (open == null) shiftRepository.openSlot(eventId, slot)
+      else shiftRepository.closeSlot(eventId, slot.shiftId)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: ShiftRepositoryException.PermissionDenied) {
+      // A refused open is the user not being the organizer; only a close has volunteers to find.
+      if (open == null) fail(e) else keepOrFail(slot, e)
+    } catch (e: Exception) {
+      fail(e)
+    } finally {
+      _uiState.update { it.copy(savingShiftIds = it.savingShiftIds - slot.shiftId) }
     }
   }
 
