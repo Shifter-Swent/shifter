@@ -403,7 +403,10 @@ class MissionManagerRulesTest {
     val event = db.collection(EventSchema.COLLECTION).document()
     paths += event.path
     paths += "eventParticipants/${event.id}"
-    event.set(mapOf(EventSchema.ORGANIZER_ID to organizer.uid)).await()
+    // The title is what the notifications of updateAssignees name the event by (#617).
+    event
+        .set(mapOf(EventSchema.ORGANIZER_ID to organizer.uid, EventSchema.TITLE to "Food bank"))
+        .await()
     listOf(TEAM_ID, OTHER_TEAM_ID).forEach { teamId ->
       val team = event.collection("teams").document(teamId)
       paths += team.path

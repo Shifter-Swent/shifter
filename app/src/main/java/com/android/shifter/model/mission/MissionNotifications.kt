@@ -29,14 +29,52 @@ internal fun missionAssignedData(change: String, missions: List<Mission>): Map<S
  * The missions each person was added to, from each stored mission to its updated version, in the
  * order of [changes], for one notification per person.
  */
-internal fun missionsByAddedPerson(
-    changes: List<Pair<Mission, Mission>>
+internal fun missionsByAddedPerson(changes: List<Pair<Mission, Mission>>) =
+    missionsByPerson(changes) { stored, updated ->
+      updated.assigneeIds - stored.assigneeIds.toSet()
+    }
+
+/** The missions each person was removed from, as [missionsByAddedPerson] lists those added to. */
+internal fun missionsByRemovedPerson(changes: List<Pair<Mission, Mission>>) =
+    missionsByPerson(changes) { stored, updated ->
+      stored.assigneeIds - updated.assigneeIds.toSet()
+    }
+
+/** The updated missions of [changes] grouped by each of the [people] each change concerns. */
+private fun missionsByPerson(
+    changes: List<Pair<Mission, Mission>>,
+    people: (stored: Mission, updated: Mission) -> List<String>,
 ): Map<String, List<Mission>> {
   val byPerson = linkedMapOf<String, MutableList<Mission>>()
   for ((stored, updated) in changes) {
-    for (userId in updated.assigneeIds - stored.assigneeIds.toSet()) {
+    for (userId in people(stored, updated)) {
       byPerson.getOrPut(userId) { mutableListOf() } += updated
     }
   }
   return byPerson
+}
+
+/**
+ * The data of the [com.swent.shifter.model.notification.NotificationKind.MISSION_CHANGED] telling
+ * the assignees that [before] became [after], or null when nothing they need to know changed. Only
+ * the time, [Mission.startAt] or [Mission.endAt], and the address are told: a new title,
+ * description or number of volunteers changes nothing for the volunteer's day. A mission whose
+ * place is removed is not told either, as there is no address to show.
+ */
+internal fun missionChangedData(before: Mission, after: Mission): Map<String, String>? {
+  val timeChanged = before.startAt != after.startAt || before.endAt != after.endAt
+  val newAddress = after.location?.address?.takeIf { it != before.location?.address }
+  val what =
+      when {
+        timeChanged && newAddress != null -> NotificationData.Value.TIME_AND_PLACE
+        timeChanged -> NotificationData.Value.TIME
+        newAddress != null -> NotificationData.Value.PLACE
+        else -> return null
+      }
+  val data =
+      mapOf(
+          NotificationData.Key.MISSIONS to after.toMissionLine().encode(),
+          NotificationData.Key.WHAT to what,
+      )
+  return if (newAddress == null) data else data + (NotificationData.Key.ADDRESS to newAddress)
 }

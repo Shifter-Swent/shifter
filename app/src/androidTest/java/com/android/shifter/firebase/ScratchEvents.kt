@@ -10,9 +10,10 @@ import kotlinx.coroutines.tasks.await
  * Parent events for the tests of the event subcollections (teams, shifts, missions).
  *
  * `firestore.rules` only lets the organizer of an existing event write those subcollections, so a
- * test first creates an event it owns. The document holds only `organizerId`, plus the [fields] a
- * test passes: most subcollection rules read nothing else, and a minimal document shows these tests
- * do not depend on the event's other fields. The shift rules also read its period.
+ * test first creates an event it owns. The document holds only `organizerId`, a title, which the
+ * mission writes put in their notifications (#606, #617), and the [fields] a test passes: most
+ * subcollection rules read nothing else, and a minimal document shows these tests do not depend on
+ * the event's other fields. The shift rules also read its period.
  *
  * Delete the event after its subcollection documents: once it is gone, nobody is its organizer and
  * the rules refuse to delete what is left under it.
@@ -30,7 +31,12 @@ object ScratchEvents {
         FirestoreEmulator.firestore
             .collection(EventSchema.COLLECTION)
             .document("event-" + UUID.randomUUID())
-    event.set(fields + (EventSchema.ORGANIZER_ID to user.uid)).await()
+    event
+        .set(mapOf(EventSchema.TITLE to TITLE) + fields + (EventSchema.ORGANIZER_ID to user.uid))
+        .await()
     return event
   }
+
+  /** The title of every scratch event, unless [create] is given another. */
+  private const val TITLE = "Scratch event"
 }
