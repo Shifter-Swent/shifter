@@ -1,9 +1,12 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.schedule
 
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
+import com.swent.shifter.model.event.EventRepository
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FakeEventRepository
 import com.swent.shifter.model.membership.AvailabilitySlot
@@ -18,7 +21,9 @@ import com.swent.shifter.model.mission.MissionRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.user.FakeUserRepository
+import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
+import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Duration
@@ -231,6 +236,23 @@ class AutoScheduleViewModelTest {
   }
 
   @Test
+  fun accept_onACompletedOrDeletedMission_isOutdated() = runTest {
+    festival()
+    open()
+
+    missions.markCompleted(eventId, "mission-1")
+    viewModel.accept()
+
+    assertEquals(ScheduleSaveError.OUTDATED, state.saveError)
+
+    viewModel.retry()
+    missions.failure = MissionRepositoryException.NotFound()
+    viewModel.accept()
+
+    assertEquals(ScheduleSaveError.OUTDATED, state.saveError)
+  }
+
+  @Test
   fun accept_aboveTheLimit_isTooLarge() = runTest {
     festival()
     open()
@@ -275,6 +297,70 @@ class AutoScheduleViewModelTest {
     held.save.complete(Unit)
 
     assertTrue(state.saved)
+  }
+
+  @Test
+  fun accept_whenTheScreenIsLeft_reportsNoError() = runTest {
+    festival()
+    val held = HeldMissionRepository(missions)
+    val store = ViewModelStore()
+    viewModel =
+        ViewModelProvider(
+            store,
+            AutoScheduleViewModel.factory(eventId, held, teams, requests, users, events),
+        )[AutoScheduleViewModel::class.java]
+
+    viewModel.accept()
+    store.clear()
+    held.save.complete(Unit)
+
+    assertNull(state.saveError)
+    assertFalse(state.saved)
+  }
+
+  @Test
+  fun retry_whileLoading_keepsOnlyTheLatestLoad() = runTest {
+    festival()
+    val eventReads = HeldEventRepository(events)
+    val profiles = HeldUserRepository(users)
+    viewModel =
+        AutoScheduleViewModel(eventId, missions, teams, requests, profiles, eventReads) { at }
+
+    // The first load still waits for the event and the names: it is dropped for this one.
+    viewModel.retry()
+    eventReads.read.complete(Unit)
+    profiles.read.complete(Unit)
+
+    assertFalse(state.isLoading)
+    assertEquals(listOf("Ana"), state.missions.first().assigned)
+    assertEquals(start..start.plus(Duration.ofDays(1)), state.eventPeriod)
+  }
+
+  @Test
+  fun load_whenTheEventCannotBeRead_stillProposes() = runTest {
+    festival()
+    events.events.clear()
+    open()
+
+    assertNull(state.eventPeriod)
+    assertEquals(5, state.missions.size)
+
+    events.failure = IllegalStateException("Offline")
+    viewModel.retry()
+
+    assertNull(state.eventPeriod)
+    assertFalse(state.loadFailed)
+  }
+
+  @Test
+  fun load_whenTheNamesCannotBeRead_stillCountsThem() = runTest {
+    festival()
+    users.failure = IllegalStateException("Offline")
+    open()
+
+    assertEquals(listOf<String?>(null), state.missions.first().assigned)
+    assertEquals(2, state.newAssignments)
+    assertFalse(state.loadFailed)
   }
 
   @Test
@@ -400,5 +486,28 @@ private class HeldMissionRepository(private val missions: FakeMissionRepository)
   override suspend fun addAssignees(eventId: String, additions: Map<String, List<String>>) {
     save.await()
     missions.addAssignees(eventId, additions)
+  }
+}
+
+/** Delegates to [events], and holds each read of the event until [read] completes. */
+private class HeldEventRepository(private val events: FakeEventRepository) :
+    EventRepository by events {
+
+  val read = CompletableDeferred<Unit>()
+
+  override suspend fun getEvent(eventId: String): Event? {
+    read.await()
+    return events.getEvent(eventId)
+  }
+}
+
+/** Delegates to [users], and holds each read of a name until [read] completes. */
+private class HeldUserRepository(private val users: FakeUserRepository) : UserRepository by users {
+
+  val read = CompletableDeferred<Unit>()
+
+  override suspend fun getPublicProfile(uid: String): PublicProfile? {
+    read.await()
+    return users.getPublicProfile(uid)
   }
 }
