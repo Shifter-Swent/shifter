@@ -21,20 +21,24 @@ data class AssigneeOption(val id: String, val name: String?)
  * @property selectedIds the ids of the candidates picked, in the order they were picked.
  * @property isLoading whether [candidates] are being loaded.
  * @property loadFailed whether loading [candidates] failed.
+ * @property lockedIds the people picked who cannot be unpicked, also in [selectedIds]: those
+ *   already on a mission the proposed schedule only adds to, which never removes anyone.
  */
 data class AssigneeSelection(
     val candidates: List<AssigneeOption> = emptyList(),
     val selectedIds: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val loadFailed: Boolean = false,
+    val lockedIds: Set<String> = emptySet(),
 ) {
 
   /**
    * Unpicks the candidate [id] if picked, and picks them otherwise, unless [limit] people are
-   * already picked. An id that is not a candidate is ignored.
+   * already picked. An id that is not a candidate, or is locked, is ignored.
    */
   fun toggle(id: String, limit: Int): AssigneeSelection =
       when {
+        id in lockedIds -> this
         id in selectedIds -> copy(selectedIds = selectedIds - id)
         candidates.none { it.id == id } || selectedIds.size >= limit -> this
         else -> copy(selectedIds = selectedIds + id)

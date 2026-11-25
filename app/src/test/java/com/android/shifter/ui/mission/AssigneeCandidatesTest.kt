@@ -102,6 +102,18 @@ class AssigneeCandidatesTest {
     assertEquals(selection, selection.toggle("stranger", limit = 3))
   }
 
+  @Test
+  fun toggle_ignoresSomeoneLocked() {
+    val selection =
+        AssigneeSelection(
+            candidates = listOf(AssigneeOption("a", "A")),
+            selectedIds = listOf("a"),
+            lockedIds = setOf("a"),
+        )
+
+    assertEquals(selection, selection.toggle("a", limit = 3))
+  }
+
   private fun user(uid: String, name: String) = User(uid = uid, displayName = name, email = "")
 
   private fun request(userId: String, status: MembershipRequestStatus) =

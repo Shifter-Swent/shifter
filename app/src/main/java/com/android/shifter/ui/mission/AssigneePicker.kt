@@ -34,7 +34,8 @@ object AssigneePickerTestTags {
 }
 
 /**
- * Lets the organizer or a manager pick who is assigned to a mission, at most [limit] people.
+ * Lets the organizer or a manager pick who is assigned to a mission, at most [limit] people. The
+ * people locked in [selection] are shown picked, and cannot be unpicked.
  *
  * Stateless: it shows [selection] and reports each tap on a candidate through [onToggle], with the
  * candidate's id.
@@ -94,8 +95,12 @@ fun AssigneePicker(
             CandidateRow(
                 name = candidate.name ?: stringResource(R.string.assignee_picker_unknown),
                 selected = selected,
-                // Once full, only the people already picked can be tapped, to unpick them.
-                enabled = enabled && (selected || selection.selectedIds.size < limit),
+                // Once full, only the people already picked can be tapped, to unpick them; the
+                // locked ones never.
+                enabled =
+                    enabled &&
+                        candidate.id !in selection.lockedIds &&
+                        (selected || selection.selectedIds.size < limit),
                 onToggle = { onToggle(candidate.id) },
                 testTag = AssigneePickerTestTags.option(candidate.id),
             )

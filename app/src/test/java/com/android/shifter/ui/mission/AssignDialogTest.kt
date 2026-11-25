@@ -4,6 +4,7 @@ package com.swent.shifter.ui.mission
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -112,6 +113,15 @@ class AssignDialogTest {
     composeTestRule.onNodeWithTag(AssignDialogTestTags.SAVE).assertIsEnabled()
   }
 
+  @Test
+  fun assignDialog_withSomeoneLocked_showsThemPickedButNotTappable() {
+    showDialog(assigning(selectedIds = listOf("u1"), lockedIds = setOf("u1")))
+
+    composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u1")).assertIsOn()
+    composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u1")).assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u2")).assertIsEnabled()
+  }
+
   /** The people picked for a mission needing [limit] of them, among Ada and Bob by default. */
   private fun assigning(
       limit: Int = 2,
@@ -122,6 +132,7 @@ class AssignDialogTest {
       loadFailed: Boolean = false,
       isSaving: Boolean = false,
       saveFailed: Boolean = false,
+      lockedIds: Set<String> = emptySet(),
   ) =
       AssignState(
           missionId = "m1",
@@ -133,6 +144,7 @@ class AssignDialogTest {
                   selectedIds = selectedIds,
                   isLoading = isLoading,
                   loadFailed = loadFailed,
+                  lockedIds = lockedIds,
               ),
           isSaving = isSaving,
           saveFailed = saveFailed,
