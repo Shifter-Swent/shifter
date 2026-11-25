@@ -280,6 +280,8 @@ dependencies {
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
   globalTestImplementation(libs.kaspresso.compose)
+  // Closes the notification permission dialog after MainActivityNotificationPermissionTest
+  androidTestImplementation(libs.androidx.uiautomator)
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
