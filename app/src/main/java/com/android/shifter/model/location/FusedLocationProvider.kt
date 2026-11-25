@@ -90,7 +90,7 @@ class FusedLocationProvider(
    * [positions]. A change of the status cancels the wait like the updates.
    */
   private fun retriedUpdates(): Flow<MeasuredPosition> =
-      updates().retryWhen { cause, _ ->
+      updates().retryWhen { cause, _ -> // NOSONAR: only SharedFlow.retryWhen is deprecated (S1874)
         if (cause !is Exception) return@retryWhen false
         delay(intervalMillis)
         true
