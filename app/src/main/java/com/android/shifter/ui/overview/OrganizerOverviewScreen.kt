@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,6 +65,7 @@ object OrganizerOverviewScreenTestTags {
   const val SCREEN = "OrganizerOverviewScreen"
   const val ADD_MISSION_BUTTON = "OrganizerOverviewAddMissionButton"
   const val MANAGE_TEAMS_BUTTON = "OrganizerOverviewManageTeamsButton"
+  const val SHIFTS_BUTTON = "OrganizerOverviewShiftsButton"
   const val PROGRESS_PERCENT = "OrganizerOverviewProgressPercent"
   const val PROGRESS_COUNT = "OrganizerOverviewProgressCount"
   const val ALL_TEAMS_CHIP = "OrganizerOverviewTeamChip_All"
@@ -101,6 +103,7 @@ fun OrganizerOverviewScreen(
     clock: MinuteClock,
     onAddMission: () -> Unit,
     onManageTeams: () -> Unit = {},
+    onManageShifts: () -> Unit = {},
     onEditMission: (String) -> Unit = {},
 ) {
   val uiState by viewModel.uiState.collectAsState()
@@ -111,6 +114,7 @@ fun OrganizerOverviewScreen(
           OrganizerOverviewActions(
               onAddMission = onAddMission,
               onManageTeams = onManageTeams,
+              onManageShifts = onManageShifts,
               onEditMission = onEditMission,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
@@ -128,6 +132,7 @@ fun OrganizerOverviewScreen(
 data class OrganizerOverviewActions(
     val onAddMission: () -> Unit = {},
     val onManageTeams: () -> Unit = {},
+    val onManageShifts: () -> Unit = {},
     val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
@@ -211,7 +216,11 @@ private fun OverviewColumn(
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     AddMissionButton(actions.onAddMission)
-    ManageTeamsButton(actions.onManageTeams)
+    // Side by side, as the design has them, each taking half the row.
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      ManageTeamsButton(actions.onManageTeams, Modifier.weight(1f))
+      ShiftsButton(actions.onManageShifts, Modifier.weight(1f))
+    }
     ProgressCard(state)
     if (state.loadFailed) {
       LoadErrorRow(
@@ -272,18 +281,33 @@ private fun AddMissionButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun ManageTeamsButton(onClick: () -> Unit) {
+private fun ManageTeamsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   OutlinedButton(
       onClick = onClick,
       shape = RoundedCornerShape(14.dp),
       modifier =
-          Modifier.fillMaxWidth()
-              .height(48.dp)
-              .testTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON),
+          modifier.height(48.dp).testTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON),
   ) {
     Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(20.dp))
     Text(
         text = stringResource(R.string.overview_manage_teams),
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 8.dp).weight(1f),
+    )
+  }
+}
+
+/** Opens the week grid where the organizer opens and closes the event's 2 h slots (#597). */
+@Composable
+private fun ShiftsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+  OutlinedButton(
+      onClick = onClick,
+      shape = RoundedCornerShape(14.dp),
+      modifier = modifier.height(48.dp).testTag(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON),
+  ) {
+    Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
+    Text(
+        text = stringResource(R.string.overview_shifts),
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(start = 8.dp).weight(1f),
     )

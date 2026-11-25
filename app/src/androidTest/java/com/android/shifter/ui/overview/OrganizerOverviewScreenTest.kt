@@ -193,6 +193,19 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
+  fun shifts_reportsItsClick() {
+    var shiftsClicks = 0
+    show(loaded, OrganizerOverviewActions(onManageShifts = { shiftsClicks++ }))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    compose.runOnIdle { assertEquals(1, shiftsClicks) }
+  }
+
+  @Test
   fun eventWithoutMissions_invitesToAddOne() {
     show(OrganizerOverviewUiState(isLoading = false, teams = teams))
 
