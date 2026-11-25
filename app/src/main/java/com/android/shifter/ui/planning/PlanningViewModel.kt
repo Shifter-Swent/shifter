@@ -214,7 +214,7 @@ class PlanningViewModel(
       val userId = currentUserId()
       val inputs = NowInputs().also { nowInputs.value = it }
       // The last missions read, shown with each list of check-ins once a first list is read.
-      var missions: List<Mission> = emptyList()
+      lateinit var missions: List<Mission>
       var missionsRead = false
       var checkIns: List<CheckIn>? = null
       try {
