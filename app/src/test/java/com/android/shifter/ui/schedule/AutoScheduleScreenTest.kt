@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -15,6 +16,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.components.days.DayStripTestTags
+import com.swent.shifter.ui.mission.AssignDialogTestTags
+import com.swent.shifter.ui.mission.AssignState
+import com.swent.shifter.ui.mission.AssigneeOption
+import com.swent.shifter.ui.mission.AssigneePickerTestTags
+import com.swent.shifter.ui.mission.AssigneeSelection
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -95,6 +101,11 @@ class AutoScheduleScreenTest {
                     onAccept = { calls += "accept" },
                     onCancel = { calls += "cancel" },
                     onRetry = { calls += "retry" },
+                    onAssign = { calls += "assign $it" },
+                    onToggleAssignee = { calls += "toggle $it" },
+                    onRetryAssignees = { calls += "retry assignees" },
+                    onSaveAssignees = { calls += "save assignees" },
+                    onDismissAssign = { calls += "dismiss assign" },
                 ),
             now = now,
             zone = zone,
@@ -172,6 +183,81 @@ class AutoScheduleScreenTest {
     showSchedule(proposal.copy(missions = listOf(night)))
 
     compose.onNodeWithText("22 Nov, 01:00–03:00 · Logistics").assertExists()
+  }
+
+  @Test
+  fun shortMission_saysWhatIsLeftToFillByHandAndWhy() {
+    showSchedule(proposal)
+
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFill("stands"), useUnmergedTree = true)
+        .assert(hasAnyDescendant(hasText("2 spots to fill by hand")))
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFillReason("stands"))
+        .assertTextEquals("Nobody else in Logistics is free for 08:00–11:00.")
+    // A full mission has nothing left to fill.
+    compose.onNodeWithTag(AutoScheduleTestTags.toFill("bar")).assertDoesNotExist()
+  }
+
+  @Test
+  fun shortMission_ofGeneralOrOfAnUnknownTeam_saysWhyNobodyFillsIt() {
+    val general = stands.copy(id = "general", isGeneral = true, teamName = null, missing = 1)
+    val unknown = stands.copy(id = "unknown", teamName = null)
+    showSchedule(proposal.copy(missions = listOf(general, unknown)))
+
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFillReason("general"))
+        .assertTextEquals("General missions are never filled automatically.")
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFillReason("unknown"))
+        .assertTextEquals("Nobody else in this team is free for 08:00–11:00.")
+  }
+
+  @Test
+  fun assign_onAShortMission_isReportedWithItsId() {
+    showSchedule(proposal)
+
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.assign("stands"))
+        .assertContentDescriptionEquals("Assign people to Set up the stands")
+        .performClick()
+
+    assertEquals(listOf("assign stands"), calls)
+  }
+
+  @Test
+  fun assigning_showsTheDialogAndReportsItsActions() {
+    val selection =
+        AssigneeSelection(
+            candidates = listOf(AssigneeOption("lea", "Léa Petit"), AssigneeOption("bob", "Bob")),
+            selectedIds = listOf("lea"),
+            lockedIds = setOf("lea"),
+        )
+    showSchedule(
+        proposal.copy(
+            assigning = AssignState("stands", "Set up the stands", limit = 4, selection = selection)
+        )
+    )
+
+    // The person already assigned stays picked; the dialog reports the rest.
+    compose.onNodeWithTag(AssigneePickerTestTags.option("lea")).assertIsNotEnabled()
+    compose.onNodeWithTag(AssigneePickerTestTags.option("bob")).performClick()
+    compose.onNodeWithTag(AssignDialogTestTags.SAVE).performClick()
+    compose.onNodeWithTag(AssignDialogTestTags.CANCEL).performClick()
+
+    assertEquals(listOf("toggle bob", "save assignees", "dismiss assign"), calls)
+  }
+
+  @Test
+  fun assigning_whenTheCandidatesFailed_reportsTheRetry() {
+    val selection = AssigneeSelection(loadFailed = true)
+    showSchedule(
+        proposal.copy(assigning = AssignState("stands", "Set up the stands", 4, selection))
+    )
+
+    compose.onNodeWithTag(AssigneePickerTestTags.RETRY).performClick()
+
+    assertEquals(listOf("retry assignees"), calls)
   }
 
   @Test

@@ -7,6 +7,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.swent.shifter.ui.mission.AssignState
+import com.swent.shifter.ui.mission.AssigneeOption
+import com.swent.shifter.ui.mission.AssigneeSelection
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -92,6 +95,33 @@ private fun PreviewHost(state: AutoScheduleUiState) {
 @Preview(name = "Saturday", widthDp = 390, heightDp = 988)
 @Composable
 private fun SaturdayPreview() = PreviewHost(PROPOSAL)
+
+/** The Figma frame "fill by hand": the assign dialog over Saturday, for the stands. */
+@Preview(name = "Fill by hand", widthDp = 390, heightDp = 988)
+@Composable
+private fun FillByHandPreview() =
+    PreviewHost(
+        PROPOSAL.copy(
+            assigning =
+                AssignState(
+                    missionId = "stands",
+                    title = "Set up the stands",
+                    limit = 4,
+                    selection =
+                        AssigneeSelection(
+                            candidates =
+                                listOf(
+                                    AssigneeOption("lea", "Léa Petit"),
+                                    AssigneeOption("bob", "Bob Rossi"),
+                                    AssigneeOption("ines", "Inès Moreau"),
+                                    AssigneeOption("claire", "Claire Dubois"),
+                                ),
+                            selectedIds = listOf("lea", "bob"),
+                            lockedIds = setOf("lea"),
+                        ),
+                )
+        )
+    )
 
 @Preview(name = "Nothing to propose", widthDp = 390, heightDp = 844)
 @Composable

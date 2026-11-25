@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,10 +54,12 @@ import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.missionSlot
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
+import com.swent.shifter.ui.mission.AssignDialog
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_successContainer
 import com.swent.shifter.ui.theme.shifter_warning
+import com.swent.shifter.ui.theme.shifter_warningContainer
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -82,6 +85,12 @@ object AutoScheduleTestTags {
 
   fun count(missionId: String) = "AutoScheduleCount_$missionId"
 
+  fun toFill(missionId: String) = "AutoScheduleToFill_$missionId"
+
+  fun assign(missionId: String) = "AutoScheduleAssign_$missionId"
+
+  fun toFillReason(missionId: String) = "AutoScheduleToFillReason_$missionId"
+
   fun assignedChip(missionId: String, index: Int) = "AutoScheduleAssignedChip_${missionId}_$index"
 
   fun proposedChip(missionId: String, index: Int) = "AutoScheduleProposedChip_${missionId}_$index"
@@ -94,6 +103,9 @@ object AutoScheduleTestTags {
  *
  * The days are picked from a strip, as on the organizer's Overview: it opens on today (the first
  * day before the event, the last one after it), and an event of one day has no strip.
+ *
+ * A mission still short of people offers to finish it by hand, in the assign dialog shown while
+ * [AutoScheduleUiState.assigning] is set.
  *
  * @param now when the screen is read, which decides which day is today.
  * @param zone the time zone the days are counted in, the device's one in the app.
@@ -134,11 +146,20 @@ fun AutoScheduleContent(
             )
           }
           if (state.loadFailed) LoadError(actions.onRetry)
-          Proposal(state, starts, dayPicker, dayCount, zone)
+          Proposal(state, starts, dayPicker, dayCount, zone, actions.onAssign)
         }
       }
     }
     BottomBar(state, actions, dayCount)
+  }
+  state.assigning?.let { assigning ->
+    AssignDialog(
+        assigning = assigning,
+        onToggle = actions.onToggleAssignee,
+        onRetry = actions.onRetryAssignees,
+        onSave = actions.onSaveAssignees,
+        onDismiss = actions.onDismissAssign,
+    )
   }
 }
 
@@ -154,6 +175,7 @@ private fun Proposal(
     dayPicker: EventDayPicker,
     dayCount: Int,
     zone: ZoneId,
+    onAssign: (String) -> Unit,
 ) {
   Summary(state, dayCount)
   if (dayPicker.showsStrip) {
@@ -163,7 +185,7 @@ private fun Proposal(
   if (missions.isEmpty()) {
     DayWithoutMissions(dayPicker.shown, Modifier.testTag(AutoScheduleTestTags.EMPTY_DAY))
   }
-  missions.forEach { MissionCard(it, dayPicker.shown, zone) }
+  missions.forEach { MissionCard(it, dayPicker.shown, zone, onAssign) }
 }
 
 /** What the proposal adds over the whole event, what stays to do by hand, and the legend. */
@@ -245,12 +267,19 @@ private fun Legend() {
  * is accepted, then who is already on it, in grey, and who the proposal adds, in blue. A mission
  * still short of people has its count and border in amber, and screen readers say how many are
  * missing. The slot is dated when the mission starts on another date than [day], as one after
- * midnight listed under the evening before.
+ * midnight listed under the evening before. A short mission ends with what is left to fill by hand,
+ * with Assign, and why nobody fills it.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) {
+private fun MissionCard(
+    mission: ProposedMission,
+    day: LocalDate,
+    zone: ZoneId,
+    onAssign: (String) -> Unit,
+) {
   val short = mission.missing > 0
+  val slot = missionSlot(mission.startAt, mission.endAt, day, zone)
   RoundedCard(
       modifier = Modifier.testTag(AutoScheduleTestTags.mission(mission.id)),
       borderColor = if (short) shifter_warning else MaterialTheme.colorScheme.outline,
@@ -268,7 +297,7 @@ private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) 
               text =
                   stringResource(
                       R.string.schedule_slot_team,
-                      missionSlot(mission.startAt, mission.endAt, day, zone),
+                      slot,
                       when {
                         mission.isGeneral -> stringResource(R.string.schedule_team_general)
                         else -> mission.teamName ?: stringResource(R.string.schedule_team_unknown)
@@ -323,7 +352,61 @@ private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) 
           }
         }
       }
+      if (short) ToFillByHand(mission, slot, onAssign)
     }
+  }
+}
+
+/**
+ * What a short mission still needs, "2 spots to fill by hand", with Assign to finish it, then why
+ * nobody fills it: a General mission never is, and a team mission had nobody else free.
+ */
+@Composable
+private fun ToFillByHand(mission: ProposedMission, slot: String, onAssign: (String) -> Unit) {
+  val assignDescription = stringResource(R.string.schedule_assign_description, mission.title)
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(shifter_warningContainer)
+                .padding(start = 12.dp)
+                .testTag(AutoScheduleTestTags.toFill(mission.id)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+          text = pluralStringResource(R.plurals.schedule_to_fill, mission.missing, mission.missing),
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.SemiBold,
+          color = shifter_warning,
+          modifier = Modifier.weight(1f),
+      )
+      TextButton(
+          onClick = { onAssign(mission.id) },
+          modifier =
+              Modifier.semantics { contentDescription = assignDescription }
+                  .testTag(AutoScheduleTestTags.assign(mission.id)),
+      ) {
+        Text(stringResource(R.string.schedule_assign), fontWeight = FontWeight.SemiBold)
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+      }
+    }
+    Text(
+        text =
+            when {
+              mission.isGeneral -> stringResource(R.string.schedule_to_fill_general)
+              mission.teamName == null ->
+                  stringResource(R.string.schedule_to_fill_unknown_team, slot)
+              else -> stringResource(R.string.schedule_to_fill_team, mission.teamName, slot)
+            },
+        style = MaterialTheme.typography.labelSmall,
+        color = shifter_mutedText,
+        modifier = Modifier.testTag(AutoScheduleTestTags.toFillReason(mission.id)),
+    )
   }
 }
 
