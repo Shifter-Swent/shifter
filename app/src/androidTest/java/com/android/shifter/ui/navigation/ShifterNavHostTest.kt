@@ -1634,6 +1634,22 @@ class ShifterNavHostTest {
     assertEquals(1, targetsOpened)
   }
 
+  @Test
+  fun notificationTarget_ofANewAccount_opensOnceTheModeIsChosen() {
+    // Signed in without a profile: the mode is chosen before the target opens.
+    val user = signIn()
+    createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
+    showAppTapping(NotificationTarget.MyEvents(UserMode.ORGANIZER))
+    waitForNode(ChooseModeTestTags.VOLUNTEER)
+    assertEquals(0, targetsOpened)
+
+    composeTestRule.onNodeWithTag(ChooseModeTestTags.VOLUNTEER).performClick()
+
+    // The mode chosen is Volunteer: only the target leads to the organizer's events.
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    assertEquals(1, targetsOpened)
+  }
+
   private fun texts(channel: ChatChannelId): List<String> = runBlocking {
     repositories.chatRepository.messages(channel).first().map { it.text }
   }
