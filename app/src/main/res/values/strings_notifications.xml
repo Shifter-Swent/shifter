@@ -11,6 +11,25 @@
 
     <!-- Shared: the name of each kind's Android channel and Settings switch (#614, #620).
          Prefix: notification_channel_ -->
+    <string name="notification_channel_new_application">New applications</string>
+    <string name="notification_channel_new_application_description">When someone applies to one of your events.</string>
+    <string name="notification_channel_application_decided">Application decisions</string>
+    <string name="notification_channel_application_decided_description">When an organizer accepts or declines your application.</string>
+    <string name="notification_channel_team_changed">Team changes</string>
+    <string name="notification_channel_team_changed_description">When a volunteer joins or leaves one of your teams.</string>
+    <string name="notification_channel_mission_assigned">Missions assigned or removed</string>
+    <string name="notification_channel_mission_assigned_description">When you get a mission, by hand or from a schedule, or lose one.</string>
+    <string name="notification_channel_mission_changed">Mission changes</string>
+    <string name="notification_channel_mission_changed_description">When one of your missions changes time or place.</string>
+    <string name="notification_channel_announcement">Announcements</string>
+    <string name="notification_channel_announcement_description">Each announcement sent to a channel you are in.</string>
+    <string name="notification_channel_missed_check_in">Missed check-ins</string>
+    <!-- 10 min: the delay of MissedCheckIn set by #611, written here until its constant exists;
+         it then goes into channelDescriptionArgs, as the window of OPEN_SPOTS does. -->
+    <string name="notification_channel_missed_check_in_description">10 min after a mission starts, for each volunteer of your team who is not checked in.</string>
+    <string name="notification_channel_open_spots">Missions short of volunteers</string>
+    <!-- The window of OpenSpots, in hours. -->
+    <string name="notification_channel_open_spots_description">Missions starting in the next %1$d h that still have open spots.</string>
 
     <!-- NEW_APPLICATION (#595). Prefix: notification_new_application_ -->
 

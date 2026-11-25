@@ -17,10 +17,12 @@ import com.swent.shifter.model.authentication.AuthRepository
 import com.swent.shifter.model.location.LocalSharingConsent
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.model.user.UserRepositoryException
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.NonCancellable
@@ -28,9 +30,12 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,6 +50,14 @@ enum class LocationSharingNotice {
   SAVE_FAILED,
   /** The change is saved on the device but the server has not confirmed it yet. */
   SAVED_OFFLINE,
+}
+
+/** A notice of the Notifications section: [SAVE_FAILED] goes under its switch. */
+enum class NotificationsNotice {
+  /** The choices could not be read, so the switches stay disabled. */
+  LOAD_FAILED,
+  /** The server refused the change: the switch is back where it was. */
+  SAVE_FAILED,
 }
 
 data class SettingsUiState(
@@ -64,12 +77,20 @@ data class SettingsUiState(
     /** True while a change of [locationSharing] is being saved: the switch waits for it. */
     val savingLocationSharing: Boolean = false,
     val locationSharingNotice: LocationSharingNotice? = null,
+    /**
+     * The kinds of notifications turned off on the profile, with the changes made on this phone
+     * that the server has not confirmed yet; `null` until read.
+     */
+    val disabledNotifications: Set<NotificationKind>? = null,
+    val notificationsNotice: NotificationsNotice? = null,
+    /** The kind [notificationsNotice] is about, shown under its switch; `null` for the section. */
+    val notificationsNoticeKind: NotificationKind? = null,
 )
 
 /**
- * Signs the user out, changes the mode saved on their profile from [mode] to the other one, and
- * turns their consent to share their location with their managers on and off (#404). Sharing the
- * position itself is not done here (#377).
+ * Signs the user out, changes the mode saved on their profile from [mode] to the other one, turns
+ * their consent to share their location with their managers on and off (#404), and each kind of
+ * notification (#620). Sharing the position itself is not done here (#377).
  */
 class SettingsViewModel(
     private val repository: AuthRepository,
@@ -88,8 +109,12 @@ class SettingsViewModel(
   private val _uiState = MutableStateFlow(SettingsUiState(mode = mode))
   val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+  /** The last save started for each kind of notification, used on the main thread only. */
+  private val lastNotificationSaves = mutableMapOf<NotificationKind, Any>()
+
   init {
     loadLocationSharing()
+    observeNotifications()
   }
 
   /**
@@ -260,6 +285,93 @@ class SettingsViewModel(
   }
 
   /**
+   * Follows the kinds turned off, so a change shows at once, whether made on this phone or another
+   * one, or undone by Firestore after a refusal. Nothing read after [LOAD_TIMEOUT_MILLIS] is told.
+   * A failure, even after a first value, disables the switches: a lost connection is told and tried
+   * again every [RETRY_DELAY_MILLIS], any other failure only told.
+   */
+  private fun observeNotifications() {
+    val uid = repository.currentUser()?.uid ?: return
+    viewModelScope.launch {
+      delay(LOAD_TIMEOUT_MILLIS)
+      if (_uiState.value.disabledNotifications == null) reportNotificationsNotLoaded()
+    }
+    viewModelScope.launch {
+      userRepository
+          .observeDisabledNotifications(uid)
+          .retryWhen { cause, _ -> // NOSONAR: only SharedFlow.retryWhen is deprecated (S1874)
+            val retry = cause is UserRepositoryException.Unavailable
+            if (retry) {
+              reportNotificationsNotLoaded()
+              delay(RETRY_DELAY_MILLIS)
+            }
+            retry
+          }
+          .catch { e ->
+            if (e !is Exception) throw e
+            Log.w(TAG, "Could not observe the notification choices", e)
+            reportNotificationsNotLoaded()
+          }
+          .collect { saved ->
+            _uiState.update {
+              it.copy(
+                  disabledNotifications = saved,
+                  notificationsNotice =
+                      it.notificationsNotice.takeUnless { notice ->
+                        notice == NotificationsNotice.LOAD_FAILED
+                      },
+              )
+            }
+          }
+    }
+  }
+
+  /**
+   * Tells under the section that the choices could not be loaded, and disables the switches until
+   * they are read again: no longer followed, they would not move when tapped.
+   */
+  private fun reportNotificationsNotLoaded() {
+    _uiState.update {
+      it.copy(
+          disabledNotifications = null,
+          notificationsNotice = NotificationsNotice.LOAD_FAILED,
+          notificationsNoticeKind = null,
+      )
+    }
+  }
+
+  /**
+   * Turns notifications of [kind] on or off without waiting for the server: Firestore applies the
+   * change on this phone at once, so [observeNotifications] moves the switch, and sends it when it
+   * can, the writes in order. Only the last save of [kind] tells under its switch if the server
+   * refused it.
+   */
+  fun setNotificationEnabled(kind: NotificationKind, enabled: Boolean) {
+    val uid = repository.currentUser()?.uid
+    if (uid == null || _uiState.value.disabledNotifications == null) return
+    val save = Any()
+    lastNotificationSaves[kind] = save
+    _uiState.update { it.copy(notificationsNotice = null, notificationsNoticeKind = null) }
+    viewModelScope.launch {
+      val notice =
+          try {
+            userRepository.setNotificationEnabled(uid, kind, enabled)
+            null
+          } catch (e: CancellationException) {
+            throw e
+          } catch (e: Exception) {
+            Log.w(TAG, "Could not save the notification choice", e)
+            NotificationsNotice.SAVE_FAILED
+          }
+      if (lastNotificationSaves[kind] !== save) return@launch // A later change of kind tells.
+      lastNotificationSaves.remove(kind)
+      if (notice != null) {
+        _uiState.update { it.copy(notificationsNotice = notice, notificationsNoticeKind = kind) }
+      }
+    }
+  }
+
+  /**
    * Closes the Firebase session, then clears the Credential Manager state so the next sign-in
    * offers the account picker again. If Firebase fails the user stays signed in and nothing is
    * cleared; a failure to clear the credentials does not keep a signed-out user on this screen.
@@ -307,6 +419,12 @@ class SettingsViewModel(
      * saved offline, as for the other offline writes.
      */
     const val SAVE_TIMEOUT_MILLIS = 10_000L
+
+    /** How long the notification choices may take to load before it is told. */
+    internal const val LOAD_TIMEOUT_MILLIS = 10_000L
+
+    /** How long to wait before observing the notification choices again, the network lost. */
+    internal const val RETRY_DELAY_MILLIS = 10_000L
 
     /**
      * Builds the factory for `viewModel(factory = ...)`, since this ViewModel needs constructor

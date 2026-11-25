@@ -9,6 +9,16 @@
     <string name="settings_change_mode_error">Could not change your mode. Check your connection.</string>
     <string name="settings_retry">Retry</string>
 
+    <!-- Notifications (#620). The name and the explanation of each kind are in
+         strings_notifications.xml, shared with its Android channel. -->
+    <string name="settings_notifications_section">Notifications</string>
+    <string name="settings_notifications_as_volunteer">As a volunteer</string>
+    <string name="settings_notifications_as_manager">As a manager</string>
+    <string name="settings_notifications_as_organizer">As an organizer</string>
+    <string name="settings_notifications_help">Saved on your account: your choices follow you to another phone.</string>
+    <string name="settings_notifications_load_failed">Your notification choices could not be loaded.</string>
+    <string name="settings_notifications_save_failed">The change could not be saved.</string>
+
     <!-- Location sharing (#404) -->
     <string name="settings_privacy_section">Privacy and location</string>
     <string name="settings_location_sharing_title">Share my location with my manager</string>

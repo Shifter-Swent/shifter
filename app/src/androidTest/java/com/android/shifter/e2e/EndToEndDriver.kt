@@ -158,7 +158,12 @@ class EndToEndDriver(
   /** Signs out from Settings, opened from the avatar of the events list on screen. */
   fun signOut() {
     click(MyEventsTestTags.AVATAR)
-    click(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+    waitForNode(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+    // Under the Notifications section, Sign out may be out of view.
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+        .performScrollTo()
+        .performClick()
     waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
   }
 

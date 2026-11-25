@@ -218,7 +218,10 @@ class ShifterNavHostTest {
     val navController = signInAndShowApp()
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+        .performScrollTo()
+        .performClick()
 
     waitForNode(SignInScreenTestTags.LOGIN_BUTTON)
     assertNull(AuthEmulator.auth.currentUser)
@@ -532,7 +535,10 @@ class ShifterNavHostTest {
     createdPaths += listOf("users/${user.uid}", "publicProfiles/${user.uid}")
 
     composeTestRule.onNodeWithTag(MyEventsTestTags.AVATAR).performClick()
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON)
+        .performScrollTo()
+        .performClick()
 
     waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
     assertEquals(

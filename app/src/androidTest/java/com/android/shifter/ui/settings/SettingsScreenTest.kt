@@ -10,13 +10,17 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.swent.shifter.R
+import com.swent.shifter.model.notification.NotificationKind
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import com.swent.shifter.ui.theme.ShifterTheme
@@ -37,6 +41,7 @@ class SettingsScreenTest {
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
   private val sharingChanges = mutableListOf<Boolean>()
+  private val notificationChanges = mutableListOf<Pair<NotificationKind, Boolean>>()
 
   /** What the screen shows: a test changes it after [setScreen] to have the screen recompose. */
   private var state by mutableStateOf(SettingsUiState())
@@ -51,16 +56,125 @@ class SettingsScreenTest {
             onChangeMode = { changeModeClicks++ },
             onSignOut = { signOutClicks++ },
             onLocationSharingChange = { sharingChanges += it },
+            onNotificationChange = { kind, enabled -> notificationChanges += kind to enabled },
         )
       }
     }
   }
 
+  // The screen scrolls: each helper brings its node into view first.
   private fun sharingSwitch() =
-      composeTestRule.onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH)
+      composeTestRule
+          .onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_SWITCH)
+          .performScrollTo()
 
   private fun signOutButton() =
-      composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON)
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performScrollTo()
+
+  private fun changeModeButton() =
+      composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performScrollTo()
+
+  private fun notificationSwitch(kind: NotificationKind) =
+      composeTestRule
+          .onNodeWithTag(SettingsScreenTestTags.notificationSwitch(kind))
+          .performScrollTo()
+
+  /** The notice of the Notifications section, or of a switch, whose row merges it into itself. */
+  private fun notificationsNotice() =
+      composeTestRule.onNodeWithTag(
+          SettingsScreenTestTags.NOTIFICATIONS_NOTICE,
+          useUnmergedTree = true,
+      )
+
+  private fun noticeUnder(kind: NotificationKind) =
+      hasTestTag(SettingsScreenTestTags.NOTIFICATIONS_NOTICE) and
+          hasAnyAncestor(hasTestTag(SettingsScreenTestTags.notificationSwitch(kind)))
+
+  private fun text(id: Int, vararg args: Any) =
+      composeTestRule.onNodeWithText(context.getString(id, *args)).performScrollTo()
+
+  @Test
+  fun notifications_inVolunteerMode_showTheVolunteerAndManagerGroups() {
+    setScreen(SettingsUiState(disabledNotifications = emptySet()))
+
+    for (group in listOf(NotificationGroup.VOLUNTEER, NotificationGroup.MANAGER)) {
+      text(group.title).assertIsDisplayed()
+      for (kind in group.kinds) notificationSwitch(kind).assertIsOn().assertIsEnabled()
+    }
+    text(R.string.notification_channel_missed_check_in_description).assertIsDisplayed()
+    text(R.string.settings_notifications_help).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(SettingsScreenTestTags.notificationGroup(NotificationGroup.ORGANIZER))
+        .assertDoesNotExist()
+    sharingSwitch().assertIsDisplayed()
+  }
+
+  @Test
+  fun notifications_inOrganizerMode_showTheOrganizerGroupOnly() {
+    setScreen(SettingsUiState(mode = UserMode.ORGANIZER, disabledNotifications = emptySet()))
+
+    text(R.string.settings_notifications_as_organizer).assertIsDisplayed()
+    for (kind in NotificationGroup.ORGANIZER.kinds) notificationSwitch(kind).assertIsOn()
+    text(R.string.notification_channel_open_spots_description, 24).assertIsDisplayed()
+    for (group in listOf(NotificationGroup.VOLUNTEER, NotificationGroup.MANAGER)) {
+      composeTestRule
+          .onNodeWithTag(SettingsScreenTestTags.notificationGroup(group))
+          .assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun locationSharing_inOrganizerMode_isStillShown() {
+    // The position is published whatever the mode: the same account may volunteer elsewhere.
+    setScreen(SettingsUiState(mode = UserMode.ORGANIZER, locationSharing = true))
+
+    sharingSwitch().assertIsDisplayed().assertIsOn()
+  }
+
+  @Test
+  fun notificationClick_asksForTheOtherValue() {
+    setScreen(SettingsUiState(disabledNotifications = setOf(NotificationKind.ANNOUNCEMENT)))
+
+    notificationSwitch(NotificationKind.MISSION_CHANGED).assertIsOn().performClick()
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOff().assertIsEnabled().performClick()
+
+    assertEquals(
+        listOf(NotificationKind.MISSION_CHANGED to false, NotificationKind.ANNOUNCEMENT to true),
+        notificationChanges,
+    )
+  }
+
+  @Test
+  fun notifications_whileUnknown_cannotBeChanged() {
+    setScreen()
+
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).assertIsOn().assertIsNotEnabled()
+    notificationSwitch(NotificationKind.ANNOUNCEMENT).performClick()
+
+    assertEquals(emptyList<Pair<NotificationKind, Boolean>>(), notificationChanges)
+  }
+
+  @Test
+  fun notifications_showEachNoticeWhereItBelongs() {
+    setScreen(SettingsUiState(notificationsNotice = NotificationsNotice.LOAD_FAILED))
+    notificationsNotice()
+        .assertTextEquals(context.getString(R.string.settings_notifications_load_failed))
+    composeTestRule
+        .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
+        .assertDoesNotExist()
+
+    state =
+        SettingsUiState(
+            disabledNotifications = emptySet(),
+            notificationsNotice = NotificationsNotice.SAVE_FAILED,
+            notificationsNoticeKind = NotificationKind.ANNOUNCEMENT,
+        )
+
+    // Under the switch just tapped, so it shows where the user is, wherever the screen scrolled.
+    composeTestRule
+        .onNode(noticeUnder(NotificationKind.ANNOUNCEMENT), useUnmergedTree = true)
+        .assertTextEquals(context.getString(R.string.settings_notifications_save_failed))
+  }
 
   @Test
   fun locationSharing_showsTheSettingAndExplainsWhoSeesIt() {
@@ -69,10 +183,9 @@ class SettingsScreenTest {
     sharingSwitch().assertIsOn().assertIsEnabled()
     composeTestRule
         .onNodeWithText(context.getString(R.string.settings_privacy_section).uppercase())
+        .performScrollTo()
         .assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText(context.getString(R.string.settings_location_sharing_explanation))
-        .assertIsDisplayed()
+    text(R.string.settings_location_sharing_explanation).assertIsDisplayed()
     composeTestRule
         .onNodeWithTag(SettingsScreenTestTags.LOCATION_SHARING_NOTICE)
         .assertDoesNotExist()
@@ -121,7 +234,7 @@ class SettingsScreenTest {
   fun changeModeClick_callsOnChangeModeOnly() {
     setScreen()
 
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.CHANGE_MODE_BUTTON).performClick()
+    changeModeButton().performClick()
 
     assertEquals(1, changeModeClicks)
     assertEquals(0, signOutClicks)
@@ -152,19 +265,15 @@ class SettingsScreenTest {
         .onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE)
         .assertTextEquals(context.getString(R.string.settings_title))
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText(context.getString(R.string.settings_sign_out))
-        .assertIsDisplayed()
-    composeTestRule
-        .onNodeWithText(context.getString(R.string.settings_switch_to_organizer))
-        .assertIsDisplayed()
+    text(R.string.settings_sign_out).assertIsDisplayed()
+    text(R.string.settings_switch_to_organizer).assertIsDisplayed()
   }
 
   @Test
   fun signOutClick_callsOnSignOutOnly() {
     setScreen()
 
-    composeTestRule.onNodeWithTag(SettingsScreenTestTags.SIGN_OUT_BUTTON).performClick()
+    signOutButton().performClick()
 
     assertEquals(1, signOutClicks)
     assertEquals(0, backClicks)
