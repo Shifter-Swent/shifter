@@ -166,6 +166,15 @@ class AutoScheduleScreenTest {
   }
 
   @Test
+  fun missionCard_afterMidnight_isListedTheEveningBeforeWithItsDate() {
+    // Sunday 01:00 belongs to the event's Saturday, as on the Overview.
+    val night = stands.copy(id = "night", startAt = at(2, "01:00"), endAt = at(2, "03:00"))
+    showSchedule(proposal.copy(missions = listOf(night)))
+
+    compose.onNodeWithText("22 Nov, 01:00–03:00 · Logistics").assertExists()
+  }
+
+  @Test
   fun missionCard_ofATeamThatCouldNotBeRead_saysSoRatherThanGeneral() {
     showSchedule(proposal.copy(missions = listOf(stands.copy(teamName = null))))
 

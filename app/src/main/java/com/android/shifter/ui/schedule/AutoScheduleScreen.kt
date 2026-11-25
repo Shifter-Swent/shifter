@@ -45,18 +45,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.PersonChip
 import com.swent.shifter.ui.components.PersonChipState
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
+import com.swent.shifter.ui.components.days.missionSlot
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
 import com.swent.shifter.ui.theme.shifter_successContainer
 import com.swent.shifter.ui.theme.shifter_warning
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 object AutoScheduleTestTags {
@@ -161,7 +162,7 @@ private fun Proposal(
   if (missions.isEmpty()) {
     DayWithoutMissions(dayPicker.shown, Modifier.testTag(AutoScheduleTestTags.EMPTY_DAY))
   }
-  missions.forEach { MissionCard(it, zone) }
+  missions.forEach { MissionCard(it, dayPicker.shown, zone) }
 }
 
 /** What the proposal adds over the whole event, what stays to do by hand, and the legend. */
@@ -239,13 +240,15 @@ private fun Legend() {
 }
 
 /**
- * A mission of the day shown: its title, slot and team, how many people it has once the proposal is
- * accepted, then who is already on it, in grey, and who the proposal adds, in blue. A mission still
- * short of people has its count and border in amber, and screen readers say how many are missing.
+ * A mission of the [day] shown: its title, slot and team, how many people it has once the proposal
+ * is accepted, then who is already on it, in grey, and who the proposal adds, in blue. A mission
+ * still short of people has its count and border in amber, and screen readers say how many are
+ * missing. The slot is dated when the mission starts on another date than [day], as one after
+ * midnight listed under the evening before.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MissionCard(mission: ProposedMission, zone: ZoneId) {
+private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) {
   val short = mission.missing > 0
   ScheduleCard(
       modifier = Modifier.testTag(AutoScheduleTestTags.mission(mission.id)),
@@ -264,11 +267,7 @@ private fun MissionCard(mission: ProposedMission, zone: ZoneId) {
               text =
                   stringResource(
                       R.string.schedule_slot_team,
-                      stringResource(
-                          R.string.schedule_slot,
-                          mission.startAt.formatTime(zone),
-                          mission.endAt.formatTime(zone),
-                      ),
+                      missionSlot(mission.startAt, mission.endAt, day, zone),
                       when {
                         mission.isGeneral -> stringResource(R.string.schedule_team_general)
                         else -> mission.teamName ?: stringResource(R.string.schedule_team_unknown)

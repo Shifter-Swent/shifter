@@ -20,7 +20,6 @@
     <string name="schedule_nothing_saved">Nothing is saved until you accept.</string>
     <string name="schedule_legend_proposed">Proposed</string>
     <string name="schedule_legend_assigned">Already assigned</string>
-    <string name="schedule_slot">%1$s–%2$s</string>
     <string name="schedule_slot_team">%1$s · %2$s</string>
     <string name="schedule_team_general">General</string>
     <!-- A team whose name could not be read, e.g. one that was deleted -->
