@@ -2,7 +2,6 @@
 package com.swent.shifter.ui.schedule
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,8 +44,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
+import com.swent.shifter.ui.components.LoadErrorRow
 import com.swent.shifter.ui.components.PersonChip
 import com.swent.shifter.ui.components.PersonChipState
+import com.swent.shifter.ui.components.RoundedCard
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
@@ -168,7 +169,7 @@ private fun Proposal(
 /** What the proposal adds over the whole event, what stays to do by hand, and the legend. */
 @Composable
 private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
-  ScheduleCard(Modifier.testTag(AutoScheduleTestTags.SUMMARY)) {
+  RoundedCard(Modifier.testTag(AutoScheduleTestTags.SUMMARY)) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
       Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Total(
@@ -250,7 +251,7 @@ private fun Legend() {
 @Composable
 private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) {
   val short = mission.missing > 0
-  ScheduleCard(
+  RoundedCard(
       modifier = Modifier.testTag(AutoScheduleTestTags.mission(mission.id)),
       borderColor = if (short) shifter_warning else MaterialTheme.colorScheme.outline,
   ) {
@@ -329,7 +330,7 @@ private fun MissionCard(mission: ProposedMission, day: LocalDate, zone: ZoneId) 
 /** Why there is nothing to accept: every mission is full, or nobody fits the ones left. */
 @Composable
 private fun NothingToPropose() {
-  ScheduleCard(Modifier.testTag(AutoScheduleTestTags.NOTHING_TO_PROPOSE)) {
+  RoundedCard(Modifier.testTag(AutoScheduleTestTags.NOTHING_TO_PROPOSE)) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -357,19 +358,16 @@ private fun NothingToPropose() {
   }
 }
 
+/** Why the proposal could not be prepared, with Retry. */
 @Composable
 private fun LoadError(onRetry: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.schedule_load_failed),
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.weight(1f).testTag(AutoScheduleTestTags.LOAD_ERROR),
-    )
-    TextButton(onClick = onRetry, modifier = Modifier.testTag(AutoScheduleTestTags.RETRY)) {
-      Text(stringResource(R.string.schedule_retry))
-    }
-  }
+  LoadErrorRow(
+      message = stringResource(R.string.schedule_load_failed),
+      retryLabel = stringResource(R.string.schedule_retry),
+      onRetry = onRetry,
+      messageTag = AutoScheduleTestTags.LOAD_ERROR,
+      retryTag = AutoScheduleTestTags.RETRY,
+  )
 }
 
 /**
@@ -445,26 +443,5 @@ private fun SaveError(error: ScheduleSaveError, onReload: () -> Unit) {
         Text(stringResource(R.string.schedule_reload))
       }
     }
-  }
-}
-
-/** A rounded, outlined block of the screen, as on the organizer's Overview. */
-@Composable
-private fun ScheduleCard(
-    modifier: Modifier = Modifier,
-    borderColor: Color = MaterialTheme.colorScheme.outline,
-    content: @Composable () -> Unit,
-) {
-  val shape = RoundedCornerShape(18.dp)
-  Box(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .clip(shape)
-              .background(MaterialTheme.colorScheme.surfaceVariant)
-              .border(1.dp, borderColor, shape)
-              .padding(16.dp)
-  ) {
-    content()
   }
 }

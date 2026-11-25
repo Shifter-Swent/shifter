@@ -2,7 +2,6 @@
 package com.swent.shifter.ui.overview
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.ui.components.LoadErrorRow
+import com.swent.shifter.ui.components.RoundedCard
 import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
@@ -212,7 +213,15 @@ private fun OverviewColumn(
     AddMissionButton(actions.onAddMission)
     ManageTeamsButton(actions.onManageTeams)
     ProgressCard(state)
-    if (state.loadFailed) LoadError(actions.onRetry)
+    if (state.loadFailed) {
+      LoadErrorRow(
+          message = stringResource(R.string.overview_load_failed),
+          retryLabel = stringResource(R.string.overview_retry),
+          onRetry = actions.onRetry,
+          messageTag = OrganizerOverviewScreenTestTags.LOAD_ERROR,
+          retryTag = OrganizerOverviewScreenTestTags.RETRY_BUTTON,
+      )
+    }
     // No "Back to today" next to the filter: the strip's "Today" brings today back.
     DayHeader(
         title = missionsTitle(state, dayPicker),
@@ -284,7 +293,7 @@ private fun ManageTeamsButton(onClick: () -> Unit) {
 /** The share of the event's missions that are completed, whatever team is selected. */
 @Composable
 private fun ProgressCard(state: OrganizerOverviewUiState) {
-  OverviewCard {
+  RoundedCard {
     Row(verticalAlignment = Alignment.CenterVertically) {
       Box(contentAlignment = Alignment.Center) {
         CircularProgressIndicator(
@@ -335,24 +344,6 @@ private fun ProgressCard(state: OrganizerOverviewUiState) {
             color = shifter_mutedText,
         )
       }
-    }
-  }
-}
-
-@Composable
-private fun LoadError(onRetry: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.overview_load_failed),
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.weight(1f).testTag(OrganizerOverviewScreenTestTags.LOAD_ERROR),
-    )
-    TextButton(
-        onClick = onRetry,
-        modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.RETRY_BUTTON),
-    ) {
-      Text(stringResource(R.string.overview_retry))
     }
   }
 }
@@ -491,7 +482,7 @@ private fun MissionRow(
 /** Sends a notification to every team of the event. */
 @Composable
 private fun NotificationCard(onSendNotification: () -> Unit) {
-  OverviewCard {
+  RoundedCard {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
       Text(
           text = stringResource(R.string.overview_notification_title),
@@ -514,21 +505,5 @@ private fun NotificationCard(onSendNotification: () -> Unit) {
         )
       }
     }
-  }
-}
-
-/** A rounded, outlined block of the screen. */
-@Composable
-private fun OverviewCard(content: @Composable () -> Unit) {
-  val shape = RoundedCornerShape(18.dp)
-  Box(
-      modifier =
-          Modifier.fillMaxWidth()
-              .clip(shape)
-              .background(MaterialTheme.colorScheme.surfaceVariant)
-              .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-              .padding(16.dp)
-  ) {
-    content()
   }
 }
