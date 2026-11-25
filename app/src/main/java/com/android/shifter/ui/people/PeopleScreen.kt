@@ -16,7 +16,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -46,6 +45,12 @@ object PeopleScreenTestTags {
   const val UPDATE_PROGRESS = "PeopleUpdateProgress"
 }
 
+/** The tabs of the People screen, in their order. */
+enum class PeopleTab {
+  PARTICIPANTS,
+  REQUESTS,
+}
+
 /**
  * The organizer's People tab: the event's participants by team, and the requests to join it.
  *
@@ -60,6 +65,8 @@ object PeopleScreenTestTags {
  * @param eventTitle the event's name, shown in the top bar.
  * @param onBack called to leave the event, from the back button of the top bar.
  * @param onManagerChangeFailureShown called once a failed change of manager has been reported.
+ * @param initialTab the tab shown first, such as the requests for a notification of new ones; the
+ *   tab picked afterwards survives a configuration change.
  */
 @Composable
 fun PeopleScreen(
@@ -77,9 +84,10 @@ fun PeopleScreen(
     onNavigate: (Tab) -> Unit,
     onManagerChangeFailureShown: () -> Unit,
     modifier: Modifier = Modifier,
+    initialTab: PeopleTab = PeopleTab.PARTICIPANTS,
 ) {
   val colors = MaterialTheme.colorScheme
-  var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+  var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
   // The card tapped, as ids so it survives a configuration change and a reload of the list.
   var selection by rememberSaveable { mutableStateOf<Pair<String, String>?>(null) }
   // The participant being moved, by id for the same reasons.
@@ -118,18 +126,14 @@ fun PeopleScreen(
   ) { padding ->
     Column(Modifier.fillMaxSize().padding(padding)) {
       PeopleTabs(
-          labels =
-              listOf(
-                  stringResource(R.string.people_tab_participants),
-                  stringResource(R.string.people_tab_requests),
-              ),
           selected = selectedTab,
           onSelect = {
-            if (it == PARTICIPANTS_TAB && selectedTab != PARTICIPANTS_TAB) onReloadParticipants()
+            if (it == PeopleTab.PARTICIPANTS && selectedTab != PeopleTab.PARTICIPANTS)
+                onReloadParticipants()
             selectedTab = it
           },
       )
-      if (selectedTab == PARTICIPANTS_TAB) {
+      if (selectedTab == PeopleTab.PARTICIPANTS) {
         if (participants.isUpdating) {
           val updating = stringResource(R.string.participants_updating)
           LinearProgressIndicator(
@@ -204,22 +208,27 @@ fun PeopleScreen(
 
 /** Underlined tabs followed by the full-width divider, like the My Events tabs. */
 @Composable
-private fun PeopleTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-  val tags = listOf(PeopleScreenTestTags.PARTICIPANTS_TAB, PeopleScreenTestTags.REQUESTS_TAB)
+private fun PeopleTabs(selected: PeopleTab, onSelect: (PeopleTab) -> Unit) {
   UnderlinedTabRow {
-    labels.forEachIndexed { index, label ->
+    PeopleTab.entries.forEach { tab ->
+      val (label, tag) =
+          when (tab) {
+            PeopleTab.PARTICIPANTS ->
+                stringResource(R.string.people_tab_participants) to
+                    PeopleScreenTestTags.PARTICIPANTS_TAB
+            PeopleTab.REQUESTS ->
+                stringResource(R.string.people_tab_requests) to PeopleScreenTestTags.REQUESTS_TAB
+          }
       UnderlinedTab(
           label = label,
-          isSelected = index == selected,
-          onClick = { onSelect(index) },
+          isSelected = tab == selected,
+          onClick = { onSelect(tab) },
           width = 150.dp,
-          modifier = Modifier.testTag(tags[index]),
+          modifier = Modifier.testTag(tag),
       )
     }
   }
 }
-
-private const val PARTICIPANTS_TAB = 0
 
 @Preview
 @Composable

@@ -12,11 +12,16 @@ import com.swent.shifter.firebase.FirestoreEmulator
 import com.swent.shifter.firebase.FirestoreEmulatorAdmin
 import com.swent.shifter.model.authentication.AuthRepositoryFirebase
 import com.swent.shifter.model.authentication.DefaultGoogleSignInHelper
+import com.swent.shifter.model.notification.AppNotification
+import com.swent.shifter.model.notification.NotificationKind
+import com.swent.shifter.model.notification.NotificationTarget
+import com.swent.shifter.model.notification.notificationTapIntent
 import com.swent.shifter.model.user.USERS_COLLECTION
 import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -67,14 +72,54 @@ class MainActivitySignedInTest {
   @Test
   fun launch_withRestoredSession_opensTheVolunteerEvents() {
     // The start screen reads the mode first, for up to StartViewModel.READ_TIMEOUT_MILLIS.
-    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      composeTestRule
-          .onAllNodesWithTag(MyEventsTestTags.STAFF_SCREEN)
-          .fetchSemanticsNodes()
-          .isNotEmpty()
-    }
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
     composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithTag(SignInScreenTestTags.LOGIN_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun notificationTapped_whileInTheApp_opensItsTarget() {
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+
+    // The tap brings back the activity already shown (singleTop), through onNewIntent.
+    tap(NotificationTarget.MyEvents(UserMode.ORGANIZER))
+
+    // The saved mode is Volunteer: only the target leads to the organizer's events.
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+  }
+
+  @Test
+  fun recreated_afterATargetOpened_staysOnIt() {
+    waitForNode(MyEventsTestTags.STAFF_SCREEN)
+    tap(NotificationTarget.MyEvents(UserMode.ORGANIZER))
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+
+    // As after a rotation: the activity saves its state, then is created again from it.
+    composeTestRule.activityRule.scenario.recreate()
+
+    waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
+    composeTestRule.onNodeWithTag(MyEventsTestTags.STAFF_SCREEN).assertDoesNotExist()
+  }
+
+  /** Sends the intent of a tap on a notification opening [target], as Android would. */
+  private fun tap(target: NotificationTarget) {
+    val activity = composeTestRule.activity
+    val notification =
+        AppNotification(
+            kind = NotificationKind.NEW_APPLICATION,
+            key = "event-1",
+            title = "New applications",
+            text = "Ada applied",
+            at = Instant.EPOCH,
+            target = target,
+        )
+    activity.startActivity(notificationTapIntent(activity, notification))
+  }
+
+  private fun waitForNode(tag: String) {
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+    }
   }
 
   /** The credential Credential Manager would return for a fresh fake Google account. */

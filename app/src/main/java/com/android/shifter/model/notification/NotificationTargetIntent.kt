@@ -4,6 +4,7 @@ package com.swent.shifter.model.notification
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import com.swent.shifter.MainActivity
 import java.time.DateTimeException
 import kotlinx.serialization.json.Json
@@ -63,15 +64,47 @@ private fun Intent.putNotificationTarget(target: NotificationTarget): Intent =
  * moving a [NotificationTarget] class, or one of its properties, makes the notifications already
  * shown unreadable, so their tap only opens the app. Use `@SerialName` to keep the old name.
  */
-fun Intent.notificationTarget(): NotificationTarget? {
-  val written = getStringExtra(NOTIFICATION_TARGET_EXTRA) ?: return null
-  return try {
-    Json.decodeFromString(NotificationTarget.serializer(), written)
-  } catch (_: IllegalArgumentException) {
-    // A SerializationException, or the require of a Channel's init.
-    null
-  } catch (_: DateTimeException) {
-    // The init of a Planning, whose day is not a date.
-    null
-  }
+fun Intent.notificationTarget(): NotificationTarget? =
+    getStringExtra(NOTIFICATION_TARGET_EXTRA)?.let(::readNotificationTarget)
+
+/**
+ * The target [MainActivity] opens once created:
+ * - recreated, after a rotation or once Android killed the app in the background, the one it had
+ *   not opened yet, saved by [putNotificationTargetToOpen], so a tap made signed out still opens
+ *   once signed in;
+ * - reopened from Recents, none: on Android 9 to 11, Back closes the activity, and Recents creates
+ *   it again with the intent of the tap, whose target was already opened (Android 12 and later keep
+ *   it in the background);
+ * - otherwise, the one of [intent], if a notification was tapped.
+ */
+fun notificationTargetToOpen(intent: Intent, savedInstanceState: Bundle?): NotificationTarget? =
+    when {
+      savedInstanceState != null ->
+          savedInstanceState.getString(TARGET_TO_OPEN_KEY)?.let(::readNotificationTarget)
+      intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0 -> null
+      else -> intent.notificationTarget()
+    }
+
+/**
+ * Saves [target], the one [MainActivity] has not opened yet, in the state it keeps when recreated,
+ * read back by [notificationTargetToOpen]. Nothing is saved without one.
+ */
+fun Bundle.putNotificationTargetToOpen(target: NotificationTarget?) {
+  if (target != null)
+      putString(TARGET_TO_OPEN_KEY, Json.encodeToString(NotificationTarget.serializer(), target))
 }
+
+/** The key of the saved state holding the target still to open, as JSON. */
+private const val TARGET_TO_OPEN_KEY = "com.swent.shifter.notificationTargetToOpen"
+
+/** The target [written] as JSON, or null when it cannot be read. */
+private fun readNotificationTarget(written: String): NotificationTarget? =
+    try {
+      Json.decodeFromString(NotificationTarget.serializer(), written)
+    } catch (_: IllegalArgumentException) {
+      // A SerializationException, or the require of a Channel's init.
+      null
+    } catch (_: DateTimeException) {
+      // The init of a Planning, whose day is not a date.
+      null
+    }

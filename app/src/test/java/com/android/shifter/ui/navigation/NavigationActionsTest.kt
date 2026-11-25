@@ -3,6 +3,7 @@
 package com.swent.shifter.ui.navigation
 
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -12,6 +13,8 @@ import androidx.navigation.NavOptions
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.navOptions
 import com.swent.shifter.model.chat.ChannelKind
+import com.swent.shifter.model.notification.NotificationTarget
+import com.swent.shifter.model.user.UserMode
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
@@ -267,6 +270,132 @@ class NavigationActionsTest {
     nav.openSettings()
 
     assertTrue(optionsOf(Volunteer.ProfileSettings).shouldLaunchSingleTop())
+  }
+
+  @Test
+  fun openTarget_myEvents_entersTheAppOfItsMode() {
+    nav.openTarget(NotificationTarget.MyEvents(UserMode.ORGANIZER), names)
+
+    verify { navController.navigate(Organizer, any<NavOptionsBuilder.() -> Unit>()) }
+  }
+
+  @Test
+  fun openTarget_eventOverview_opensTheEventOnTopOfTheListOfItsMode() {
+    nav.openTarget(
+        NotificationTarget.EventOverview("e1", "Fest", UserMode.ORGANIZER, teamId = null),
+        names,
+    )
+
+    verifyOrder {
+      navController.navigate(Organizer, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(OrganizerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+    }
+  }
+
+  @Test
+  fun openTarget_planning_opensTheVolunteerEvent() {
+    nav.openTarget(NotificationTarget.Planning("e1", "Fest", day = "2026-11-27"), names)
+
+    verifyOrder {
+      navController.navigate(Volunteer, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(VolunteerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+    }
+  }
+
+  @Test
+  fun openTarget_missionOfAManager_opensTheVolunteerEvent() {
+    nav.openTarget(NotificationTarget.Mission("e1", "Fest", UserMode.VOLUNTEER, "m1"), names)
+
+    verifyOrder {
+      navController.navigate(Volunteer, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(VolunteerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+    }
+  }
+
+  @Test
+  fun openTarget_teamChannel_opensItWithoutAName() {
+    nav.openTarget(
+        NotificationTarget.Channel("e1", "Fest", UserMode.VOLUNTEER, ChannelKind.TEAM, "bar"),
+        names,
+    )
+
+    val channel = VolunteerEventScreen.Channel(ChannelKind.TEAM, "bar", name = null)
+    verifyOrder {
+      navController.navigate(VolunteerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(VolunteerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
+    }
+  }
+
+  @Test
+  fun openTarget_generalChannel_opensItUnderItsName() {
+    nav.openTarget(
+        NotificationTarget.Channel("e1", "Fest", UserMode.ORGANIZER, ChannelKind.GENERAL, null),
+        names,
+    )
+
+    val channel = OrganizerEventScreen.Channel(ChannelKind.GENERAL, null, "General")
+    verifyOrder {
+      navController.navigate(OrganizerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(OrganizerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
+    }
+  }
+
+  @Test
+  fun openTarget_adminChannel_opensItUnderItsName() {
+    nav.openTarget(
+        NotificationTarget.Channel("e1", "Fest", UserMode.ORGANIZER, ChannelKind.ADMIN, null),
+        names,
+    )
+
+    val channel = OrganizerEventScreen.Channel(ChannelKind.ADMIN, null, "Admin")
+    verify { navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>()) }
+  }
+
+  @Test
+  fun openTarget_requests_opensPeopleOnTheRequests() {
+    val handle = SavedStateHandle()
+    val event = mockk<NavBackStackEntry>()
+    every { event.savedStateHandle } returns handle
+    every { navController.getBackStackEntry(OrganizerEvent::class) } returns event
+
+    nav.openTarget(NotificationTarget.Requests("e1", "Fest"), names)
+
+    verifyOrder {
+      navController.navigate(Organizer, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(OrganizerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(OrganizerTabs.People, any<NavOptionsBuilder.() -> Unit>())
+    }
+    assertEquals(true, handle.get<Boolean>(OPEN_REQUESTS_KEY))
+  }
+
+  @Test
+  fun isInEitherApp_inTheOrganizerApp_isTrue() {
+    stubCurrentDestinationIn(Volunteer to false, Organizer to true)
+
+    assertTrue(nav.isInEitherApp())
+  }
+
+  @Test
+  fun isInEitherApp_whileSigningIn_isFalse() {
+    stubCurrentDestinationIn(Volunteer to false, Organizer to false)
+
+    assertFalse(nav.isInEitherApp())
+  }
+
+  /** The names of the event's own channels, as the app's strings give them. */
+  private val names = ChannelNames(general = "General", admin = "Admin")
+
+  /** Puts the current screen inside each of [routes] whose flag is true, and outside the others. */
+  private fun stubCurrentDestinationIn(vararg routes: Pair<Any, Boolean>) {
+    val destination = mockk<NavDestination>(relaxed = true)
+    every { destination.parent } returns null
+    every { navController.currentDestination } returns destination
+    mockkObject(NavDestination.Companion)
+    for ((route, inside) in routes) {
+      every { with(NavDestination.Companion) { destination.hasRoute(route::class) } } returns inside
+    }
   }
 
   private fun stubCurrentDestinationIn(route: Any, inside: Boolean) {

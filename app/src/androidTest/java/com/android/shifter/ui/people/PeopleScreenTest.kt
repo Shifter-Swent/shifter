@@ -757,4 +757,31 @@ class PeopleScreenTest {
     compose.onNodeWithText("No membership requests yet.").assertIsDisplayed()
     compose.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertDoesNotExist()
   }
+
+  @Test
+  fun initialTab_requests_opensOnTheRequests() {
+    compose.setContent {
+      MaterialTheme {
+        PeopleScreen(
+            uiState = MembershipRequestUIState(requests = listOf(item), isLoading = false),
+            onAccept = {},
+            onReject = {},
+            onRetry = {},
+            participants = ParticipantsUiState(),
+            onReloadParticipants = {},
+            onAppointManager = { _, _ -> },
+            onRemoveManager = {},
+            onMoveToTeam = { _, _ -> },
+            eventTitle = "City Marathon",
+            onBack = {},
+            onNavigate = {},
+            onManagerChangeFailureShown = {},
+            initialTab = PeopleTab.REQUESTS,
+        )
+      }
+    }
+
+    compose.onNodeWithText("Requests").assertIsSelected()
+    compose.onNodeWithText("Alice Martin").assertIsDisplayed()
+  }
 }
