@@ -14,11 +14,6 @@
     <string name="attendance_team_general">General</string>
     <string name="attendance_team_unknown">Unknown team</string>
     <string name="attendance_mission_subtitle">%1$s · %2$s</string>
-    <!-- Times only within a day, the day added when the mission is not on the day being read, and
-         both days when it crosses midnight. -->
-    <string name="attendance_schedule">%1$s–%2$s</string>
-    <string name="attendance_schedule_on_day">%1$s, %2$s–%3$s</string>
-    <string name="attendance_schedule_across_days">%1$s %2$s – %3$s %4$s</string>
     <string name="attendance_live_check_in">LIVE CHECK-IN</string>
     <string name="attendance_counter">%1$s/%2$d</string>
     <!-- Stands in for the present count while the attendance is not known, with what a screen
