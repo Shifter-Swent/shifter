@@ -180,12 +180,11 @@ class FirestoreMissionRepository(
     requireValidAdditions(additions)
     val wanted = additions.filterValues { it.isNotEmpty() }
     if (wanted.isEmpty()) return
-    val senderId = auth.currentUser?.uid ?: throw MissionRepositoryException.PermissionDenied()
-    val event = firestore.collection(EventSchema.COLLECTION).document(eventId)
+    val senderId = signedInUserId()
     translatingErrors {
       firestore
           .runTransaction { transaction ->
-            val eventTitle = transaction.get(event).toEventTitle()
+            val eventTitle = transaction.get(eventOf(eventId)).toEventTitle()
             val stored = wanted.keys.map { transaction.get(missionsOf(eventId).document(it)) }
             val now = clock.instant()
             val changes =
@@ -238,6 +237,13 @@ class FirestoreMissionRepository(
           .forEach { (document, fields) -> set(document, fields) }
     }
   }
+
+  /** The signed-in user, who acts and so sends the notifications, read before any request. */
+  private fun signedInUserId(): String =
+      auth.currentUser?.uid ?: throw MissionRepositoryException.PermissionDenied()
+
+  private fun eventOf(eventId: String) =
+      firestore.collection(EventSchema.COLLECTION).document(eventId)
 
   /** The title of the event stored in this snapshot, failing with NOT_FOUND when it is missing. */
   private fun DocumentSnapshot.toEventTitle(): String {
