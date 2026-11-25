@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -214,10 +215,16 @@ private fun Total(count: Int, label: String, color: Color, modifier: Modifier) {
   }
 }
 
-/** What the two kinds of chips mean, drawn with the chips themselves, of one initial. */
+/**
+ * What the two kinds of chips mean, drawn with the chips themselves, of one initial. Screen readers
+ * skip it: it only explains the colours, and each chip of a mission already says its state.
+ */
 @Composable
 private fun Legend() {
-  Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+  Row(
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      modifier = Modifier.clearAndSetSemantics {},
+  ) {
     PersonChip(
         stringResource(R.string.schedule_legend_proposed),
         PersonChipState.PROPOSED,

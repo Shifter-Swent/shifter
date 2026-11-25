@@ -119,6 +119,15 @@ class AutoScheduleScreenTest {
   }
 
   @Test
+  fun legend_isSkippedByScreenReaders() {
+    showSchedule(proposal)
+
+    // It only explains the colours: each chip of a mission already says its state.
+    compose.onNodeWithText("Proposed").assertDoesNotExist()
+    compose.onNodeWithText("Already assigned").assertDoesNotExist()
+  }
+
+  @Test
   fun opening_showsTheMissionsOfToday() {
     showSchedule(proposal)
 
