@@ -68,6 +68,7 @@ import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
+import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
@@ -206,13 +207,14 @@ fun ManagerOverviewContent(
   // A team whose missions are gone, e.g. after a refresh, stops filtering them all away.
   // Nor does it filter once the menu is gone, down to one team.
   val selectedTeamId = pickedTeamId?.takeIf { id -> teams.size > 1 && teams.any { it.first == id } }
-  // A team that no longer exists keeps its missions filterable, under no name of its own.
-  val unknownTeam = stringResource(R.string.attendance_team_unknown)
   val teamMissions = state.missions.filter { selectedTeamId == null || it.teamId == selectedTeamId }
   // From all the missions, not the filtered ones: the strip stays the same when a team is picked.
   val dayPicker =
       rememberEventDayPicker(state.eventPeriod, state.missions.map { it.startAt }, now, zone)
   val missions = teamMissions.filter { dayPicker.isShown(it.startAt) }
+  // Without a strip nothing says which day is shown: the date then goes on the cards of any other
+  // day than today.
+  val cardDay = if (dayPicker.showsStrip) dayPicker.shown else dayPicker.today
   // By id, so the question survives a configuration change.
   var confirmingMissionId by rememberSaveable { mutableStateOf<String?>(null) }
   // One host for every message of the screen, so they are shown one after the other rather than
@@ -278,40 +280,13 @@ fun ManagerOverviewContent(
       item {
         // Never "0 missions" before there is an answer: that reads as having none.
         val count = missions.size.takeUnless { it == 0 && !state.isLoaded }
-        DayHeader(
-            title = stringResource(R.string.attendance_missions_title),
-            // Always there, so screen readers can refresh with no mission listed too.
-            titleModifier = Modifier.refreshAction(),
-            // Offered from two teams on: with one, it would filter nothing away.
-            filter =
-                if (teams.size > 1) {
-                  {
-                    TeamFilterMenu(
-                        teams = teams.map { (id, name) -> id to (name ?: unknownTeam) },
-                        selectedTeamId = selectedTeamId,
-                        onSelectTeam = { pickedTeamId = it },
-                        allTestTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
-                        teamTestTag = ManagerOverviewTestTags::teamChip,
-                    )
-                  }
-                } else null,
-            onBackToToday = dayPicker.onBackToToday,
-            hint =
-                count?.let {
-                  {
-                    Text(
-                        text = pluralStringResource(R.plurals.attendance_mission_count, it, it),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = shifter_mutedText,
-                        modifier = Modifier.testTag(ManagerOverviewTestTags.MISSION_COUNT),
-                    )
-                  }
-                },
-            // The days of the team picked get a dot.
-            strip =
-                if (dayPicker.showsStrip) {
-                  { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
-                } else null,
+        MissionsHeader(
+            count = count,
+            teams = teams,
+            selectedTeamId = selectedTeamId,
+            onSelectTeam = { pickedTeamId = it },
+            dayPicker = dayPicker,
+            teamMissions = teamMissions,
         )
       }
       items(missions, key = { it.id }) { mission ->
@@ -322,16 +297,10 @@ fun ManagerOverviewContent(
             canMarkCompleted = !state.isOrganizer && mission.canBeMarkedCompleted(now),
             isMarkingCompleted = mission.id in state.markingCompletedIds,
             now = now,
-            // Without a strip nothing says which day is shown: the date then goes on the cards
-            // of any other day than today.
-            day = if (dayPicker.showsStrip) dayPicker.shown else dayPicker.today,
+            day = cardDay,
             zone = zone,
             // Each card on its own: opening one leaves the others as they are.
-            onToggle = {
-              expandedMissionIds =
-                  if (mission.id in expandedMissionIds) expandedMissionIds - mission.id
-                  else expandedMissionIds + mission.id
-            },
+            onToggle = { expandedMissionIds = expandedMissionIds.toggled(mission.id) },
             onMarkCompleted = { confirmingMissionId = mission.id },
             onCheckIn = { userId -> onCheckIn(mission.id, userId) },
             // Not while it is being closed: it is about to be completed, which cannot be changed.
@@ -347,23 +316,12 @@ fun ManagerOverviewContent(
       }
       if (missions.isEmpty()) {
         item {
-          when {
-            // Other days, or other teams on other days, have missions: only this one has none.
-            teamMissions.isNotEmpty() ->
-                DayWithoutMissions(
-                    dayPicker.shown,
-                    Modifier.testTag(ManagerOverviewTestTags.EMPTY_DAY),
-                )
-            // A reload keeps the cards already shown instead of replacing them with the spinner.
-            state.isLoading ->
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp).testTag(ManagerOverviewTestTags.LOADING),
-                    strokeWidth = 2.dp,
-                )
-            // Already "loaded, did not fail, nothing there". A team that was picked always has
-            // a mission, since the chips come from the missions: what it leaves empty is a day.
-            state.isEmpty -> EmptyMessage(R.string.attendance_no_missions)
-          }
+          NoMissions(
+              teamHasMissions = teamMissions.isNotEmpty(),
+              isLoading = state.isLoading,
+              isEmpty = state.isEmpty,
+              shownDay = dayPicker.shown,
+          )
         }
       }
     }
@@ -382,6 +340,85 @@ fun ManagerOverviewContent(
     )
   }
 }
+
+/**
+ * The title of the missions, with their [count] once known, the team menu from two [teams] on, and
+ * the day strip, whose days with a mission of [teamMissions] get a dot.
+ */
+@Composable
+private fun MissionsHeader(
+    count: Int?,
+    teams: List<Pair<String, String?>>,
+    selectedTeamId: String?,
+    onSelectTeam: (String?) -> Unit,
+    dayPicker: EventDayPicker,
+    teamMissions: List<AttendanceMission>,
+) {
+  // A team that no longer exists keeps its missions filterable, under no name of its own.
+  val unknownTeam = stringResource(R.string.attendance_team_unknown)
+  DayHeader(
+      title = stringResource(R.string.attendance_missions_title),
+      // Always there, so screen readers can refresh with no mission listed too.
+      titleModifier = Modifier.refreshAction(),
+      // Offered from two teams on: with one, it would filter nothing away.
+      filter =
+          if (teams.size > 1) {
+            {
+              TeamFilterMenu(
+                  teams = teams.map { (id, name) -> id to (name ?: unknownTeam) },
+                  selectedTeamId = selectedTeamId,
+                  onSelectTeam = onSelectTeam,
+                  allTestTag = ManagerOverviewTestTags.ALL_TEAMS_CHIP,
+                  teamTestTag = ManagerOverviewTestTags::teamChip,
+              )
+            }
+          } else null,
+      onBackToToday = dayPicker.onBackToToday,
+      hint =
+          count?.let {
+            {
+              Text(
+                  text = pluralStringResource(R.plurals.attendance_mission_count, it, it),
+                  style = MaterialTheme.typography.labelSmall,
+                  color = shifter_mutedText,
+                  modifier = Modifier.testTag(ManagerOverviewTestTags.MISSION_COUNT),
+              )
+            }
+          },
+      // The days of the team picked get a dot.
+      strip =
+          if (dayPicker.showsStrip) {
+            { EventDayStrip(dayPicker, dayPicker.daysOf(teamMissions.map { it.startAt })) }
+          } else null,
+  )
+}
+
+/** What the list says when the day shown has no mission, or nothing while it would mislead. */
+@Composable
+private fun NoMissions(
+    teamHasMissions: Boolean,
+    isLoading: Boolean,
+    isEmpty: Boolean,
+    shownDay: LocalDate,
+) {
+  when {
+    // Other days, or other teams on other days, have missions: only this one has none.
+    teamHasMissions ->
+        DayWithoutMissions(shownDay, Modifier.testTag(ManagerOverviewTestTags.EMPTY_DAY))
+    // A reload keeps the cards already shown instead of replacing them with the spinner.
+    isLoading ->
+        CircularProgressIndicator(
+            modifier = Modifier.size(20.dp).testTag(ManagerOverviewTestTags.LOADING),
+            strokeWidth = 2.dp,
+        )
+    // Already "loaded, did not fail, nothing there". A team that was picked always has a
+    // mission, since the chips come from the missions: what it leaves empty is a day.
+    isEmpty -> EmptyMessage(R.string.attendance_no_missions)
+  }
+}
+
+/** These ids with [id] taken out if it is one of them, or added if not. */
+private fun Set<String>.toggled(id: String): Set<String> = if (id in this) this - id else this + id
 
 /**
  * Shows in [host] the "checked in · Undo" action of the last manual check-in, and why check-ins
