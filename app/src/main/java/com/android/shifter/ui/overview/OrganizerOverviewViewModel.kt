@@ -175,6 +175,19 @@ class OrganizerOverviewViewModel(
   }
 
   /**
+   * Lists the missions of the team [teamId], as a notification about that team asks. While the
+   * teams are read, the choice waits for them, and the load drops it if the team is not one of
+   * them; once they are read, an unknown team is ignored, as [selectTeam] does.
+   */
+  fun openTeam(teamId: String) {
+    _uiState.update { state ->
+      if (state.isLoading || state.teams.any { it.id == teamId }) {
+        state.copy(selectedTeamId = teamId)
+      } else state
+    }
+  }
+
+  /**
    * Opens the assignees of the mission [missionId], with the people already assigned picked, and
    * loads who may be assigned to it. An unknown mission is ignored.
    */

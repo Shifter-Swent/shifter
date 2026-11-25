@@ -71,6 +71,7 @@ import com.swent.shifter.ui.chat.ChatChannelsTestTags
 import com.swent.shifter.ui.chat.TeamChatTestTags
 import com.swent.shifter.ui.components.TeamFilterMenuTestTags
 import com.swent.shifter.ui.components.days.DayHeaderTestTags
+import com.swent.shifter.ui.components.days.eventDay
 import com.swent.shifter.ui.components.nowcard.NowCardTestTags
 import com.swent.shifter.ui.event.CreateEventScreenTestTags
 import com.swent.shifter.ui.event.EventCreatedScreenTestTags
@@ -1656,6 +1657,75 @@ class ShifterNavHostTest {
     // The mode chosen is Volunteer: only the target leads to the organizer's events.
     waitForNode(MyEventsTestTags.ORGANIZER_SCREEN)
     assertEquals(1, targetsOpened)
+  }
+
+  @Test
+  fun notificationTarget_planning_opensThePlanningOnItsDay() {
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    val first = assignedMission(event, volunteer, "Set up the stands", event.startAt)
+    val second =
+        assignedMission(event, volunteer, "Pack the stands", event.startAt.plus(Duration.ofDays(1)))
+    signIn(volunteerAccount)
+    saveMode(volunteer.uid, UserMode.VOLUNTEER)
+    val day = second.startAt.eventDay(ZoneId.systemDefault())
+
+    showAppTapping(NotificationTarget.Planning(event.id, event.title, day.toString()))
+
+    // The Planning opens on the mission's day, not on the event's first one.
+    waitForNode(PlanningTestTags.mission(second.id))
+    composeTestRule.onNodeWithTag(PlanningTestTags.mission(first.id)).assertDoesNotExist()
+    assertEquals(1, targetsOpened)
+  }
+
+  @Test
+  fun notificationTarget_ofATeam_opensTheOrganizerOverviewOnIt() {
+    val event = createEvent(signIn())
+    saveMode(checkNotNull(AuthEmulator.auth.currentUser).uid, UserMode.ORGANIZER)
+    val bar = createTeam(event, "Bar")
+    createMission(event, "Serve drinks", bar.id)
+    createMission(event, "Welcome the volunteers", teamId = null)
+
+    showAppTapping(
+        NotificationTarget.EventOverview(event.id, event.title, UserMode.ORGANIZER, bar.id)
+    )
+
+    // Once the teams are read, only the Bar's missions are listed.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Serve drinks").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Welcome the volunteers").assertDoesNotExist()
+    composeTestRule.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar")
+  }
+
+  /** Creates a mission of [event] at [startAt], for an hour, with [volunteer] assigned to it. */
+  private fun assignedMission(
+      event: Event,
+      volunteer: AuthUser,
+      title: String,
+      startAt: Instant,
+  ): Mission {
+    val mission = runBlocking {
+      repositories.missionRepository.createMission(
+          Mission(
+              eventId = event.id,
+              title = title,
+              description = "",
+              teamId = teamIds.getValue(event.id),
+              volunteersNeeded = 1,
+              startAt = startAt,
+              endAt = startAt.plus(Duration.ofHours(1)),
+              assigneeIds = listOf(volunteer.uid),
+              createdAt = Instant.now(),
+          )
+      )
+    }
+    // Deleted before its event, as Firestore does not cascade the deletion.
+    createdPaths.add(0, "events/${event.id}/missions/${mission.id}")
+    return mission
   }
 
   private fun texts(channel: ChatChannelId): List<String> = runBlocking {

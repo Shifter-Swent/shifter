@@ -117,6 +117,7 @@ class ManagerOverviewContentTest {
       onCompletionFailureShown: () -> Unit = {},
       onAddMission: (() -> Unit)? = null,
       onEditMission: ((String) -> Unit)? = null,
+      initialTeamId: String? = null,
   ) {
     compose.setContent {
       ShifterTheme {
@@ -125,6 +126,7 @@ class ManagerOverviewContentTest {
             now = now,
             onRetry = onRetry,
             zone = utc,
+            initialTeamId = initialTeamId,
             onCheckIn = onCheckIn,
             onViewOnMap = onViewOnMap,
             onUndoCheckIn = onUndoCheckIn,
@@ -505,6 +507,16 @@ class ManagerOverviewContentTest {
 
     compose.onNodeWithTag(ManagerOverviewTestTags.teamChip("bar")).performClick()
 
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
+    compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertDoesNotExist()
+  }
+
+  @Test
+  fun initialTeam_listsOnlyItsMissions() {
+    // As a notification about the Bar team asks.
+    show(loaded, initialTeamId = "bar")
+
+    compose.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar")
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m2")).assertIsDisplayed()
     compose.onNodeWithTag(ManagerOverviewTestTags.mission("m1")).assertDoesNotExist()
   }

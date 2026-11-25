@@ -478,6 +478,19 @@ const val OPEN_REQUESTS_KEY = "openRequests"
 fun NavBackStackEntry.isInEventsApp(): Boolean =
     destination.hierarchy.any { it.hasRoute(Volunteer::class) || it.hasRoute(Organizer::class) }
 
+/**
+ * The key, in the saved state of a volunteer's event graph, asking its Planning to open on a day
+ * rather than today, as a notification about a mission does: the day as `LocalDate.toString()`.
+ */
+const val OPEN_DAY_KEY = "openDay"
+
+/**
+ * The key, in the saved state of an event graph, asking its Overview to open on the missions of a
+ * team, as a notification about that team does: the team's id. A volunteer who is not a manager has
+ * no team filter, and ignores it.
+ */
+const val OPEN_TEAM_KEY = "openTeam"
+
 // ── Navigation actions ──────────────────────────────────────────────────────
 
 @Composable
@@ -550,10 +563,14 @@ open class NavigationActions(private val navController: NavHostController) {
   open fun openTarget(target: NotificationTarget, channelNames: ChannelNames) {
     when (target) {
       is NotificationTarget.MyEvents -> enterApp(appOfMode(target.mode))
-      is NotificationTarget.EventOverview ->
-          enterEventOf(target.mode, target.eventId, target.eventTitle)
-      is NotificationTarget.Planning ->
-          enterEventOf(UserMode.VOLUNTEER, target.eventId, target.eventTitle)
+      is NotificationTarget.EventOverview -> {
+        val event = enterEventOf(target.mode, target.eventId, target.eventTitle)
+        target.teamId?.let { eventState(event)[OPEN_TEAM_KEY] = it }
+      }
+      is NotificationTarget.Planning -> {
+        val event = enterEventOf(UserMode.VOLUNTEER, target.eventId, target.eventTitle)
+        eventState(event)[OPEN_DAY_KEY] = target.day
+      }
       is NotificationTarget.Mission -> enterEventOf(target.mode, target.eventId, target.eventTitle)
       is NotificationTarget.Channel -> {
         val event = enterEventOf(target.mode, target.eventId, target.eventTitle)
@@ -584,6 +601,13 @@ open class NavigationActions(private val navController: NavHostController) {
       }
     }
   }
+
+  /** The saved state of the graph of [event], just entered, where its screens read what to show. */
+  private fun eventState(event: EventMode) =
+      when (event) {
+        is VolunteerEvent -> navController.getBackStackEntry<VolunteerEvent>().savedStateHandle
+        is OrganizerEvent -> navController.getBackStackEntry<OrganizerEvent>().savedStateHandle
+      }
 
   /** Enters the app of [mode], then opens the event [eventId] in it, on its Overview. */
   private fun enterEventOf(mode: UserMode, eventId: String, eventTitle: String): EventMode {

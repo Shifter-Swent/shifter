@@ -25,6 +25,7 @@ import io.mockk.verifyOrder
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -293,13 +294,61 @@ class NavigationActionsTest {
   }
 
   @Test
-  fun openTarget_planning_opensTheVolunteerEvent() {
+  fun openTarget_planning_opensTheVolunteerEventOnTheDay() {
+    val handle = eventState(VolunteerEvent::class)
+
     nav.openTarget(NotificationTarget.Planning("e1", "Fest", day = "2026-11-27"), names)
 
     verifyOrder {
       navController.navigate(Volunteer, any<NavOptionsBuilder.() -> Unit>())
       navController.navigate(VolunteerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
     }
+    assertEquals("2026-11-27", handle.get<String>(OPEN_DAY_KEY))
+  }
+
+  @Test
+  fun openTarget_eventOverviewOfATeam_asksForTheTeam() {
+    val handle = eventState(OrganizerEvent::class)
+
+    nav.openTarget(
+        NotificationTarget.EventOverview("e1", "Fest", UserMode.ORGANIZER, teamId = "bar"),
+        names,
+    )
+
+    assertEquals("bar", handle.get<String>(OPEN_TEAM_KEY))
+  }
+
+  @Test
+  fun openTarget_eventOverviewOfAManager_asksForTheTeamInTheVolunteerEvent() {
+    val handle = eventState(VolunteerEvent::class)
+
+    nav.openTarget(
+        NotificationTarget.EventOverview("e1", "Fest", UserMode.VOLUNTEER, teamId = "bar"),
+        names,
+    )
+
+    assertEquals("bar", handle.get<String>(OPEN_TEAM_KEY))
+  }
+
+  @Test
+  fun openTarget_eventOverviewWithoutATeam_asksForNone() {
+    val handle = eventState(OrganizerEvent::class)
+
+    nav.openTarget(
+        NotificationTarget.EventOverview("e1", "Fest", UserMode.ORGANIZER, teamId = null),
+        names,
+    )
+
+    assertNull(handle.get<String>(OPEN_TEAM_KEY))
+  }
+
+  /** The saved state of the event graph [graph], where openTarget writes what to show. */
+  private fun eventState(graph: kotlin.reflect.KClass<*>): SavedStateHandle {
+    val handle = SavedStateHandle()
+    val event = mockk<NavBackStackEntry>()
+    every { event.savedStateHandle } returns handle
+    every { navController.getBackStackEntry(graph) } returns event
+    return handle
   }
 
   @Test

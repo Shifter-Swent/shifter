@@ -82,11 +82,17 @@ internal constructor(
  *
  * @param days the days that can be shown, in order, e.g. from [eventDays].
  * @param today the event day it is now, see [eventDay].
+ * @param initialDay the day shown at first, as if picked, e.g. the one a notification asks for;
+ *   today when null. A day that is not one of the [days] shows today instead, as a picked one does.
  */
 @Composable
-fun rememberDaySelection(days: List<LocalDate>, today: LocalDate): DaySelection {
+fun rememberDaySelection(
+    days: List<LocalDate>,
+    today: LocalDate,
+    initialDay: LocalDate? = null,
+): DaySelection {
   // The picked day by epoch day, which a Bundle can hold; null follows today.
-  val picked = rememberSaveable { mutableStateOf<Long?>(null) }
+  val picked = rememberSaveable { mutableStateOf(initialDay?.takeIf { it != today }?.toEpochDay()) }
   return remember(days, today, picked) { DaySelection(days, today, picked) }
 }
 

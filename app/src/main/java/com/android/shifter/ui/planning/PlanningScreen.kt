@@ -37,6 +37,7 @@ object PlanningScreenTestTags {
  * @param expandedMissionId the mission whose row shows its description, none when null.
  * @param onMissionClick called with the id of a row tapped; the rows cannot be tapped when null.
  * @param revealRequest a new value brings the expanded row into view again.
+ * @param initialDay the day the Planning shows at first rather than today, none when null.
  */
 @Composable
 fun PlanningContent(
@@ -47,6 +48,7 @@ fun PlanningContent(
     expandedMissionId: String? = null,
     onMissionClick: ((String) -> Unit)? = null,
     revealRequest: Int = 0,
+    initialDay: LocalDate? = null,
 ) {
   Column(modifier = modifier.fillMaxWidth().padding(top = 16.dp)) {
     when {
@@ -83,6 +85,7 @@ fun PlanningContent(
             expandedMissionId = expandedMissionId,
             onMissionClick = onMissionClick,
             revealRequest = revealRequest,
+            initialDay = initialDay,
         )
       }
     }
