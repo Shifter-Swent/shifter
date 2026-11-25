@@ -2,6 +2,7 @@
 package com.swent.shifter
 
 import android.content.Context
+import android.os.Build
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.content.edit
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -21,6 +22,7 @@ import com.swent.shifter.ui.permission.NOTIFICATION_PERMISSION_PREFERENCES
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
@@ -81,6 +83,8 @@ class MainActivityNotificationPermissionTest {
 
   @Test
   fun restoredSession_asksForTheNotificationPermission_onMyEvents() {
+    // Before Android 13 there is no such permission, and nothing to ask.
+    assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
     // Through the compose rule, which drives the app's frames, so the navigation to My Events and
     // the request run. Once the system dialog opens, MainActivity is in the background and the rule
     // finds no compose hierarchy any more: the question was recorded just before.

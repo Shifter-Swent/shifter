@@ -1,13 +1,14 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter
 
-import android.Manifest
+import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.core.content.edit
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.rule.GrantPermissionRule
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.swent.shifter.firebase.AuthEmulator
 import com.swent.shifter.firebase.FirestoreEmulator
@@ -23,6 +24,8 @@ import com.swent.shifter.model.user.UserMode
 import com.swent.shifter.model.user.UserRepositoryFirestore
 import com.swent.shifter.ui.authentication.SignInScreenTestTags
 import com.swent.shifter.ui.events.MyEventsTestTags
+import com.swent.shifter.ui.permission.NOTIFICATION_PERMISSION_ASKED
+import com.swent.shifter.ui.permission.NOTIFICATION_PERMISSION_PREFERENCES
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
@@ -45,6 +48,13 @@ class MainActivitySignedInTest {
   val signedIn =
       object : ExternalResource() {
         override fun before() {
+          // Recorded as already asked, so the system dialog MainActivity opens once My Events is
+          // shown (NotificationPermissionRequest) does not cover the screens under test. Granting
+          // the permission instead would keep it granted for the rest of the run, and the test of
+          // the question would find nothing to ask.
+          notificationPreferences().edit(commit = true) {
+            putBoolean(NOTIFICATION_PERMISSION_ASKED, true)
+          }
           val firestore = FirestoreEmulator.firestore
           runBlocking {
             val user =
@@ -66,16 +76,12 @@ class MainActivitySignedInTest {
           }
           AuthEmulator.auth.signOut()
           AuthEmulator.clearAccounts()
+          // The next tests start as on a new phone.
+          notificationPreferences().edit(commit = true) { clear() }
         }
       }
 
-  // Granted before launch, so the system dialog MainActivity opens once My Events is shown
-  // (NotificationPermissionRequest) does not cover the screens under test.
-  @get:Rule(order = 1)
-  val notifications: GrantPermissionRule =
-      GrantPermissionRule.grant(Manifest.permission.POST_NOTIFICATIONS)
-
-  @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun launch_withRestoredSession_opensTheVolunteerEvents() {
@@ -129,6 +135,11 @@ class MainActivitySignedInTest {
       composeTestRule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
     }
   }
+
+  private fun notificationPreferences() =
+      InstrumentationRegistry.getInstrumentation()
+          .targetContext
+          .getSharedPreferences(NOTIFICATION_PERMISSION_PREFERENCES, Context.MODE_PRIVATE)
 
   /** The credential Credential Manager would return for a fresh fake Google account. */
   private fun googleCredential(): GoogleIdTokenCredential {
