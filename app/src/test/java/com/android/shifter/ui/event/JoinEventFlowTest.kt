@@ -27,6 +27,7 @@ import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
+import com.swent.shifter.model.shift.FakeShiftRepository
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.ui.events.MyEventsTestTags
@@ -116,6 +117,7 @@ class JoinEventFlowTest {
             events,
             requests,
             teams,
+            FakeShiftRepository(),
             { "volunteer-1" },
             { Instant.ofEpochSecond(600) },
         )
@@ -172,6 +174,7 @@ class JoinEventFlowTest {
             events,
             requests,
             FakeTeamRepository(listOf(TEAM)),
+            FakeShiftRepository(),
             { "volunteer-1" },
             { Instant.ofEpochSecond(600) },
         )
@@ -249,6 +252,7 @@ class JoinEventFlowTest {
             events,
             requests,
             FakeTeamRepository(listOf(TEAM)),
+            FakeShiftRepository(),
             { "volunteer-1" },
             { Instant.ofEpochSecond(600) },
         )

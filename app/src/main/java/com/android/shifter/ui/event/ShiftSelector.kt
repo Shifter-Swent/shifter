@@ -28,9 +28,12 @@ import java.time.ZoneId
  * the organizer opened them in, with a line summing up the picks: "3 shifts picked: Fri 18–20, Sat
  * 10–14".
  *
- * Only shown for an event with shifts. Once the request is sent, the grid shows the shifts it holds
- * and the ViewModel ignores the taps, as the team stays fixed.
+ * Only shown for an event with shifts. While the volunteer picks, the grid starts at the day the
+ * picking opened, so a running event only offers its days to come. Once the request is sent,
+ * nothing is left to pick: only the line summing up its shifts is shown. On an event whose shifts
+ * have all started, it says none is left instead of the grid.
  *
+ * @param requestSent whether the volunteer's request is sent, so the grid and its help are hidden.
  * @param zone the zone the days and the hours are read in, the phone's.
  */
 @Composable
@@ -38,15 +41,18 @@ internal fun ShiftSelector(
     event: Event,
     shiftPicking: ShiftPicking,
     onShiftPicked: (String) -> Unit,
+    requestSent: Boolean,
     zone: ZoneId = ZoneId.systemDefault(),
 ) {
   val colors = MaterialTheme.colorScheme
   val shifts = shiftPicking.shifts
-  // The event's days, widened to the day of each shift so that none is left out of the grid.
+  val firstDay = shiftPicking.pickableFrom?.let { maxOf(it, event.startAt) } ?: event.startAt
+  // The event's days from the first one offered, widened to the day of each shift so that none is
+  // left out of the grid.
   val days =
-      remember(event, shifts, zone) {
+      remember(event, shifts, firstDay, zone) {
         eventDays(
-            event.startAt..event.endAt,
+            firstDay..event.endAt,
             shifts.map { it.startAt.atZone(zone).toLocalDate() },
             zone,
         )
@@ -58,40 +64,52 @@ internal fun ShiftSelector(
         fontSize = 18.sp,
         fontWeight = FontWeight.Bold,
     )
-    Text(
-        text = stringResource(R.string.join_event_choose_shifts_help),
-        color = colors.onSurfaceVariant,
-        fontSize = 14.sp,
-    )
-    ShiftGrid(
-        days = days,
-        shifts = shifts,
-        mode = ShiftGridMode.PICK,
-        zone = zone,
-        pickedShiftIds = shiftPicking.pickedShiftIds,
-        onSlot = { onShiftPicked(it.shiftId) },
-    )
+    if (shiftPicking.noneLeft) {
+      Text(
+          text = stringResource(R.string.join_event_no_shift_left),
+          color = colors.onSurfaceVariant,
+          fontSize = 14.sp,
+          modifier = Modifier.testTag(JoinEventScreenTestTags.NO_SHIFT_LEFT),
+      )
+      return@Column
+    }
+    if (!requestSent) {
+      Text(
+          text = stringResource(R.string.join_event_choose_shifts_help),
+          color = colors.onSurfaceVariant,
+          fontSize = 14.sp,
+          modifier = Modifier.testTag(JoinEventScreenTestTags.SHIFTS_HELP),
+      )
+      ShiftGrid(
+          days = days,
+          shifts = shifts,
+          mode = ShiftGridMode.PICK,
+          zone = zone,
+          pickedShiftIds = shiftPicking.pickedShiftIds,
+          onSlot = { onShiftPicked(it.shiftId) },
+      )
+    }
     PickedSummary(shiftPicking, zone)
   }
 }
 
-/** How many shifts are picked and when, back-to-back ones joined, or that none is yet. */
+/**
+ * How many shifts are picked and when, back-to-back ones joined. Nothing while none is: the line
+ * under Apply already asks for one.
+ */
 @Composable
 private fun PickedSummary(shiftPicking: ShiftPicking, zone: ZoneId) {
   val picked = shiftPicking.picked
-  val colors = MaterialTheme.colorScheme
-  val text =
-      if (picked.isEmpty()) stringResource(R.string.join_event_no_shift_picked)
-      else
+  if (picked.isEmpty()) return
+  Text(
+      text =
           pluralStringResource(
               R.plurals.join_event_shifts_picked,
               picked.size,
               picked.size,
               availabilityOf(picked).joinToString(", ") { it.formatShiftHours(zone) },
-          )
-  Text(
-      text = text,
-      color = if (picked.isEmpty()) colors.onBackground else colors.primary,
+          ),
+      color = MaterialTheme.colorScheme.primary,
       fontSize = 13.sp,
       fontWeight = FontWeight.SemiBold,
       modifier = Modifier.testTag(JoinEventScreenTestTags.SHIFTS_PICKED),

@@ -1025,6 +1025,7 @@ private fun joinEventViewModel(
                 repositories.eventRepository,
                 repositories.membershipRequestRepository,
                 repositories.teamRepository,
+                repositories.shiftRepository,
                 currentUserId,
             ),
     )

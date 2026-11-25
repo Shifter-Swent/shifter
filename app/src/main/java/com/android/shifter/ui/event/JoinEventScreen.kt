@@ -75,6 +75,8 @@ object JoinEventScreenTestTags {
   const val ERROR_MESSAGE = "JoinEventErrorMessage"
   const val CODE_HINT = "JoinEventCodeHint"
   const val NO_TEAMS = "JoinEventNoTeams"
+  const val SHIFTS_HELP = "JoinEventShiftsHelp"
+  const val NO_SHIFT_LEFT = "JoinEventNoShiftLeft"
   const val SHIFTS_PICKED = "JoinEventShiftsPicked"
   const val PICK_A_SHIFT = "JoinEventPickAShift"
 

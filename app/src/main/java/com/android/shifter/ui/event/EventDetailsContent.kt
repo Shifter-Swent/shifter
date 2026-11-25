@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material3.CircularProgressIndicator
@@ -150,18 +149,15 @@ fun EventDetailsContent(
             onTeamSelected = onTeamSelected,
         )
         // A request sent before the event had shifts holds none: there is nothing to show.
-        val sentWithoutShifts = requestStatus != null && shiftPicking.pickedShiftIds.isEmpty()
-        if (shiftPicking.shifts.isNotEmpty() && !sentWithoutShifts) {
-          ShiftSelector(event, shiftPicking, onShiftPicked)
+        val sentWithoutShifts = requestStatus != null && shiftPicking.picked.isEmpty()
+        if (shiftPicking.eventHasShifts && !sentWithoutShifts) {
+          ShiftSelector(
+              event = event,
+              shiftPicking = shiftPicking,
+              onShiftPicked = onShiftPicked,
+              requestSent = requestStatus != null,
+          )
         }
-      }
-      // An ended event takes no request, so nothing invites to send one.
-      if (!closed) {
-        IconLabel(
-            Icons.Outlined.Info,
-            stringResource(R.string.event_details_approval_notice),
-            colors.onSurfaceVariant,
-        )
       }
     }
     ApplyBar(
@@ -169,7 +165,8 @@ fun EventDetailsContent(
         requestStatus = requestStatus,
         error = error,
         canApply = canApply,
-        lacksAShift = shiftPicking.lacksAPick,
+        // With no shift left, the line above Apply already says so.
+        lacksAShift = shiftPicking.lacksAPick && !shiftPicking.noneLeft,
         onApply = onApply,
         closed = closed,
     )

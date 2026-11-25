@@ -43,8 +43,7 @@ class JoinEventViewModelTest {
   private var userId: String? = UID
   private var clock = NOW
   private val shifts = FakeShiftRepository()
-  private val viewModel =
-      JoinEventViewModel(events, requests, teams, { userId }, { clock }, shiftRepository = shifts)
+  private val viewModel = JoinEventViewModel(events, requests, teams, shifts, { userId }, { clock })
 
   @Before
   fun setUp() {
@@ -620,25 +619,87 @@ class JoinEventViewModelTest {
   }
 
   @Test
-  fun apply_withoutAShiftRepository_coversTheWholeEvent() {
-    val withoutShifts = JoinEventViewModel(events, requests, teams, { userId }, { clock })
-    coEvery { events.getEventByJoinCode(any()) } returns EVENT
+  fun findEvent_onARunningEvent_offersOnlyTheShiftsToCome() {
+    seedShifts()
+    findRunningEvent()
+
+    assertEquals(
+        listOf(shift(SATURDAY_10), shift(SATURDAY_12)),
+        viewModel.uiState.value.shiftPicking.shifts,
+    )
+    assertEquals(clock, viewModel.uiState.value.shiftPicking.pickableFrom)
+  }
+
+  @Test
+  fun findEvent_withARequestSent_keepsItsShiftsAlreadyStarted() {
+    seedShifts()
+    coEvery { requests.getMembershipRequest(EVENT.id, UID) } returns
+        request(MembershipRequestStatus.ACCEPTED).copy(shiftIds = listOf(shift(FRIDAY_18).id))
+
+    findRunningEvent()
+
+    val picking = viewModel.uiState.value.shiftPicking
+    assertEquals(listOf(shift(FRIDAY_18)), picking.picked)
+    assertEquals(3, picking.shifts.size)
+    assertNull(picking.pickableFrom)
+  }
+
+  @Test
+  fun findEvent_onARunningEventWithNoShiftLeft_cannotBeAppliedTo() {
+    shifts.put(shift(FRIDAY_18))
+    findRunningEvent()
+    viewModel.onTeamSelected(TEAM_ID)
     coEvery { requests.apply(any(), any()) } answers { secondArg() }
 
-    withoutShifts.onJoinCodeChange("ABC234")
-    withoutShifts.findEvent()
-    withoutShifts.onTeamSelected(TEAM_ID)
-    withoutShifts.applyToEvent()
+    viewModel.applyToEvent()
 
-    coVerify(exactly = 1) {
-      requests.apply(
-          EVENT.id,
-          match {
-            it.availability == listOf(AvailabilitySlot(EVENT.startAt, EVENT.endAt)) &&
-                it.shiftIds.isEmpty()
-          },
-      )
-    }
+    assertTrue(viewModel.uiState.value.shiftPicking.noneLeft)
+    assertFalse(viewModel.uiState.value.canApply)
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun apply_withAShiftStartedSincePicked_dropsItAndSendsNothing() {
+    seedShifts()
+    coEvery { events.getEventByJoinCode(any()) } returns
+        EVENT.copy(endAt = SATURDAY_12.plusHours(8))
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+    viewModel.onTeamSelected(TEAM_ID)
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    viewModel.onShiftPicked(shift(SATURDAY_10).id)
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    clock = FRIDAY_18
+
+    viewModel.applyToEvent()
+
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+    val picking = viewModel.uiState.value.shiftPicking
+    assertEquals(listOf(shift(SATURDAY_10)), picking.picked)
+    assertEquals(listOf(shift(SATURDAY_10), shift(SATURDAY_12)), picking.shifts)
+  }
+
+  @Test
+  fun onShiftPicked_aShiftAlreadyStarted_isIgnored() {
+    seedShifts()
+    loadEvent()
+    clock = FRIDAY_18
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun onShiftPicked_aShiftStartedSincePicked_canBeLetGo() {
+    seedShifts()
+    loadEvent()
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    clock = FRIDAY_18
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
   }
 
   @Test
@@ -650,6 +711,18 @@ class JoinEventViewModelTest {
     viewModel.changeCode()
 
     assertEquals(ShiftPicking(), viewModel.uiState.value.shiftPicking)
+  }
+
+  /**
+   * Finds [EVENT] running until Saturday evening, an hour into its Friday 18–20 shift: the clock is
+   * moved there.
+   */
+  private fun findRunningEvent() {
+    clock = FRIDAY_18.plusHours(1)
+    coEvery { events.getEventByJoinCode(any()) } returns
+        EVENT.copy(endAt = SATURDAY_12.plusHours(8))
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
   }
 
   /** Opens three shifts of [EVENT]: Friday 18–20, then Saturday 10–12 and 12–14, back to back. */

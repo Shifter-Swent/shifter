@@ -248,9 +248,6 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertDoesNotExist()
     // Nothing below the ended text asks to send a request.
     composeTestRule.onNodeWithText(string(R.string.event_details_apply_hint)).assertDoesNotExist()
-    composeTestRule
-        .onNodeWithText(string(R.string.event_details_approval_notice))
-        .assertDoesNotExist()
   }
 
   private fun string(id: Int) =
@@ -364,9 +361,8 @@ class JoinEventScreenTest {
     composeTestRule.setContent { Content(uiState = shiftsState()) }
 
     composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).performScrollTo().assertIsDisplayed()
-    composeTestRule
-        .onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED)
-        .assertTextEquals(string(R.string.join_event_no_shift_picked))
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_HELP).assertExists()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED).assertDoesNotExist()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
     composeTestRule
         .onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT)
@@ -419,6 +415,52 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT).assertDoesNotExist()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun requestSent_withShifts_showsOnlyTheirSummary() {
+    composeTestRule.setContent {
+      Content(
+          uiState =
+              shiftsState(picked = setOf(shiftAt(FRIDAY, 18).id))
+                  .copy(requestStatus = MembershipRequestStatus.PENDING)
+      )
+    }
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED)
+        .assertTextEquals("1 shift picked: Fri 18–20")
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_HELP).assertDoesNotExist()
+  }
+
+  @Test
+  fun pickingOpenedDuringTheEvent_startsTheGridThatDay() {
+    composeTestRule.setContent {
+      Content(
+          uiState =
+              shiftsState()
+                  .copy(
+                      shiftPicking =
+                          ShiftPicking(SHIFTS.drop(1), pickableFrom = shiftAt(SATURDAY, 10).startAt)
+                  )
+      )
+    }
+
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.day(SATURDAY)).assertExists()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.day(FRIDAY)).assertDoesNotExist()
+  }
+
+  @Test
+  fun noShiftLeft_saysSoWithoutAGrid() {
+    composeTestRule.setContent {
+      Content(uiState = shiftsState().copy(shiftPicking = ShiftPicking(eventHasShifts = true)))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.NO_SHIFT_LEFT).assertExists()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
   }
 
   @Test
