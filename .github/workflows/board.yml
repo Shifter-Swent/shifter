@@ -34,7 +34,8 @@ env:
   PROJECT_NUMBER: 2
   # The column field and the stories' column, matched exactly: a column renamed makes the run fail
   # rather than move an issue to the wrong one. The other issues go to the "Done in N" column with
-  # the highest N, so a new sprint's column is taken as soon as it is added to the board.
+  # the highest N, so a new sprint's column is taken as soon as it is added to the board: add it
+  # when that sprint starts, not before (the wiki's Home says so).
   STATUS_FIELD: Status
   STORY_COLUMN: Implemented User stories
   SPRINT_DONE_PREFIX: Done in
@@ -62,13 +63,14 @@ jobs:
             exit 1
           fi
 
-          # The issue's type and its items in projects, keeping the one on our board.
+          # The issue's state, its type and its items in projects, keeping the one on our board.
           issue=$(gh api graphql \
             -f owner="${REPOSITORY%/*}" -f name="${REPOSITORY#*/}" -F number="${ISSUE}" \
             -f query='
               query($owner: String!, $name: String!, $number: Int!) {
                 repository(owner: $owner, name: $name) {
                   issue(number: $number) {
+                    state
                     issueType { name }
                     projectItems(first: 20) {
                       nodes { id project { id number owner { ... on Organization { login } } } }
@@ -76,6 +78,12 @@ jobs:
                   }
                 }
               }')
+          # Only a closed issue moves: one reopened since, or an open story run by hand, would
+          # otherwise reach its column, where "Auto-close issue" closes it.
+          if [ "$(jq -r '.data.repository.issue.state' <<< "${issue}")" != "CLOSED" ]; then
+            echo "#${ISSUE} is not closed: nothing to move."
+            exit 0
+          fi
           item=$(jq -c --arg owner "${PROJECT_OWNER}" --argjson number "${PROJECT_NUMBER}" \
             'first(.data.repository.issue.projectItems.nodes[]
               | select(.project.number == $number and .project.owner.login == $owner)) // empty' \
