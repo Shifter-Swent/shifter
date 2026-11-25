@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -263,22 +264,6 @@ class ShiftsViewModelTest {
   }
 
   @Test
-  fun toggleSlot_whenAVolunteerChoosesItFirst_keepsItAndSaysWhoKeptIt() = runTest {
-    start(seeded = listOf(shift(sat, 10)))
-    edit()
-
-    // The volunteer's choice is on its way: the flow has not delivered it when the organizer taps,
-    // so the close is sent and the backend is the one to refuse it.
-    shifts.put(shift(sat, 10, volunteers = 1))
-    viewModel.toggleSlot(sat, 10)
-    advanceUntilIdle()
-
-    assertEquals(listOf(shift(sat, 10, volunteers = 1)), state.shifts)
-    assertEquals(KeptSlot(slotOf(sat, 10, ZONE).startAt, 1), state.keptSlot)
-    assertNull(state.error)
-  }
-
-  @Test
   fun messageShown_dropsTheKeptSlotAndTheError() = runTest {
     start(seeded = listOf(shift(sat, 10, volunteers = 1)))
     edit()
@@ -470,15 +455,88 @@ class ShiftsViewModelTest {
   }
 
   @Test
-  fun toggleSlot_whenTheCloseIsDeniedWithNobodyOnTheSlot_reportsTheFailure() = runTest {
-    start(seeded = listOf(shift(sat, 10)))
+  fun toggleSlot_whenTheCloseIsRefusedBeforeTheSlotComesBack_readsWhoKeptIt() = runTest {
+    // The order the emulator showed: the delete hides the shift, the refusal arrives, and only
+    // afterwards does the listener put the shift back with the volunteer who caused it.
+    val refused = RefusedClose(shifts, onServer = listOf(shift(sat, 10, volunteers = 1)))
+    start(seeded = listOf(shift(sat, 10)), repository = refused)
     edit()
-    // Denied for another reason than the volunteers, e.g. the user is not the organizer.
-    shifts.failure = ShiftRepositoryException.PermissionDenied()
 
     viewModel.toggleSlot(sat, 10)
     advanceUntilIdle()
 
+    // The grid had already lost the shift, so only a read can say why the close was refused.
+    assertEquals(emptyList<Shift>(), state.shifts)
+    assertEquals(1, refused.reads)
+    assertEquals(KeptSlot(slotOf(sat, 10, ZONE).startAt, 1), state.keptSlot)
+    assertNull(state.error)
+
+    // That read answered the question alone: the listener stays the one to fill the grid.
+    shifts.put(shift(sat, 10, volunteers = 1))
+    advanceUntilIdle()
+    assertEquals(listOf(shift(sat, 10, volunteers = 1)), state.shifts)
+  }
+
+  @Test
+  fun toggleSlot_whenTheVolunteerArrivesBeforeTheRefusal_keepsItWithoutReading() = runTest {
+    val refused = RefusedClose(shifts)
+    start(seeded = listOf(shift(sat, 10)), repository = refused)
+    edit()
+
+    // The choice is on its way as the organizer taps: the listener brings it in before the
+    // backend refuses the close, so the shifts followed already name them.
+    shifts.put(shift(sat, 10, volunteers = 1))
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals("the grid answered, so nothing was read back", 0, refused.reads)
+    assertEquals(KeptSlot(slotOf(sat, 10, ZONE).startAt, 1), state.keptSlot)
+    assertNull(state.error)
+  }
+
+  @Test
+  fun toggleSlot_whenTheCloseIsDeniedWithNobodyOnTheSlot_reportsTheFailure() = runTest {
+    // Denied for another reason than the volunteers, e.g. the user is not the organizer: the
+    // read finds the slot still open and chosen by nobody.
+    val refused = RefusedClose(shifts, onServer = listOf(shift(sat, 10)))
+    start(seeded = listOf(shift(sat, 10)), repository = refused)
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    assertEquals(1, refused.reads)
+    assertEquals(ShiftsError.SAVE_FAILED, state.error)
+    assertNull(state.keptSlot)
+  }
+
+  @Test
+  fun toggleSlot_whenTheRefusalCannotBeRead_reportsTheFailure() = runTest {
+    val refused = RefusedClose(shifts)
+    refused.readFailure = ShiftRepositoryException.Unavailable()
+    start(seeded = listOf(shift(sat, 10)), repository = refused)
+    edit()
+
+    viewModel.toggleSlot(sat, 10)
+    advanceUntilIdle()
+
+    // The refusal is what failed, so it is reported, not the read that could not explain it.
+    assertEquals(ShiftsError.SAVE_FAILED, state.error)
+    assertNull(state.keptSlot)
+  }
+
+  @Test
+  fun toggleSlot_whenTheOpenIsDenied_reportsTheFailureWithoutReading() = runTest {
+    val refused = RefusedClose(shifts, onServer = listOf(shift(sat, 12, volunteers = 1)))
+    start(repository = refused)
+    edit()
+    shifts.failure = ShiftRepositoryException.PermissionDenied()
+
+    viewModel.toggleSlot(sat, 12)
+    advanceUntilIdle()
+
+    // A refused open has no volunteers to find: it is the user not being the organizer.
+    assertEquals(0, refused.reads)
     assertEquals(ShiftsError.SAVE_FAILED, state.error)
     assertNull(state.keptSlot)
   }
@@ -551,6 +609,32 @@ class ShiftsViewModelTest {
     override suspend fun openSlot(eventId: String, slot: ShiftSlot): Shift {
       opens++
       return delegate.openSlot(eventId, slot)
+    }
+  }
+
+  /**
+   * The order Firestore takes when a volunteer chose the slot just before the close: the delete
+   * hides the shift at once, the server then refuses it, and the listener only puts the shift back
+   * afterwards. A read still sees the server's shifts, [onServer], whatever the grid holds.
+   */
+  private class RefusedClose(
+      private val delegate: FakeShiftRepository,
+      private val onServer: List<Shift> = emptyList(),
+  ) : ShiftRepository by delegate {
+    var reads = 0
+    var readFailure: Exception? = null
+
+    override suspend fun closeSlot(eventId: String, shiftId: String) {
+      yield() // the listener catches up with what it already has before the write is sent
+      delegate.closeSlot(eventId, shiftId) // hides the shift, or refuses when volunteers chose it
+      yield() // the listener delivers that delete before the server answers
+      throw ShiftRepositoryException.PermissionDenied()
+    }
+
+    override suspend fun getShifts(eventId: String): List<Shift> {
+      reads++
+      readFailure?.let { throw it }
+      return onServer
     }
   }
 

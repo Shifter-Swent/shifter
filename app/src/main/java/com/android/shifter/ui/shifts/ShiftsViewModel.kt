@@ -11,6 +11,7 @@ import com.swent.shifter.model.event.EventRepositoryException
 import com.swent.shifter.model.shift.Shift
 import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
+import com.swent.shifter.model.shift.ShiftSlot
 import com.swent.shifter.model.shift.overlaps
 import com.swent.shifter.model.shift.slotOf
 import java.time.Duration
@@ -98,7 +99,7 @@ data class ShiftsUiState(
  *
  * It follows [ShiftRepository.observeShifts] rather than reading once, so a slot a volunteer picks
  * on their own phone shows here on its own, and a slot that cannot be closed because someone just
- * chose it already lists them, with nothing to reload.
+ * chose it usually lists them already.
  *
  * The days are calendar days, the ones the grid draws its columns of, so an event running past
  * midnight gets a column for the night it ends on.
@@ -156,10 +157,8 @@ class ShiftsViewModel(
       } catch (e: CancellationException) {
         throw e
       } catch (e: ShiftRepositoryException.PermissionDenied) {
-        // Either a volunteer chose the slot just before the close, which the flow has already
-        // brought in, or the signed-in user is not the organizer: the backend tells no difference.
-        val chosen = shiftOf(slot.shiftId)?.takeIf { it.volunteerIds.isNotEmpty() }
-        if (chosen != null) keep(chosen) else fail(e)
+        // A refused open is the user not being the organizer; only a close has volunteers to find.
+        if (open == null) fail(e) else keepOrFail(slot, e)
       } catch (e: Exception) {
         fail(e)
       } finally {
@@ -243,6 +242,29 @@ class ShiftsViewModel(
     val first = dates.minOrNull() ?: return emptyList()
     val last = dates.max()
     return generateSequence(first) { it.plusDays(1) }.takeWhile { it <= last }.toList()
+  }
+
+  /**
+   * The shifts followed usually name the volunteers a refused close kept the slot for. They do not
+   * when Firestore hides the shift as the delete is sent and the refusal comes back before the
+   * listener puts it again, so the slot is gone from the grid here. One read is then asked, and
+   * only asked: the listener stays the one to say what the grid holds. [ShiftRepository.getShifts]
+   * takes its backend's default source, so a read that answers from a cache that has not caught up
+   * only means the save is reported as failed.
+   */
+  private suspend fun keepOrFail(slot: ShiftSlot, denied: Exception) {
+    val chosen =
+        shiftOf(slot.shiftId)?.takeIf { it.volunteerIds.isNotEmpty() }
+            ?: try {
+              shiftRepository.getShifts(eventId).firstOrNull {
+                it.id == slot.shiftId && it.volunteerIds.isNotEmpty()
+              }
+            } catch (e: CancellationException) {
+              throw e
+            } catch (_: Exception) {
+              null
+            }
+    if (chosen != null) keep(chosen) else fail(denied)
   }
 
   private fun shiftOf(shiftId: String): Shift? =
