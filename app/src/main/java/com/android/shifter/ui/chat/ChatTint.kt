@@ -2,6 +2,8 @@
 package com.swent.shifter.ui.chat
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import com.swent.shifter.ui.theme.md_theme_dark_surface
 import com.swent.shifter.ui.theme.shifter_chatTintAmber
 import com.swent.shifter.ui.theme.shifter_chatTintBlue
 import com.swent.shifter.ui.theme.shifter_chatTintGreen
@@ -27,3 +29,6 @@ internal val CHAT_TINTS =
  */
 internal fun chatTint(key: String): Color =
     CHAT_TINTS[Math.floorMod(key.hashCode(), CHAT_TINTS.size)]
+
+/** The background of a tile tinted [tint]: the tint, faint on the dark surface. */
+internal fun tileBackground(tint: Color): Color = lerp(md_theme_dark_surface, tint, 0.18f)
