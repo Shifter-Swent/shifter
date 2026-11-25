@@ -1,0 +1,142 @@
+# Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+name: Board - Move closed issues
+
+# Moves an issue closed to its column of the scrum board (#714): a user story, an issue of type
+# Feature, to "Implemented User stories", where it stays closed; any other issue to the current
+# sprint's "Done in N", the one with the highest N. It replaces the project's built-in "Item
+# closed" workflow, which sends every closed issue there: with "Auto-close issue" on "Implemented
+# User stories", the two moved a story there, closed it, then moved it away. Here a story closed by
+# "Auto-close issue" is set to the column it is already in, so nothing loops.
+#
+# It can also be run by hand on one issue, with a dry run that only says where it would go.
+on:
+  issues:
+    types:
+      - closed
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Number of the issue to move
+        required: true
+        type: number
+      dry_run:
+        description: Only say where the issue would go
+        required: false
+        type: boolean
+        default: true
+
+# The job reaches the board with the project token only.
+permissions: {}
+
+env:
+  # The scrum board: https://github.com/orgs/Shifter-Swent/projects/2
+  PROJECT_OWNER: Shifter-Swent
+  PROJECT_NUMBER: 2
+  # The column field and the stories' column, matched exactly: a column renamed makes the run fail
+  # rather than move an issue to the wrong one. The other issues go to the "Done in N" column with
+  # the highest N, so a new sprint's column is taken as soon as it is added to the board: add it
+  # when that sprint starts, not before (the wiki's Home says so).
+  STATUS_FIELD: Status
+  STORY_COLUMN: Implemented User stories
+  SPRINT_DONE_PREFIX: Done in
+  STORY_TYPE: Feature
+
+jobs:
+  move:
+    name: Move the issue to its column
+    runs-on: ubuntu-latest
+
+    steps:
+      # GITHUB_TOKEN cannot reach an organization's project: PROJECT_TOKEN is a classic token with
+      # only the project scope (its owner and expiry are on the wiki's Home). The values from the
+      # event go through the environment, never into the script itself.
+      - name: Move
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::The secret PROJECT_TOKEN is missing: see the wiki's Home to set it."
+            exit 1
+          fi
+
+          # The issue's state, its type and its items in projects, keeping the one on our board.
+          issue=$(gh api graphql \
+            -f owner="${REPOSITORY%/*}" -f name="${REPOSITORY#*/}" -F number="${ISSUE}" \
+            -f query='
+              query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  issue(number: $number) {
+                    state
+                    issueType { name }
+                    projectItems(first: 20) {
+                      nodes { id project { id number owner { ... on Organization { login } } } }
+                    }
+                  }
+                }
+              }')
+          # Only a closed issue moves: one reopened since, or an open story run by hand, would
+          # otherwise reach its column, where "Auto-close issue" closes it.
+          if [ "$(jq -r '.data.repository.issue.state' <<< "${issue}")" != "CLOSED" ]; then
+            echo "#${ISSUE} is not closed: nothing to move."
+            exit 0
+          fi
+          item=$(jq -c --arg owner "${PROJECT_OWNER}" --argjson number "${PROJECT_NUMBER}" \
+            'first(.data.repository.issue.projectItems.nodes[]
+              | select(.project.number == $number and .project.owner.login == $owner)) // empty' \
+            <<< "${issue}")
+          if [ -z "${item}" ]; then
+            echo "#${ISSUE} is not on the board: nothing to move."
+            exit 0
+          fi
+
+          # The column field and its options.
+          project_id=$(jq -r '.project.id' <<< "${item}")
+          field=$(gh api graphql -f project="${project_id}" -f field="${STATUS_FIELD}" \
+            -f query='
+              query($project: ID!, $field: String!) {
+                node(id: $project) {
+                  ... on ProjectV2 {
+                    field(name: $field) {
+                      ... on ProjectV2SingleSelectField { id options { id name } }
+                    }
+                  }
+                }
+              }')
+          field_id=$(jq -r '.data.node.field.id // empty' <<< "${field}")
+
+          # A story to its column; anything else to the current sprint's "Done in N".
+          type=$(jq -r '.data.repository.issue.issueType.name // "none"' <<< "${issue}")
+          if [ "${type}" = "${STORY_TYPE}" ]; then
+            column="${STORY_COLUMN}"
+          else
+            column=$(jq -r --arg prefix "${SPRINT_DONE_PREFIX} " \
+              '[.data.node.field.options[]? | .name
+                | select(startswith($prefix) and (ltrimstr($prefix) | test("^[0-9]+$")))]
+              | max_by(ltrimstr($prefix) | tonumber) // empty' <<< "${field}")
+          fi
+          option_id=$(jq -r --arg column "${column}" \
+            '.data.node.field.options[]? | select(.name == $column) | .id' <<< "${field}")
+          if [ -z "${field_id}" ] || [ -z "${column}" ] || [ -z "${option_id}" ]; then
+            echo "::error::No column \"${column:-${SPRINT_DONE_PREFIX} N}\" in the field \"${STATUS_FIELD}\" of the board."
+            exit 1
+          fi
+
+          if [ "${DRY_RUN}" = "true" ]; then
+            echo "Dry run: #${ISSUE} (type ${type}) would go to \"${column}\"."
+            exit 0
+          fi
+          gh api graphql \
+            -f project="${project_id}" -f item="$(jq -r '.id' <<< "${item}")" \
+            -f field="${field_id}" -f option="${option_id}" \
+            -f query='
+              mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project, itemId: $item, fieldId: $field,
+                  value: { singleSelectOptionId: $option }
+                }) { projectV2Item { id } }
+              }' > /dev/null
+          echo "#${ISSUE} (type ${type}) moved to \"${column}\"."
