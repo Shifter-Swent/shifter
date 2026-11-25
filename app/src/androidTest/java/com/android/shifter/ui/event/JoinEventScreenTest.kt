@@ -58,7 +58,7 @@ class JoinEventScreenTest {
     var typed = ""
     var findClicks = 0
     composeTestRule.setContent {
-      content(
+      Content(
           uiState = JoinEventUiState(joinCode = "ABC234"),
           onJoinCodeChange = { typed = it },
           onFindEvent = { findClicks++ },
@@ -80,7 +80,7 @@ class JoinEventScreenTest {
 
   @Test
   fun codeStep_showsOneBoxPerCharacter() {
-    composeTestRule.setContent { content(uiState = JoinEventUiState()) }
+    composeTestRule.setContent { Content(uiState = JoinEventUiState()) }
 
     repeat(JoinCode.LENGTH) { codeBox(it).assertTextEquals("") }
     codeBox(JoinCode.LENGTH).assertDoesNotExist()
@@ -147,7 +147,7 @@ class JoinEventScreenTest {
       CompositionLocalProvider(
           LocalDensity provides Density(LocalDensity.current.density, fontScale = 2f)
       ) {
-        Box(Modifier.width(NARROW_SCREEN)) { content(uiState = JoinEventUiState("ABC234")) }
+        Box(Modifier.width(NARROW_SCREEN)) { Content(uiState = JoinEventUiState("ABC234")) }
       }
     }
 
@@ -161,7 +161,7 @@ class JoinEventScreenTest {
   fun find_untilTheCodeIsComplete_staysDisabled() {
     var findClicks = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(joinCode = "ABC23"), onFindEvent = { findClicks++ })
+      Content(uiState = JoinEventUiState(joinCode = "ABC23"), onFindEvent = { findClicks++ })
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.FIND_BUTTON).assertIsNotEnabled()
@@ -173,7 +173,7 @@ class JoinEventScreenTest {
   @Test
   fun loading_disablesTheScanButton() {
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(joinCode = "ABC234", isLoading = true))
+      Content(uiState = JoinEventUiState(joinCode = "ABC234", isLoading = true))
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SCAN_BUTTON).assertIsNotEnabled()
@@ -183,7 +183,7 @@ class JoinEventScreenTest {
   fun keyboardDone_withACompleteCode_findsTheEvent() {
     var findClicks = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(joinCode = "ABC234"), onFindEvent = { findClicks++ })
+      Content(uiState = JoinEventUiState(joinCode = "ABC234"), onFindEvent = { findClicks++ })
     }
 
     codeField().performImeAction()
@@ -195,7 +195,7 @@ class JoinEventScreenTest {
   fun foundEvent_showsItsNameAndAppliesOnClick() {
     var applyClicks = 0
     composeTestRule.setContent {
-      content(
+      Content(
           uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"),
           onApply = { applyClicks++ },
       )
@@ -211,7 +211,7 @@ class JoinEventScreenTest {
   fun apply_untilATeamIsPicked_staysDisabled() {
     val picked = mutableListOf<String>()
     composeTestRule.setContent {
-      content(
+      Content(
           uiState = JoinEventUiState(event = EVENT, teams = TEAMS),
           onTeamSelected = { picked += it },
       )
@@ -226,7 +226,7 @@ class JoinEventScreenTest {
   @Test
   fun pickingATeam_showsItAsSelected() {
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"))
+      Content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"))
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertIsSelected()
@@ -235,7 +235,7 @@ class JoinEventScreenTest {
   @Test
   fun endedEvent_saysItHasEndedWithoutApply() {
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, hasEnded = true))
+      Content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, hasEnded = true))
     }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.ENDED).assertIsDisplayed()
@@ -253,17 +253,35 @@ class JoinEventScreenTest {
 
   @Test
   fun eventWithoutTeam_tellsItHasNoTeam() {
-    composeTestRule.setContent { content(uiState = JoinEventUiState(event = EVENT)) }
+    composeTestRule.setContent { Content(uiState = JoinEventUiState(event = EVENT)) }
 
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.NO_TEAMS).assertIsDisplayed()
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
   }
 
   @Test
+  fun codeStep_keepsItsTitleAndLeavesWithTheBackButton() {
+    var leaves = 0
+    composeTestRule.setContent { Content(uiState = JoinEventUiState(), onLeave = { leaves++ }) }
+
+    // Only the back button is added: the title stays in the step, with no top bar.
+    composeTestRule.onNodeWithText("Join an event").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
+
+    assertEquals(1, leaves)
+  }
+
+  @Test
   fun foundEvent_showsItsDetailsAndGoesBack() {
     var backClicks = 0
+    var leaves = 0
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(event = EVENT), onBack = { backClicks++ })
+      Content(
+          uiState = JoinEventUiState(event = EVENT),
+          onBack = { backClicks++ },
+          onLeave = { leaves++ },
+      )
     }
 
     composeTestRule.onNodeWithTag(EventDetailsTestTags.CATEGORY).assertTextEquals("Music")
@@ -274,13 +292,15 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(EventDetailsTestTags.DATE).assertIsDisplayed()
     composeTestRule.onNodeWithTag(NavigationTestTags.GO_BACK_BUTTON).performClick()
 
+    // On the event, Back returns to the code rather than leaving the screen.
     assertEquals(1, backClicks)
+    assertEquals(0, leaves)
   }
 
   @Test
   fun applying_replacesTheButton() {
     composeTestRule.setContent {
-      content(
+      Content(
           uiState = JoinEventUiState(event = EVENT, requestStatus = MembershipRequestStatus.PENDING)
       )
     }
@@ -292,7 +312,7 @@ class JoinEventScreenTest {
   @Test
   fun endedEvent_withARequestSent_stillShowsTheRequest() {
     composeTestRule.setContent {
-      content(
+      Content(
           uiState =
               JoinEventUiState(
                   event = EVENT,
@@ -309,7 +329,7 @@ class JoinEventScreenTest {
   @Test
   fun decidedRequest_isShownAsSuch() {
     composeTestRule.setContent {
-      content(
+      Content(
           uiState =
               JoinEventUiState(event = EVENT, requestStatus = MembershipRequestStatus.REJECTED)
       )
@@ -323,7 +343,7 @@ class JoinEventScreenTest {
   @Test
   fun error_showsTheErrorMessage() {
     composeTestRule.setContent {
-      content(uiState = JoinEventUiState(error = JoinEventError.UNKNOWN_CODE))
+      Content(uiState = JoinEventUiState(error = JoinEventError.UNKNOWN_CODE))
     }
 
     composeTestRule
@@ -333,20 +353,30 @@ class JoinEventScreenTest {
   }
 
   @Composable
-  private fun content(
+  private fun Content(
       uiState: JoinEventUiState,
       onJoinCodeChange: (String) -> Unit = {},
       onFindEvent: () -> Unit = {},
       onBack: () -> Unit = {},
+      onLeave: () -> Unit = {},
       onTeamSelected: (String) -> Unit = {},
       onApply: () -> Unit = {},
-  ) = JoinEventContent(uiState, onJoinCodeChange, onFindEvent, onBack, onTeamSelected, onApply)
+  ) =
+      JoinEventContent(
+          uiState,
+          onJoinCodeChange,
+          onFindEvent,
+          onBack,
+          onLeave,
+          onTeamSelected,
+          onApply,
+      )
 
   /** The code step keeping the code typed, normalized like the ViewModel does. */
   private fun showCodeStep() {
     composeTestRule.setContent {
       var joinCode by remember { mutableStateOf("") }
-      content(
+      Content(
           uiState = JoinEventUiState(joinCode = joinCode),
           onJoinCodeChange = { joinCode = JoinCode.normalize(it) },
       )

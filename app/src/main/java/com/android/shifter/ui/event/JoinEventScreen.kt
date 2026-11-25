@@ -51,24 +51,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
-import com.swent.shifter.model.event.Event
-import com.swent.shifter.model.event.EventLocation
-import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
-import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.components.BackButton
 import com.swent.shifter.ui.components.Pill
 import com.swent.shifter.ui.components.PrimaryButton
 import com.swent.shifter.ui.components.membershipStatusColors
-import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.shifter_inputBackground
 import com.swent.shifter.ui.theme.shifter_mutedText
-import java.time.Instant
 
 object JoinEventScreenTestTags {
   const val JOIN_CODE_FIELD = "JoinEventCodeField"
@@ -90,12 +84,14 @@ object JoinEventScreenTestTags {
 /**
  * The join screen wired to [viewModel].
  *
+ * @param onLeave leaves the screen, from the back button of the code step.
  * @param onScanQrCode opens the scan of the event's QR code, instead of typing its code.
  * @param onRequestSent called with the event's title once a request is sent, to leave the screen.
  */
 @Composable
 fun JoinEventScreen(
     viewModel: JoinEventViewModel,
+    onLeave: () -> Unit,
     onScanQrCode: () -> Unit = {},
     onRequestSent: (eventTitle: String) -> Unit,
 ) {
@@ -113,6 +109,7 @@ fun JoinEventScreen(
       onJoinCodeChange = viewModel::onJoinCodeChange,
       onFindEvent = viewModel::findEvent,
       onBack = viewModel::changeCode,
+      onLeave = onLeave,
       onTeamSelected = viewModel::onTeamSelected,
       onApply = viewModel::applyToEvent,
       onScanQrCode = onScanQrCode,
@@ -121,8 +118,9 @@ fun JoinEventScreen(
 
 /**
  * Joining in two steps: the volunteer types the event's join code, then sees the details of the
- * event it found, picks one of its teams and applies to it. Back, on screen or on the device,
- * returns to the code.
+ * event it found, picks one of its teams and applies to it. On the event, Back, on screen or on the
+ * device, returns to the code and calls [onBack]. On the code, the back button calls [onLeave], and
+ * the device's Back is left to the navigation, which leaves the screen the same way.
  */
 @Composable
 fun JoinEventContent(
@@ -130,6 +128,7 @@ fun JoinEventContent(
     onJoinCodeChange: (String) -> Unit,
     onFindEvent: () -> Unit,
     onBack: () -> Unit,
+    onLeave: () -> Unit,
     onTeamSelected: (String) -> Unit,
     onApply: () -> Unit,
     onScanQrCode: () -> Unit = {},
@@ -149,6 +148,8 @@ fun JoinEventContent(
     if (event == null) {
       Box(Modifier.statusBarsPadding()) {
         JoinCodeStep(uiState, onJoinCodeChange, onFindEvent, onScanQrCode)
+        // The circle alone, where the shared top bar puts it: the step keeps its own title.
+        BackButton(onClick = onLeave, modifier = Modifier.padding(start = 20.dp, top = 12.dp))
       }
     } else {
       BackHandler(onBack = onBack)
@@ -356,78 +357,3 @@ internal fun JoinEventError.messageRes(): Int =
       JoinEventError.PERMISSION_DENIED -> R.string.join_event_error_permission_denied
       JoinEventError.UNEXPECTED -> R.string.join_event_error_unexpected
     }
-
-@Preview(name = "Step 1: join code")
-@Composable
-private fun JoinEventCodePreview() {
-  ShifterTheme { JoinEventContent(JoinEventUiState(joinCode = "ABC234"), {}, {}, {}, {}, {}) }
-}
-
-@Preview(name = "Step 2: event details and Apply")
-@Composable
-private fun JoinEventApplyPreview() {
-  ShifterTheme {
-    JoinEventContent(
-        JoinEventUiState(event = PREVIEW_EVENT, teams = PREVIEW_TEAMS, selectedTeamId = "welcome"),
-        {},
-        {},
-        {},
-        {},
-        {},
-    )
-  }
-}
-
-@Preview(name = "Step 2: request sent")
-@Composable
-private fun JoinEventAppliedPreview() {
-  ShifterTheme {
-    JoinEventContent(
-        JoinEventUiState(
-            event = PREVIEW_EVENT,
-            teams = PREVIEW_TEAMS,
-            selectedTeamId = "welcome",
-            requestStatus = MembershipRequestStatus.PENDING,
-        ),
-        {},
-        {},
-        {},
-        {},
-        {},
-    )
-  }
-}
-
-private val PREVIEW_EVENT =
-    Event(
-        organizerId = "organizer",
-        title = "Solidarity collection",
-        description =
-            "Support a community collection. Help welcome donors, receive donations and sort " +
-                "collected items with the volunteer team.",
-        type = EventType.OTHER,
-        startAt = Instant.parse("2026-06-22T07:30:00Z"),
-        endAt = Instant.parse("2026-06-22T15:00:00Z"),
-        location = EventLocation("Associations House"),
-        createdAt = Instant.EPOCH,
-    )
-
-private val PREVIEW_TEAMS =
-    listOf(
-        Team(
-            id = "welcome",
-            eventId = "event",
-            name = "Welcome desk",
-            description = "Greet donors and explain where each donation goes.",
-            icon = "handshake",
-            createdAt = Instant.EPOCH,
-        ),
-        Team(
-            id = "sorting",
-            eventId = "event",
-            name = "Sorting",
-            description = "Sort the collected items by category.",
-            icon = "box",
-            createdAt = Instant.EPOCH,
-        ),
-    )
