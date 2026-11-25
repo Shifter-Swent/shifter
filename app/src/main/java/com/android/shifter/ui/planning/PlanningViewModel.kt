@@ -213,7 +213,9 @@ class PlanningViewModel(
       }
       val userId = currentUserId()
       val inputs = NowInputs().also { nowInputs.value = it }
-      var missions: List<Mission>? = null
+      // The last missions read, shown with each list of check-ins once a first list is read.
+      lateinit var missions: List<Mission>
+      var missionsRead = false
       var checkIns: List<CheckIn>? = null
       try {
         // Nobody signed in only happens while the app is going back to sign-in.
@@ -223,7 +225,7 @@ class PlanningViewModel(
             .map { all -> all.filter { it.eventId == eventId } }
             .retryWhen { cause, _ ->
               // A failure before the first list shows the error screen and its Retry instead.
-              val retry = cause is Exception && missions != null
+              val retry = cause is Exception && missionsRead
               if (retry) {
                 _uiState.update { it.copy(missionsOutdated = true) }
                 delay(RETRY_DELAY_MILLIS)
@@ -234,14 +236,14 @@ class PlanningViewModel(
             .onEach { _uiState.update { it.copy(missionsOutdated = false) } }
             .distinctUntilChanged()
             .collect { latest ->
-              val first = missions == null
               missions = latest
               inputs.showMissions(latest)
-              if (first) {
+              if (!missionsRead) {
+                missionsRead = true
                 launch {
                   followCheckIns(userId, inputs) {
                     checkIns = it
-                    show(checkNotNull(missions), it)
+                    show(missions, it)
                   }
                 }
               } else {
