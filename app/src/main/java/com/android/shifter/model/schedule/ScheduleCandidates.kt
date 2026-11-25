@@ -14,9 +14,9 @@ import com.swent.shifter.model.team.Team
  * they are never proposed for the missions of the team they manage.
  *
  * Their slots are the request's [MembershipRequest.availability], which holds the slots of the
- * shifts they chose, or the whole event when it has none: a shift is never edited, and its slots
- * can no longer change once the request is accepted. A slot that does not end after it starts is
- * left out, as nothing checks it when it is stored, and it covers no mission anyway.
+ * shifts they chose, or the whole event when the event has no shifts: a shift is never edited, and
+ * its slots can no longer change once the request is accepted. A slot that does not end after it
+ * starts is left out, as nothing checks it when it is stored, and it covers no mission anyway.
  */
 fun scheduleCandidates(
     requests: List<MembershipRequest>,
