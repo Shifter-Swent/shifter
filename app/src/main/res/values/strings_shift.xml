@@ -21,6 +21,8 @@
         <item quantity="one">%1$d volunteer</item>
         <item quantity="other">%1$d volunteers</item>
     </plurals>
+    <!-- A slot the event does not run through, which the organizer cannot open -->
+    <string name="shift_grid_slot_outside_event">outside the event</string>
     <!-- The arrows that scroll the grid of an event longer than three days -->
     <string name="shift_grid_previous_day">Previous day</string>
     <string name="shift_grid_next_day">Next day</string>
