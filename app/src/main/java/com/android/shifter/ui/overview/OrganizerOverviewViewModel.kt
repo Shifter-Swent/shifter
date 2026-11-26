@@ -176,12 +176,13 @@ class OrganizerOverviewViewModel(
 
   /**
    * Lists the missions of the team [teamId], as a notification about that team asks. While the
-   * teams are read, the choice waits for them, and the load drops it if the team is not one of
-   * them; once they are read, an unknown team is ignored, as [selectTeam] does.
+   * teams are read, or when they could not be, the choice waits for them, and the next load drops
+   * it if the team is not one of them, so Retry still opens on the team; once they are read, an
+   * unknown team is ignored, as [selectTeam] does.
    */
   fun openTeam(teamId: String) {
     _uiState.update { state ->
-      if (state.isLoading || state.teams.any { it.id == teamId }) {
+      if (state.isLoading || state.loadFailed || state.teams.any { it.id == teamId }) {
         state.copy(selectedTeamId = teamId)
       } else state
     }
