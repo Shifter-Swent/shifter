@@ -24,8 +24,9 @@ data class TimeSlot(val start: Instant, val end: Instant) {
  * @property userId id of the volunteer's `/users` document, unique among the candidates; it also
  *   breaks the ties between volunteers with as many hours.
  * @property teamIds ids of the teams of the event the volunteer belongs to.
- * @property slots when the volunteer can work, taken from the shifts they chose, in any order.
- *   Slots that touch or overlap may be listed separately.
+ * @property slots when the volunteer can work, taken from their request's availability, the slots
+ *   of the shifts they chose (see [scheduleCandidates]), in any order. Slots that touch or overlap
+ *   may be listed separately.
  */
 data class ScheduleCandidate(
     val userId: String,
