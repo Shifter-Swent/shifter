@@ -11,6 +11,9 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.shift.FakeShiftRepository
+import com.swent.shifter.model.shift.Shift
+import com.swent.shifter.model.shift.ShiftRepositoryException
 import com.swent.shifter.model.team.FakeTeamRepository
 import com.swent.shifter.model.team.Team
 import io.mockk.coEvery
@@ -39,7 +42,8 @@ class JoinEventViewModelTest {
   private val teams = FakeTeamRepository(listOf(team(TEAM_ID, "Welcome"), team("team-b", "Bar")))
   private var userId: String? = UID
   private var clock = NOW
-  private val viewModel = JoinEventViewModel(events, requests, teams, { userId }, { clock })
+  private val shifts = FakeShiftRepository()
+  private val viewModel = JoinEventViewModel(events, requests, teams, shifts, { userId }, { clock })
 
   @Before
   fun setUp() {
@@ -476,6 +480,260 @@ class JoinEventViewModelTest {
           createdAt = NOW,
       )
 
+  // ── The shifts the volunteer picks (#600) ──
+
+  @Test
+  fun findEvent_loadsTheShiftsOfTheEvent() {
+    shifts.put(shift(FRIDAY_18))
+    shifts.put(shift(SATURDAY_10).copy(eventId = "event-2"))
+
+    loadEvent()
+
+    assertEquals(listOf(shift(FRIDAY_18)), viewModel.uiState.value.shiftPicking.shifts)
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun findEvent_showsTheShiftsOfTheRequestAlreadySent() {
+    seedShifts()
+    coEvery { requests.getMembershipRequest(EVENT.id, UID) } returns
+        request(MembershipRequestStatus.PENDING).copy(shiftIds = listOf(shift(SATURDAY_10).id))
+
+    loadEvent(team = null)
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(setOf(shift(SATURDAY_10).id), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun findEvent_showsAnErrorWhenTheShiftsCannotBeLoaded() {
+    fun failWith(error: Exception): JoinEventError? {
+      shifts.failure = error
+      loadEvent()
+      return viewModel.uiState.value.error
+    }
+
+    assertEquals(JoinEventError.OFFLINE, failWith(ShiftRepositoryException.Unavailable()))
+    assertEquals(
+        JoinEventError.PERMISSION_DENIED,
+        failWith(ShiftRepositoryException.PermissionDenied()),
+    )
+    assertEquals(JoinEventError.UNEXPECTED, failWith(ShiftRepositoryException.Unknown()))
+    assertNull(viewModel.uiState.value.event)
+  }
+
+  @Test
+  fun onShiftPicked_onTwoDays_picksBoth() {
+    seedShifts()
+    loadEvent()
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    viewModel.onShiftPicked(shift(SATURDAY_10).id)
+
+    assertEquals(
+        listOf(shift(FRIDAY_18), shift(SATURDAY_10)),
+        viewModel.uiState.value.shiftPicking.picked,
+    )
+  }
+
+  @Test
+  fun onShiftPicked_again_letsItGo() {
+    seedShifts()
+    loadEvent()
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun onShiftPicked_ignoresAShiftTheEventDoesNotHave() {
+    seedShifts()
+    loadEvent()
+
+    viewModel.onShiftPicked("not-a-shift")
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun onShiftPicked_onAnEventThatHasEnded_picksNothing() {
+    seedShifts()
+    findEndedEvent()
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun onShiftPicked_onceApplied_isIgnored() {
+    seedShifts()
+    loadEvent()
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    viewModel.applyToEvent()
+
+    viewModel.onShiftPicked(shift(SATURDAY_10).id)
+
+    assertEquals(setOf(shift(FRIDAY_18).id), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun apply_withoutAShiftWhenTheEventHasSome_sendsNothing() {
+    seedShifts()
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+
+    viewModel.applyToEvent()
+
+    assertFalse(viewModel.uiState.value.canApply)
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun apply_sendsTheShiftsPickedAndTheirSlotsJoined() {
+    seedShifts()
+    loadEvent()
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+
+    viewModel.onShiftPicked(shift(SATURDAY_12).id)
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    viewModel.onShiftPicked(shift(SATURDAY_10).id)
+    viewModel.applyToEvent()
+
+    val expected =
+        MembershipRequest(
+            userId = UID,
+            teamId = TEAM_ID,
+            availability =
+                listOf(
+                    AvailabilitySlot(FRIDAY_18, FRIDAY_18.plusHours(2)),
+                    AvailabilitySlot(SATURDAY_10, SATURDAY_12.plusHours(2)),
+                ),
+            shiftIds = listOf(shift(FRIDAY_18).id, shift(SATURDAY_10).id, shift(SATURDAY_12).id),
+            createdAt = NOW,
+        )
+    coVerify(exactly = 1) { requests.apply(EVENT.id, expected) }
+  }
+
+  @Test
+  fun findEvent_onARunningEvent_offersOnlyTheShiftsToCome() {
+    seedShifts()
+    findRunningEvent()
+
+    assertEquals(
+        listOf(shift(SATURDAY_10), shift(SATURDAY_12)),
+        viewModel.uiState.value.shiftPicking.shifts,
+    )
+    assertEquals(clock, viewModel.uiState.value.shiftPicking.pickableFrom)
+  }
+
+  @Test
+  fun findEvent_withARequestSent_keepsItsShiftsAlreadyStarted() {
+    seedShifts()
+    coEvery { requests.getMembershipRequest(EVENT.id, UID) } returns
+        request(MembershipRequestStatus.ACCEPTED).copy(shiftIds = listOf(shift(FRIDAY_18).id))
+
+    findRunningEvent()
+
+    val picking = viewModel.uiState.value.shiftPicking
+    assertEquals(listOf(shift(FRIDAY_18)), picking.picked)
+    assertEquals(3, picking.shifts.size)
+    assertNull(picking.pickableFrom)
+  }
+
+  @Test
+  fun findEvent_onARunningEventWithNoShiftLeft_cannotBeAppliedTo() {
+    shifts.put(shift(FRIDAY_18))
+    findRunningEvent()
+    viewModel.onTeamSelected(TEAM_ID)
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+
+    viewModel.applyToEvent()
+
+    assertTrue(viewModel.uiState.value.shiftPicking.noneLeft)
+    assertFalse(viewModel.uiState.value.canApply)
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+  }
+
+  @Test
+  fun apply_withAShiftStartedSincePicked_dropsItAndSendsNothing() {
+    seedShifts()
+    coEvery { events.getEventByJoinCode(any()) } returns
+        EVENT.copy(endAt = SATURDAY_12.plusHours(8))
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+    viewModel.onTeamSelected(TEAM_ID)
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    viewModel.onShiftPicked(shift(SATURDAY_10).id)
+    coEvery { requests.apply(any(), any()) } answers { secondArg() }
+    clock = FRIDAY_18
+
+    viewModel.applyToEvent()
+
+    coVerify(exactly = 0) { requests.apply(any(), any()) }
+    val picking = viewModel.uiState.value.shiftPicking
+    assertEquals(listOf(shift(SATURDAY_10)), picking.picked)
+    assertEquals(listOf(shift(SATURDAY_10), shift(SATURDAY_12)), picking.shifts)
+  }
+
+  @Test
+  fun onShiftPicked_aShiftAlreadyStarted_isIgnored() {
+    seedShifts()
+    loadEvent()
+    clock = FRIDAY_18
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun onShiftPicked_aShiftStartedSincePicked_canBeLetGo() {
+    seedShifts()
+    loadEvent()
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+    clock = FRIDAY_18
+
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    assertEquals(emptySet<String>(), viewModel.uiState.value.shiftPicking.pickedShiftIds)
+  }
+
+  @Test
+  fun changeCode_dropsTheShiftsAndThePicks() {
+    seedShifts()
+    loadEvent()
+    viewModel.onShiftPicked(shift(FRIDAY_18).id)
+
+    viewModel.changeCode()
+
+    assertEquals(ShiftPicking(), viewModel.uiState.value.shiftPicking)
+  }
+
+  /**
+   * Finds [EVENT] running until Saturday evening, an hour into its Friday 18–20 shift: the clock is
+   * moved there.
+   */
+  private fun findRunningEvent() {
+    clock = FRIDAY_18.plusHours(1)
+    coEvery { events.getEventByJoinCode(any()) } returns
+        EVENT.copy(endAt = SATURDAY_12.plusHours(8))
+    viewModel.onJoinCodeChange("ABC234")
+    viewModel.findEvent()
+  }
+
+  /** Opens three shifts of [EVENT]: Friday 18–20, then Saturday 10–12 and 12–14, back to back. */
+  private fun seedShifts() =
+      listOf(FRIDAY_18, SATURDAY_10, SATURDAY_12).forEach { shifts.put(shift(it)) }
+
+  private fun shift(startAt: Instant) =
+      Shift(eventId = EVENT.id, startAt = startAt, endAt = startAt.plusHours(2), createdAt = NOW)
+
+  private fun Instant.plusHours(hours: Long): Instant = plusSeconds(hours * 3_600)
+
   // ── An event that has ended (#409) ──
 
   /** Finds [EVENT], ended exactly now: its end is no longer in the future. */
@@ -537,6 +795,9 @@ class JoinEventViewModelTest {
     const val UID = "volunteer-1"
     const val TEAM_ID = "team-a"
     val NOW: Instant = Instant.ofEpochSecond(600)
+    val FRIDAY_18: Instant = Instant.parse("2026-06-19T16:00:00Z")
+    val SATURDAY_10: Instant = Instant.parse("2026-06-20T08:00:00Z")
+    val SATURDAY_12: Instant = Instant.parse("2026-06-20T10:00:00Z")
     val EVENT =
         Event(
             id = "event-1",

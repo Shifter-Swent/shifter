@@ -60,6 +60,7 @@ import com.swent.shifter.model.shift.ShiftSlot
 import com.swent.shifter.model.shift.slotOf
 import com.swent.shifter.model.time.formatDayOfWeek
 import com.swent.shifter.model.time.formatFullDate
+import com.swent.shifter.model.time.formatHour
 import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.theme.shifter_divider
 import com.swent.shifter.ui.theme.shifter_mutedText
@@ -95,7 +96,7 @@ object ShiftGridTestTags {
    * the week ("SLOT_SAT_10"); the date is used instead, since a day's name comes back every week
    * and an event can run longer than that.
    */
-  fun slot(day: LocalDate, hour: Int) = "shiftGridSlot_${day}_${twoDigits(hour)}"
+  fun slot(day: LocalDate, hour: Int) = "shiftGridSlot_${day}_${formatHour(hour)}"
 }
 
 /** What the reader of the grid does with its slots. */
@@ -182,7 +183,7 @@ fun ShiftGrid(
         Row(horizontalArrangement = Arrangement.spacedBy(COLUMN_GAP)) {
           Box(modifier = Modifier.width(HOUR_WIDTH).height(ROW_HEIGHT)) {
             Text(
-                text = twoDigits(hour),
+                text = formatHour(hour),
                 style = MaterialTheme.typography.labelSmall,
                 color = shifter_mutedText,
             )
@@ -599,6 +600,3 @@ private fun blockShape(joinedAbove: Boolean, joinedBelow: Boolean, end: Dp, join
         bottomStart = if (joinedBelow) joined else end,
         bottomEnd = if (joinedBelow) joined else end,
     )
-
-/** An hour as the grid writes it, "08" rather than "8", like the hours of [formatTime]. */
-private fun twoDigits(hour: Int): String = hour.toString().padStart(2, '0')

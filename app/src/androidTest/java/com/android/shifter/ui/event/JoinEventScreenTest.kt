@@ -39,9 +39,14 @@ import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.JoinCode
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.shift.Shift
+import com.swent.shifter.model.shift.slotOf
 import com.swent.shifter.model.team.Team
+import com.swent.shifter.ui.components.shifts.ShiftGridTestTags
 import com.swent.shifter.ui.navigation.NavigationTestTags
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -243,9 +248,6 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.teamOption("bar")).assertDoesNotExist()
     // Nothing below the ended text asks to send a request.
     composeTestRule.onNodeWithText(string(R.string.event_details_apply_hint)).assertDoesNotExist()
-    composeTestRule
-        .onNodeWithText(string(R.string.event_details_approval_notice))
-        .assertDoesNotExist()
   }
 
   private fun string(id: Int) =
@@ -352,6 +354,143 @@ class JoinEventScreenTest {
     composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertDoesNotExist()
   }
 
+  // ── The shifts the volunteer picks (#600) ──
+
+  @Test
+  fun shifts_withNonePicked_showTheGridAndKeepApplyDisabled() {
+    composeTestRule.setContent { Content(uiState = shiftsState()) }
+
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).performScrollTo().assertIsDisplayed()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_HELP).assertExists()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT)
+        .assertTextEquals(string(R.string.join_event_pick_a_shift))
+  }
+
+  @Test
+  fun tappingAnOpenSlot_picksItsShift() {
+    val picked = mutableListOf<String>()
+    composeTestRule.setContent {
+      Content(uiState = shiftsState(), onShiftPicked = { picked += it })
+    }
+
+    tapSlot(FRIDAY, 18)
+
+    assertEquals(listOf(shiftAt(FRIDAY, 18).id), picked)
+  }
+
+  @Test
+  fun tappingAClosedSlot_picksNothing() {
+    val picked = mutableListOf<String>()
+    composeTestRule.setContent {
+      Content(uiState = shiftsState(), onShiftPicked = { picked += it })
+    }
+
+    tapSlot(FRIDAY, 10)
+
+    assertEquals(emptyList<String>(), picked)
+  }
+
+  @Test
+  fun pickedShifts_areSummedUpAndEnableApply() {
+    composeTestRule.setContent {
+      Content(uiState = shiftsState(picked = SHIFTS.map(Shift::id).toSet()))
+    }
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED)
+        .assertTextEquals("3 shifts picked: Fri 18–20, Sat 10–14")
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT).assertDoesNotExist()
+  }
+
+  @Test
+  fun eventWithoutShifts_showsNoGrid() {
+    composeTestRule.setContent {
+      Content(uiState = JoinEventUiState(event = EVENT, teams = TEAMS, selectedTeamId = "bar"))
+    }
+
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsEnabled()
+  }
+
+  @Test
+  fun requestSent_withShifts_showsOnlyTheirSummary() {
+    composeTestRule.setContent {
+      Content(
+          uiState =
+              shiftsState(picked = setOf(shiftAt(FRIDAY, 18).id))
+                  .copy(requestStatus = MembershipRequestStatus.PENDING)
+      )
+    }
+
+    composeTestRule
+        .onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED)
+        .assertTextEquals("1 shift picked: Fri 18–20")
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_HELP).assertDoesNotExist()
+  }
+
+  @Test
+  fun pickingOpenedDuringTheEvent_startsTheGridThatDay() {
+    composeTestRule.setContent {
+      Content(
+          uiState =
+              shiftsState()
+                  .copy(
+                      shiftPicking =
+                          ShiftPicking(SHIFTS.drop(1), pickableFrom = shiftAt(SATURDAY, 10).startAt)
+                  )
+      )
+    }
+
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.day(SATURDAY)).assertExists()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.day(FRIDAY)).assertDoesNotExist()
+  }
+
+  @Test
+  fun noShiftLeft_saysSoWithoutAGrid() {
+    composeTestRule.setContent {
+      Content(uiState = shiftsState().copy(shiftPicking = ShiftPicking(eventHasShifts = true)))
+    }
+
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.NO_SHIFT_LEFT).assertExists()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.PICK_A_SHIFT).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.APPLY_BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
+  fun requestSentBeforeTheShifts_showsNoGrid() {
+    composeTestRule.setContent {
+      Content(uiState = shiftsState().copy(requestStatus = MembershipRequestStatus.PENDING))
+    }
+
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(JoinEventScreenTestTags.SHIFTS_PICKED).assertDoesNotExist()
+  }
+
+  /**
+   * Taps the slot of [day] at [hour]. The screen is scrolled to the whole grid first: scrolling to
+   * a cell only scrolls the grid's row of days sideways, which leaves it out of view.
+   */
+  private fun tapSlot(day: LocalDate, hour: Int) {
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.GRID).performScrollTo()
+    composeTestRule.onNodeWithTag(ShiftGridTestTags.slot(day, hour)).performClick()
+  }
+
+  /** The event of [SHIFTS], with a team picked and the shifts of [picked]. */
+  private fun shiftsState(picked: Set<String> = emptySet()) =
+      JoinEventUiState(
+          event = SHIFTS_EVENT,
+          teams = TEAMS,
+          selectedTeamId = "bar",
+          shiftPicking = ShiftPicking(SHIFTS, picked),
+      )
+
   @Composable
   private fun Content(
       uiState: JoinEventUiState,
@@ -361,6 +500,7 @@ class JoinEventScreenTest {
       onLeave: () -> Unit = {},
       onTeamSelected: (String) -> Unit = {},
       onApply: () -> Unit = {},
+      onShiftPicked: (String) -> Unit = {},
   ) =
       JoinEventContent(
           uiState,
@@ -370,6 +510,7 @@ class JoinEventScreenTest {
           onLeave,
           onTeamSelected,
           onApply,
+          onShiftPicked = onShiftPicked,
       )
 
   /** The code step keeping the code typed, normalized like the ViewModel does. */
@@ -390,6 +531,24 @@ class JoinEventScreenTest {
 
   private companion object {
     val NARROW_SCREEN = 320.dp
+
+    /** The phone's zone, which the screen reads the shifts in. */
+    val ZONE: ZoneId = ZoneId.systemDefault()
+    val FRIDAY: LocalDate = LocalDate.parse("2026-06-19")
+    val SATURDAY: LocalDate = FRIDAY.plusDays(1)
+
+    fun shiftAt(day: LocalDate, hour: Int): Shift {
+      val slot = slotOf(day, hour, ZONE)
+      return Shift(
+          eventId = "event-1",
+          startAt = slot.startAt,
+          endAt = slot.endAt,
+          createdAt = Instant.ofEpochSecond(500),
+      )
+    }
+
+    /** Friday 18–20, then Saturday 10–12 and 12–14, back to back. */
+    val SHIFTS = listOf(shiftAt(FRIDAY, 18), shiftAt(SATURDAY, 10), shiftAt(SATURDAY, 12))
     val EVENT =
         Event(
             id = "event-1",
@@ -402,6 +561,7 @@ class JoinEventScreenTest {
             location = EventLocation("Lausanne"),
             createdAt = Instant.ofEpochSecond(500),
         )
+    val SHIFTS_EVENT = EVENT.copy(startAt = SHIFTS.first().startAt, endAt = SHIFTS.last().endAt)
     val TEAMS =
         listOf("welcome" to "Welcome", "bar" to "Bar").map { (id, name) ->
           Team(

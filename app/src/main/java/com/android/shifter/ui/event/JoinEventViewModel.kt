@@ -15,6 +15,10 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepository
 import com.swent.shifter.model.membership.MembershipRequestRepositoryException
 import com.swent.shifter.model.membership.MembershipRequestStatus
+import com.swent.shifter.model.shift.Shift
+import com.swent.shifter.model.shift.ShiftRepository
+import com.swent.shifter.model.shift.ShiftRepositoryException
+import com.swent.shifter.model.shift.availabilityOf
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
 import java.time.Instant
@@ -37,13 +41,49 @@ enum class JoinEventError {
 }
 
 /**
- * What the join screen shows: the code being typed, the event it found, its teams and the one
- * picked, and where the volunteer's request stands.
+ * The shifts of the event a volunteer applies to, and the ones they picked: they apply to the
+ * shifts they can work, so the organizer only counts on them then.
+ *
+ * @property shifts the open shifts of the event, sorted by start. Empty when the event has none:
+ *   the volunteer then applies for the whole event, as before shifts existed. While the volunteer
+ *   picks, only the shifts that have not started yet, so a running event offers its days to come.
+ *   Once a request is sent, all of them, so the request shows its own shifts.
+ * @property pickedShiftIds the ids of the [shifts] the volunteer picked. Once a request is sent,
+ *   the shifts it holds.
+ * @property pickableFrom when the picking opened, so the grid starts at that day rather than at a
+ *   day of the event already gone; null once a request is sent, which shows the whole event.
+ * @property eventHasShifts whether the event has shifts, even if all of them have started: a
+ *   volunteer then has none left to pick and cannot apply, rather than applying for the whole
+ *   event.
+ */
+data class ShiftPicking(
+    val shifts: List<Shift> = emptyList(),
+    val pickedShiftIds: Set<String> = emptySet(),
+    val pickableFrom: Instant? = null,
+    val eventHasShifts: Boolean = shifts.isNotEmpty(),
+) {
+  /** The [shifts] picked, sorted by start. */
+  val picked: List<Shift>
+    get() = shifts.filter { it.id in pickedShiftIds }
+
+  /** Whether the event has shifts and none is picked yet: the volunteer must pick one to apply. */
+  val lacksAPick: Boolean
+    get() = eventHasShifts && picked.isEmpty()
+
+  /** Whether the event has shifts but all of them have started, so none is left to pick. */
+  val noneLeft: Boolean
+    get() = eventHasShifts && shifts.isEmpty()
+}
+
+/**
+ * What the join screen shows: the code being typed, the event it found, its teams and shifts and
+ * the ones picked, and where the volunteer's request stands.
  *
  * @property teams the teams of [event] the volunteer can apply to, by name. Empty while no event is
  *   shown, or when the event has no team yet, in which case nobody can apply.
  * @property selectedTeamId the team of [event] the volunteer applies to, null until they pick one.
  *   Once a request is sent, the team it was sent to.
+ * @property shiftPicking the shifts of [event] and the ones the volunteer picked.
  * @property requestStatus the status of the volunteer's request for the event, null while they have
  *   none. Finding an event they already applied to shows that request, possibly decided.
  * @property requestSentTo the title of the event a request was just sent to, so the screen leaves
@@ -55,6 +95,7 @@ data class JoinEventUiState(
     val event: Event? = null,
     val teams: List<Team> = emptyList(),
     val selectedTeamId: String? = null,
+    val shiftPicking: ShiftPicking = ShiftPicking(),
     val isLoading: Boolean = false,
     val requestStatus: MembershipRequestStatus? = null,
     val error: JoinEventError? = null,
@@ -68,18 +109,27 @@ data class JoinEventUiState(
   /** Whether [joinCode] holds a character no code uses, such as `0` or `I`. */
   val hasUnusedCharacter: Boolean
     get() = !joinCode.all(JoinCode::isUsed)
+
+  /** Whether the volunteer has picked a team and, when the event has shifts, at least one. */
+  val canApply: Boolean
+    get() = selectedTeamId != null && !shiftPicking.lacksAPick
 }
 
 /**
  * Finds an event by its join code, then sends the signed-in volunteer's request to join it.
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
- * @param now the clock stamped on the request, replaceable in tests.
+ * @param shiftRepository where the shifts of the event are read. An event without shifts is applied
+ *   to for its whole length, as before shifts existed. Until the security rules accept the shifts
+ *   of a request (#594), applying with shifts is refused with [JoinEventError.PERMISSION_DENIED].
+ * @param now the clock stamped on the request, and that tells the shifts already started, which can
+ *   no longer be picked; replaceable in tests.
  */
 class JoinEventViewModel(
     private val eventRepository: EventRepository,
     private val membershipRequestRepository: MembershipRequestRepository,
     private val teamRepository: TeamRepository,
+    private val shiftRepository: ShiftRepository,
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
@@ -99,9 +149,9 @@ class JoinEventViewModel(
   }
 
   /**
-   * Looks up the event volunteers join with the code typed, once it is valid, and its teams, with
-   * the signed-in volunteer's request for it if they already applied, so they are not offered to
-   * apply twice and see the team they applied to.
+   * Looks up the event volunteers join with the code typed, once it is valid, its teams and its
+   * shifts, with the signed-in volunteer's request for it if they already applied, so they are not
+   * offered to apply twice and see the team and the shifts they applied to.
    */
   fun findEvent() {
     val joinCode = _uiState.value.joinCode
@@ -113,17 +163,33 @@ class JoinEventViewModel(
           if (event == null || userId == null) null
           else membershipRequestRepository.getMembershipRequest(event.id, userId)
       val teams = event?.let { teamRepository.getTeamsByEvent(it.id).sortedBy(Team::name) }
+      val shifts = event?.let { shiftRepository.getShifts(it.id) }.orEmpty()
       _uiState.update {
         it.copy(
             event = event,
             teams = teams.orEmpty(),
             selectedTeamId = request?.teamId,
+            shiftPicking = shiftPickingOf(shifts, request),
             requestStatus = request?.status,
             error = if (event == null) JoinEventError.UNKNOWN_CODE else null,
             hasEnded = event != null && !now().isBefore(event.endAt),
         )
       }
     }
+  }
+
+  /**
+   * The shifts the volunteer picks among, those that have not started yet, or, once they applied,
+   * the ones of the event with those of their [request] picked.
+   */
+  private fun shiftPickingOf(shifts: List<Shift>, request: MembershipRequest?): ShiftPicking {
+    if (request != null) return ShiftPicking(shifts, request.shiftIds.toSet())
+    val openedAt = now()
+    return ShiftPicking(
+        shifts = shifts.filter { !it.hasStarted(openedAt) },
+        pickableFrom = openedAt,
+        eventHasShifts = shifts.isNotEmpty(),
+    )
   }
 
   /**
@@ -139,6 +205,7 @@ class JoinEventViewModel(
           event = null,
           teams = emptyList(),
           selectedTeamId = null,
+          shiftPicking = ShiftPicking(),
           requestStatus = null,
           error = null,
           hasEnded = false,
@@ -175,29 +242,73 @@ class JoinEventViewModel(
   }
 
   /**
-   * Applies to the selected team of the loaded event; does nothing until a team is selected. Until
-   * the volunteer can enter their hours, the request declares the whole event as their
-   * availability.
+   * Picks the shift [shiftId] of the loaded event, or lets it go when it was picked: a volunteer
+   * picks every shift they can work. Ignored, like [onTeamSelected], once the request is sent or
+   * while it is being sent, once the event has ended, and for a shift the event does not have. Also
+   * ignored for a shift that has started since the event was found, while letting it go still
+   * works.
+   */
+  fun onShiftPicked(shiftId: String) {
+    val state = _uiState.value
+    if (state.isLoading || state.requestStatus != null || state.hasEnded) return
+    val picking = state.shiftPicking
+    val shift = picking.shifts.find { it.id == shiftId } ?: return
+    if (shiftId !in picking.pickedShiftIds && shift.hasStarted(now())) return
+    val picked =
+        if (shiftId in picking.pickedShiftIds) picking.pickedShiftIds - shiftId
+        else picking.pickedShiftIds + shiftId
+    _uiState.update { it.copy(shiftPicking = picking.copy(pickedShiftIds = picked)) }
+  }
+
+  /**
+   * Applies to the selected team of the loaded event, for the shifts picked; does nothing until
+   * [JoinEventUiState.canApply]. The request holds the shifts picked, and their slots joined back
+   * to back as the volunteer's availability; for an event without shifts, the whole event.
+   *
+   * A shift picked that has started since is not sent: the shifts that have started are dropped
+   * from the picking instead, and the volunteer applies again with the ones left.
    */
   fun applyToEvent() {
     val state = _uiState.value
     val event = state.event ?: return
     val teamId = state.selectedTeamId ?: return
-    if (state.isLoading || state.requestStatus != null) return
+    if (!state.canApply || state.isLoading || state.requestStatus != null) return
     // The event may end while the screen is open: it no longer recruits, which the rules enforce
     // too.
     if (!now().isBefore(event.endAt)) return _uiState.update { it.copy(hasEnded = true) }
+    if (state.shiftPicking.picked.any { it.hasStarted(now()) }) return dropStartedShifts()
     val userId = currentUserId() ?: return showError(JoinEventError.NOT_SIGNED_IN)
     launchLoading {
+      val picked = state.shiftPicking.picked
       val request =
           MembershipRequest(
               userId = userId,
               teamId = teamId,
-              availability = listOf(AvailabilitySlot(event.startAt, event.endAt)),
+              availability =
+                  if (picked.isEmpty()) listOf(AvailabilitySlot(event.startAt, event.endAt))
+                  else availabilityOf(picked),
+              shiftIds = picked.map(Shift::id),
               createdAt = now(),
           )
       val sent = membershipRequestRepository.apply(event.id, request)
       _uiState.update { it.copy(requestStatus = sent.status, requestSentTo = event.title) }
+    }
+  }
+
+  /** Takes the shifts that have started out of the picking, as if the event had just been found. */
+  private fun dropStartedShifts() {
+    val at = now()
+    _uiState.update {
+      val picking = it.shiftPicking
+      val left = picking.shifts.filter { shift -> !shift.hasStarted(at) }
+      it.copy(
+          shiftPicking =
+              picking.copy(
+                  shifts = left,
+                  pickedShiftIds = picking.pickedShiftIds.intersect(left.map(Shift::id).toSet()),
+                  pickableFrom = at,
+              )
+      )
     }
   }
 
@@ -222,14 +333,8 @@ class JoinEventViewModel(
         block()
       } catch (e: CancellationException) {
         throw e
-      } catch (e: EventRepositoryException.Unavailable) {
-        showError(JoinEventError.OFFLINE)
-      } catch (e: MembershipRequestRepositoryException.Unavailable) {
-        showError(JoinEventError.OFFLINE)
-      } catch (e: MembershipRequestRepositoryException.PermissionDenied) {
-        showError(JoinEventError.PERMISSION_DENIED)
       } catch (e: Exception) {
-        showError(JoinEventError.UNEXPECTED)
+        showError(errorOf(e))
       } finally {
         // Once cancelled, the loading flag was already lowered, and another lookup may run by now.
         if (isActive) _uiState.update { it.copy(isLoading = false) }
@@ -238,6 +343,17 @@ class JoinEventViewModel(
   }
 
   private fun showError(error: JoinEventError) = _uiState.update { it.copy(error = error) }
+
+  /** The error the screen shows for [e], a failure of a repository or an unexpected one. */
+  private fun errorOf(e: Exception): JoinEventError =
+      when (e) {
+        is EventRepositoryException.Unavailable,
+        is MembershipRequestRepositoryException.Unavailable,
+        is ShiftRepositoryException.Unavailable -> JoinEventError.OFFLINE
+        is MembershipRequestRepositoryException.PermissionDenied,
+        is ShiftRepositoryException.PermissionDenied -> JoinEventError.PERMISSION_DENIED
+        else -> JoinEventError.UNEXPECTED
+      }
 
   companion object {
     /**
@@ -248,6 +364,7 @@ class JoinEventViewModel(
         eventRepository: EventRepository,
         membershipRequestRepository: MembershipRequestRepository,
         teamRepository: TeamRepository,
+        shiftRepository: ShiftRepository,
         currentUserId: () -> String?,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
@@ -255,9 +372,13 @@ class JoinEventViewModel(
             eventRepository,
             membershipRequestRepository,
             teamRepository,
+            shiftRepository,
             currentUserId,
         )
       }
     }
   }
 }
+
+/** Whether this shift has started at [now], so it can no longer be picked. */
+private fun Shift.hasStarted(now: Instant): Boolean = !now.isBefore(startAt)
