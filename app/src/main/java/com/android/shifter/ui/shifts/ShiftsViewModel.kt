@@ -13,7 +13,6 @@ import com.swent.shifter.model.shift.ShiftRepository
 import com.swent.shifter.model.shift.ShiftRepositoryException
 import com.swent.shifter.model.shift.ShiftSlot
 import com.swent.shifter.model.shift.overlaps
-import com.swent.shifter.model.shift.slotOf
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -126,21 +125,18 @@ class ShiftsViewModel(
   }
 
   /**
-   * Opens the slot of [day] at [hour] when it is closed, closes it when it is open, saved at once.
-   * Does nothing outside [ShiftsMode.EDIT], while that slot is already being saved, while the slots
-   * cannot be edited ([ShiftsUiState.canEdit]), nor for a slot the event does not run through,
-   * which the rules refuse.
+   * Opens [slot] when it is closed, closes it when it is open, saved at once. Does nothing outside
+   * [ShiftsMode.EDIT], while that slot is already being saved, while the slots cannot be edited
+   * ([ShiftsUiState.canEdit]), nor for a slot the event does not run through, which the rules
+   * refuse.
    *
    * A slot volunteers chose is never closed: it stays and [ShiftsUiState.keptSlot] names it,
    * whether this ViewModel already knew them or the backend refuses the close because someone chose
    * it in between.
-   */
-  fun toggleSlot(day: LocalDate, hour: Int) = toggleSlot(slotOf(day, hour, zone))
-
-  /**
-   * The same, for the slot itself: the grid draws a cell from [slotOf] and reports it back, so the
-   * slot written is the one tapped even on a night the clocks change, where the cell of 02:00
-   * starts at 03:00 and no hour could name it again.
+   *
+   * The slot itself rather than a day and an hour: the grid draws a cell from `slotOf` and reports
+   * it back, so the slot written is the one tapped even on a night the clocks change, where the
+   * cell of 02:00 starts at 03:00 and no hour could name it again.
    */
   fun toggleSlot(slot: ShiftSlot) {
     val state = _uiState.value

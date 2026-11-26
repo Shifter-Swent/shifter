@@ -91,6 +91,10 @@ class ShiftsViewModelTest {
     advanceUntilIdle()
   }
 
+  /** Taps the cell of [day] at [hour], as the grid reports the slot it drew it from. */
+  private fun ShiftsViewModel.toggleSlot(day: LocalDate, hour: Int) =
+      toggleSlot(slotOf(day, hour, ZONE))
+
   /** The shift of the slot of [day] at [hour], chosen by [volunteers] of them. */
   private fun shift(day: LocalDate, hour: Int, volunteers: Int = 0): Shift {
     val slot = slotOf(day, hour, ZONE)
