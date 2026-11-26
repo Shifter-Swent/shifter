@@ -66,7 +66,7 @@ internal fun MessageRow(row: ChatRow.Message, zone: ZoneId, today: LocalDate) {
           .testTag(TeamChatTestTags.message(message.id))
   val top = if (row.startsGroup) 10.dp else 3.dp
   when {
-    message.isAnnouncement -> AnnouncementMessage(message, zone, today, Modifier.padding(top = top))
+    message.isAnnouncement -> AnnouncementCard(message, zone, today, Modifier.padding(top = top))
     message.isMine ->
         Box(modifier = Modifier.padding(top = top).fillMaxWidth()) {
           ChatMessageBubble(
@@ -182,13 +182,19 @@ private fun ChatMessageBubble(
 
 /** The time of [message], or a clock and "Sending…" while it is being sent. */
 @Composable
-internal fun MessageStatus(message: ChatMessageItem, zone: ZoneId, today: LocalDate, color: Color) {
+internal fun MessageStatus(
+    message: ChatMessageItem,
+    zone: ZoneId,
+    today: LocalDate,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
   when {
     message.isPending ->
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.padding(top = 2.dp).testTag(TeamChatTestTags.pending(message.id)),
+            modifier = modifier.padding(top = 2.dp).testTag(TeamChatTestTags.pending(message.id)),
         ) {
           Icon(
               Icons.Outlined.Schedule,
@@ -207,7 +213,7 @@ internal fun MessageStatus(message: ChatMessageItem, zone: ZoneId, today: LocalD
             sentAtLabel(message.sentAt.atZone(zone), today),
             color = color,
             style = statusStyle(),
-            modifier = Modifier.padding(top = 2.dp),
+            modifier = modifier.padding(top = 2.dp),
         )
   }
 }

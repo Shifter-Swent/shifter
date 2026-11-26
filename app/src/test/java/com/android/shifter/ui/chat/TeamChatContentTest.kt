@@ -9,6 +9,8 @@ import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -16,12 +18,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -268,13 +272,53 @@ class TeamChatContentTest {
   }
 
   @Test
-  fun announcement_showsTheTagAboveTheBubble() {
+  fun announcement_showsTheCardWithItsAuthor() {
     setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, FROM_ALICE)))
 
     composeTestRule
         .onNodeWithTag(TeamChatTestTags.announcementTag(ANNOUNCEMENT.id), useUnmergedTree = true)
         .assertIsDisplayed()
-    tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).assert(hasText("Announcement"))
+        .assert(hasAnyChild(hasText("Alice")))
+    tag(TeamChatTestTags.message(ANNOUNCEMENT.id))
+        .assert(hasContentDescription("Announcement"))
+        .assert(hasText("Gates open at 9:00"))
+        .assert(hasText("09:30"))
+  }
+
+  @Test
+  fun announcement_isWiderThanABubble() {
+    // A text long enough for the bubble to reach its widest.
+    val long = MINE.copy(id = "long", text = "Gates open at 9:00. ".repeat(10))
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, long)))
+
+    val card = tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).getBoundsInRoot()
+    val bubble = tag(TeamChatTestTags.message(long.id)).getBoundsInRoot()
+    assertTrue(card.width > bubble.width)
+  }
+
+  @Test
+  fun ownAnnouncement_sitsOnTheRight() {
+    val mine = ANNOUNCEMENT.copy(id = "5", isMine = true)
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(ANNOUNCEMENT, mine)))
+
+    val theirs = tag(TeamChatTestTags.message(ANNOUNCEMENT.id)).getBoundsInRoot()
+    val own = tag(TeamChatTestTags.message(mine.id)).getBoundsInRoot()
+    // Both end at the same edge; the user's own leaves room free at the start.
+    assertEquals(theirs.right, own.right)
+    assertTrue(own.left > theirs.left)
+  }
+
+  @Test
+  fun ownAnnouncement_showsYouOnTheCard() {
+    val mine = ANNOUNCEMENT.copy(isMine = true, sentAt = null, isPending = true)
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(mine)))
+
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.announcementTag(mine.id), useUnmergedTree = true)
+        .assert(hasAnyChild(hasText("You")))
+    composeTestRule
+        .onNodeWithTag(TeamChatTestTags.pending(mine.id), useUnmergedTree = true)
+        .assertIsDisplayed()
   }
 
   @Test
