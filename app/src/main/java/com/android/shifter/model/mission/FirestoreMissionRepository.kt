@@ -30,8 +30,8 @@ import kotlinx.coroutines.tasks.await
  * All Firebase types stay inside this class and the [toMission] / [toFirestoreMap] mappers: callers
  * only ever see domain models. [firestore] is injected so tests can point it at the emulator.
  * Firestore errors are rethrown as [MissionRepositoryException]. [auth] gives the signed-in user
- * who sends the notifications of a write. [clock] tells [updateMission] and [addAssignees] whether
- * a mission is past its end, and is injected so tests can fix it.
+ * who sends the notifications of a write. [clock] tells [updateMission], [addAssignees] and
+ * [updateAssignees] whether a mission is past its end, and is injected so tests can fix it.
  */
 class FirestoreMissionRepository(
     private val firestore: FirebaseFirestore,
@@ -146,6 +146,12 @@ class FirestoreMissionRepository(
    * A transaction, because the limit depends on the stored [Mission.volunteersNeeded]: reading it
    * before a plain write would check a value that may have changed in between. Like every
    * transaction, it needs a connection.
+   *
+   * In the same transaction, each person added gets a MISSION_ASSIGNED (ADDED) and each person
+   * removed one (REMOVED), so a volunteer is never told of an assignment that did not happen. The
+   * one acting is never told, even when they assign themself, and the event's title is read only
+   * when someone else is. A completed mission tells nobody: once it is over, changing its assignees
+   * only records who was really there.
    */
   override suspend fun updateAssignees(
       eventId: String,
@@ -153,13 +159,39 @@ class FirestoreMissionRepository(
       assigneeIds: List<String>,
   ) {
     requireDistinctAssignees(assigneeIds)
+    val senderId = signedInUserId()
     val document = missionsOf(eventId).document(missionId)
     translatingErrors {
       firestore
           .runTransaction { transaction ->
             val stored = transaction.get(document).toStoredMission()
             requireRoomInMission(stored.volunteersNeeded, assigneeIds.size)
+            val changes =
+                if (isCompleted(stored.completed, stored.endAt, clock.instant())) emptyList()
+                else listOf(stored to stored.copy(assigneeIds = assigneeIds))
+            val added = missionsByAddedPerson(changes) - senderId
+            val removed = missionsByRemovedPerson(changes) - senderId
+            // Every read before any write, as a transaction requires.
+            val eventTitle =
+                if (added.isEmpty() && removed.isEmpty()) null
+                else transaction.get(eventOf(eventId)).toEventTitle()
             transaction.update(document, MissionSchema.ASSIGNEE_IDS, assigneeIds)
+            if (eventTitle != null) {
+              transaction.notifyAssigned(
+                  eventId,
+                  eventTitle,
+                  senderId,
+                  NotificationData.Value.ADDED,
+                  added,
+              )
+              transaction.notifyAssigned(
+                  eventId,
+                  eventTitle,
+                  senderId,
+                  NotificationData.Value.REMOVED,
+                  removed,
+              )
+            }
             null
           }
           .await()
@@ -180,12 +212,11 @@ class FirestoreMissionRepository(
     requireValidAdditions(additions)
     val wanted = additions.filterValues { it.isNotEmpty() }
     if (wanted.isEmpty()) return
-    val senderId = auth.currentUser?.uid ?: throw MissionRepositoryException.PermissionDenied()
-    val event = firestore.collection(EventSchema.COLLECTION).document(eventId)
+    val senderId = signedInUserId()
     translatingErrors {
       firestore
           .runTransaction { transaction ->
-            val eventTitle = transaction.get(event).toEventTitle()
+            val eventTitle = transaction.get(eventOf(eventId)).toEventTitle()
             val stored = wanted.keys.map { transaction.get(missionsOf(eventId).document(it)) }
             val now = clock.instant()
             val changes =
@@ -239,6 +270,13 @@ class FirestoreMissionRepository(
     }
   }
 
+  /** The signed-in user, who acts and so sends the notifications, read before any request. */
+  private fun signedInUserId(): String =
+      auth.currentUser?.uid ?: throw MissionRepositoryException.PermissionDenied()
+
+  private fun eventOf(eventId: String) =
+      firestore.collection(EventSchema.COLLECTION).document(eventId)
+
   /** The title of the event stored in this snapshot, failing with NOT_FOUND when it is missing. */
   private fun DocumentSnapshot.toEventTitle(): String {
     if (!exists()) {
@@ -260,9 +298,13 @@ class FirestoreMissionRepository(
    * clock. The completion is checked here only to report it as a [MissionCompletedException] rather
    * than a denied write: before the overlap check, and again in the transaction, for a mission
    * completed in between.
+   *
+   * When the time or the place changes, each assignee but the one acting gets a MISSION_CHANGED in
+   * the same transaction, with the mission as it is once changed (see [missionChangedData]).
    */
   override suspend fun updateMission(mission: Mission) {
     requireValidUpdate(mission)
+    val senderId = signedInUserId()
     val document = missionsOf(mission.eventId).document(mission.id)
     translatingErrors {
       val stored = document.get().await().toStoredMission()
@@ -273,7 +315,25 @@ class FirestoreMissionRepository(
             val current = transaction.get(document).toStoredMission()
             requireNotCompleted(current, clock.instant())
             requireRoomForAssignees(current, mission)
+            val told = current.assigneeIds - senderId
+            val data =
+                if (told.isEmpty()) null
+                else missionChangedData(current, current.withEditableFieldsOf(mission))
+            // Every read before any write, as a transaction requires.
+            val eventTitle = data?.let { transaction.get(eventOf(mission.eventId)).toEventTitle() }
             transaction.update(document, mission.toEditableFieldsMap())
+            if (data != null && eventTitle != null) {
+              InboxDocs.documents(
+                      firestore,
+                      told,
+                      NotificationKind.MISSION_CHANGED,
+                      mission.eventId,
+                      eventTitle,
+                      senderId,
+                      data,
+                  )
+                  .forEach { (inboxDocument, fields) -> transaction.set(inboxDocument, fields) }
+            }
             null
           }
           .await()

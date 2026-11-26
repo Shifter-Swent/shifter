@@ -64,10 +64,23 @@ interface MissionRepository {
    * [eventId] with [assigneeIds], in the given order. An empty list leaves the mission with nobody
    * assigned.
    *
-   * Throws [IllegalArgumentException] when [assigneeIds] lists someone twice, and its
-   * [AssigneesAboveVolunteersException] when it holds more people than the stored mission's
-   * [Mission.volunteersNeeded]; nothing is written then. Throws
-   * [MissionRepositoryException.NotFound] when the mission does not exist.
+   * In the same write, each person added gets a
+   * [com.swent.shifter.model.notification.NotificationKind.MISSION_ASSIGNED] (ADDED) and each
+   * person removed one (REMOVED), except the signed-in user, who is not told about their own
+   * action. The event is read only when someone is told. A [completed][isCompleted] mission tells
+   * nobody: once it is over, changing its assignees only records who was really there.
+   *
+   * Nothing is written when one of these errors is thrown.
+   *
+   * @throws IllegalArgumentException when [assigneeIds] lists someone twice; nothing is read then.
+   * @throws MissionRepositoryException.PermissionDenied when nobody is signed in, or when the
+   *   backend refuses the write, e.g. from a manager adding someone outside their team.
+   * @throws MissionRepositoryException.NotFound when the mission does not exist, or the event when
+   *   someone is told.
+   * @throws AssigneesAboveVolunteersException when [assigneeIds] holds more people than the stored
+   *   mission's [Mission.volunteersNeeded].
+   * @throws IllegalStateException when the stored mission is malformed, or the stored event when
+   *   someone is told, e.g. an event without a title.
    */
   suspend fun updateAssignees(eventId: String, missionId: String, assigneeIds: List<String>)
 
@@ -109,18 +122,28 @@ interface MissionRepository {
    * completion are kept as stored, whatever [mission] holds. Volunteers already checked in keep
    * their check-in.
    *
+   * When the time or the place changes, each assignee gets a
+   * [com.swent.shifter.model.notification.NotificationKind.MISSION_CHANGED] in the same write,
+   * except the signed-in user, who is not told about their own action. The event is read only when
+   * someone is told.
+   *
    * The checks run in this order, so every implementation reports the same error first. Nothing is
    * written when one fails.
    *
    * @throws IllegalArgumentException when [Mission.id] or [Mission.eventId] is empty, the slot does
    *   not end after it starts, or [Mission.volunteersNeeded] is below 1.
-   * @throws MissionRepositoryException.NotFound when the mission does not exist.
+   * @throws MissionRepositoryException.PermissionDenied when nobody is signed in, or when the
+   *   backend refuses the write, e.g. from the manager of another team.
+   * @throws MissionRepositoryException.NotFound when the mission does not exist, or, after every
+   *   check below, the event when someone is told.
    * @throws MissionCompletedException when the stored mission is [completed][isCompleted], closed
    *   by hand or past its end.
    * @throws MissionOverlapException when the new values make the mission
    *   [conflict][Mission.conflictsWith] with another mission of its stored team.
    * @throws VolunteersBelowAssigneesException when [Mission.volunteersNeeded] is lower than the
    *   number of people already assigned.
+   * @throws IllegalStateException when the stored mission is malformed, or the stored event when
+   *   someone is told, e.g. an event without a title.
    */
   suspend fun updateMission(mission: Mission)
 

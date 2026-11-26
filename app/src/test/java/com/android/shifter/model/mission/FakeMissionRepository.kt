@@ -17,10 +17,10 @@ import kotlinx.coroutines.flow.update
  * refuses a mission that conflicts with one already created, and [clock] tells it, as the real one,
  * whether a mission is past its end.
  *
- * [addAssignees] delivers its notifications to [inbox], as sent by [senderId], the signed-in user
- * of the real repository, with the title [eventTitle] gives, which the real one reads on the event.
- * Having no events and nobody signed in, it never fails with NotFound for a missing event nor with
- * PermissionDenied, as the real one may.
+ * [addAssignees], [updateAssignees] and [updateMission] deliver their notifications to [inbox], as
+ * sent by [senderId], the signed-in user of the real repository, with the title [eventTitle] gives,
+ * which the real one reads on the event. Having no events and nobody signed in, it never fails with
+ * NotFound for a missing event nor with PermissionDenied, as the real one may.
  */
 class FakeMissionRepository(
     private val clock: Clock = Clock.systemUTC(),
@@ -98,7 +98,14 @@ class FakeMissionRepository(
     if (index < 0) throw MissionRepositoryException.NotFound()
     val mission = missions[index]
     requireRoomInMission(mission.volunteersNeeded, assigneeIds.size)
-    replace(index, mission.copy(assigneeIds = assigneeIds))
+    val updated = mission.copy(assigneeIds = assigneeIds)
+    replace(index, updated)
+    // As the real one, a completed mission tells nobody.
+    val changes =
+        if (isCompleted(mission.completed, mission.endAt, clock.instant())) emptyList()
+        else listOf(mission to updated)
+    deliverAssigned(eventId, NotificationData.Value.ADDED, missionsByAddedPerson(changes))
+    deliverAssigned(eventId, NotificationData.Value.REMOVED, missionsByRemovedPerson(changes))
   }
 
   /**
@@ -122,14 +129,23 @@ class FakeMissionRepository(
     val updated = changes.associate { (_, mission) -> mission.id to mission }
     // Ids are unique across events here, as each mission gets the next number.
     state.update { all -> all.map { updated[it.id] ?: it } }
-    for ((userId, added) in missionsByAddedPerson(changes)) {
+    deliverAssigned(eventId, NotificationData.Value.ADDED, missionsByAddedPerson(changes))
+  }
+
+  /** One MISSION_ASSIGNED of [change] per person of [missionsByPerson], as the real one writes. */
+  private fun deliverAssigned(
+      eventId: String,
+      change: String,
+      missionsByPerson: Map<String, List<Mission>>,
+  ) {
+    for ((userId, missions) in missionsByPerson) {
       inbox.deliver(
           listOf(userId),
           NotificationKind.MISSION_ASSIGNED,
           eventId,
           eventTitle(eventId),
           senderId,
-          missionAssignedData(NotificationData.Value.ADDED, added),
+          missionAssignedData(change, missions),
       )
     }
   }
@@ -147,6 +163,16 @@ class FakeMissionRepository(
         ?.let { throw MissionOverlapException(it) }
     requireRoomForAssignees(stored, mission)
     replace(index, updated)
+    missionChangedData(stored, updated)?.let { data ->
+      inbox.deliver(
+          stored.assigneeIds,
+          NotificationKind.MISSION_CHANGED,
+          mission.eventId,
+          eventTitle(mission.eventId),
+          senderId,
+          data,
+      )
+    }
   }
 
   override suspend fun markCompleted(eventId: String, missionId: String) {

@@ -19,6 +19,11 @@ import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.membership.AvailabilitySlot
 import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
+import com.swent.shifter.model.notification.InboxDocs
+import com.swent.shifter.model.notification.InboxNotification
+import com.swent.shifter.model.notification.NotificationData
+import com.swent.shifter.model.notification.NotificationKind
+import com.swent.shifter.model.notification.toInboxNotification
 import com.swent.shifter.model.team.FirestoreTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.toFirestoreMap
@@ -286,6 +291,34 @@ class MissionManagerRulesTest {
   }
 
   @Test
+  fun updateAssignees_byTheManager_tellsTheMemberWithTheManagerAsSender() = emulatorTest {
+    val created = missionThroughRepository(assigneeIds = emptyList())
+
+    signIn(manager)
+    missions.updateAssignees(eventId, created.id, listOf(member.uid))
+
+    val received = inboxOf(member).single()
+    assertEquals(NotificationKind.MISSION_ASSIGNED, received.kind)
+    assertEquals(NotificationData.Value.ADDED, received.data[NotificationData.Key.CHANGE])
+    assertEquals(manager.uid, received.senderId)
+  }
+
+  @Test
+  fun updateAssignees_byTheManager_addingANonMember_writesNothing() = emulatorTest {
+    // The inbox rules let the manager tell anyone: only the transaction keeps the notification of
+    // a refused change out of the inbox.
+    val created = missionThroughRepository()
+
+    signIn(manager)
+    assertDeniedByTheRepository {
+      missions.updateAssignees(eventId, created.id, listOf(member.uid, formerMember.uid))
+    }
+
+    assertEquals(listOf(member.uid), missions.getMission(eventId, created.id)?.assigneeIds)
+    assertTrue(inboxOf(formerMember).isEmpty())
+  }
+
+  @Test
   fun updateMission_byTheOrganizer_isAllowed() = emulatorTest {
     val created = missionThroughRepository()
 
@@ -403,7 +436,10 @@ class MissionManagerRulesTest {
     val event = db.collection(EventSchema.COLLECTION).document()
     paths += event.path
     paths += "eventParticipants/${event.id}"
-    event.set(mapOf(EventSchema.ORGANIZER_ID to organizer.uid)).await()
+    // The title is what the notifications of updateAssignees name the event by (#617).
+    event
+        .set(mapOf(EventSchema.ORGANIZER_ID to organizer.uid, EventSchema.TITLE to "Food bank"))
+        .await()
     listOf(TEAM_ID, OTHER_TEAM_ID).forEach { teamId ->
       val team = event.collection("teams").document(teamId)
       paths += team.path
@@ -470,8 +506,13 @@ class MissionManagerRulesTest {
           "completed" to false,
       ) + listOfNotNull(endAt?.let { "endAt" to it })
 
-  /** A complete mission of [TEAM_ID], created by the organizer, assigned to [member]. */
-  private suspend fun missionThroughRepository(): Mission {
+  /**
+   * A complete mission of [TEAM_ID], created by the organizer, assigned to [assigneeIds], [member]
+   * by default.
+   */
+  private suspend fun missionThroughRepository(
+      assigneeIds: List<String> = listOf(member.uid)
+  ): Mission {
     signIn(organizer)
     return missions
         .createMission(
@@ -483,11 +524,19 @@ class MissionManagerRulesTest {
                 volunteersNeeded = 2,
                 startAt = Instant.parse("2030-06-20T12:00:00Z"),
                 endAt = Instant.parse("2030-06-20T13:30:00Z"),
-                assigneeIds = listOf(member.uid),
+                assigneeIds = assigneeIds,
                 createdAt = Instant.parse("2030-05-02T08:15:00Z"),
             )
         )
         .also { paths += "${EventSchema.COLLECTION}/$eventId/missions/${it.id}" }
+  }
+
+  /** The inbox of [owner], read from the server signed in as them; its documents are cleaned up. */
+  private suspend fun inboxOf(owner: Account): List<InboxNotification> {
+    signIn(owner)
+    val documents = InboxDocs.inbox(db, owner.uid).get(Source.SERVER).await().documents
+    paths += documents.map { it.reference.path }
+    return documents.mapNotNull { it.toInboxNotification() }
   }
 
   private suspend fun assertDeniedByTheRepository(block: suspend () -> Unit) {
