@@ -312,6 +312,17 @@ class NotificationEngineTest {
   }
 
   @Test
+  fun run_removesAKindWithoutAFormat_onceTooOld() = runTest {
+    deliveredAt = now - maxInboxAge - Duration.ofSeconds(1)
+    deliver(NotificationKind.APPLICATION_DECIDED)
+
+    engine().run(user, now)
+
+    assertTrue(notifier.shown.isEmpty())
+    assertTrue(inbox.pending(user).isEmpty())
+  }
+
+  @Test
   fun run_removesWithoutShowingAnItemItsFormatCannotRead() = runTest {
     deliver(eventId = UNREADABLE)
 
