@@ -9,8 +9,8 @@ import com.swent.shifter.model.time.formatTime
 /**
  * Shows the [NotificationKind.MISSION_CHANGED] of a volunteer: one notification per event, keyed by
  * the event. One mission changed reads "Serve at the bar now runs Sat 15:00–17:00.", "Serve at the
- * bar moved to Rue de Genève 12.", or both in one sentence; several read "3 of your missions
- * changed.".
+ * bar moved to Rue de Genève 12.", "Serve at the bar no longer has a place.", or a new time and a
+ * place in one sentence; several read "3 of your missions changed.".
  *
  * A mission changed more than once is told once, as it is after the latest change, with every kind
  * of change it had: a new time, then a new place, reads as both. A tap opens the Planning on the
@@ -61,16 +61,17 @@ class MissionChangedFormat : NotificationFormat {
   }
 
   /**
-   * What one document says changed, or null when it cannot be read: no readable mission, an unknown
-   * `what`, or a new place without its address.
+   * What one document says changed, or null when it cannot be read: no readable mission, or an
+   * unknown `what`. A new place without an address is one the mission no longer has.
    */
   private fun InboxNotification.toChange(): Change? {
     val line = MissionLine.decodeAll(data[Key.MISSIONS].orEmpty()).firstOrNull() ?: return null
     val address = data[Key.ADDRESS]
     return when (data[Key.WHAT]) {
-      Value.TIME -> Change(line, timeChanged = true, address = null)
-      Value.PLACE -> address?.let { Change(line, timeChanged = false, address = it) }
-      Value.TIME_AND_PLACE -> address?.let { Change(line, timeChanged = true, address = it) }
+      Value.TIME -> Change(line, timeChanged = true, placeChanged = false, address = null)
+      Value.PLACE -> Change(line, timeChanged = false, placeChanged = true, address = address)
+      Value.TIME_AND_PLACE ->
+          Change(line, timeChanged = true, placeChanged = true, address = address)
       else -> null
     }
   }
@@ -79,21 +80,41 @@ class MissionChangedFormat : NotificationFormat {
    * A change of the mission [line], as it is once changed: its time, its place, or both, never
    * neither.
    *
-   * @property address the new address, or null when only the time changed.
+   * @property address the new address when [placeChanged], or null when the mission no longer has a
+   *   place.
    */
-  private data class Change(val line: MissionLine, val timeChanged: Boolean, val address: String?) {
+  private data class Change(
+      val line: MissionLine,
+      val timeChanged: Boolean,
+      val placeChanged: Boolean,
+      val address: String?,
+  ) {
 
-    /** This change followed by [next], of the same mission. */
+    /** This change followed by [next], of the same mission: its place is the latest one told. */
     fun then(next: Change) =
-        Change(next.line, timeChanged || next.timeChanged, next.address ?: address)
+        Change(
+            next.line,
+            timeChanged || next.timeChanged,
+            placeChanged || next.placeChanged,
+            if (next.placeChanged) next.address else address,
+        )
 
     fun text(texts: NotificationTexts): String {
       val day = line.startAt.formatDayOfWeek(texts.zone)
       val start = line.startAt.formatTime(texts.zone)
       val end = line.endAt.formatTime(texts.zone)
       return when {
-        address == null ->
+        !placeChanged ->
             texts.string(R.string.notification_mission_changed_time, line.title, day, start, end)
+        address == null && timeChanged ->
+            texts.string(
+                R.string.notification_mission_changed_time_and_no_place,
+                line.title,
+                day,
+                start,
+                end,
+            )
+        address == null -> texts.string(R.string.notification_mission_changed_no_place, line.title)
         timeChanged ->
             texts.string(
                 R.string.notification_mission_changed_time_and_place,

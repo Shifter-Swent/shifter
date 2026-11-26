@@ -12,8 +12,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Covers, through [MissionChangedFormat.format], the text of a new time, a new place and both, the
- * grouping by event, a mission changed twice, and the items that cannot be read.
+ * Covers, through [MissionChangedFormat.format], the text of a new time, a new place, a place
+ * removed, and a new time with either, the grouping by event, a mission changed twice, and the
+ * items that cannot be read.
  */
 class MissionChangedFormatTest {
 
@@ -110,6 +111,34 @@ class MissionChangedFormatTest {
   }
 
   @Test
+  fun format_thePlaceRemoved_saysThereIsNoPlace() {
+    val shown = format.format(listOf(item(Value.PLACE)), texts)
+
+    assertEquals(
+        listOf(texts.string(R.string.notification_mission_changed_no_place, "Serve at the bar")),
+        shown.map { it.text },
+    )
+  }
+
+  @Test
+  fun format_aNewTimeAndThePlaceRemoved_tellsBoth() {
+    val shown = format.format(listOf(item(Value.TIME_AND_PLACE)), texts)
+
+    assertEquals(
+        listOf(
+            texts.string(
+                R.string.notification_mission_changed_time_and_no_place,
+                "Serve at the bar",
+                "Sat",
+                "15:00",
+                "17:00",
+            )
+        ),
+        shown.map { it.text },
+    )
+  }
+
+  @Test
   fun format_aNewTimeThenANewPlace_ofOneMission_readsAsBoth() {
     val moved = bar.copy(startAt = saturday + Duration.ofHours(1))
     val items =
@@ -128,6 +157,37 @@ class MissionChangedFormatTest {
             "16:00",
             "17:00",
             "Rue de Genève 12",
+        ),
+        shown.text,
+    )
+  }
+
+  @Test
+  fun format_aNewPlaceThenThePlaceRemoved_ofOneMission_saysThereIsNoPlace() {
+    val items = listOf(item(Value.PLACE, address = "Rue de Genève 12"), item(Value.PLACE))
+
+    val shown = format.format(items, texts).single()
+
+    assertEquals(
+        texts.string(R.string.notification_mission_changed_no_place, "Serve at the bar"),
+        shown.text,
+    )
+  }
+
+  @Test
+  fun format_thePlaceRemovedThenANewTime_ofOneMission_readsAsBoth() {
+    val moved = bar.copy(startAt = saturday + Duration.ofHours(1))
+    val items = listOf(item(Value.PLACE, line = moved), item(Value.TIME, line = moved))
+
+    val shown = format.format(items, texts).single()
+
+    assertEquals(
+        texts.string(
+            R.string.notification_mission_changed_time_and_no_place,
+            "Serve at the bar",
+            "Sat",
+            "16:00",
+            "17:00",
         ),
         shown.text,
     )
@@ -177,22 +237,14 @@ class MissionChangedFormatTest {
   @Test
   fun format_unreadableItems_showNothing() {
     val unknownWhat = item("COLOUR")
-    val placeWithoutAddress = item(Value.PLACE)
-    val bothWithoutAddress = item(Value.TIME_AND_PLACE)
     val noMission = item(Value.TIME).copy(data = mapOf(Key.WHAT to Value.TIME))
 
-    val shown =
-        format.format(
-            listOf(unknownWhat, placeWithoutAddress, bothWithoutAddress, noMission),
-            texts,
-        )
-
-    assertTrue(shown.isEmpty())
+    assertTrue(format.format(listOf(unknownWhat, noMission), texts).isEmpty())
   }
 
   @Test
   fun format_anUnreadableItemBesideAReadableOne_isLeftOut() {
-    val items = listOf(item(Value.PLACE, line = gate), item(Value.TIME))
+    val items = listOf(item("COLOUR", line = gate), item(Value.TIME))
 
     assertEquals(listOf(newTime), format.format(items, texts).map { it.text })
   }

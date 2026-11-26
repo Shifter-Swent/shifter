@@ -60,6 +60,10 @@
     <string name="notification_mission_changed_place">%1$s moved to %2$s.</string>
     <!-- New time and place: the title, the short day, the start, the end and the new address. -->
     <string name="notification_mission_changed_time_and_place">%1$s now runs %2$s %3$s–%4$s at %5$s.</string>
+    <!-- Place removed: the title. -->
+    <string name="notification_mission_changed_no_place">%1$s no longer has a place.</string>
+    <!-- New time and place removed: the title, the short day, the start and the end. -->
+    <string name="notification_mission_changed_time_and_no_place">%1$s now runs %2$s %3$s–%4$s and no longer has a place.</string>
     <!-- Several missions of the event changed: how many. -->
     <plurals name="notification_mission_changed_many">
         <item quantity="one">%1$d of your missions changed.</item>
