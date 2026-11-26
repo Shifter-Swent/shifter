@@ -262,7 +262,7 @@ private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
       }
       Legend()
       Text(
-          text = stringResource(R.string.schedule_nothing_saved),
+          text = stringResource(R.string.schedule_saving_help),
           style = MaterialTheme.typography.labelSmall,
           color = shifter_mutedText,
       )

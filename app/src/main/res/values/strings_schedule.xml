@@ -17,7 +17,8 @@
         <item quantity="one">mission to finish by hand</item>
         <item quantity="other">missions to finish by hand</item>
     </plurals>
-    <string name="schedule_nothing_saved">Nothing is saved until you accept.</string>
+    <!-- Under the summary: Accept saves the proposal, while the assign dialog saves at once. -->
+    <string name="schedule_saving_help">Accept saves the proposal. People you assign by hand are saved at once.</string>
     <string name="schedule_legend_proposed">Proposed</string>
     <string name="schedule_legend_assigned">Already assigned</string>
     <string name="schedule_slot_team">%1$s · %2$s</string>
