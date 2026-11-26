@@ -89,9 +89,10 @@ interface TeamRepository {
 
   /**
    * Deletes the team with everything that belongs to it: its missions with their check-ins, its
-   * chat messages, the positions its members shared with it and the pending applications to it. Its
-   * members stay participants of the event, without a team, and its manager stops managing it.
-   * Deleting a team that no longer exists has no effect.
+   * chat messages, the positions its members shared with it and the pending applications to it,
+   * whose volunteers leave the shifts they are in. Its members stay participants of the event,
+   * without a team, and its manager stops managing it. Deleting a team that no longer exists has no
+   * effect.
    *
    * The deletion takes several writes, the team going last, so one interrupted halfway (connection
    * lost, app killed) is completed by calling it again. Until then, the team's chat accepts no
