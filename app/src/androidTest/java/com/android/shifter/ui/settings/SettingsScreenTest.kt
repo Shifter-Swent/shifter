@@ -101,7 +101,7 @@ class SettingsScreenTest {
       text(group.title).assertIsDisplayed()
       for (kind in group.kinds) notificationSwitch(kind).assertIsOn().assertIsEnabled()
     }
-    text(R.string.notification_channel_missed_check_in_description).assertIsDisplayed()
+    text(R.string.notification_channel_missed_check_in_description, 10).assertIsDisplayed()
     text(R.string.settings_notifications_help).assertIsDisplayed()
     composeTestRule
         .onNodeWithTag(SettingsScreenTestTags.notificationGroup(NotificationGroup.ORGANIZER))

@@ -47,11 +47,13 @@ val NotificationKind.channelDescription: Int
 
 /**
  * The values [channelDescription] is formatted with, read from the code that decides them, so the
- * text never says something else: the window of [NotificationKind.OPEN_SPOTS], in hours.
+ * text never says something else: the delay of [NotificationKind.MISSED_CHECK_IN], in minutes, and
+ * the window of [NotificationKind.OPEN_SPOTS], in hours.
  */
 val NotificationKind.channelDescriptionArgs: Array<Any>
   get() =
       when (this) {
+        NotificationKind.MISSED_CHECK_IN -> arrayOf(MISSED_CHECK_IN_DELAY.toMinutes())
         NotificationKind.OPEN_SPOTS -> arrayOf(OPEN_SPOTS_WINDOW.toHours())
         else -> emptyArray()
       }

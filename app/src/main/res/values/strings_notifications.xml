@@ -24,9 +24,8 @@
     <string name="notification_channel_announcement">Announcements</string>
     <string name="notification_channel_announcement_description">Each announcement sent to a channel you are in.</string>
     <string name="notification_channel_missed_check_in">Missed check-ins</string>
-    <!-- 10 min: the delay of MissedCheckIn set by #611, written here until its constant exists;
-         it then goes into channelDescriptionArgs, as the window of OPEN_SPOTS does. -->
-    <string name="notification_channel_missed_check_in_description">10 min after a mission starts, for each volunteer of your team who is not checked in.</string>
+    <!-- The delay of MissedCheckIn, in minutes. -->
+    <string name="notification_channel_missed_check_in_description">%1$d min after a mission starts, for each volunteer of your team who is not checked in.</string>
     <string name="notification_channel_open_spots">Missions short of volunteers</string>
     <!-- The window of OpenSpots, in hours. -->
     <string name="notification_channel_open_spots_description">Missions starting in the next %1$d h that still have open spots.</string>
@@ -44,6 +43,10 @@
     <!-- ANNOUNCEMENT (#618). Prefix: notification_announcement_ -->
 
     <!-- MISSED_CHECK_IN (#611). Prefix: notification_missed_check_in_ -->
+    <!-- The text: the volunteer, the mission and its start time. -->
+    <string name="notification_missed_check_in_text">%1$s hasn\'t checked in to %2$s (%3$s).</string>
+    <!-- The same, when the volunteer's name cannot be read. -->
+    <string name="notification_missed_check_in_text_unknown">A volunteer hasn\'t checked in to %1$s (%2$s).</string>
 
     <!-- OPEN_SPOTS (#608). Prefix: notification_open_spots_ -->
     <!-- The text: the mission, its start time and how many volunteers it still needs. -->
