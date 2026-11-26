@@ -37,6 +37,9 @@ class NotificationEngineTest {
 
   private val now = Instant.parse("2026-11-24T12:00:00Z")
 
+  /** The engine's maximum inbox age, written out so that a wrong value fails. */
+  private val maxInboxAge = Duration.ofHours(48)
+
   /** The time the next delivered notification is stored at. */
   private var deliveredAt = now
 
@@ -262,9 +265,9 @@ class NotificationEngineTest {
 
   @Test
   fun run_removesWithoutShowingWhatIsOlderThan48Hours() = runTest {
-    deliveredAt = now - MAX_INBOX_AGE - Duration.ofSeconds(1)
+    deliveredAt = now - maxInboxAge - Duration.ofSeconds(1)
     deliver(eventId = "too-old")
-    deliveredAt = now - MAX_INBOX_AGE
+    deliveredAt = now - maxInboxAge
     deliver(eventId = "just-in-time")
 
     engine().run(user, now)
@@ -435,7 +438,7 @@ class NotificationEngineTest {
   fun run_whileItCannotShow_removesOnlyWhatItWouldNeverShow() = runTest {
     notifier.permitted = false
     preferences.disable(user, NotificationKind.ANNOUNCEMENT)
-    deliveredAt = now - Duration.ofHours(48) - Duration.ofSeconds(1)
+    deliveredAt = now - maxInboxAge - Duration.ofSeconds(1)
     deliver(eventId = "too-old")
     deliveredAt = now
     deliver(NotificationKind.ANNOUNCEMENT)
@@ -493,7 +496,7 @@ class NotificationEngineTest {
     assertEquals(listOf("ANNOUNCEMENT:event-1"), notifier.shown.map { it.identity })
     assertEquals(listOf(application), inbox.pending(user))
     // Once too old, the item that fails leaves the inbox, so it never blocks it.
-    engine.run(user, now + MAX_INBOX_AGE + Duration.ofSeconds(1))
+    engine.run(user, now + maxInboxAge + Duration.ofSeconds(1))
     assertTrue(inbox.pending(user).isEmpty())
   }
 

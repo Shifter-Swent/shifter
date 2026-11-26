@@ -16,7 +16,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * How old an inbox notification may be and still be shown: an older one, found by a phone that was
  * off for days, tells something likely over, so it is removed without being shown.
  */
-internal val MAX_INBOX_AGE: Duration = Duration.ofHours(48)
+private val MAX_INBOX_AGE: Duration = Duration.ofHours(48)
 
 /**
  * How long a run waits for the user's preferences. Offline, a profile this phone never cached is
