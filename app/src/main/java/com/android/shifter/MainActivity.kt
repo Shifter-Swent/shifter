@@ -22,6 +22,7 @@ import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.notification.notificationTarget
 import com.swent.shifter.model.notification.notificationTargetToOpen
 import com.swent.shifter.model.notification.putNotificationTargetToOpen
+import com.swent.shifter.model.notification.scheduleNotificationWork
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.navigation.ShifterNavHost
 import com.swent.shifter.ui.navigation.isInEventsApp
@@ -43,6 +44,7 @@ class MainActivity : ComponentActivity() {
     enableShifterEdgeToEdge()
     notificationTarget = notificationTargetToOpen(intent, savedInstanceState)
     val repositories = RepositoryProviderFactory.production
+    scheduleNotificationWork(this)
     // Firebase restores the previous session synchronously, so a returning user skips sign-in.
     val isSignedIn = repositories.authRepository.currentUser() != null
     setContent {
