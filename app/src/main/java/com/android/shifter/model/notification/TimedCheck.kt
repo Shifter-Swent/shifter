@@ -46,8 +46,11 @@ fun interface NotificationScheduler {
   /**
    * Checks the notifications again at [time], or as soon as possible if it has passed. Each
    * distinct time gets its own run, so asking for a later one never drops an earlier one; asking
-   * again for a time already scheduled adds none, so a check may ask on each of its runs. One run
+   * again for a time still to come adds none, so a check may ask on each of its runs. One run
    * handles everything due by then, whoever asked for it.
+   *
+   * A check asks only for times to come: a run done no longer counts as planned, so asking again
+   * for a time passed starts one more run each time.
    */
   fun checkAt(time: Instant)
 }
