@@ -100,10 +100,11 @@ class NotificationEngine(
    * [NotificationInbox.observePending] is only the signal to call it.
    *
    * It throws when the inbox or the preferences cannot be read, or the preferences do not come in
-   * time, before removing anything: a kind turned off must never be mistaken for one turned on. A
-   * kind whose format or showing fails keeps its items in the inbox, until they are too old,
-   * without stopping the other kinds, and the first failure is thrown once the others are removed:
-   * one malformed notification never blocks the inbox. A removal that fails throws too; what was
+   * time, before removing anything: a kind turned off must never be mistaken for one turned on. An
+   * item its format fails on stays in the inbox, until it is too old, without stopping the other
+   * items of its kind, and a kind whose showing fails keeps all its items, without stopping the
+   * other kinds. The first failure is thrown once the others are removed: one malformed
+   * notification never blocks the inbox, nor its kind. A removal that fails throws too; what was
    * shown then is shown again, without counting an item twice, at the next run.
    */
   suspend fun handleInbox(userId: String, now: Instant) = mutex.withLock { inboxNow(userId, now) }
@@ -128,18 +129,8 @@ class NotificationEngine(
     }
     val readable = wanted.filter { it.kind in formats }
     val shown = shownItems(userId).apply { retainOnly(notifier.activeIdentities()) }
-    var failure: Exception? = null
-    val failedKinds = mutableSetOf<NotificationKind>()
-    withSenderNames(readable)
-        .groupBy { it.kind }
-        .forEach { (kind, kindItems) ->
-          failureOf { show(formats.getValue(kind), kindItems, shown) }
-              ?.let {
-                failedKinds += kind
-                failure = failure ?: it
-              }
-        }
-    val handled = unwanted + readable.filter { it.kind !in failedKinds }
+    val (kept, failure) = showByKind(readable, shown)
+    val handled = unwanted + readable.filter { it.id !in kept }
     if (handled.isNotEmpty()) inbox.remove(userId, handled.map { it.id })
     failure?.let { throw it }
   }
@@ -207,6 +198,32 @@ class NotificationEngine(
   }
 
   /**
+   * Shows [items] kind by kind with [shown], then returns the ids of those to keep in the inbox and
+   * the first failure: each item its format fails on, and every item of a kind whose showing fails.
+   */
+  private suspend fun showByKind(
+      items: List<InboxNotification>,
+      shown: ShownItems,
+  ): Pair<Set<String>, Exception?> {
+    val kept = mutableSetOf<String>()
+    var failure: Exception? = null
+    withSenderNames(items)
+        .groupBy { it.kind }
+        .forEach { (kind, kindItems) ->
+          val kindFailure = failureOf {
+            val itemFailures = show(formats.getValue(kind), kindItems, shown)
+            kept += itemFailures.keys
+            failure = failure ?: itemFailures.values.firstOrNull()
+          }
+          if (kindFailure != null) {
+            kept += kindItems.map { it.id }
+            failure = failure ?: kindFailure
+          }
+        }
+    return kept to failure
+  }
+
+  /**
    * Shows, for each identity [items] join, the notification [format] makes of the items already
    * shown under it and the new ones. The identity of an item is the one of the notifications the
    * format makes of it alone; an item it makes none of is not shown. A format must give a
@@ -216,11 +233,24 @@ class NotificationEngine(
    * Each identity is formatted with its own items only, so a notification always shows what is
    * stored under its identity, even with a format making several notifications of one item, and a
    * notification no new item joins is not shown again.
+   *
+   * Returns, by item id, the failure of each item [format] fails on alone: those are left out,
+   * without stopping the others.
    */
-  private fun show(format: NotificationFormat, items: List<InboxNotification>, shown: ShownItems) {
+  private fun show(
+      format: NotificationFormat,
+      items: List<InboxNotification>,
+      shown: ShownItems,
+  ): Map<String, Exception> {
+    val itemFailures = mutableMapOf<String, Exception>()
     val newItems =
         items
-            .flatMap { item -> format.format(listOf(item), texts).map { it.identity to item } }
+            .flatMap { item ->
+              var made = emptyList<AppNotification>()
+              failureOf { made = format.format(listOf(item), texts) }
+                  ?.let { itemFailures[item.id] = it }
+              made.map { it.identity to item }
+            }
             .groupBy({ it.first }, { it.second })
     val grouped = newItems.mapValues { (identity, new) -> (shown.items(identity) + new).merged() }
     notifier.show(
@@ -229,6 +259,7 @@ class NotificationEngine(
         }
     )
     grouped.forEach { (identity, identityItems) -> shown.put(identity, identityItems) }
+    return itemFailures
   }
 
   /**

@@ -498,6 +498,30 @@ class NotificationEngineTest {
   }
 
   @Test
+  fun run_whenAFormatFailsOnOneItem_showsTheOthersOfItsKind_andKeepsThatOne() = runTest {
+    val failure = IllegalStateException("malformed data")
+    val failingOnOne =
+        object : NotificationFormat {
+          override val kind = NotificationKind.NEW_APPLICATION
+
+          override fun format(items: List<InboxNotification>, texts: NotificationTexts) =
+              if (items.any { it.eventId == "malformed" }) throw failure
+              else applications.format(items, texts)
+        }
+    val malformed = deliver(eventId = "malformed")
+    deliver(eventId = "event-2")
+
+    val thrown = runCatching {
+      engine(formats = listOf(failingOnOne)).run(user, now)
+    }
+        .exceptionOrNull()
+
+    assertSame(failure, thrown)
+    assertEquals(listOf("NEW_APPLICATION:event-2"), notifier.shown.map { it.identity })
+    assertEquals(listOf(malformed), inbox.pending(user))
+  }
+
+  @Test
   fun runChecks_whenShowingFails_keepsTheCheckNotificationForTheNextRun() = runTest {
     // Like OpenSpots: forgets the mission no longer short, shows and marks the one short.
     val check =
