@@ -67,6 +67,28 @@ class AppNotificationsTest {
         assertEquals(emptySet<String>(), notifier.activeIdentities())
       }
 
+  @Test
+  fun signingOut_duringAShow_clearsOnceTheRunHasStopped() =
+      runTest(mainDispatcherRule.dispatcher) {
+        val owner = TestLifecycleOwner(Lifecycle.State.STARTED, mainDispatcherRule.dispatcher)
+        backgroundScope.launch {
+          runAppNotifications(owner.lifecycle, userIds, notifier, mainDispatcherRule.dispatcher) {
+            try {
+              awaitCancellation()
+            } finally {
+              // A run cancelled in the middle of show still posts what it was showing.
+              notifier.show(listOf(NOTIFICATION))
+            }
+          }
+        }
+        runCurrent()
+
+        userIds.value = null
+        runCurrent()
+
+        assertEquals(emptySet<String>(), notifier.activeIdentities())
+      }
+
   private fun TestScope.start(state: Lifecycle.State): TestLifecycleOwner {
     val owner = TestLifecycleOwner(state, mainDispatcherRule.dispatcher)
     backgroundScope.launch {

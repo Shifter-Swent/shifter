@@ -5,17 +5,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.notification.NotificationEngine
 import com.swent.shifter.model.notification.Notifier
-import com.swent.shifter.model.notification.clearWhenSignedOut
 import com.swent.shifter.model.notification.logFailedRun
 import com.swent.shifter.model.notification.runNotificationsWhileOpen
 import com.swent.shifter.ui.location.publishWhileForeground
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -54,9 +55,10 @@ fun NotificationsWhileOpen(
 /**
  * Runs [runForUser] for the signed-in user of [userIds] while [lifecycle] is in the foreground, and
  * stops it in the background, where WorkManager runs the notifications, and at once on sign-out or
- * a change of account (see [publishWhileForeground]). It also clears [notifier] on sign-out, the
- * only way out of an account, which happens with the app open (see [clearWhenSignedOut]). Both run
- * on [dispatcher]. Returns only when cancelled.
+ * a change of account, as [publishWhileForeground] does. On sign-out, the only way out of an
+ * account, it then clears [notifier]: [collectLatest] waits for the run it cancels to end, so a
+ * notification the run was showing never stays after the clear, to open the screens of the account
+ * signed out. Runs on [dispatcher]. Returns only when cancelled.
  */
 suspend fun runAppNotifications(
     lifecycle: Lifecycle,
@@ -66,6 +68,8 @@ suspend fun runAppNotifications(
     runForUser: suspend (userId: String) -> Unit,
 ): Unit =
     withContext(dispatcher) {
-      launch { clearWhenSignedOut(userIds, notifier) }
-      publishWhileForeground(lifecycle, userIds, runForUser)
+      userIds.distinctUntilChanged().collectLatest { userId ->
+        if (userId == null) notifier.clear()
+        else lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { runForUser(userId) }
+      }
     }

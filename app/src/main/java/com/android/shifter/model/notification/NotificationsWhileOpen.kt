@@ -8,7 +8,6 @@ import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -70,12 +69,4 @@ internal suspend fun reportingFailure(onFailure: (Exception) -> Unit, run: suspe
   } catch (e: Exception) {
     onFailure(e)
   }
-}
-
-/**
- * Clears [notifier] each time [userIds], the signed-in user's id over time, is null: signed out, or
- * between two accounts. Returns only when cancelled.
- */
-suspend fun clearWhenSignedOut(userIds: Flow<String?>, notifier: Notifier) = userIds.collect {
-  if (it == null) notifier.clear()
 }
