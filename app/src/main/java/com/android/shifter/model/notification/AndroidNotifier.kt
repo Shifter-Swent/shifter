@@ -29,6 +29,9 @@ class AndroidNotifier(private val context: Context) : Notifier {
 
   private val manager = NotificationManagerCompat.from(context)
 
+  /** The events the previous call of [show] posted into: see [summariesKept]. */
+  private var previouslyPostedInto: Set<String> = emptySet()
+
   init {
     manager.createNotificationChannelsCompat(
         NotificationKind.entries.map { kind ->
@@ -57,26 +60,35 @@ class AndroidNotifier(private val context: Context) : Notifier {
   @SuppressLint("MissingPermission")
   override fun show(notifications: List<AppNotification>) {
     if (notifications.isEmpty()) return
+    val summaries = summaryChannels(notifications)
+    val postedInto = summaries.keys.map { it.id }.toSet()
+    val summarized = summariesKept(postedInto)
     notifications.forEach { manager.notify(it.identity, NOTIFICATION_ID, build(it)) }
-    val summarized = summariesKept()
-    summaryChannels(notifications)
+    summaries
         .filterKeys { it.id !in summarized }
         .forEach { (event, channelId) ->
           manager.notify(event.id, SUMMARY_ID, summary(event, channelId))
         }
+    previouslyPostedInto = postedInto
   }
 
   /**
    * The events whose summary is shown, once the summaries left without a notification are removed:
    * one the user dismissed every notification of would otherwise stay alone, and a tap on it does
-   * nothing.
+   * nothing. Removing a summary removes its group's notifications too.
+   *
+   * Read before posting, and never counting as alone the group of an event [postedInto] by this
+   * call or the previous one: `notify` only queues a notification, so the one just posted may not
+   * be listed yet, and removing its summary would remove it.
    */
-  private fun summariesKept(): Set<String> {
+  private fun summariesKept(postedInto: Set<String>): Set<String> {
     val active = manager.activeNotifications
     val groups =
         active
             .filter { it.id == NOTIFICATION_ID }
-            .mapNotNullTo(mutableSetOf()) { it.notification.group }
+            .mapNotNullTo(mutableSetOf()) { it.notification.group } +
+            postedInto +
+            previouslyPostedInto
     val (kept, alone) =
         active.filter { it.id == SUMMARY_ID && it.tag != null }.partition { it.tag in groups }
     alone.forEach { manager.cancel(it.tag, SUMMARY_ID) }

@@ -10,7 +10,9 @@ import com.swent.shifter.model.user.UserMode
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -130,21 +132,28 @@ class AndroidNotifierTest {
   }
 
   @Test
-  fun show_removesASummaryWhoseNotificationsWereAllDismissed() {
+  fun show_removesASummaryWhoseNotificationsWereAllDismissed_onceItsGroupIsNoLongerPostedInto() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
     manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
 
-    notifier.show(
-        listOf(
-            notification(
-                NotificationKind.APPLICATION_DECIDED,
-                "e2",
-                target = NotificationTarget.MyEvents(UserMode.VOLUNTEER),
-            )
-        )
-    )
+    notifier.show(listOf(myEvents("e2")))
+    assertNotNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
 
+    notifier.show(listOf(myEvents("e3")))
     assertNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+  }
+
+  @Test
+  fun show_intoAGroupLeftAlone_keepsItsSummaryAsItIs() {
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
+    notifier.show(listOf(myEvents("e2")))
+    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+    val summary = shadowOf(manager).getNotification("e1", SUMMARY_ID)
+
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m2")))
+
+    assertSame(summary, shadowOf(manager).getNotification("e1", SUMMARY_ID))
+    assertEquals("e1", shadowOf(manager).getNotification("OPEN_SPOTS:m2", NOTIFICATION_ID).group)
   }
 
   @Test
@@ -247,6 +256,13 @@ class AndroidNotifierTest {
         NotificationChannel(kind.channelId, "Off", NotificationManager.IMPORTANCE_NONE)
     )
   }
+
+  private fun myEvents(key: String) =
+      notification(
+          NotificationKind.APPLICATION_DECIDED,
+          key,
+          target = NotificationTarget.MyEvents(UserMode.VOLUNTEER),
+      )
 
   private fun mission(key: String, eventTitle: String = "Fest") =
       NotificationTarget.Mission("e1", eventTitle, UserMode.ORGANIZER, key)
