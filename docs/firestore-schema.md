@@ -322,10 +322,10 @@ that chose it (#594). The mapper ignores the `teamId` and `assigneeIds` of the s
 model, which nothing wrote.
 
 `FirestoreShiftRepository` opens a slot in a transaction that creates the shift only if it does not
-exist, since the rules refuse any update of the slot: opening a slot twice leaves the shift as it was. A
-transaction needs the backend, so a slot cannot be opened offline. The shift is then read back from
-the server, the only one to know its `createdAt`; if another device closed it in between, the
-closing stands and the opening fails.
+exist, since the rules refuse any update of the slot: opening a slot twice leaves the shift as it
+was. A transaction needs the backend, so a slot cannot be opened offline. The shift is then read
+back from the server, the only one to know its `createdAt`; if another device closed it in between,
+the closing stands and the opening fails.
 
 ### `events/{eventId}/missions/{missionId}`
 
@@ -430,10 +430,10 @@ every access to it is denied.
 | `publicProfiles/{uid}` | Any signed-in user, one document at a time (`get`): listing the collection is denied | Create and update by the user, with only `displayName`, equal to the one of `users/{uid}` after the same commit. No delete |
 | `events/{eventId}` | `get`: any signed-in user, by id. `list`: the organizer, for their own events only, so nobody collects every event and its join code | Create with yourself as `organizerId`. Update and delete by the organizer only, never changing `joinCode` |
 | `joinCodes/{code}` | Any signed-in user, one document at a time (`get`): listing is denied | Create only, by the organizer of `eventId`, with only `eventId`, when the event has this `joinCode` after the same commit. Never updated, so a code is never taken over. Delete by the event's organizer |
-| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event and is not `deleting`, while the event has not ended, with `shiftIds` a list when present. The volunteer updates it while it is `PENDING`, changing only `shiftIds` and `availability` (still not empty), while the event has not ended and the team is not `deleting`. Otherwise only the organizer updates it. Either only `status`: `ACCEPTED`, only before the event's `endAt`, needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. Delete by the volunteer when they withdraw (see below), or by the organizer for a `PENDING` request, in the commit that deletes its team |
+| `membershipRequests/{uid}` | The volunteer, or the event's organizer | Created `PENDING` by the volunteer, for a `teamId` that exists in the event and is not `deleting`, while the event has not ended, without `shiftIds` until the app puts the volunteer in those shifts in the same commit (#594). The volunteer updates it while it is `PENDING`, changing only `shiftIds` and `availability` (still not empty), while the event has not ended and the team is not `deleting`. Otherwise only the organizer updates it. Either only `status`: `ACCEPTED`, only before the event's `endAt`, needs the volunteer in the team's `memberIds` after the same commit, `REJECTED` needs them out of it. Or, to move an `ACCEPTED` volunteer, only `teamId`: after the same commit they are in the `memberIds` of the new team, and out of the old one, if it still exists, both as a member and as its manager. Delete by the volunteer when they withdraw (see below), or by the organizer for a `PENDING` request, in the commit that deletes its team |
 | `eventParticipants/{eventId}` | The event's organizer. A volunteer reads their own request instead | The organizer only: at most one uid added or removed per write. An added uid needs an `ACCEPTED` request, a removed one a `REJECTED` request, in the same commit |
 | `teams` | Any signed-in user, since a volunteer picks their team before applying | The organizer only, with valid fields (see below), never with `managerId` among the `memberIds`, except a volunteer leaving their team when they withdraw (see below). Nothing is written under an event that does not exist. `deleting` is one of its fields (see below), so the organizer sets it like any other |
-| `shifts` | Any signed-in user, since a volunteer chooses shifts before applying | Create by the organizer only, with all four fields and no other: the id equal to `startAt` in milliseconds, `startAt` on a quarter of an hour (every time zone's whole hours are), a length of 1 to 3 whole hours, a slot that runs during the event at least in part (`endAt` after the event's `startAt`, `startAt` before its `endAt`), an empty `volunteerIds` and `createdAt` equal to the request time. Update of `volunteerIds` only, never listing anyone twice: by a volunteer adding themself while their request is `PENDING` and lists the shift after the same commit, or removing themself once it no longer lists it or is withdrawn; by the organizer removing volunteers, never adding one. Delete by the organizer while `volunteerIds` is empty, or once the shift is gone, so closing again succeeds. Nothing is written under an event that does not exist |
+| `shifts` | Any signed-in user, since a volunteer chooses shifts before applying | Create by the organizer only, with all four fields and no other: the id equal to `startAt` in milliseconds, `startAt` on a quarter of an hour (every time zone's whole hours are), a length of 1 to 3 whole hours, a slot that runs during the event at least in part (`endAt` after the event's `startAt`, `startAt` before its `endAt`), an empty `volunteerIds` and `createdAt` equal to the request time. Update of `volunteerIds` only, never listing anyone twice: by a volunteer adding themself at the end, before the slot's `startAt`, while their request is `PENDING` and lists the shift after the same commit, or removing themself once it no longer lists it or is withdrawn, the others staying in their order; by the organizer removing volunteers, never adding one, in any order. Delete by the organizer while `volunteerIds` is empty, or once the shift is gone, so closing again succeeds. Nothing is written under an event that does not exist |
 | `missions` | The organizer and the event's participants | The organizer, or the manager of the mission's team (`teamId`), for the missions of that team only, before and after the write. A manager only adds members of the team to `assigneeIds`, each once, and never more than `volunteersNeeded`; assignees already on the mission may stay. Only the organizer writes a mission of no team. Once completed (`completed` is `true` or `endAt` has passed, by the server's clock), its `title`, `description`, `volunteersNeeded`, `startAt`, `endAt`, `location` and `teamId` no longer change; its assignees may still change and its volunteers may still be checked in. No mission is created in, or moved to, a team that is `deleting`. Always with valid fields (see below). Nothing is allowed under an event that does not exist |
 | `managers/{uid}` | The event's organizer, and the user themself | Create and update by the organizer, or by the user only to take a team out, as when they withdraw, and only under an event that exists. At most one team added or removed per write, which must agree with the team after the same commit: a team added has `managerId` equal to the uid, a team removed no longer has. Delete by the organizer |
 | `teams/{teamId}/liveLocations/{uid}` | `get`: the volunteer themself, the manager of that team and the event's organizer. `list`: the manager and the organizer only, checked on the path so the whole collection can be queried. Both only within the event's period (see below) | Create and update by the volunteer themself (`uid` is the document id), only within the event's period, while they are in the team's `memberIds` and their `users/{uid}.locationSharingEnabled` is `true`, and only with a valid `position` and `measuredAt`. Delete always allowed to the volunteer, so they can clean up after turning sharing off, leaving the team, or the event ending or being deleted, and to the event's organizer, who is the one who takes a volunteer out of a team (see below). Not to the team's manager, who writes neither `memberIds` nor `managerId` |
@@ -524,19 +524,23 @@ can only be deleted once its volunteer is no longer a participant, and never onc
 - **The rules check the link between a request and its shifts from the shift's side only.** A
   rule cannot go through a request's `shiftIds`, so it cannot check that each of those shifts lists
   the volunteer, that its elements are distinct shift ids, nor that `availability` matches the
-  chosen slots: the app keeps them right. The
-  organizer may remove any volunteer from a shift, since a rule cannot check several removed at
-  once, which deleting a team needs; they may reject anyone anyway. Nor do the shifts check that
-  the event still runs when a volunteer puts themself in: it would read the event once per shift,
-  against the rules' limit on reads, and only a pending request listing a shift the organizer took
-  them out of could use it, which the organizer can still reject.
+  chosen slots: the app keeps them right. Nor can it require the shifts to be written with the
+  request: a pending volunteer can drop a shift from their `shiftIds` and stay in it, so freeing a
+  volunteer's shifts looks for those whose `volunteerIds` list them rather than trust `shiftIds`.
+  The other way, a pending request still listing a shift the organizer took the volunteer out of
+  lets them put themself back before it starts; the organizer can still reject them. The organizer
+  may remove any volunteer from a shift, since a rule cannot check several removed at once, which
+  deleting a team needs; they may reject anyone anyway.
 - **The organizer can close a slot volunteers chose, in two writes.** They may take every
   volunteer out of it, then close it once empty. In the app they only do so by rejecting those
   volunteers, but a pending request could then list a shift that no longer exists: the app skips
   the shifts that are gone when a volunteer withdraws or changes their shifts.
-- **A request can choose at most 499 shifts.** The rules set no limit, but applying writes the
-  request and each chosen shift in one commit, and Firestore takes at most 500 writes per commit:
-  more than 40 days of 2 h slots, every one chosen.
+- **A volunteer's shifts are bound by Firestore's 500 writes per commit.** The rules set no limit,
+  but each operation writes the request and the shifts it changes in one commit: applying takes at
+  most 499 shifts, changing them at most 499 shifts left and joined in all, and withdrawing a little
+  fewer, since an accepted volunteer also leaves the participants, their team, the manager index and
+  their missions in the same commit. 499 shifts are more than 40 days of 2 h slots, every one
+  chosen.
 - **The rules do not check that a slot starts on an even hour.** That depends on the time zone,
   which only the app knows (`slotOf`): the rules accept any start on a quarter of an hour.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,
