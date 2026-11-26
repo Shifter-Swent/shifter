@@ -182,7 +182,7 @@ class AutoScheduleScreenTest {
     val night = stands.copy(id = "night", startAt = at(2, "01:00"), endAt = at(2, "03:00"))
     showSchedule(proposal.copy(missions = listOf(night)))
 
-    compose.onNodeWithText("22 Nov, 01:00–03:00 · Logistics").assertExists()
+    compose.onNodeWithText("Sun 22 Nov, 01:00–03:00 · Logistics").assertExists()
   }
 
   @Test
