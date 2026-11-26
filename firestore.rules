@@ -705,7 +705,7 @@ service cloud.firestore {
               || (removed() == me && added().size() == 0
                  && (!existsAfter(application)
                      || !(shiftId in getAfter(application).data.get('shiftIds', []))))
-              || (added().size() == 0 && removed().size() == 0));
+              || request.resource.data.volunteerIds == resource.data.get('volunteerIds', []));
         }
 
         // Candidates read the shifts too, since a volunteer chooses them before applying.

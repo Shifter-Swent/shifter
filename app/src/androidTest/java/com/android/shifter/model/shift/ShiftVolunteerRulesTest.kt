@@ -313,6 +313,15 @@ class ShiftVolunteerRulesTest {
     assertDenied { shift(10).update(VOLUNTEER_IDS, FieldValue.arrayRemove(volunteer.uid)).await() }
   }
 
+  @Test
+  fun someoneElse_reorderingTheVolunteers_isDenied() = emulatorTest {
+    openShifts(10, volunteers = listOf(volunteer.uid, other.uid))
+    signIn(other)
+
+    // Only a write that changes nothing passes: a new order is a change.
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(other.uid, volunteer.uid)).await() }
+  }
+
   /** Opens the shifts starting at [hours], listing [volunteers], as an admin. */
   private suspend fun openShifts(vararg hours: Int, volunteers: List<String> = emptyList()) {
     admin("open shifts") {
