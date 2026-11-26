@@ -11,7 +11,6 @@ import androidx.work.WorkerParameters
 import com.swent.shifter.model.RepositoryProviderFactory
 import java.time.Instant
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CancellationException
 
 /** The name of the periodic run, so scheduling it again keeps the one already planned. */
 private const val NOTIFICATION_WORK = "notifications"
@@ -66,12 +65,5 @@ suspend fun runNotificationWork(
     run: suspend (userId: String) -> Unit,
     onFailure: (Exception) -> Unit,
 ) {
-  if (userId == null) return
-  try {
-    run(userId)
-  } catch (e: CancellationException) {
-    throw e
-  } catch (e: Exception) {
-    onFailure(e)
-  }
+  if (userId != null) reportingFailure(onFailure) { run(userId) }
 }

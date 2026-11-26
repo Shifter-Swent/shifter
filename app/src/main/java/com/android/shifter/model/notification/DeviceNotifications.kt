@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.model.notification
 
+import android.annotation.SuppressLint
 import android.content.Context
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.RepositoryProviderFactory
@@ -38,7 +39,8 @@ class DeviceNotifications(context: Context, repositories: RepositoryProvider) {
       )
 
   companion object {
-    @Volatile private var process: DeviceNotifications? = null
+    // Holds the application's context only, which lives as long as the process: no Activity leaks.
+    @SuppressLint("StaticFieldLeak") @Volatile private var process: DeviceNotifications? = null
 
     /** The one of this process, built from the production repositories at the first call. */
     fun of(context: Context): DeviceNotifications =

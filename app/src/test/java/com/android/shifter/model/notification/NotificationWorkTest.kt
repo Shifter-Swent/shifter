@@ -8,8 +8,11 @@ import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -74,6 +77,22 @@ class NotificationWorkTest {
     )
 
     assertEquals(listOf("offline"), failures.map { it.message })
+  }
+
+  @Test
+  fun run_cancelled_isCancelled_notReported() = runTest {
+    val failures = mutableListOf<Exception>()
+
+    assertThrows(CancellationException::class.java) {
+      runBlocking {
+        runNotificationWork(
+            userId = "u1",
+            run = { throw CancellationException("stopped") },
+            onFailure = { failures += it },
+        )
+      }
+    }
+    assertEquals(emptyList<Exception>(), failures)
   }
 
   /** The works under the name the app has always used, so renaming it never plans a second one. */

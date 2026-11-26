@@ -31,6 +31,7 @@ import com.swent.shifter.ui.notification.NotificationsWhileOpen
 import com.swent.shifter.ui.permission.NotificationPermissionRequest
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.enableShifterEdgeToEdge
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
@@ -72,7 +73,12 @@ class MainActivity : ComponentActivity() {
               }
           NotificationPermissionRequest(inApp)
           val notifications = DeviceNotifications.of(this@MainActivity)
-          NotificationsWhileOpen(repositories, notifications.engine, notifications.notifier)
+          NotificationsWhileOpen(
+              repositories,
+              notifications.engine,
+              notifications.notifier,
+              Dispatchers.IO,
+          )
         }
       }
     }
