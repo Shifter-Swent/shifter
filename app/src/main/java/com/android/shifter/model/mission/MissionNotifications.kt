@@ -57,18 +57,23 @@ private fun missionsByPerson(
 /**
  * The data of the [com.swent.shifter.model.notification.NotificationKind.MISSION_CHANGED] telling
  * the assignees that [before] became [after], or null when nothing they need to know changed. Only
- * the time, [Mission.startAt] or [Mission.endAt], and the address are told: a new title,
- * description or number of volunteers changes nothing for the volunteer's day. A mission whose
- * place is removed is not told either, as there is no address to show.
+ * the time, [Mission.startAt] or [Mission.endAt], and the place are told: a new title, description
+ * or number of volunteers changes nothing for the volunteer's day.
+ *
+ * The place is told by its address: a new one comes with it, and a place removed comes without any,
+ * so a volunteer told a new time never keeps going to the old address. A new point at the same
+ * address is not told: the volunteer reads the address, which has not changed, and the map and the
+ * automatic check-in follow the new point by themselves.
  */
 internal fun missionChangedData(before: Mission, after: Mission): Map<String, String>? {
   val timeChanged = before.startAt != after.startAt || before.endAt != after.endAt
-  val newAddress = after.location?.address?.takeIf { it != before.location?.address }
+  val address = after.location?.address
+  val placeChanged = address != before.location?.address
   val what =
       when {
-        timeChanged && newAddress != null -> NotificationData.Value.TIME_AND_PLACE
+        timeChanged && placeChanged -> NotificationData.Value.TIME_AND_PLACE
         timeChanged -> NotificationData.Value.TIME
-        newAddress != null -> NotificationData.Value.PLACE
+        placeChanged -> NotificationData.Value.PLACE
         else -> return null
       }
   val data =
@@ -76,5 +81,6 @@ internal fun missionChangedData(before: Mission, after: Mission): Map<String, St
           NotificationData.Key.MISSIONS to after.toMissionLine().encode(),
           NotificationData.Key.WHAT to what,
       )
-  return if (newAddress == null) data else data + (NotificationData.Key.ADDRESS to newAddress)
+  return if (placeChanged && address != null) data + (NotificationData.Key.ADDRESS to address)
+  else data
 }

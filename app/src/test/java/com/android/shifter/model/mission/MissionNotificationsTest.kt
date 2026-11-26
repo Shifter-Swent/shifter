@@ -123,8 +123,21 @@ class MissionNotificationsTest {
   }
 
   @Test
-  fun missionChangedData_withThePlaceRemoved_tellsNothing() {
-    assertNull(missionChangedData(bar, bar.copy(location = null)))
+  fun missionChangedData_withThePlaceRemoved_tellsThePlaceWithoutAnAddress() {
+    val data = missionChangedData(bar, bar.copy(location = null))!!
+
+    assertEquals(NotificationData.Value.PLACE, data[NotificationData.Key.WHAT])
+    assertNull(data[NotificationData.Key.ADDRESS])
+  }
+
+  @Test
+  fun missionChangedData_withANewTimeAndThePlaceRemoved_tellsBothWithoutAnAddress() {
+    val changed = bar.copy(startAt = bar.startAt.plusSeconds(3600), location = null)
+
+    val data = missionChangedData(bar, changed)!!
+
+    assertEquals(NotificationData.Value.TIME_AND_PLACE, data[NotificationData.Key.WHAT])
+    assertNull(data[NotificationData.Key.ADDRESS])
   }
 
   private val counter = MissionLocation("Rue de Genève 12", GeoPosition(46.5, 6.6))

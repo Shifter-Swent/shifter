@@ -299,8 +299,8 @@ class FirestoreMissionRepository(
    * than a denied write: before the overlap check, and again in the transaction, for a mission
    * completed in between.
    *
-   * When the time or the address changes, each assignee but the one acting gets a MISSION_CHANGED
-   * in the same transaction, with the mission as it is once changed (see [missionChangedData]).
+   * When the time or the place changes, each assignee but the one acting gets a MISSION_CHANGED in
+   * the same transaction, with the mission as it is once changed (see [missionChangedData]).
    */
   override suspend fun updateMission(mission: Mission) {
     requireValidUpdate(mission)
