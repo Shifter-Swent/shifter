@@ -18,7 +18,12 @@ private const val NOTIFICATION_WORK = "notifications"
 /** How often the notifications run with the app closed: the shortest period Android allows. */
 private const val NOTIFICATION_PERIOD_MINUTES = 15L
 
-private const val TAG = "NotificationWorker"
+private const val TAG = "Notifications"
+
+/** Logs a run of the notifications that failed, and will run again (see [reportingFailure]). */
+internal fun logFailedRun(failure: Exception) {
+  Log.w(TAG, "A notification run failed", failure)
+}
 
 /**
  * Runs the notifications of the signed-in user every 15 minutes, even with the app closed, and once
@@ -50,7 +55,7 @@ class NotificationWorker(context: Context, params: WorkerParameters) :
     runNotificationWork(
         userId = RepositoryProviderFactory.production.authRepository.currentUser()?.uid,
         run = { DeviceNotifications.of(applicationContext).engine.run(it, Instant.now()) },
-        onFailure = { Log.w(TAG, "A background notification run failed", it) },
+        onFailure = ::logFailedRun,
     )
     return Result.success()
   }

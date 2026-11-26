@@ -1,7 +1,6 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.notification
 
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.Lifecycle
@@ -10,6 +9,7 @@ import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.notification.NotificationEngine
 import com.swent.shifter.model.notification.Notifier
 import com.swent.shifter.model.notification.clearWhenSignedOut
+import com.swent.shifter.model.notification.logFailedRun
 import com.swent.shifter.model.notification.runNotificationsWhileOpen
 import com.swent.shifter.ui.location.publishWhileForeground
 import kotlinx.coroutines.CoroutineDispatcher
@@ -17,8 +17,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-private const val TAG = "NotificationsWhileOpen"
 
 /**
  * Runs [engine] for the signed-in user while the app is in the foreground, and clears [notifier] on
@@ -46,7 +44,7 @@ fun NotificationsWhileOpen(
               engine,
               repositories.notificationInbox,
               repositories.minuteClock,
-              onFailure = { Log.w(TAG, "A notification run failed", it) },
+              onFailure = ::logFailedRun,
           )
         },
     )
