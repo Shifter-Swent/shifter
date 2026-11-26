@@ -79,7 +79,7 @@ val shifter_chatBackground = Color(0xFF10171F)
 // readable on it, and a dimmed amber for the time.
 val shifter_announcement = shifter_warning
 val shifter_onAnnouncement = md_theme_dark_surface
-val shifter_announcementContainer = Color(0xFF2A2418)
+val shifter_announcementContainer = Color(0xFF342C1C)
 val shifter_announcementMuted = Color(0xFFA8916A)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
 
