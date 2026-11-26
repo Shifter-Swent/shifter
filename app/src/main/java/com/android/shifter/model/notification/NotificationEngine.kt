@@ -5,16 +5,25 @@ import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * How old an inbox notification may be and still be shown: an older one, found by a phone that was
  * off for days, tells something likely over, so it is removed without being shown.
  */
 internal val MAX_INBOX_AGE: Duration = Duration.ofHours(48)
+
+/**
+ * How long a run waits for the user's preferences. Offline, a profile this phone never cached is
+ * not read until it reconnects: without a bound, the run would wait that long, and every run after
+ * it behind the mutex.
+ */
+private const val PREFERENCES_TIMEOUT_MILLIS = 10_000L
 
 /**
  * The key of [InboxNotification.data] that names the sender, for the kinds whose named user is
@@ -88,12 +97,12 @@ class NotificationEngine(
    * and removing its items, could show them again. With the app open, a change of
    * [NotificationInbox.observePending] is only the signal to call it.
    *
-   * It throws when the inbox or the preferences cannot be read, before removing anything: a kind
-   * turned off must never be mistaken for one turned on. A kind whose format or showing fails keeps
-   * its items in the inbox, until they are too old, without stopping the other kinds, and the first
-   * failure is thrown once the others are removed: one malformed notification never blocks the
-   * inbox. A removal that fails throws too; what was shown then is shown again, without counting an
-   * item twice, at the next run.
+   * It throws when the inbox or the preferences cannot be read, or the preferences do not come in
+   * time, before removing anything: a kind turned off must never be mistaken for one turned on. A
+   * kind whose format or showing fails keeps its items in the inbox, until they are too old,
+   * without stopping the other kinds, and the first failure is thrown once the others are removed:
+   * one malformed notification never blocks the inbox. A removal that fails throws too; what was
+   * shown then is shown again, without counting an item twice, at the next run.
    */
   suspend fun handleInbox(userId: String, now: Instant) = mutex.withLock { inboxNow(userId, now) }
 
@@ -109,7 +118,7 @@ class NotificationEngine(
   private suspend fun inboxNow(userId: String, now: Instant) {
     if (!notifier.canShow()) return
     val items = inbox.pending(userId)
-    val disabled = preferences.disabledKinds(userId).first()
+    val disabled = disabledKinds(userId)
     val (wanted, unwanted) =
         items.partition { it.kind !in disabled && !it.createdAt.isBefore(now - MAX_INBOX_AGE) }
     val readable = wanted.filter { it.kind in formats }
@@ -133,7 +142,7 @@ class NotificationEngine(
   /** [runChecks], with the [mutex] held. */
   private suspend fun checksNow(userId: String, now: Instant) {
     if (!notifier.canShow()) return
-    val disabled = preferences.disabledKinds(userId).first()
+    val disabled = disabledKinds(userId)
     var failure: Exception? = null
     for (check in checks.filter { it.kind !in disabled }) {
       val checkFailure = failureOf { runCheck(check, userId, now) }
@@ -141,6 +150,15 @@ class NotificationEngine(
     }
     failure?.let { throw it }
   }
+
+  /**
+   * The kinds [userId] turned off, or a [TimeoutException] when they do not come within
+   * [PREFERENCES_TIMEOUT_MILLIS]. Not `withTimeout`: its exception is a cancellation, which
+   * [failureOf] would throw on as if the run were cancelled.
+   */
+  private suspend fun disabledKinds(userId: String): Set<NotificationKind> =
+      withTimeoutOrNull(PREFERENCES_TIMEOUT_MILLIS) { preferences.disabledKinds(userId).first() }
+          ?: throw TimeoutException("The notification preferences of $userId did not come in time")
 
   /**
    * Runs [check] for [userId] at [now] and shows what it returns, keeping the keys it marked only

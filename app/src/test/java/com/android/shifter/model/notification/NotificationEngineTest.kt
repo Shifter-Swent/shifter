@@ -9,8 +9,10 @@ import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.concurrent.TimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -326,6 +328,28 @@ class NotificationEngineTest {
     assertTrue(thrown is IOException)
     assertTrue(notifier.shown.isEmpty())
     assertEquals(listOf(item), inbox.pending(user))
+  }
+
+  @Test
+  fun run_whenThePreferencesNeverCome_givesUp_andLetsTheNextRunThrough() = runTest {
+    // Offline, with a profile this phone never cached, the preferences emit nothing.
+    var offline = true
+    val silentWhileOffline = NotificationPreferences { userId ->
+      if (offline) flow { awaitCancellation() } else preferences.disabledKinds(userId)
+    }
+    val item = deliver()
+    val check = StubCheck(NotificationKind.OPEN_SPOTS, listOf(openSpots("mission-1")))
+    val engine = engine(checks = listOf(check), preferences = silentWhileOffline)
+
+    val thrown = runCatching { engine.run(user, now) }.exceptionOrNull()
+
+    assertTrue(thrown is TimeoutException)
+    assertTrue(notifier.shown.isEmpty())
+    assertEquals(listOf(item), inbox.pending(user))
+    offline = false
+    engine.run(user, now)
+    assertEquals(2, notifier.shown.size)
+    assertTrue(inbox.pending(user).isEmpty())
   }
 
   @Test
