@@ -4,6 +4,7 @@ package com.swent.shifter.model.notification
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
+import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -13,10 +14,10 @@ import com.swent.shifter.R
  * The Android id of every notification: each is told apart by its tag, its
  * [AppNotification.identity], so two identities never share one, as two hash codes could.
  */
-internal const val NOTIFICATION_ID = 0
+private const val NOTIFICATION_ID = 0
 
 /** The Android id of a group's summary, tagged with its event's id. */
-internal const val SUMMARY_ID = 1
+private const val SUMMARY_ID = 1
 
 /**
  * The [Notifier] of the phone: one channel per [NotificationKind], named as its switch in Settings,
@@ -25,9 +26,12 @@ internal const val SUMMARY_ID = 1
  * The channels are created, or renamed in the phone's current language, when it is built: Android
  * keeps what the user changed in them, such as the sound or turning one off.
  */
-class AndroidNotifier(private val context: Context) : Notifier {
+class AndroidNotifier(context: Context) : Notifier {
 
-  private val manager = NotificationManagerCompat.from(context)
+  /** The application's, so a caller passing an Activity never keeps it in memory. */
+  private val context: Context = context.applicationContext
+
+  private val manager = NotificationManagerCompat.from(this.context)
 
   /** The events the previous call of [show] posted into: see [summariesKept]. */
   private var previouslyPostedInto: Set<String> = emptySet()
@@ -82,17 +86,15 @@ class AndroidNotifier(private val context: Context) : Notifier {
    * be listed yet, and removing its summary would remove it.
    */
   private fun summariesKept(postedInto: Set<String>): Set<String> {
-    val active = manager.activeNotifications
+    val active: List<StatusBarNotification> = manager.activeNotifications
     val groups =
-        active
-            .filter { it.id == NOTIFICATION_ID }
-            .mapNotNullTo(mutableSetOf()) { it.notification.group } +
+        active.filter { it.id == NOTIFICATION_ID }.mapNotNull { it.notification.group }.toSet() +
             postedInto +
             previouslyPostedInto
     val (kept, alone) =
         active.filter { it.id == SUMMARY_ID && it.tag != null }.partition { it.tag in groups }
     alone.forEach { manager.cancel(it.tag, SUMMARY_ID) }
-    return kept.mapTo(mutableSetOf()) { it.tag }
+    return kept.map { it.tag }.toSet()
   }
 
   /**
@@ -162,7 +164,7 @@ class AndroidNotifier(private val context: Context) : Notifier {
 }
 
 /** The id of this kind's Android channel. Never change it: a user's settings are kept under it. */
-internal val NotificationKind.channelId: String
+private val NotificationKind.channelId: String
   get() = "notification_${name.lowercase()}"
 
 /** The event a notification is grouped under. */

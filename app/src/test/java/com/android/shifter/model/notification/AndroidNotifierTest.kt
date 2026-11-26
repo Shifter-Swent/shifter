@@ -35,7 +35,7 @@ class AndroidNotifierTest {
   @Test
   fun build_createsOneChannelPerKind_namedAsItsSwitchInSettings() {
     NotificationKind.entries.forEach { kind ->
-      val channel = manager.getNotificationChannel(kind.channelId)
+      val channel = manager.getNotificationChannel(CHANNEL_IDS.getValue(kind))
       assertEquals(context.getString(kind.channelName), channel.name)
       assertEquals(
           context.getString(kind.channelDescription, *kind.channelDescriptionArgs),
@@ -45,11 +45,16 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun build_keepsEachChannelsId_soAUsersSettingsSurviveARename() {
+    assertEquals(CHANNEL_IDS.values.toSet(), manager.notificationChannels.map { it.id }.toSet())
+  }
+
+  @Test
   fun show_postsEachUnderItsIdentity_onItsKindsChannel() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1", text = "Needs 2")))
 
-    val posted = shadowOf(manager).getNotification("OPEN_SPOTS:m1", NOTIFICATION_ID)
-    assertEquals(NotificationKind.OPEN_SPOTS.channelId, posted.channelId)
+    val posted = posted("OPEN_SPOTS:m1")
+    assertEquals("notification_open_spots", posted.channelId)
     assertEquals("Fest", posted.extras.getString(Notification.EXTRA_TITLE))
     assertEquals("Needs 2", posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
     assertEquals(AT.toEpochMilli(), posted.`when`)
@@ -61,7 +66,7 @@ class AndroidNotifierTest {
     notifier.show(listOf(notification(NotificationKind.NEW_APPLICATION, "e1", text = "2 new")))
 
     assertEquals(setOf("NEW_APPLICATION:e1"), notifier.activeIdentities())
-    val posted = shadowOf(manager).getNotification("NEW_APPLICATION:e1", NOTIFICATION_ID)
+    val posted = posted("NEW_APPLICATION:e1")
     assertEquals("2 new", posted.extras.getCharSequence(Notification.EXTRA_TEXT).toString())
   }
 
@@ -86,12 +91,12 @@ class AndroidNotifierTest {
         )
     )
 
-    val summary = shadowOf(manager).getNotification("e1", SUMMARY_ID)
+    val summary = posted("e1")
     assertTrue(summary.flags and Notification.FLAG_GROUP_SUMMARY != 0)
     assertEquals("e1", summary.group)
     assertEquals("Fest", summary.extras.getString(Notification.EXTRA_TITLE))
     assertEquals(Notification.GROUP_ALERT_CHILDREN, summary.groupAlertBehavior)
-    assertEquals("e1", shadowOf(manager).getNotification("OPEN_SPOTS:m1", NOTIFICATION_ID).group)
+    assertEquals("e1", posted("OPEN_SPOTS:m1").group)
   }
 
   @Test
@@ -101,7 +106,7 @@ class AndroidNotifierTest {
         listOf(notification(NotificationKind.OPEN_SPOTS, "m2", target = mission("m2", "Fest 2026")))
     )
 
-    val summary = shadowOf(manager).getNotification("e1", SUMMARY_ID)
+    val summary = posted("e1")
     assertEquals("Fest", summary.extras.getString(Notification.EXTRA_TITLE))
   }
 
@@ -116,10 +121,7 @@ class AndroidNotifierTest {
         )
     )
 
-    assertEquals(
-        NotificationKind.MISSION_CHANGED.channelId,
-        shadowOf(manager).getNotification("e1", SUMMARY_ID).channelId,
-    )
+    assertEquals("notification_mission_changed", posted("e1").channelId)
   }
 
   @Test
@@ -128,38 +130,38 @@ class AndroidNotifierTest {
 
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
 
-    assertNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+    assertNull(postedOrNull("e1"))
   }
 
   @Test
   fun show_removesASummaryWhoseNotificationsWereAllDismissed_onceItsGroupIsNoLongerPostedInto() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
-    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+    dismiss("OPEN_SPOTS:m1")
 
     notifier.show(listOf(myEvents("e2")))
-    assertNotNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+    assertNotNull(postedOrNull("e1"))
 
     notifier.show(listOf(myEvents("e3")))
-    assertNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+    assertNull(postedOrNull("e1"))
   }
 
   @Test
   fun show_intoAGroupLeftAlone_keepsItsSummaryAsItIs() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
     notifier.show(listOf(myEvents("e2")))
-    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
-    val summary = shadowOf(manager).getNotification("e1", SUMMARY_ID)
+    dismiss("OPEN_SPOTS:m1")
+    val summary = posted("e1")
 
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m2")))
 
-    assertSame(summary, shadowOf(manager).getNotification("e1", SUMMARY_ID))
-    assertEquals("e1", shadowOf(manager).getNotification("OPEN_SPOTS:m2", NOTIFICATION_ID).group)
+    assertSame(summary, posted("e1"))
+    assertEquals("e1", posted("OPEN_SPOTS:m2").group)
   }
 
   @Test
   fun show_nothing_changesNothing() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
-    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+    dismiss("OPEN_SPOTS:m1")
 
     notifier.show(emptyList())
 
@@ -178,7 +180,7 @@ class AndroidNotifierTest {
         )
     )
 
-    assertNull(shadowOf(manager).getNotification("APPLICATION_DECIDED:e1", NOTIFICATION_ID).group)
+    assertNull(posted("APPLICATION_DECIDED:e1").group)
     assertEquals(1, shadowOf(manager).allNotifications.size)
   }
 
@@ -211,7 +213,7 @@ class AndroidNotifierTest {
         )
     )
 
-    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+    dismiss("OPEN_SPOTS:m1")
 
     assertEquals(setOf("OPEN_SPOTS:m2"), notifier.activeIdentities())
   }
@@ -250,11 +252,29 @@ class AndroidNotifierTest {
     assertFalse(notifier.canShow())
   }
 
+  @Test
+  fun canShow_withOneChannelTurnedOff_staysTrue() {
+    turnOff(NotificationKind.OPEN_SPOTS)
+
+    assertTrue(notifier.canShow())
+  }
+
   /** Turns the channel of [kind] off, as the user does in the phone's settings. */
   private fun turnOff(kind: NotificationKind) {
     manager.createNotificationChannel(
-        NotificationChannel(kind.channelId, "Off", NotificationManager.IMPORTANCE_NONE)
+        NotificationChannel(CHANNEL_IDS.getValue(kind), "Off", NotificationManager.IMPORTANCE_NONE)
     )
+  }
+
+  private fun postedOrNull(tag: String): Notification? =
+      manager.activeNotifications.singleOrNull { it.tag == tag }?.notification
+
+  private fun posted(tag: String): Notification = checkNotNull(postedOrNull(tag)) { tag }
+
+  /** Dismisses the notification tagged [tag], as the user does with a swipe. */
+  private fun dismiss(tag: String) {
+    val shown = manager.activeNotifications.single { it.tag == tag }
+    manager.cancel(shown.tag, shown.id)
   }
 
   private fun myEvents(key: String) =
@@ -268,7 +288,7 @@ class AndroidNotifierTest {
       NotificationTarget.Mission("e1", eventTitle, UserMode.ORGANIZER, key)
 
   private fun tappedTarget(identity: String): NotificationTarget? {
-    val tap = shadowOf(manager).getNotification(identity, NOTIFICATION_ID).contentIntent
+    val tap = posted(identity).contentIntent
     return shadowOf(tap).savedIntent.notificationTarget()
   }
 
@@ -282,5 +302,18 @@ class AndroidNotifierTest {
 
   private companion object {
     val AT: Instant = Instant.parse("2026-11-27T08:00:00Z")
+
+    /** Written out, so renaming a kind cannot move its channel without a test failing. */
+    val CHANNEL_IDS =
+        mapOf(
+            NotificationKind.NEW_APPLICATION to "notification_new_application",
+            NotificationKind.APPLICATION_DECIDED to "notification_application_decided",
+            NotificationKind.TEAM_CHANGED to "notification_team_changed",
+            NotificationKind.MISSION_ASSIGNED to "notification_mission_assigned",
+            NotificationKind.MISSION_CHANGED to "notification_mission_changed",
+            NotificationKind.ANNOUNCEMENT to "notification_announcement",
+            NotificationKind.MISSED_CHECK_IN to "notification_missed_check_in",
+            NotificationKind.OPEN_SPOTS to "notification_open_spots",
+        )
   }
 }

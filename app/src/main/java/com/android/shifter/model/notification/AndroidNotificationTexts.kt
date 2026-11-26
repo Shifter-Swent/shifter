@@ -9,7 +9,10 @@ import java.time.ZoneId
  * language, and its current time zone, both read at each call, so a notification made after the
  * user changed either follows it.
  */
-class AndroidNotificationTexts(private val context: Context) : NotificationTexts {
+class AndroidNotificationTexts(context: Context) : NotificationTexts {
+
+  /** The application's, so a caller passing an Activity never keeps it in memory. */
+  private val context: Context = context.applicationContext
 
   override val zone: ZoneId
     get() = ZoneId.systemDefault()
