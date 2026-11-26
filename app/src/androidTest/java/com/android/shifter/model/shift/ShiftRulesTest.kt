@@ -146,7 +146,6 @@ class ShiftRulesTest {
     assertDenied { shift.update(ShiftSchema.END_AT, at(13).ts()).await() }
 
     // Not even by the organizer taking a volunteer out at the same time: a slot is never edited.
-    paths.add(0, shift.path)
     step("write a chosen slot") {
       FirestoreEmulatorAdmin.deleteDocument(shift.path)
       FirestoreEmulatorAdmin.createDocument(
