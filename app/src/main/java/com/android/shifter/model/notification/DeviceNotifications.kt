@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import com.swent.shifter.model.RepositoryProvider
 import com.swent.shifter.model.RepositoryProviderFactory
+import java.time.Duration
 
 /**
  * The notifications of this phone: the [engine] built from [repositories] and the Android notifier,
@@ -37,6 +38,12 @@ class DeviceNotifications(context: Context, repositories: RepositoryProvider) {
           seenStore = { userId, kind -> SharedPreferencesSeenStore(this.context, userId, kind) },
           texts = texts,
       )
+
+  /**
+   * When the app open last ran the whole [engine]: every 5 minutes, since the checks read every
+   * event of an organizer, for the whole process.
+   */
+  val wholeRuns = PeriodicRuns(Duration.ofMinutes(5))
 
   companion object {
     // Holds the application's context only, which lives as long as the process: no Activity leaks.

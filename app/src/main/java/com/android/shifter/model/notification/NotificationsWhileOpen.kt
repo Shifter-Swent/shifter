@@ -3,7 +3,6 @@ package com.swent.shifter.model.notification
 
 import com.swent.shifter.model.time.MinuteClock
 import java.time.Duration
-import java.time.Instant
 import kotlin.time.toKotlinDuration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
@@ -17,15 +16,10 @@ import kotlinx.coroutines.flow.retryWhen
 private val OBSERVE_RETRY_DELAY: Duration = Duration.ofSeconds(10)
 
 /**
- * How often the app open runs the whole engine: the checks, which read every event of an organizer,
- * and the inbox again, so a run that failed is run again.
- */
-private val RUN_PERIOD: Duration = Duration.ofMinutes(5)
-
-/**
  * Runs [engine] for [userId] until cancelled, as the app does while open: the inbox at each change
  * of [NotificationInbox.observePending], so a notification shows at once, and the whole engine at
- * the first tick of [clock], then at the first tick [RUN_PERIOD] after the last run.
+ * each tick of [clock] when [wholeRuns] says it is due: the checks read every event of an
+ * organizer, and the inbox is handled again, so a run that failed is run again.
  *
  * A run that fails goes to [onFailure] and is run again at the next one, without restarting the
  * observation: an item its format fails on stays in the inbox, so restarting at each failure would
@@ -37,6 +31,7 @@ suspend fun runNotificationsWhileOpen(
     engine: NotificationEngine,
     inbox: NotificationInbox,
     clock: MinuteClock,
+    wholeRuns: PeriodicRuns,
     onFailure: (Exception) -> Unit,
 ): Unit = coroutineScope {
   inbox
@@ -46,13 +41,9 @@ suspend fun runNotificationsWhileOpen(
       }
       .onEach { reportingFailure(onFailure) { engine.handleInbox(userId, clock.now()) } }
       .launchIn(this)
-  var lastRun: Instant? = null
   clock.ticks
-      .filter { tick -> lastRun?.let { Duration.between(it, tick) >= RUN_PERIOD } ?: true }
-      .onEach { tick ->
-        lastRun = tick
-        reportingFailure(onFailure) { engine.run(userId, tick) }
-      }
+      .filter { tick -> wholeRuns.takeIfDue(userId, tick) }
+      .onEach { tick -> reportingFailure(onFailure) { engine.run(userId, tick) } }
       .launchIn(this)
 }
 

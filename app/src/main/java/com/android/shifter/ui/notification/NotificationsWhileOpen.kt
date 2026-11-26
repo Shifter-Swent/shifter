@@ -7,7 +7,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.swent.shifter.model.RepositoryProvider
-import com.swent.shifter.model.notification.NotificationEngine
+import com.swent.shifter.model.notification.DeviceNotifications
 import com.swent.shifter.model.notification.Notifier
 import com.swent.shifter.model.notification.logFailedRun
 import com.swent.shifter.model.notification.runNotificationsWhileOpen
@@ -20,31 +20,31 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
- * Runs [engine] for the signed-in user while the app is in the foreground, and clears [notifier] on
- * sign-out (see [runAppNotifications]). It draws nothing.
+ * Runs the [notifications] of the signed-in user while the app is in the foreground, and clears
+ * them on sign-out (see [runAppNotifications]). It draws nothing.
  *
  * @param dispatcher off the main thread, since a run writes the phone's stores to disk.
  */
 @Composable
 fun NotificationsWhileOpen(
     repositories: RepositoryProvider,
-    engine: NotificationEngine,
-    notifier: Notifier,
+    notifications: DeviceNotifications,
     dispatcher: CoroutineDispatcher,
 ) {
   val lifecycle = LocalLifecycleOwner.current.lifecycle
-  LaunchedEffect(lifecycle, repositories, engine, notifier, dispatcher) {
+  LaunchedEffect(lifecycle, repositories, notifications, dispatcher) {
     runAppNotifications(
         lifecycle = lifecycle,
         userIds = repositories.authRepository.authState.map { it?.uid },
-        notifier = notifier,
+        notifier = notifications.notifier,
         dispatcher = dispatcher,
         runForUser = { userId ->
           runNotificationsWhileOpen(
               userId,
-              engine,
+              notifications.engine,
               repositories.notificationInbox,
               repositories.minuteClock,
+              notifications.wholeRuns,
               onFailure = ::logFailedRun,
           )
         },

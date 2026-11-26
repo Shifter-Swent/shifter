@@ -73,12 +73,7 @@ class MainActivity : ComponentActivity() {
               }
           NotificationPermissionRequest(inApp)
           val notifications = DeviceNotifications.of(this@MainActivity)
-          NotificationsWhileOpen(
-              repositories,
-              notifications.engine,
-              notifications.notifier,
-              Dispatchers.IO,
-          )
+          NotificationsWhileOpen(repositories, notifications, Dispatchers.IO)
         }
       }
     }
