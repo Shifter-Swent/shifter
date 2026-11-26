@@ -125,6 +125,17 @@ class TeamChatContentTest {
   }
 
   @Test
+  fun longRunOfAnEarlierDay_keepsItsChipOnScreenAtTheBottom() {
+    val earlier = numbered(0..39).map { it.copy(sentAt = AT.minusSeconds(3 * 86_400)) }
+    setContent(TeamChatUiState(isLoading = false, messages = earlier))
+
+    // The list opens on the last message, far below the first one of that day.
+    tag(TeamChatTestTags.message("39")).assertIsDisplayed()
+    tag(TeamChatTestTags.message("0")).assertDoesNotExist()
+    tag(TeamChatTestTags.day(TODAY.minusDays(3))).assertIsDisplayed()
+  }
+
+  @Test
   fun messageOfAnotherDay_showsOnlyItsTime() {
     val yesterday = FROM_ALICE.copy(sentAt = AT.minusSeconds(86_400))
     setContent(TeamChatUiState(isLoading = false, messages = listOf(yesterday)))

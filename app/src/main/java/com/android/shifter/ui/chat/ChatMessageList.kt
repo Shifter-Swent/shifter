@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -130,10 +129,13 @@ internal fun ChatMessageList(messages: List<ChatMessageItem>, zone: ZoneId, toda
       modifier = Modifier.fillMaxSize().testTag(TeamChatTestTags.MESSAGES),
       contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
   ) {
-    items(rows, key = { it.key }) { row ->
+    rows.forEach { row ->
       when (row) {
-        is ChatRow.Day -> DayChip(row.day, today)
-        is ChatRow.Message -> MessageRow(row, zone)
+        // Sticky, so the day of the messages on screen is always shown: the list opens at the
+        // bottom, where an old message would otherwise show only its time and read as a current
+        // one.
+        is ChatRow.Day -> stickyHeader(key = row.key) { DayChip(row.day, today) }
+        is ChatRow.Message -> item(key = row.key) { MessageRow(row, zone) }
       }
     }
   }
