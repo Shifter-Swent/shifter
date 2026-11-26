@@ -18,9 +18,6 @@
     <string name="overview_no_team_missions">No missions in this team yet.</string>
     <string name="overview_load_failed">Could not load the missions.</string>
     <string name="overview_retry">Retry</string>
-    <string name="overview_notification_title">Send a notification</string>
-    <string name="overview_notification_scope">Scope: all teams</string>
-    <string name="overview_notification_action">Write the message →</string>
     <!-- Assigning people to an existing mission -->
     <string name="overview_assign">Assign</string>
     <string name="overview_assign_deleted">This mission no longer exists.</string>

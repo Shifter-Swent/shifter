@@ -77,7 +77,6 @@ object OrganizerOverviewScreenTestTags {
   const val RETRY_BUTTON = "OrganizerOverviewRetryButton"
   const val EMPTY_MISSIONS = "OrganizerOverviewEmptyMissions"
   const val EMPTY_DAY = "OrganizerOverviewEmptyDay"
-  const val NOTIFICATION_BUTTON = "OrganizerOverviewNotificationButton"
   const val SNACKBAR = "OrganizerOverviewSnackbar"
 
   fun teamChip(teamId: String) = "OrganizerOverviewTeamChip_$teamId"
@@ -139,8 +138,6 @@ data class OrganizerOverviewActions(
     val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
-    // TODO: open the notification composer once notifications exist.
-    val onSendNotification: () -> Unit = {},
     val onAssign: (String) -> Unit = {},
     val onToggleAssignee: (String) -> Unit = {},
     val onRetryAssignees: () -> Unit = {},
@@ -259,7 +256,6 @@ private fun OverviewColumn(
             } else null,
     )
     Missions(state, dayPicker, actions.onAssign, actions.onEditMission)
-    NotificationCard(actions.onSendNotification)
   }
 }
 
@@ -505,35 +501,6 @@ private fun MissionRow(
         modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.assignButton(mission.id)),
     ) {
       Text(stringResource(R.string.overview_assign), fontWeight = FontWeight.SemiBold)
-    }
-  }
-}
-
-/** Sends a notification to every team of the event. */
-@Composable
-private fun NotificationCard(onSendNotification: () -> Unit) {
-  RoundedCard {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      Text(
-          text = stringResource(R.string.overview_notification_title),
-          style = MaterialTheme.typography.bodyMedium,
-          fontWeight = FontWeight.SemiBold,
-          color = MaterialTheme.colorScheme.onSurface,
-      )
-      Text(
-          text = stringResource(R.string.overview_notification_scope),
-          style = MaterialTheme.typography.bodySmall,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
-      TextButton(
-          onClick = onSendNotification,
-          modifier = Modifier.testTag(OrganizerOverviewScreenTestTags.NOTIFICATION_BUTTON),
-      ) {
-        Text(
-            text = stringResource(R.string.overview_notification_action),
-            fontWeight = FontWeight.SemiBold,
-        )
-      }
     }
   }
 }

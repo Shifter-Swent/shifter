@@ -145,27 +145,13 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
-  fun addMissionAndNotification_reportTheirClick() {
+  fun addMission_reportsItsClick() {
     var addClicks = 0
-    var notificationClicks = 0
-    show(
-        loaded,
-        OrganizerOverviewActions(
-            onAddMission = { addClicks++ },
-            onSendNotification = { notificationClicks++ },
-        ),
-    )
+    show(loaded, OrganizerOverviewActions(onAddMission = { addClicks++ }))
 
     compose.onNodeWithTag(OrganizerOverviewScreenTestTags.ADD_MISSION_BUTTON).performClick()
-    compose
-        .onNodeWithTag(OrganizerOverviewScreenTestTags.NOTIFICATION_BUTTON)
-        .performScrollTo()
-        .performClick()
 
-    compose.runOnIdle {
-      assertEquals(1, addClicks)
-      assertEquals(1, notificationClicks)
-    }
+    compose.runOnIdle { assertEquals(1, addClicks) }
   }
 
   @Test
