@@ -145,22 +145,25 @@ class ChatRowsTest {
   }
 
   @Test
-  fun chatRows_pendingDatedBeforeTheLastMessage_keepsTheKeysUnique() {
+  fun chatRows_pendingDatedBeforeTheLastMessage_staysOnItsDay() {
     // The server is past midnight while the device clock is not yet.
     val pending = from(ME, "3", sentAt = null).copy(isPending = true)
-    val keys =
-        chatRows(
-                listOf(
-                    from(ALICE, "1"),
-                    from(ALICE, "2", AT.plus(1, ChronoUnit.DAYS)),
-                    pending,
-                ),
-                ZoneOffset.UTC,
-                TODAY,
-            )
-            .map { it.key }
 
-    assertEquals(keys.distinct(), keys)
+    assertEquals(
+        listOf("2027-06-20", "1 starts ends", "2027-06-21", "2 starts ends", "3 starts ends"),
+        rows(from(ALICE, "1"), from(ALICE, "2", AT.plus(1, ChronoUnit.DAYS)), pending),
+    )
+  }
+
+  @Test
+  fun chatRows_firstMessageOfTheDayGone_keepsTheKeyOfTheChip() {
+    val first = from(ALICE, "1")
+    val second = from(ALICE, "2", AT.plusSeconds(60))
+
+    fun chipKey(vararg messages: ChatMessageItem) =
+        chatRows(messages.toList(), ZoneOffset.UTC, TODAY).first().key
+
+    assertEquals(chipKey(first, second), chipKey(second))
   }
 
   private companion object {

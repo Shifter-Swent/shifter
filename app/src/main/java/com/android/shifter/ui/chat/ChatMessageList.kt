@@ -41,13 +41,12 @@ internal sealed interface ChatRow {
   val key: String
 
   /**
-   * The chip of [day], above its first message, whose id is [beforeId]. It is keyed on that message
-   * rather than the day: a message being sent is dated by the device clock, so a day can come back
-   * after midnight, and two chips of the same day must not share a key.
+   * The chip of [day], above its first message. It is keyed on the day, which has one chip only, so
+   * the chip stays in place when its first message drops out of the channel or is confirmed.
    */
-  data class Day(val day: LocalDate, val beforeId: String) : ChatRow {
+  data class Day(val day: LocalDate) : ChatRow {
     // Not a message id: a Firestore id has no colon.
-    override val key = "day:$beforeId"
+    override val key = "day:$day"
   }
 
   /**
@@ -67,33 +66,41 @@ internal sealed interface ChatRow {
  * The rows of [messages]: a chip before the first message of each day in [zone], and each message
  * placed in its run of messages from the same sender that same day. A message still being sent
  * belongs to [today]. An announcement stands alone, so it is never read as part of a conversation.
+ *
+ * A message is never placed on a day before the one of the message above it: one dated by the
+ * device clock, behind the server's after midnight, would otherwise bring an earlier day back below
+ * a later one, and that day would get a second chip.
  */
 internal fun chatRows(
     messages: List<ChatMessageItem>,
     zone: ZoneId,
     today: LocalDate,
 ): List<ChatRow> {
-  fun day(message: ChatMessageItem) = message.sentAt?.atZone(zone)?.toLocalDate() ?: today
+  val days =
+      messages
+          .runningFold(LocalDate.MIN) { previous, message ->
+            maxOf(previous, message.sentAt?.atZone(zone)?.toLocalDate() ?: today)
+          }
+          .drop(1)
 
-  fun sameGroup(a: ChatMessageItem?, b: ChatMessageItem?) =
-      a != null &&
-          b != null &&
-          !a.isAnnouncement &&
-          !b.isAnnouncement &&
-          a.isMine == b.isMine &&
-          a.senderId == b.senderId &&
-          day(a) == day(b)
+  fun sameGroup(a: Int, b: Int): Boolean {
+    val first = messages.getOrNull(a) ?: return false
+    val second = messages.getOrNull(b) ?: return false
+    return !first.isAnnouncement &&
+        !second.isAnnouncement &&
+        first.isMine == second.isMine &&
+        first.senderId == second.senderId &&
+        days[a] == days[b]
+  }
 
   val rows = mutableListOf<ChatRow>()
   messages.forEachIndexed { index, message ->
-    val previous = messages.getOrNull(index - 1)
-    if (previous == null || day(previous) != day(message))
-        rows += ChatRow.Day(day(message), message.id)
+    if (index == 0 || days[index - 1] != days[index]) rows += ChatRow.Day(days[index])
     rows +=
         ChatRow.Message(
             message,
-            startsGroup = !sameGroup(previous, message),
-            endsGroup = !sameGroup(message, messages.getOrNull(index + 1)),
+            startsGroup = !sameGroup(index - 1, index),
+            endsGroup = !sameGroup(index, index + 1),
         )
   }
   return rows
