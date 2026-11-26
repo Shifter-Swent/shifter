@@ -595,8 +595,8 @@ open class NavigationActions(private val navController: NavHostController) {
         }
       }
       is NotificationTarget.Requests -> {
-        enterEventOf(UserMode.ORGANIZER, target.eventId, target.eventTitle)
-        navController.getBackStackEntry<OrganizerEvent>().savedStateHandle[OPEN_REQUESTS_KEY] = true
+        val event = enterEventOf(UserMode.ORGANIZER, target.eventId, target.eventTitle)
+        eventState(event)[OPEN_REQUESTS_KEY] = true
         switchTab(OrganizerTabs.People)
       }
     }
