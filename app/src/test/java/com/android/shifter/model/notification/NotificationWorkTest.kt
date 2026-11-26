@@ -3,7 +3,6 @@ package com.swent.shifter.model.notification
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import androidx.work.ListenableWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
@@ -47,30 +46,34 @@ class NotificationWorkTest {
   }
 
   @Test
-  fun result_signedOut_succeedsWithoutRunning() = runTest {
+  fun run_signedOut_runsNothing() = runTest {
     var ran = false
 
-    val result = notificationWorkResult(userId = null) { ran = true }
+    runNotificationWork(userId = null, run = { ran = true }, onFailure = { throw it })
 
-    assertEquals(ListenableWorker.Result.success(), result)
     assertTrue(!ran)
   }
 
   @Test
-  fun result_runsForTheSignedInUser_andSucceeds() = runTest {
+  fun run_runsForTheSignedInUser() = runTest {
     val users = mutableListOf<String>()
 
-    val result = notificationWorkResult(userId = "u1") { users += it }
+    runNotificationWork(userId = "u1", run = { users += it }, onFailure = { throw it })
 
-    assertEquals(ListenableWorker.Result.success(), result)
     assertEquals(listOf("u1"), users)
   }
 
   @Test
-  fun result_whenTheRunFails_retries() = runTest {
-    val result = notificationWorkResult(userId = "u1") { throw IOException("offline") }
+  fun run_whenItFails_reportsIt_withoutThrowing() = runTest {
+    val failures = mutableListOf<Exception>()
 
-    assertEquals(ListenableWorker.Result.retry(), result)
+    runNotificationWork(
+        userId = "u1",
+        run = { throw IOException("offline") },
+        onFailure = { failures += it },
+    )
+
+    assertEquals(listOf("offline"), failures.map { it.message })
   }
 
   /** The works under the name the app has always used, so renaming it never plans a second one. */
