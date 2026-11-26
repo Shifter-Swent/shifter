@@ -1542,8 +1542,10 @@ class ShifterNavHostTest {
     openOrganizerEvent(event)
     waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
 
+    // Below the buttons of the Overview, under the bottom of a small screen.
     composeTestRule
         .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(mission.id))
+        .performScrollTo()
         .performClick()
     // The form only appears once the mission is read, filled with it.
     waitForNode(AddMissionScreenTestTags.TITLE_FIELD)
