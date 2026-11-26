@@ -35,8 +35,9 @@ enum class NotificationKind(val inInbox: Boolean) {
    */
   MISSION_CHANGED(inInbox = true),
   /**
-   * An announcement was sent in a channel: for the channel's members. Data: `channel`, `teamId` for
-   * a team's channel only, `senderName`, `preview`. Written by #618.
+   * An announcement was sent in a channel: for the channel's members. Data: `channel`, `teamId` and
+   * `teamName` for a team's channel only, `senderName` when the sender has a name, `preview`.
+   * Written by #618.
    */
   ANNOUNCEMENT(inInbox = true),
   /** A mission started and its volunteer has not checked in. Computed by #611. */

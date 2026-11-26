@@ -112,7 +112,7 @@ app can leave and which is logged.
 | `TEAM_CHANGED` | what changes `memberIds` (#599) | the team's manager | `change`: `JOINED` or `LEFT`, `userName`, `teamId`, `teamName`, and `missions` for `LEFT` only |
 | `MISSION_ASSIGNED` | changing the assignees (#617), accepting a proposed schedule (`addAssignees`, #606: one per volunteer for all their new missions) | the volunteer | `change`: `ADDED` or `REMOVED`, `missions` (earliest first) |
 | `MISSION_CHANGED` | changing a mission (#617) | its assignees | `missions`, `what`: `TIME`, `PLACE` or `TIME_AND_PLACE`, and `address` for the last two only |
-| `ANNOUNCEMENT` | sending an announcement (#618) | the channel's members | `channel`: a `ChannelKind` name, `teamId` for a team's channel only, `senderName`, `preview` |
+| `ANNOUNCEMENT` | sending an announcement (#618) | the channel's members: the participants for the general channel, the team's members and manager for a team's, the teams' managers for the admin channel | `channel`: a `ChannelKind` name, `teamId` and `teamName` for a team's channel only, `senderName` when the sender has a name, `preview`: the text on one line, at most 80 characters with its "…" |
 
 `missions` holds one mission per line, `id|title|startAt|endAt` with the times in ISO-8601
 (`MissionLine`): the title and times as they are once the action is done, so the phone shows them

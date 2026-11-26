@@ -44,6 +44,10 @@ interface ChatRepository {
    * and waits for the backend to confirm it, for a bounded time. [messages] already emits the
    * message while this call waits.
    *
+   * An [announcement] also notifies the channel's members, whom an implementation may read from the
+   * backend first: when it cannot read them, nothing is sent, and the failure is not
+   * [ChatRepositoryException.Unavailable].
+   *
    * @throws IllegalArgumentException if the trimmed text is empty or longer than
    *   [ChatRules.MAX_TEXT_LENGTH]; nothing is sent, whatever the state of the backend.
    * @throws ChatRepositoryException.NotAllowed if the rules above deny it, including an
