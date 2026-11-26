@@ -322,7 +322,7 @@ that chose it (#594). The mapper ignores the `teamId` and `assigneeIds` of the s
 model, which nothing wrote.
 
 `FirestoreShiftRepository` opens a slot in a transaction that creates the shift only if it does not
-exist, since the rules refuse any update: opening a slot twice leaves the shift as it was. A
+exist, since the rules refuse any update of the slot: opening a slot twice leaves the shift as it was. A
 transaction needs the backend, so a slot cannot be opened offline. The shift is then read back from
 the server, the only one to know its `createdAt`; if another device closed it in between, the
 closing stands and the opening fails.
@@ -523,12 +523,17 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   slots, not who chose them, but the shift is read whole; #474 is to address it with the teams.
 - **The rules check the link between a request and its shifts from the shift's side only.** A
   rule cannot go through a request's `shiftIds`, so it cannot check that each of those shifts lists
-  the volunteer, nor that `availability` matches the chosen slots: the app keeps both right. The
+  the volunteer, that its elements are distinct shift ids, nor that `availability` matches the
+  chosen slots: the app keeps them right. The
   organizer may remove any volunteer from a shift, since a rule cannot check several removed at
   once, which deleting a team needs; they may reject anyone anyway. Nor do the shifts check that
   the event still runs when a volunteer puts themself in: it would read the event once per shift,
   against the rules' limit on reads, and only a pending request listing a shift the organizer took
   them out of could use it, which the organizer can still reject.
+- **The organizer can close a slot volunteers chose, in two writes.** They may take every
+  volunteer out of it, then close it once empty. In the app they only do so by rejecting those
+  volunteers, but a pending request could then list a shift that no longer exists: the app skips
+  the shifts that are gone when a volunteer withdraws or changes their shifts.
 - **A request can choose at most 499 shifts.** The rules set no limit, but applying writes the
   request and each chosen shift in one commit, and Firestore takes at most 500 writes per commit:
   more than 40 days of 2 h slots, every one chosen.
