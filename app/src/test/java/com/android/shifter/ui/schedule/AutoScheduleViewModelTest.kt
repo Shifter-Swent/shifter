@@ -25,6 +25,7 @@ import com.swent.shifter.model.user.FakeUserRepository
 import com.swent.shifter.model.user.PublicProfile
 import com.swent.shifter.model.user.User
 import com.swent.shifter.model.user.UserRepository
+import com.swent.shifter.ui.mission.AssigneeOption
 import com.swent.shifter.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Duration
@@ -66,6 +67,12 @@ class AutoScheduleViewModelTest {
   private lateinit var events: FakeEventRepository
   private lateinit var users: FakeUserRepository
   private lateinit var viewModel: AutoScheduleViewModel
+
+  /** Who the assign dialog offers, as read by the ViewModel, and how often it was read. */
+  private var candidates: List<AssigneeOption> =
+      listOf(AssigneeOption("ben", "Ben"), AssigneeOption("eva", null))
+  private var candidatesFailure: Exception? = null
+  private var candidatesRead = 0
 
   private val state: AutoScheduleUiState
     get() = viewModel.uiState.value
@@ -168,6 +175,144 @@ class AutoScheduleViewModelTest {
     assertEquals(emptyList<String?>(), bar.proposed)
     assertEquals(1, bar.missing)
     assertFalse(state.missions.single { it.title == "General" }.started)
+  }
+
+  @Test
+  fun openAssign_locksWhoIsOnTheMissionAndLimitsToTheSpotsLeft() = runTest {
+    startedBar()
+
+    viewModel.openAssign("mission-1")
+
+    val assigning = checkNotNull(state.assigning)
+    assertEquals("Bar", assigning.title)
+    // Ana and the one spot left.
+    assertEquals(2, assigning.limit)
+    assertEquals(listOf("ana"), assigning.selection.selectedIds)
+    assertEquals(setOf("ana"), assigning.selection.lockedIds)
+    // Ana is not a candidate of the fake, so she stays listed, with her name, to match the count.
+    assertEquals(
+        listOf(
+            AssigneeOption("ben", "Ben"),
+            AssigneeOption("eva", null),
+            AssigneeOption("ana", "Ana"),
+        ),
+        assigning.selection.candidates,
+    )
+    assertFalse(assigning.selection.isLoading)
+  }
+
+  @Test
+  fun openAssign_keepsTheSpotsOfThePeopleProposed() = runTest {
+    festival()
+    open()
+
+    // "Gate" needs 2: Eva is proposed, so only one spot is left to pick.
+    viewModel.openAssign("mission-2")
+
+    assertEquals(1, state.assigning?.limit)
+    assertEquals(emptyList<String>(), state.assigning?.selection?.selectedIds)
+  }
+
+  @Test
+  fun openAssign_withNothingToFillOrNoTeamLeft_isIgnored() = runTest {
+    festival()
+    open()
+
+    // "Bar" is full once the proposal is accepted, and "Lost" has no team to pick from.
+    viewModel.openAssign("mission-1")
+    viewModel.openAssign("mission-4")
+    viewModel.openAssign("unknown")
+
+    assertNull(state.assigning)
+    assertEquals(0, candidatesRead)
+  }
+
+  @Test
+  fun saveAssignees_addsOnlyThePeoplePickedThenReloads() = runTest {
+    startedBar()
+    viewModel.openAssign("mission-1")
+
+    // Ana is locked, so tapping her does nothing; Ben fills the last spot.
+    viewModel.toggleAssignee("ana")
+    viewModel.toggleAssignee("ben")
+    viewModel.saveAssignees()
+
+    assertNull(state.assigning)
+    assertEquals(listOf("ana", "ben"), missions.getMission(eventId, "mission-1")?.assigneeIds)
+    // The reload shows him as assigned, with nothing left to fill on the mission.
+    val bar = state.missions.single { it.title == "Bar" }
+    assertEquals(listOf("Ana", "Ben"), bar.assigned)
+    assertEquals(0, bar.missing)
+  }
+
+  @Test
+  fun saveAssignees_neverRemovesSomeoneAssignedMeanwhile() = runTest {
+    startedBar()
+    viewModel.openAssign("mission-1")
+    viewModel.toggleAssignee("ben")
+    // From the Overview, while the dialog is open: Eva takes the last spot.
+    missions.updateAssignees(eventId, "mission-1", listOf("ana", "eva"))
+
+    viewModel.saveAssignees()
+
+    // The mission filled up: nothing is added, Eva stays, and the dialog gives way to the reload.
+    assertNull(state.assigning)
+    assertEquals(listOf("ana", "eva"), missions.getMission(eventId, "mission-1")?.assigneeIds)
+    assertEquals(listOf("Ana", null), state.missions.single { it.title == "Bar" }.assigned)
+  }
+
+  @Test
+  fun saveAssignees_onAnotherFailure_keepsTheDialogToTryAgain() = runTest {
+    startedBar()
+    viewModel.openAssign("mission-1")
+    viewModel.toggleAssignee("ben")
+    missions.failure = IllegalStateException("offline")
+
+    viewModel.saveAssignees()
+
+    assertTrue(checkNotNull(state.assigning).saveFailed)
+    assertFalse(checkNotNull(state.assigning).isSaving)
+    assertEquals(listOf("ana", "ben"), state.assigning?.selection?.selectedIds)
+  }
+
+  @Test
+  fun saveAssignees_withNobodyNewPicked_closesWithoutWriting() = runTest {
+    startedBar()
+    viewModel.openAssign("mission-1")
+
+    viewModel.saveAssignees()
+
+    assertNull(state.assigning)
+    assertEquals(listOf("ana"), missions.getMission(eventId, "mission-1")?.assigneeIds)
+  }
+
+  @Test
+  fun assignCandidates_onFailure_canBeRetried() = runTest {
+    startedBar()
+    candidatesFailure = IllegalStateException("offline")
+    viewModel.openAssign("mission-1")
+    assertTrue(checkNotNull(state.assigning).selection.loadFailed)
+    // Nothing is saved before the candidates are read.
+    viewModel.saveAssignees()
+    assertEquals(listOf("ana"), missions.getMission(eventId, "mission-1")?.assigneeIds)
+
+    candidatesFailure = null
+    viewModel.retryAssignees()
+
+    assertFalse(checkNotNull(state.assigning).selection.loadFailed)
+    assertEquals(3, state.assigning?.selection?.candidates?.size)
+  }
+
+  @Test
+  fun dismissAssign_closesWithoutWriting() = runTest {
+    startedBar()
+    viewModel.openAssign("mission-1")
+    viewModel.toggleAssignee("ben")
+
+    viewModel.dismissAssign()
+
+    assertNull(state.assigning)
+    assertEquals(listOf("ana"), missions.getMission(eventId, "mission-1")?.assigneeIds)
   }
 
   @Test
@@ -343,7 +488,15 @@ class AutoScheduleViewModelTest {
     viewModel =
         ViewModelProvider(
             store,
-            AutoScheduleViewModel.factory(eventId, held, teams, requests, users, events),
+            AutoScheduleViewModel.factory(
+                eventId,
+                held,
+                teams,
+                requests,
+                users,
+                events,
+                { _, _ -> emptyList() },
+            ),
         )[AutoScheduleViewModel::class.java]
 
     viewModel.accept()
@@ -360,7 +513,17 @@ class AutoScheduleViewModelTest {
     val eventReads = HeldEventRepository(events)
     val profiles = HeldUserRepository(users)
     viewModel =
-        AutoScheduleViewModel(eventId, missions, teams, requests, profiles, eventReads) { at }
+        AutoScheduleViewModel(
+            eventId,
+            missions,
+            teams,
+            requests,
+            profiles,
+            eventReads,
+            { _, _ -> emptyList() },
+        ) {
+          at
+        }
 
     // The first load still waits for the event and the names: it is dropped for this one.
     viewModel.retry()
@@ -404,7 +567,15 @@ class AutoScheduleViewModelTest {
     festival()
 
     viewModel =
-        AutoScheduleViewModel.factory(eventId, missions, teams, requests, users, events)
+        AutoScheduleViewModel.factory(
+                eventId,
+                missions,
+                teams,
+                requests,
+                users,
+                events,
+                { _, _ -> emptyList() },
+            )
             .create(AutoScheduleViewModel::class.java, CreationExtras.Empty)
 
     assertEquals(5, state.missions.size)
@@ -412,7 +583,28 @@ class AutoScheduleViewModelTest {
 
   private fun open(missionRepository: MissionRepository = missions) {
     viewModel =
-        AutoScheduleViewModel(eventId, missionRepository, teams, requests, users, events) { at }
+        AutoScheduleViewModel(
+            eventId,
+            missionRepository,
+            teams,
+            requests,
+            users,
+            events,
+            { _, _ ->
+              candidatesRead++
+              candidatesFailure?.let { throw it }
+              candidates
+            },
+        ) {
+          at
+        }
+  }
+
+  /** At 10:00 "Bar" has started: Ana is on it, and its last spot is left to fill by hand. */
+  private suspend fun startedBar() {
+    festival()
+    at = start.plus(Duration.ofHours(2))
+    open()
   }
 
   private suspend fun addMission(

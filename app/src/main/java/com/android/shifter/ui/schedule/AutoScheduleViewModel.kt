@@ -21,6 +21,10 @@ import com.swent.shifter.model.schedule.scheduleCandidates
 import com.swent.shifter.model.team.TeamRepository
 import com.swent.shifter.model.user.UserRepository
 import com.swent.shifter.model.user.displayNames
+import com.swent.shifter.ui.mission.AssignState
+import com.swent.shifter.ui.mission.AssigneeCandidates
+import com.swent.shifter.ui.mission.AssigneeOption
+import com.swent.shifter.ui.mission.AssigneeSelection
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Job
@@ -37,6 +41,9 @@ import kotlinx.coroutines.launch
  * the whole event, and shows every mission but the completed ones with the names of who is on it
  * and who the proposal adds; the screen picks the day itself. Also reads the event's period from
  * [eventRepository], for the days the screen offers.
+ *
+ * A mission the proposal leaves short is finished by hand in the assign dialog, with
+ * [assigneeCandidates] as the people who may be picked; see [AutoScheduleUiState.assigning].
  */
 class AutoScheduleViewModel(
     private val eventId: String,
@@ -45,6 +52,7 @@ class AutoScheduleViewModel(
     private val membershipRequestRepository: MembershipRequestRepository,
     private val userRepository: UserRepository,
     private val eventRepository: EventRepository,
+    private val assigneeCandidates: AssigneeCandidates,
     private val now: () -> Instant = Instant::now,
 ) : ViewModel() {
 
@@ -58,8 +66,17 @@ class AutoScheduleViewModel(
   // The volunteers that proposal was made for, so Accept can check it against fresh missions.
   private var candidates: List<ScheduleCandidate> = emptyList()
 
+  // The missions shown, by id, as read: the dialog needs their team and who is on them.
+  private var shownMissions: Map<String, Mission> = emptyMap()
+
+  // The names read with them, so the people already assigned keep theirs in the dialog.
+  private var names: Map<String, String?> = emptyMap()
+
   // The load running, cancelled by the next one so an older answer never overwrites a newer one.
   private var loadJob: Job? = null
+
+  // The candidates of the dialog loading, cancelled when it closes or loads again.
+  private var candidatesJob: Job? = null
 
   init {
     load()
@@ -137,6 +154,8 @@ class AutoScheduleViewModel(
         val teamNames = teams.associate { it.id to it.name }
         proposed = proposal.proposed
         candidates = volunteers
+        shownMissions = shown.associateBy { it.id }
+        this@AutoScheduleViewModel.names = names
         _uiState.update { state ->
           state.copy(
               isLoading = false,
@@ -148,6 +167,142 @@ class AutoScheduleViewModel(
       } catch (_: Exception) {
         _uiState.update { it.copy(isLoading = false, loadFailed = true) }
       }
+    }
+  }
+
+  /**
+   * Opens the assign dialog for the mission [missionId], still short of people once the proposal is
+   * accepted. The people already on it are picked and locked, and the limit is them plus the spots
+   * left, so the people proposed keep theirs. Ignored for a mission with no spot left, one whose
+   * team no longer exists, or while the proposal is saved.
+   */
+  fun openAssign(missionId: String) {
+    val state = _uiState.value
+    val shown = state.missions.firstOrNull { it.id == missionId } ?: return
+    val mission = shownMissions[missionId] ?: return
+    if (state.isSaving || shown.missing <= 0 || (!shown.isGeneral && shown.teamName == null)) return
+    _uiState.update {
+      it.copy(
+          assigning =
+              AssignState(
+                  missionId = mission.id,
+                  title = mission.title,
+                  limit = mission.assigneeIds.size + shown.missing,
+                  selection =
+                      AssigneeSelection(
+                          selectedIds = mission.assigneeIds,
+                          lockedIds = mission.assigneeIds.toSet(),
+                          isLoading = true,
+                      ),
+              )
+      )
+    }
+    loadCandidates(mission)
+  }
+
+  /** Picks or unpicks the candidate [id] in the dialog, within its limit; locked people stay. */
+  fun toggleAssignee(id: String) {
+    editAssigning { it.copy(selection = it.selection.toggle(id, it.limit), saveFailed = false) }
+  }
+
+  /** Loads the dialog's candidates again after they failed, keeping who is picked. */
+  fun retryAssignees() {
+    val missionId = _uiState.value.assigning?.missionId ?: return
+    shownMissions[missionId]?.let { loadCandidates(it) }
+  }
+
+  /**
+   * Closes the dialog without saving. Ignored while it saves: the save cannot be taken back, so it
+   * stays open to show how it ends.
+   */
+  fun dismissAssign() {
+    if (_uiState.value.assigning?.isSaving == true) return
+    candidatesJob?.cancel()
+    _uiState.update { it.copy(assigning = null) }
+  }
+
+  /**
+   * Adds the people picked beyond the locked ones to the mission at once, with
+   * [MissionRepository.addAssignees], then closes the dialog and prepares the proposal again, so
+   * they show as assigned and nobody is proposed twice. It never removes anyone, even someone
+   * assigned from the Overview meanwhile. Nothing is saved before the candidates are read, or with
+   * too many people picked; with nobody new picked, it just closes.
+   *
+   * A mission that filled up, completed or was deleted meanwhile refuses the addition: the dialog
+   * closes and the proposal is prepared again, showing what changed. Any other failure keeps it
+   * open with the same people picked, to try again.
+   */
+  fun saveAssignees() {
+    val assigning = _uiState.value.assigning ?: return
+    val selection = assigning.selection
+    if (assigning.isSaving || selection.isLoading || selection.loadFailed || assigning.overLimit) {
+      return
+    }
+    val added = selection.selectedIds.filterNot { it in selection.lockedIds }
+    if (added.isEmpty()) {
+      dismissAssign()
+      return
+    }
+    editAssigning { it.copy(isSaving = true, saveFailed = false) }
+    viewModelScope.launch {
+      try {
+        missionRepository.addAssignees(eventId, mapOf(assigning.missionId to added))
+        closeAssignAndReload(assigning.missionId)
+      } catch (e: CancellationException) {
+        throw e
+      } catch (e: Exception) {
+        if (saveErrorOf(e) == ScheduleSaveError.OUTDATED) {
+          closeAssignAndReload(assigning.missionId)
+        } else {
+          editAssigning(assigning.missionId) { it.copy(isSaving = false, saveFailed = true) }
+        }
+      }
+    }
+  }
+
+  /** Closes the dialog of [missionId], if it is still the one shown, then loads again. */
+  private fun closeAssignAndReload(missionId: String) {
+    _uiState.update { state ->
+      state.copy(assigning = state.assigning?.takeIf { it.missionId != missionId })
+    }
+    load()
+  }
+
+  /**
+   * Loads who may be picked for [mission], keeping who is picked. Someone already on it who is no
+   * longer a candidate, e.g. who left the team, stays listed, so the count matches the rows.
+   */
+  private fun loadCandidates(mission: Mission) {
+    candidatesJob?.cancel()
+    editAssigning { it.copy(selection = it.selection.copy(isLoading = true, loadFailed = false)) }
+    candidatesJob = viewModelScope.launch {
+      try {
+        val loaded = assigneeCandidates.load(eventId, mission.teamId)
+        editAssigning(mission.id) {
+          val former =
+              it.selection.selectedIds
+                  .filter { id -> loaded.none { candidate -> candidate.id == id } }
+                  .map { id -> AssigneeOption(id, names[id]) }
+          it.copy(selection = it.selection.copy(candidates = loaded + former, isLoading = false))
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        editAssigning(mission.id) {
+          it.copy(selection = it.selection.copy(isLoading = false, loadFailed = true))
+        }
+      }
+    }
+  }
+
+  /**
+   * Applies [change] to the dialog shown, if any. With [missionId], only when it is still that
+   * mission's: the end of a load or a save must not touch another mission opened since.
+   */
+  private fun editAssigning(missionId: String? = null, change: (AssignState) -> AssignState) {
+    _uiState.update { state ->
+      val assigning = state.assigning?.takeIf { missionId == null || it.missionId == missionId }
+      if (assigning == null) state else state.copy(assigning = change(assigning))
     }
   }
 
@@ -189,6 +344,7 @@ class AutoScheduleViewModel(
         membershipRequestRepository: MembershipRequestRepository,
         userRepository: UserRepository,
         eventRepository: EventRepository,
+        assigneeCandidates: AssigneeCandidates,
     ): ViewModelProvider.Factory = viewModelFactory {
       initializer {
         AutoScheduleViewModel(
@@ -198,6 +354,7 @@ class AutoScheduleViewModel(
             membershipRequestRepository,
             userRepository,
             eventRepository,
+            assigneeCandidates,
         )
       }
     }
