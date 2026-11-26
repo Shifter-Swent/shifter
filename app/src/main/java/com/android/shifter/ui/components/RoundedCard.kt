@@ -58,8 +58,9 @@ fun LoadErrorRow(
     onRetry: () -> Unit,
     messageTag: String,
     retryTag: String,
+    modifier: Modifier = Modifier,
 ) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
+  Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
     Text(
         text = message,
         color = MaterialTheme.colorScheme.error,

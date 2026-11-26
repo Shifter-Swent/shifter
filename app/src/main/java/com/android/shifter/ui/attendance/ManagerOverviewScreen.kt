@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.checkin.CheckInRules
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.LoadErrorRow
 import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.DayHeader
@@ -524,19 +525,14 @@ private fun EmptyMessage(text: Int) {
 }
 
 @Composable
-private fun LoadError(onRetry: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.attendance_load_failed),
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.weight(1f).testTag(ManagerOverviewTestTags.LOAD_ERROR),
+private fun LoadError(onRetry: () -> Unit) =
+    LoadErrorRow(
+        message = stringResource(R.string.attendance_load_failed),
+        retryLabel = stringResource(R.string.attendance_retry),
+        onRetry = onRetry,
+        messageTag = ManagerOverviewTestTags.LOAD_ERROR,
+        retryTag = ManagerOverviewTestTags.RETRY,
     )
-    TextButton(onClick = onRetry, modifier = Modifier.testTag(ManagerOverviewTestTags.RETRY)) {
-      Text(stringResource(R.string.attendance_retry))
-    }
-  }
-}
 
 /**
  * One mission and its live attendance. Only the header is tappable, so the counter and the lists
