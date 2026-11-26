@@ -1701,6 +1701,33 @@ class ShifterNavHostTest {
     composeTestRule.onNodeWithTag(TeamFilterMenuTestTags.MENU).assertTextEquals("Bar")
   }
 
+  @Test
+  fun notificationTarget_ofATeam_opensTheManagerOverviewOnIt() {
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    // Vera manages the event's first team, then the Bar too.
+    val event = acceptedEvent(asManager = true, organizerAccount, volunteerAccount)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    val bar = createTeam(event, "Bar")
+    runBlocking { repositories.teamRepository.setManager(event.id, bar.id, volunteer.uid) }
+    createMission(event, "Serve drinks", bar.id)
+    createMission(event, "Set up the stands", teamIds.getValue(event.id))
+    signIn(volunteerAccount)
+    saveMode(volunteer.uid, UserMode.VOLUNTEER)
+
+    showAppTapping(
+        NotificationTarget.EventOverview(event.id, event.title, UserMode.VOLUNTEER, bar.id)
+    )
+
+    // A manager of two teams sees only the Bar's missions, not both teams'.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule.onAllNodesWithText("Serve drinks").fetchSemanticsNodes().isNotEmpty()
+    }
+    composeTestRule.onNodeWithText("Set up the stands").assertDoesNotExist()
+    assertEquals(1, targetsOpened)
+  }
+
   /** Creates a mission of [event] at [startAt], for an hour, with [volunteer] assigned to it. */
   private fun assignedMission(
       event: Event,
