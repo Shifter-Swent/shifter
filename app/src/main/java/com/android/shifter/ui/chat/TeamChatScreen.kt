@@ -45,6 +45,8 @@ object TeamChatTestTags {
   fun pending(id: String) = "teamChatMessagePending_$id"
 
   fun announcementTag(id: String) = "teamChatAnnouncementTag_$id"
+
+  fun day(day: LocalDate) = "teamChatDay_$day"
 }
 
 /** The channel of a team, loaded and sent to by [viewModel]. */
@@ -69,7 +71,7 @@ fun TeamChatScreen(viewModel: TeamChatViewModel, modifier: Modifier = Modifier) 
  * @param onAnnouncementChange called when the user chooses whether to send the draft as an
  *   announcement, an option shown only to those who [may][TeamChatUiState.canAnnounce].
  * @param zone the time zone the times are shown in, replaceable in tests.
- * @param today the day whose messages show their time only, replaceable in tests.
+ * @param today the day whose chip reads "Today", replaceable in tests.
  */
 @Composable
 fun TeamChatContent(

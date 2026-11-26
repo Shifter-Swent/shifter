@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.chat
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -12,11 +13,13 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -104,6 +107,50 @@ class TeamChatContentTest {
     tag(TeamChatTestTags.message("2")).assert(hasText("Unnamed member", substring = true))
     tag(TeamChatTestTags.message("3")).assert(hasText("Hi", substring = true))
     tag(TeamChatTestTags.message("3")).assert(hasText("Liam", substring = true).not())
+  }
+
+  @Test
+  fun messagesOfSeveralDays_areSplitByTheirDayChips() {
+    val older = FROM_ALICE.copy(id = "0", sentAt = AT.minusSeconds(3 * 86_400))
+    val yesterday = FROM_ALICE.copy(id = "5", sentAt = AT.minusSeconds(86_400))
+    val lastYear = FROM_ALICE.copy(id = "6", sentAt = AT.minusSeconds(400 * 86_400))
+    setContent(
+        TeamChatUiState(
+            isLoading = false,
+            messages = listOf(lastYear, older, yesterday, FROM_ALICE),
+        )
+    )
+
+    // Scrolled to first, since the list composes only the rows on screen.
+    fun chip(day: LocalDate): SemanticsNodeInteraction {
+      tag(TeamChatTestTags.MESSAGES).performScrollToNode(hasTestTag(TeamChatTestTags.day(day)))
+      return tag(TeamChatTestTags.day(day))
+    }
+
+    chip(TODAY).assert(hasText("Today"))
+    chip(TODAY.minusDays(1)).assert(hasText("Yesterday"))
+    chip(TODAY.minusDays(3)).assert(hasText("17 Jun"))
+    chip(TODAY.minusDays(400)).assert(hasText("16 May 2026"))
+  }
+
+  @Test
+  fun longRunOfAnEarlierDay_keepsItsChipOnScreenAtTheBottom() {
+    val earlier = numbered(0..39).map { it.copy(sentAt = AT.minusSeconds(3 * 86_400)) }
+    setContent(TeamChatUiState(isLoading = false, messages = earlier))
+
+    // The list opens on the last message, far below the first one of that day.
+    tag(TeamChatTestTags.message("39")).assertIsDisplayed()
+    tag(TeamChatTestTags.message("0")).assertDoesNotExist()
+    tag(TeamChatTestTags.day(TODAY.minusDays(3))).assertIsDisplayed()
+  }
+
+  @Test
+  fun messageOfAnotherDay_showsOnlyItsTime() {
+    val yesterday = FROM_ALICE.copy(sentAt = AT.minusSeconds(86_400))
+    setContent(TeamChatUiState(isLoading = false, messages = listOf(yesterday)))
+
+    tag(TeamChatTestTags.message("1")).assert(hasText("09:30"))
+    tag(TeamChatTestTags.message("1")).assert(hasText("Jun", substring = true).not())
   }
 
   @Test
@@ -376,15 +423,6 @@ class TeamChatContentTest {
     tag(TeamChatTestTags.ANNOUNCEMENT_REFUSED).assertIsDisplayed()
     tag(TeamChatTestTags.SEND_FAILED).assertDoesNotExist()
     tag(TeamChatTestTags.INPUT).assert(hasText("Gates open at 9:00"))
-  }
-
-  @Test
-  fun sentAtLabel_showsTheDayOnlyForAnotherDay() {
-    val at = AT.atZone(ZoneOffset.UTC)
-
-    assertEquals("09:30", sentAtLabel(at, TODAY))
-    assertEquals("19 Jun, 09:30", sentAtLabel(at.minusDays(1), TODAY))
-    assertEquals("20 Jun 2026, 09:30", sentAtLabel(at.minusYears(1), TODAY))
   }
 
   @Test
