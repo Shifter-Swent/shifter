@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.theme.shifter_announcement
+import com.swent.shifter.ui.theme.shifter_announcementBorder
 import com.swent.shifter.ui.theme.shifter_announcementContainer
 import com.swent.shifter.ui.theme.shifter_announcementMuted
 import com.swent.shifter.ui.theme.shifter_onAnnouncementContainer
@@ -63,7 +64,7 @@ internal fun AnnouncementCard(
               .semantics(mergeDescendants = true) {}
               .testTag(TeamChatTestTags.message(message.id))
               .background(shifter_announcementContainer, shape)
-              .border(Dp.Hairline, shifter_announcement.copy(alpha = 0.15f), shape)
+              .border(Dp.Hairline, shifter_announcementBorder, shape)
               .padding(start = 14.dp, top = 10.dp, end = 14.dp, bottom = 8.dp),
   ) {
     AnnouncementAuthor(

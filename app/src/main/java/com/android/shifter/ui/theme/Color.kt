@@ -76,10 +76,11 @@ val shifter_qrLight = Color(0xFFFFFFFF)
 val shifter_chatBackground = Color(0xFF10171F)
 
 // Announcements: the warning amber for the author, a dark amber card that keeps the usual text
-// readable on it, and a dimmed amber for the time.
+// readable on it, a faint amber for its border, and a dimmed amber for the time.
 val shifter_announcement = shifter_warning
 val shifter_onAnnouncement = md_theme_dark_surface
 val shifter_announcementContainer = Color(0xFF342C1C)
+val shifter_announcementBorder = shifter_announcement.copy(alpha = 0.15f)
 val shifter_announcementMuted = Color(0xFFA8916A)
 val shifter_onAnnouncementContainer = md_theme_dark_onSurface
 
