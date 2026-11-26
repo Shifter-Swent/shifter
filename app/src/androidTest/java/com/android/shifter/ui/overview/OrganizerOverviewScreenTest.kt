@@ -342,6 +342,58 @@ class OrganizerOverviewScreenTest {
   }
 
   @Test
+  fun generateSchedule_isReported() {
+    var opened = 0
+    show(loaded, OrganizerOverviewActions(onGenerateSchedule = { opened++ }))
+
+    compose
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+        .performScrollTo()
+        .assertTextEquals("Generate schedule")
+        .performClick()
+
+    compose.runOnIdle { assertEquals(1, opened) }
+  }
+
+  @Test
+  fun scheduleSaved_isToldOnceInASnackbar() {
+    var shown = 0
+    compose.setContent {
+      ShifterTheme {
+        OrganizerOverviewContent(
+            loaded,
+            OrganizerOverviewActions(onScheduleSavedShown = { shown++ }),
+            now = now,
+            zone = ZoneOffset.UTC,
+            scheduleSaved = 9,
+        )
+      }
+    }
+
+    compose.onNodeWithText("Schedule saved: 9 new assignments").assertIsDisplayed()
+    // Past a short snackbar's 4 s.
+    compose.mainClock.advanceTimeBy(5_000)
+    compose.runOnIdle { assertEquals(1, shown) }
+  }
+
+  @Test
+  fun scheduleSaved_ofOnePerson_saysItInTheSingular() {
+    compose.setContent {
+      ShifterTheme {
+        OrganizerOverviewContent(
+            loaded,
+            OrganizerOverviewActions(),
+            now = now,
+            zone = ZoneOffset.UTC,
+            scheduleSaved = 1,
+        )
+      }
+    }
+
+    compose.onNodeWithText("Schedule saved: 1 new assignment").assertIsDisplayed()
+  }
+
+  @Test
   fun deletedMission_leavingWhileItShows_marksItShown() {
     var shown = 0
     var onScreen by mutableStateOf(true)

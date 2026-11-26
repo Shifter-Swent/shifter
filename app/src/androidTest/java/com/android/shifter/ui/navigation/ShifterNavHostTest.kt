@@ -89,6 +89,7 @@ import com.swent.shifter.ui.people.ParticipantsListTestTags
 import com.swent.shifter.ui.people.PeopleScreenTestTags
 import com.swent.shifter.ui.planning.PlanningTestTags
 import com.swent.shifter.ui.scan.ScanScreenTestTags
+import com.swent.shifter.ui.schedule.AutoScheduleTestTags
 import com.swent.shifter.ui.settings.SettingsScreenTestTags
 import com.swent.shifter.ui.sharing.EventSharer
 import com.swent.shifter.ui.sharing.SharingScreenTestTags
@@ -617,6 +618,61 @@ class ShifterNavHostTest {
 
     waitForNode(OrganizerOverviewScreenTestTags.SCREEN)
     composeTestRule.onNodeWithTag(NavigationTestTags.TOP_BAR_TITLE).assertTextEquals(event.title)
+  }
+
+  @Test
+  fun organizerEvent_generateScheduleAcceptedReturnsToTheOverviewAndSaysSo() {
+    val organizerAccount = googleCredential("Olga")
+    val volunteerAccount = googleCredential("Vera")
+    // Vera is accepted in the event's team, free for the whole event.
+    val event = acceptedEvent(asManager = false, organizerAccount, volunteerAccount)
+    val volunteer = signIn(volunteerAccount)
+    signIn(organizerAccount)
+    val mission = createMission(event, "Pick up the litter", teamIds.getValue(event.id))
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+        .performScrollTo()
+        .performClick()
+
+    // The proposal puts Vera on the mission; Accept saves it.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithTag(AutoScheduleTestTags.proposedChip(mission.id, 0))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    composeTestRule.onNodeWithTag(AutoScheduleTestTags.ACCEPT).performClick()
+
+    // Back on the Overview, which says how many were assigned.
+    composeTestRule.waitUntil(TIMEOUT_MILLIS) {
+      composeTestRule
+          .onAllNodesWithText("Schedule saved: 1 new assignment")
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    composeTestRule.onNodeWithTag(AutoScheduleTestTags.SCREEN).assertDoesNotExist()
+    val saved = runBlocking { repositories.missionRepository.getMission(event.id, mission.id) }
+    assertEquals(listOf(volunteer.uid), saved?.assigneeIds)
+  }
+
+  @Test
+  fun organizerEvent_generateScheduleCancelledReturnsToTheOverview() {
+    val event = createEvent(signIn())
+    openOrganizerEvent(event)
+    waitForNode(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+    composeTestRule
+        .onNodeWithTag(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+        .performScrollTo()
+        .performClick()
+    waitForNode(AutoScheduleTestTags.SCREEN)
+
+    composeTestRule.onNodeWithTag(AutoScheduleTestTags.CANCEL).performClick()
+
+    waitForNode(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON)
+    composeTestRule.onNodeWithTag(AutoScheduleTestTags.SCREEN).assertDoesNotExist()
   }
 
   @Test
@@ -1486,8 +1542,10 @@ class ShifterNavHostTest {
     openOrganizerEvent(event)
     waitForNode(OrganizerOverviewScreenTestTags.mission(mission.id))
 
+    // Below the buttons of the Overview, under the bottom of a small screen.
     composeTestRule
         .onNodeWithTag(OrganizerOverviewScreenTestTags.mission(mission.id))
+        .performScrollTo()
         .performClick()
     // The form only appears once the mission is read, filled with it.
     waitForNode(AddMissionScreenTestTags.TITLE_FIELD)

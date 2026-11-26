@@ -30,6 +30,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +48,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.swent.shifter.R
+import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.ui.components.LoadErrorRow
 import com.swent.shifter.ui.components.PersonChip
 import com.swent.shifter.ui.components.PersonChipState
@@ -54,6 +61,7 @@ import com.swent.shifter.ui.components.days.EventDayPicker
 import com.swent.shifter.ui.components.days.EventDayStrip
 import com.swent.shifter.ui.components.days.missionSlot
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
+import com.swent.shifter.ui.components.time.rememberNow
 import com.swent.shifter.ui.mission.AssignDialog
 import com.swent.shifter.ui.theme.shifter_mutedText
 import com.swent.shifter.ui.theme.shifter_success
@@ -94,6 +102,46 @@ object AutoScheduleTestTags {
   fun assignedChip(missionId: String, index: Int) = "AutoScheduleAssignedChip_${missionId}_$index"
 
   fun proposedChip(missionId: String, index: Int) = "AutoScheduleProposedChip_${missionId}_$index"
+}
+
+/**
+ * The proposed schedule of an event, read from [viewModel].
+ *
+ * @param clock moves today on, so the screen opens on the right day and passes 04:00 by itself.
+ * @param onCancel called to leave the screen without saving.
+ * @param onSaved called once the proposal is saved and the screen is resumed, with how many people
+ *   it assigned, to leave the screen and say so.
+ */
+@Composable
+fun AutoScheduleScreen(
+    viewModel: AutoScheduleViewModel,
+    clock: MinuteClock,
+    onCancel: () -> Unit,
+    onSaved: (assignments: Int) -> Unit,
+) {
+  val state by viewModel.uiState.collectAsState()
+  val currentOnSaved by rememberUpdatedState(onSaved)
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(state.saved) {
+    // Waits until the screen is resumed: going back is ignored before, and the organizer would stay
+    // on a proposal already saved, as on the mission form (#467). Gives up if the screen is left.
+    if (state.saved) lifecycle.withResumed { currentOnSaved(state.savedAssignments) }
+  }
+  AutoScheduleContent(
+      state = state,
+      now = rememberNow(clock),
+      actions =
+          AutoScheduleActions(
+              onAccept = viewModel::accept,
+              onCancel = onCancel,
+              onRetry = viewModel::retry,
+              onAssign = viewModel::openAssign,
+              onToggleAssignee = viewModel::toggleAssignee,
+              onRetryAssignees = viewModel::retryAssignees,
+              onSaveAssignees = viewModel::saveAssignees,
+              onDismissAssign = viewModel::dismissAssign,
+          ),
+  )
 }
 
 /**
@@ -221,7 +269,7 @@ private fun Summary(state: AutoScheduleUiState, dayCount: Int) {
       }
       Legend()
       Text(
-          text = stringResource(R.string.schedule_nothing_saved),
+          text = stringResource(R.string.schedule_saving_help),
           style = MaterialTheme.typography.labelSmall,
           color = shifter_mutedText,
       )
