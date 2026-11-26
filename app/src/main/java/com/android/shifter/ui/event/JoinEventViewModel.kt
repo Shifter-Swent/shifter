@@ -120,8 +120,7 @@ data class JoinEventUiState(
  *
  * @param currentUserId returns the signed-in user's id, or null when nobody is signed in.
  * @param shiftRepository where the shifts of the event are read. An event without shifts is applied
- *   to for its whole length, as before shifts existed. Until the security rules accept the shifts
- *   of a request (#594), applying with shifts is refused with [JoinEventError.PERMISSION_DENIED].
+ *   to for its whole length, as before shifts existed.
  * @param now the clock stamped on the request, and that tells the shifts already started, which can
  *   no longer be picked; replaceable in tests.
  */

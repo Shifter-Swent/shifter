@@ -90,19 +90,54 @@ class ShiftVolunteerRulesTest {
     }
   }
 
-  /**
-   * Until the app puts the volunteer in their shifts in the same commit (#594), an application with
-   * shifts would leave them out of those shifts: it is refused, the same one without them is not.
-   */
   @Test
-  fun apply_withShiftIds_isDenied() = emulatorTest {
-    openShifts(10)
+  fun apply_withShifts_putsTheVolunteerInThem() = emulatorTest {
+    openShifts(10, 12)
+    signIn(volunteer)
+
+    commit { applyTo(it, 10, 12) }
+
+    assertEquals(listOf(volunteer.uid), volunteersOf(10))
+    assertEquals(listOf(volunteer.uid), volunteersOf(12))
+  }
+
+  /** As [changeShifts_toEveryShiftOfAWeek_isAllowed], but in the commit that applies. */
+  @Test
+  fun apply_withEveryShiftOfAWeek_isAllowed() = emulatorTest {
+    val hours = (0 until 7 * 12).map { it * 2 }
+    openShifts(*hours.toIntArray())
+    signIn(volunteer)
+
+    commit { applyTo(it, *hours.toIntArray()) }
+
+    assertEquals(listOf(volunteer.uid), volunteersOf(hours.last()))
+  }
+
+  /** Leaving 490 shifts, with a manager's other writes, fits in one commit of 500; 491 may not. */
+  @Test
+  fun apply_withMoreThan490Shifts_isDenied() = emulatorTest {
     signIn(volunteer)
     paths.add(0, request(volunteer).path)
     val application = application(volunteer, 10) + (CREATED_AT to FieldValue.serverTimestamp())
 
-    assertDenied { request(volunteer).set(application).await() }
-    request(volunteer).set(application - SHIFT_IDS).await()
+    assertDenied { request(volunteer).set(application + (SHIFT_IDS to tooManyShiftIds())).await() }
+    request(volunteer).set(application).await()
+    assertDenied { request(volunteer).update(SHIFT_IDS, tooManyShiftIds()).await() }
+  }
+
+  @Test
+  fun apply_withShiftIdsNotAList_isDenied() = emulatorTest {
+    signIn(volunteer)
+    paths.add(0, request(volunteer).path)
+
+    assertDenied {
+      request(volunteer)
+          .set(
+              application(volunteer, 10) +
+                  mapOf(SHIFT_IDS to shiftId(10), CREATED_AT to FieldValue.serverTimestamp())
+          )
+          .await()
+    }
   }
 
   /**
@@ -467,6 +502,16 @@ class ShiftVolunteerRulesTest {
     }
   }
 
+  /** Adds to [batch] the application of [volunteer] to the shifts at [hours], putting them in. */
+  private fun applyTo(batch: WriteBatch, vararg hours: Int) {
+    paths.add(0, request(volunteer).path)
+    batch.set(
+        request(volunteer),
+        application(volunteer, *hours) + (CREATED_AT to FieldValue.serverTimestamp()),
+    )
+    hours.forEach { batch.update(shift(it), VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)) }
+  }
+
   /**
    * Adds to [batch] the move of [volunteer]'s pending request from the shifts at [from] to [to].
    */
@@ -498,6 +543,9 @@ class ShiftVolunteerRulesTest {
         MembershipRequestSchema.SlotFields.END_AT to at(it + 2).ts(),
     )
   }
+
+  /** 491 ids of shifts that need not exist: the rules only count them. */
+  private fun tooManyShiftIds(): List<String> = (0 until 491).map { shiftId(it * 2) }
 
   private suspend fun commit(writes: (WriteBatch) -> Unit) {
     db.batch().also(writes).commit().await()

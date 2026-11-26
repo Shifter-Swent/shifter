@@ -36,18 +36,12 @@ internal object MembershipRequestSchema {
   }
 }
 
-/**
- * The document body written to `/events/{eventId}/membershipRequests/{requestId}`.
- *
- * [MembershipRequest.shiftIds] is left out while it is empty, which reads back the same: the rules
- * refuse the field until #594 allows it, so a request with no shifts must still be stored as
- * before.
- */
+/** The document body written to `/events/{eventId}/membershipRequests/{requestId}`. */
 internal fun MembershipRequest.toFirestoreMap(): Map<String, Any?> = buildMap {
   put(MembershipRequestSchema.USER_ID, userId)
   put(MembershipRequestSchema.TEAM_ID, teamId)
   put(MembershipRequestSchema.AVAILABILITY, availability.map { it.toFirestoreMap() })
-  if (shiftIds.isNotEmpty()) put(MembershipRequestSchema.SHIFT_IDS, shiftIds)
+  put(MembershipRequestSchema.SHIFT_IDS, shiftIds)
   put(MembershipRequestSchema.STATUS, status.name)
   put(MembershipRequestSchema.CREATED_AT, createdAt.toFirestoreTimestamp())
 }
@@ -81,7 +75,7 @@ internal fun DocumentSnapshot.toMembershipRequest(): MembershipRequest {
   )
 }
 
-private fun AvailabilitySlot.toFirestoreMap(): Map<String, Any?> =
+internal fun AvailabilitySlot.toFirestoreMap(): Map<String, Any?> =
     mapOf(
         MembershipRequestSchema.SlotFields.START_AT to startAt.toFirestoreTimestamp(),
         MembershipRequestSchema.SlotFields.END_AT to endAt.toFirestoreTimestamp(),

@@ -1,4 +1,5 @@
 // Co-authored-by: OpenAI Codex <noreply@openai.com>
+// Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.membership
 
 import androidx.lifecycle.ViewModel
@@ -186,7 +187,10 @@ class MembershipRequestVM(
             "You do not have permission to access these requests."
         is MembershipRequestRepositoryException.Unavailable ->
             "The membership service is unavailable. Please try again."
-        is MembershipRequestRepositoryException.Unknown -> "Something went wrong. Please try again."
+        // A closed shift only refuses applying or changing one's shifts, never a decision.
+        is MembershipRequestRepositoryException.Unknown,
+        is MembershipRequestRepositoryException.ShiftClosed ->
+            "Something went wrong. Please try again."
       }
 
   companion object {

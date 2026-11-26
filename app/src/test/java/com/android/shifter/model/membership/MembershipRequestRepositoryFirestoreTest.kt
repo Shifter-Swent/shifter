@@ -13,6 +13,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.WriteBatch
 import io.mockk.every
@@ -42,6 +43,7 @@ class MembershipRequestRepositoryFirestoreTest {
   private val team = mockk<DocumentReference>()
   private val location = mockk<DocumentReference>()
   private val managerEntry = mockk<DocumentReference>()
+  private val shifts = mockk<CollectionReference>()
   private val repository = MembershipRequestRepositoryFirestore(db)
   private val request =
       MembershipRequest(
@@ -78,6 +80,12 @@ class MembershipRequestRepositoryFirestoreTest {
     every { event.collection("managers") } returns managers
     every { managers.document(request.userId) } returns managerEntry
     every { requests.document(request.userId) } returns ref
+    // The volunteer is in no shift: the emulator tests cover the shifts.
+    val shiftsListing = mockk<Query>()
+    every { event.collection("shifts") } returns shifts
+    every { shifts.whereArrayContains("volunteerIds", request.userId) } returns shiftsListing
+    every { shiftsListing.get() } returns
+        Tasks.forResult(mockk<QuerySnapshot> { every { documents } returns emptyList() })
     every { ref.get() } returns Tasks.forResult(snapshot(request.copy(id = request.userId)))
     every { requests.get() } returns Tasks.forResult(result)
     every { db.collectionGroup("membershipRequests") } returns group
@@ -180,6 +188,49 @@ class MembershipRequestRepositoryFirestoreTest {
 
     verify { transaction.update(team, "managerId", null) }
     verifyLeftTheIndex(removal)
+  }
+
+  @Test
+  fun apply_whenAShiftClosesDuringTheCommit_reportsIt() = runTest {
+    val shift = shiftOf(SHIFT_ID, existsOnEachRead = listOf(true, false))
+    every { db.runTransaction(any<Transaction.Function<DocumentSnapshot?>>()) } returns
+        Tasks.forException(FirebaseFirestoreException("gone", Code.NOT_FOUND))
+
+    val failure = runCatching {
+      repository.apply("event", request.copy(shiftIds = listOf(SHIFT_ID)))
+    }
+        .exceptionOrNull()
+
+    assertEquals(SHIFT_ID, (failure as? MembershipRequestRepositoryException.ShiftClosed)?.shiftId)
+    verify(exactly = 2) { shift.get(Source.SERVER) }
+  }
+
+  @Test
+  fun apply_withMoreThanTheShiftsARequestHolds_isRefused() = runTest {
+    val shiftIds = (0L until 491L).map { (it * 7_200_000L).toString() }
+
+    val failure = runCatching {
+      repository.apply("event", request.copy(shiftIds = shiftIds))
+    }
+        .exceptionOrNull()
+
+    assertTrue(
+        "expected IllegalArgumentException, got $failure",
+        failure is IllegalArgumentException,
+    )
+  }
+
+  @Test
+  fun reject_withShiftIdsThatAreNoShifts_leavesThemOut() = runTest {
+    // Written by a modified app: "" or "a/b" would make no document path.
+    val stored = request.copy(id = request.userId, shiftIds = listOf("", "a/b"))
+    every { transaction.get(ref) } returns snapshot(stored)
+    every { transaction.get(team) } returns teamSnapshot(exists = false)
+
+    repository.reject("event", request.userId)
+
+    verify { transaction.update(ref, "status", "REJECTED") }
+    verify(exactly = 0) { shifts.document(any()) }
   }
 
   @Test
@@ -411,6 +462,8 @@ class MembershipRequestRepositoryFirestoreTest {
             { repository.apply("event", request) },
             { repository.accept("event", request.userId) },
             { repository.reject("event", request.userId) },
+            { repository.withdraw("event", request.userId) },
+            { repository.updateShifts("event", request.userId, emptyList(), request.availability) },
             { repository.getMembershipRequest("event", request.userId) ?: Unit },
             { repository.getMembershipRequestsByEId("event") },
             { repository.getMembershipRequestsByUId(request.userId) },
@@ -503,11 +556,29 @@ class MembershipRequestRepositoryFirestoreTest {
         every { it.get("memberIds") } returns memberIds
       }
 
-  /** The volunteer's request, missing when [status] is null, applying to [teamId]. */
+  /**
+   * The volunteer's request, missing when [status] is null, applying to [teamId] with no shifts:
+   * the emulator tests cover the shifts.
+   */
+  /**
+   * The shift [id], which exists on each of its reads from the server as [existsOnEachRead] says.
+   */
+  private fun shiftOf(id: String, existsOnEachRead: List<Boolean>): DocumentReference {
+    val shift = mockk<DocumentReference>()
+    every { shifts.document(id) } returns shift
+    every { shift.id } returns id
+    every { shift.get(Source.SERVER) } returnsMany
+        existsOnEachRead.map { exists ->
+          Tasks.forResult(mockk<DocumentSnapshot> { every { exists() } returns exists })
+        }
+    return shift
+  }
+
   private fun statusSnapshot(status: String?, teamId: String? = null): DocumentSnapshot =
       mockk<DocumentSnapshot>().also {
         every { it.getString("status") } returns status
         every { it.getString("teamId") } returns teamId
+        every { it.get("shiftIds") } returns null
       }
 
   private fun snapshot(value: MembershipRequest, eventId: String? = "event"): DocumentSnapshot {
@@ -529,21 +600,19 @@ class MembershipRequestRepositoryFirestoreTest {
   }
 
   @Test
-  fun updateShifts_failsUntilTheFirestoreImplementationOf594() = runTest {
-    // A placeholder, so nothing reaches Firestore, whose rules still refuse the change.
+  fun updateShifts_withNoAvailability_failsBeforeReachingFirestore() = runTest {
     val failure = runCatching {
-      repository.updateShifts(
-          "event-1",
-          "volunteer-1",
-          listOf("1784448000000"),
-          listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(7200))),
-      )
+      repository.updateShifts("event", request.userId, emptyList(), emptyList())
     }
         .exceptionOrNull()
 
     assertTrue(
-        "expected Unknown, but was: $failure",
-        failure is MembershipRequestRepositoryException.Unknown,
+        "expected IllegalArgumentException, but was: $failure",
+        failure is IllegalArgumentException,
     )
+  }
+
+  private companion object {
+    const val SHIFT_ID = "1784448000000"
   }
 }
