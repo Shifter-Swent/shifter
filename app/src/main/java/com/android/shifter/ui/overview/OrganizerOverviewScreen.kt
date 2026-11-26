@@ -6,10 +6,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -216,10 +219,14 @@ private fun OverviewColumn(
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     AddMissionButton(actions.onAddMission)
-    // Side by side, as the design has them, each taking half the row.
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-      ManageTeamsButton(actions.onManageTeams, Modifier.weight(1f))
-      ShiftsButton(actions.onManageShifts, Modifier.weight(1f))
+    // Side by side, as the design has them, each taking half the row and the height of the taller
+    // of the two, so a label wrapping at a large font scale grows the pair instead of being cut.
+    Row(
+        modifier = Modifier.height(IntrinsicSize.Min).heightIn(min = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+      ManageTeamsButton(actions.onManageTeams, Modifier.weight(1f).fillMaxHeight())
+      ShiftsButton(actions.onManageShifts, Modifier.weight(1f).fillMaxHeight())
     }
     ProgressCard(state)
     if (state.loadFailed) {
@@ -285,8 +292,7 @@ private fun ManageTeamsButton(onClick: () -> Unit, modifier: Modifier = Modifier
   OutlinedButton(
       onClick = onClick,
       shape = RoundedCornerShape(14.dp),
-      modifier =
-          modifier.height(48.dp).testTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON),
+      modifier = modifier.testTag(OrganizerOverviewScreenTestTags.MANAGE_TEAMS_BUTTON),
   ) {
     Icon(Icons.Filled.Groups, contentDescription = null, modifier = Modifier.size(20.dp))
     Text(
@@ -303,7 +309,7 @@ private fun ShiftsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   OutlinedButton(
       onClick = onClick,
       shape = RoundedCornerShape(14.dp),
-      modifier = modifier.height(48.dp).testTag(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON),
+      modifier = modifier.testTag(OrganizerOverviewScreenTestTags.SHIFTS_BUTTON),
   ) {
     Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
     Text(
