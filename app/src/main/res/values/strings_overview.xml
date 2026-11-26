@@ -5,6 +5,12 @@
     <string name="overview_add_mission">Add mission</string>
     <string name="overview_manage_teams">Manage teams</string>
     <string name="overview_shifts">Shifts</string>
+    <string name="overview_generate_schedule">Generate schedule</string>
+    <!-- Once the proposed schedule is accepted, back on the Overview. -->
+    <plurals name="overview_schedule_saved">
+        <item quantity="one">Schedule saved: %1$d new assignment</item>
+        <item quantity="other">Schedule saved: %1$d new assignments</item>
+    </plurals>
     <string name="overview_progress_title">Event progress</string>
     <string name="overview_progress_count">%1$d / %2$d missions completed</string>
     <string name="overview_mission_completed">✓ Completed</string>

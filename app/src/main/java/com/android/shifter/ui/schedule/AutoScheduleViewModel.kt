@@ -117,7 +117,8 @@ class AutoScheduleViewModel(
           return@launch
         }
         missionRepository.addAssignees(eventId, additions)
-        _uiState.update { it.copy(isSaving = false, saved = true) }
+        val count = additions.values.sumOf { it.size }
+        _uiState.update { it.copy(isSaving = false, saved = true, savedAssignments = count) }
         load()
       } catch (e: CancellationException) {
         throw e

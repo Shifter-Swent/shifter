@@ -69,6 +69,8 @@ enum class ScheduleSaveError {
  *   cleared when the proposal is prepared or accepted again.
  * @property saved whether the proposal was saved: the caller then leaves the screen or says so, and
  *   it cannot be accepted again.
+ * @property savedAssignments how many people that save assigned, for the caller to say so; 0 until
+ *   it is saved.
  * @property assigning the mission being finished by hand in the assign dialog, or null when the
  *   dialog is closed. Its selection holds the people already assigned, locked
  *   ([com.swent.shifter.ui.mission.AssigneeSelection.lockedIds]); the people proposed are not in
@@ -87,6 +89,7 @@ data class AutoScheduleUiState(
     val isSaving: Boolean = false,
     val saveError: ScheduleSaveError? = null,
     val saved: Boolean = false,
+    val savedAssignments: Int = 0,
     val assigning: AssignState? = null,
 ) {
   /** How many people the proposal assigns, over the whole event. */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +71,7 @@ object OrganizerOverviewScreenTestTags {
   const val ADD_MISSION_BUTTON = "OrganizerOverviewAddMissionButton"
   const val MANAGE_TEAMS_BUTTON = "OrganizerOverviewManageTeamsButton"
   const val SHIFTS_BUTTON = "OrganizerOverviewShiftsButton"
+  const val GENERATE_SCHEDULE_BUTTON = "OrganizerOverviewGenerateScheduleButton"
   const val PROGRESS_PERCENT = "OrganizerOverviewProgressPercent"
   const val PROGRESS_COUNT = "OrganizerOverviewProgressCount"
   const val ALL_TEAMS_CHIP = "OrganizerOverviewTeamChip_All"
@@ -98,7 +101,11 @@ object OrganizerOverviewScreenTestTags {
  * @param clock moves today on, so the screen opens on the right day and passes 04:00 by itself.
  * @param onAddMission called to open the mission creation form.
  * @param onManageTeams called to open the teams of the event.
+ * @param onGenerateSchedule called to open the proposed schedule of the event.
  * @param onEditMission called with the id of a mission to open its edit form.
+ * @param scheduleSaved how many people the proposed schedule just assigned, said once in a
+ *   snackbar, or null when it was not just saved.
+ * @param onScheduleSavedShown called once the snackbar has said it, so it is not said again.
  */
 @Composable
 fun OrganizerOverviewScreen(
@@ -107,17 +114,22 @@ fun OrganizerOverviewScreen(
     onAddMission: () -> Unit,
     onManageTeams: () -> Unit = {},
     onManageShifts: () -> Unit = {},
+    onGenerateSchedule: () -> Unit = {},
     onEditMission: (String) -> Unit = {},
+    scheduleSaved: Int? = null,
+    onScheduleSavedShown: () -> Unit = {},
 ) {
   val uiState by viewModel.uiState.collectAsState()
   OrganizerOverviewContent(
       state = uiState,
       now = rememberNow(clock),
+      scheduleSaved = scheduleSaved,
       actions =
           OrganizerOverviewActions(
               onAddMission = onAddMission,
               onManageTeams = onManageTeams,
               onManageShifts = onManageShifts,
+              onGenerateSchedule = onGenerateSchedule,
               onEditMission = onEditMission,
               onSelectTeam = viewModel::selectTeam,
               onRetry = viewModel::refresh,
@@ -127,6 +139,7 @@ fun OrganizerOverviewScreen(
               onSaveAssignees = viewModel::saveAssignees,
               onDismissAssign = viewModel::dismissAssign,
               onDeletedMissionShown = viewModel::deletedMissionShown,
+              onScheduleSavedShown = onScheduleSavedShown,
           ),
   )
 }
@@ -136,6 +149,7 @@ data class OrganizerOverviewActions(
     val onAddMission: () -> Unit = {},
     val onManageTeams: () -> Unit = {},
     val onManageShifts: () -> Unit = {},
+    val onGenerateSchedule: () -> Unit = {},
     val onEditMission: (String) -> Unit = {},
     val onSelectTeam: (String?) -> Unit = {},
     val onRetry: () -> Unit = {},
@@ -147,6 +161,7 @@ data class OrganizerOverviewActions(
     val onSaveAssignees: () -> Unit = {},
     val onDismissAssign: () -> Unit = {},
     val onDeletedMissionShown: () -> Unit = {},
+    val onScheduleSavedShown: () -> Unit = {},
 )
 
 /**
@@ -159,6 +174,8 @@ data class OrganizerOverviewActions(
  *
  * @param now when the screen is read, which decides which day is today.
  * @param zone the time zone the days are counted in, the device's one in the app.
+ * @param scheduleSaved how many people the proposed schedule just assigned, said once in a
+ *   snackbar, or null when it was not just saved.
  */
 @Composable
 fun OrganizerOverviewContent(
@@ -166,8 +183,23 @@ fun OrganizerOverviewContent(
     actions: OrganizerOverviewActions,
     now: Instant,
     zone: ZoneId = ZoneId.systemDefault(),
+    scheduleSaved: Int? = null,
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
+  val savedText = scheduleSaved?.let {
+    pluralStringResource(R.plurals.overview_schedule_saved, it, it)
+  }
+  LaunchedEffect(savedText) {
+    if (savedText != null) {
+      // As for a deleted mission below: told in finally, so leaving the screen meanwhile does not
+      // say it again on return.
+      try {
+        snackbarHostState.showSnackbar(savedText)
+      } finally {
+        actions.onScheduleSavedShown()
+      }
+    }
+  }
   val deleted = stringResource(R.string.overview_assign_deleted)
   LaunchedEffect(state.assignedMissionDeleted) {
     if (state.assignedMissionDeleted) {
@@ -228,6 +260,7 @@ private fun OverviewColumn(
       ManageTeamsButton(actions.onManageTeams, Modifier.weight(1f).fillMaxHeight())
       ShiftsButton(actions.onManageShifts, Modifier.weight(1f).fillMaxHeight())
     }
+    GenerateScheduleButton(actions.onGenerateSchedule)
     ProgressCard(state)
     if (state.loadFailed) {
       LoadErrorRow(
@@ -314,6 +347,26 @@ private fun ShiftsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
     Text(
         text = stringResource(R.string.overview_shifts),
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 8.dp).weight(1f),
+    )
+  }
+}
+
+/** Opens the proposed schedule of the event, which fills its missions from the shifts chosen. */
+@Composable
+private fun GenerateScheduleButton(onClick: () -> Unit) {
+  OutlinedButton(
+      onClick = onClick,
+      shape = RoundedCornerShape(14.dp),
+      modifier =
+          Modifier.fillMaxWidth()
+              .height(48.dp)
+              .testTag(OrganizerOverviewScreenTestTags.GENERATE_SCHEDULE_BUTTON),
+  ) {
+    Icon(Icons.Filled.EventAvailable, contentDescription = null, modifier = Modifier.size(20.dp))
+    Text(
+        text = stringResource(R.string.overview_generate_schedule),
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(start = 8.dp).weight(1f),
     )

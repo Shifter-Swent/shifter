@@ -98,6 +98,8 @@ import com.swent.shifter.ui.people.PeopleTab
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.scan.ScanScreen
 import com.swent.shifter.ui.scan.toScanResult
+import com.swent.shifter.ui.schedule.AutoScheduleScreen
+import com.swent.shifter.ui.schedule.AutoScheduleViewModel
 import com.swent.shifter.ui.settings.SettingsRoute
 import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.sharing.AndroidEventSharer
@@ -621,12 +623,20 @@ private fun ShifterNavGraph(
                     eventRequest<OrganizerEvent, String>(navController, OPEN_TEAM_KEY)
                   }
               LaunchedEffect(teamToOpen) { teamToOpen?.let(viewModel::openTeam) }
+              // Set by the proposed schedule once saved, and said once here.
+              val scheduleSaved by
+                  entry.savedStateHandle
+                      .getStateFlow<Int?>(SCHEDULE_SAVED_KEY, null)
+                      .collectAsState()
               OrganizerOverviewScreen(
                   viewModel = viewModel,
                   clock = repositories.minuteClock,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
                   onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
                   onManageShifts = { nav.navigateTo(OrganizerEventScreen.ManageShifts) },
+                  onGenerateSchedule = { nav.navigateTo(OrganizerEventScreen.AutoSchedule) },
+                  scheduleSaved = scheduleSaved,
+                  onScheduleSavedShown = { entry.savedStateHandle[SCHEDULE_SAVED_KEY] = null },
                   onEditMission = {
                     // A second row tapped before the form opens would reuse its entry, with the
                     // first mission's ViewModel: only the Overview still on top may open one.
@@ -688,6 +698,38 @@ private fun ShifterNavGraph(
                 onBack = nav::goBack,
                 onProceed = { nav.goBack() },
                 mode = TeamSetupMode.MANAGEMENT,
+            )
+          }
+          composable<OrganizerEventScreen.AutoSchedule> { entry ->
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId = eventRoute<OrganizerEvent>(navController, entry).eventId
+            AutoScheduleScreen(
+                viewModel =
+                    viewModel(
+                        factory =
+                            AutoScheduleViewModel.factory(
+                                eventId,
+                                repositories.missionRepository,
+                                repositories.teamRepository,
+                                repositories.membershipRequestRepository,
+                                repositories.userRepository,
+                                repositories.eventRepository,
+                                RepositoryAssigneeCandidates(
+                                    repositories.teamRepository,
+                                    repositories.membershipRequestRepository,
+                                    repositories.userRepository,
+                                ),
+                            )
+                    ),
+                clock = repositories.minuteClock,
+                onCancel = nav::goBack,
+                onSaved = { assignments ->
+                  // The Overview it returns to says how many were assigned, and reloads them.
+                  navController.previousBackStackEntry
+                      ?.savedStateHandle
+                      ?.set(SCHEDULE_SAVED_KEY, assignments)
+                  nav.goBack()
+                },
             )
           }
         }
@@ -838,6 +880,12 @@ private inline fun <reified E : Any, T> eventRequest(
     navController: NavHostController,
     key: String,
 ): T? = navController.getBackStackEntry<E>().savedStateHandle.remove<T>(key)
+
+/**
+ * The key, in the saved state of the organizer's Overview, of how many people the proposed schedule
+ * just assigned: set when it is saved, then cleared once the Overview has said it.
+ */
+private const val SCHEDULE_SAVED_KEY = "scheduleSaved"
 
 /**
  * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, the

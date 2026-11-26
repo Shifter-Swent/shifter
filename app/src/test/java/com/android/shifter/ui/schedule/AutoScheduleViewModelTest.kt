@@ -357,6 +357,8 @@ class AutoScheduleViewModelTest {
 
     assertTrue(state.saved)
     assertFalse(state.isSaving)
+    // Ben and Eva: what the Overview says once back.
+    assertEquals(2, state.savedAssignments)
     assertEquals(listOf("ana", "ben"), missions.getMission(eventId, "mission-1")?.assigneeIds)
     assertEquals(listOf("eva"), missions.getMission(eventId, "mission-2")?.assigneeIds)
     // The reload shows them as already assigned, with nothing left to accept.
