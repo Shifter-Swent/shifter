@@ -43,8 +43,9 @@ private val PROPOSAL =
                     isGeneral = false,
                     teamName = "Logistics",
                     volunteersNeeded = 4,
+                    assigned = listOf("Léa Petit"),
                     proposed = listOf("Maya Bernard", "Sam Keller"),
-                    missing = 2,
+                    missing = 1,
                 ),
                 ProposedMission(
                     id = "bar",
@@ -96,7 +97,10 @@ private fun PreviewHost(state: AutoScheduleUiState) {
 @Composable
 private fun SaturdayPreview() = PreviewHost(PROPOSAL)
 
-/** The Figma frame "fill by hand": the assign dialog over Saturday, for the stands. */
+/**
+ * The Figma frame "fill by hand": the assign dialog over Saturday, for the stands. Léa, already on
+ * them, is locked; the limit is her and the one spot left, so the two people proposed keep theirs.
+ */
 @Preview(name = "Fill by hand", widthDp = 390, heightDp = 988)
 @Composable
 private fun FillByHandPreview() =
@@ -106,17 +110,16 @@ private fun FillByHandPreview() =
                 AssignState(
                     missionId = "stands",
                     title = "Set up the stands",
-                    limit = 4,
+                    limit = 2,
                     selection =
                         AssigneeSelection(
                             candidates =
                                 listOf(
                                     AssigneeOption("lea", "Léa Petit"),
-                                    AssigneeOption("bob", "Bob Rossi"),
-                                    AssigneeOption("ines", "Inès Moreau"),
-                                    AssigneeOption("claire", "Claire Dubois"),
+                                    AssigneeOption("noah", "Noah Martin"),
+                                    AssigneeOption("zoe", "Zoé Blanc"),
                                 ),
-                            selectedIds = listOf("lea", "bob"),
+                            selectedIds = listOf("lea", "noah"),
                             lockedIds = setOf("lea"),
                         ),
                 )

@@ -1,6 +1,9 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.mission
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -120,6 +123,15 @@ class AssignDialogTest {
     composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u1")).assertIsOn()
     composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u1")).assertIsNotEnabled()
     composeTestRule.onNodeWithTag(AssigneePickerTestTags.option("u2")).assertIsEnabled()
+    // Screen readers say why they can't be unpicked, unlike a row blocked by the limit.
+    composeTestRule
+        .onNodeWithTag(AssigneePickerTestTags.option("u1"))
+        .assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Already assigned")
+        )
+    composeTestRule
+        .onNodeWithTag(AssigneePickerTestTags.option("u2"))
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.StateDescription))
   }
 
   /** The people picked for a mission needing [limit] of them, among Ada and Bob by default. */

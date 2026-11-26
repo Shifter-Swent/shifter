@@ -14,6 +14,7 @@ import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /** Covers [RepositoryAssigneeCandidates] and [AssigneeSelection.toggle]. */
@@ -112,6 +113,14 @@ class AssigneeCandidatesTest {
         )
 
     assertEquals(selection, selection.toggle("a", limit = 3))
+  }
+
+  @Test
+  fun selection_withSomeoneLockedButNotPicked_isRefused() {
+    // They could never be picked, and saving the selection would unassign them.
+    assertThrows(IllegalArgumentException::class.java) {
+      AssigneeSelection(candidates = listOf(AssigneeOption("a", "A")), lockedIds = setOf("a"))
+    }
   }
 
   private fun user(uid: String, name: String) = User(uid = uid, displayName = name, email = "")

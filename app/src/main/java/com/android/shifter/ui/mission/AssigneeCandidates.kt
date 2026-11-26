@@ -21,8 +21,12 @@ data class AssigneeOption(val id: String, val name: String?)
  * @property selectedIds the ids of the candidates picked, in the order they were picked.
  * @property isLoading whether [candidates] are being loaded.
  * @property loadFailed whether loading [candidates] failed.
- * @property lockedIds the people picked who cannot be unpicked, also in [selectedIds]: those
- *   already on a mission the proposed schedule only adds to, which never removes anyone.
+ * @property lockedIds the people picked who cannot be unpicked, always also in [selectedIds]: those
+ *   already on a mission the proposed schedule only adds to, which never removes anyone. Each one
+ *   counts in "Assigned: n/m" even without a row, so whoever builds the selection lists them in
+ *   [candidates] too, former members included, as the Overview does for the people it assigns.
+ * @throws IllegalArgumentException if someone in [lockedIds] is not in [selectedIds]: they could
+ *   then never be picked, and a save of [selectedIds] would unassign them.
  */
 data class AssigneeSelection(
     val candidates: List<AssigneeOption> = emptyList(),
@@ -31,6 +35,10 @@ data class AssigneeSelection(
     val loadFailed: Boolean = false,
     val lockedIds: Set<String> = emptySet(),
 ) {
+
+  init {
+    require(selectedIds.containsAll(lockedIds)) { "Every locked person must be picked" }
+  }
 
   /**
    * Unpicks the candidate [id] if picked, and picks them otherwise, unless [limit] people are

@@ -71,10 +71,13 @@ enum class ScheduleSaveError {
  *   it cannot be accepted again.
  * @property assigning the mission being finished by hand in the assign dialog, or null when the
  *   dialog is closed. Its selection holds the people already assigned, locked
- *   ([com.swent.shifter.ui.mission.AssigneeSelection.lockedIds]) and counted in its limit, the
- *   mission's volunteers needed; the people proposed are not in it, since they come with Accept.
- *   Saving it assigns the people picked at once, as on the Overview, apart from the proposal, which
- *   is then prepared again.
+ *   ([com.swent.shifter.ui.mission.AssigneeSelection.lockedIds]); the people proposed are not in
+ *   it, since they come with Accept. Its limit is what the card says is left: the people already
+ *   assigned plus [ProposedMission.missing], so picking never takes the spots of the people
+ *   proposed. Saving it adds only the people picked beyond the locked ones, with
+ *   `MissionRepository.addAssignees`, which never removes anyone, even someone assigned from the
+ *   Overview meanwhile, and refuses a mission that filled up meanwhile; the proposal is then
+ *   prepared again.
  */
 data class AutoScheduleUiState(
     val isLoading: Boolean = true,

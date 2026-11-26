@@ -71,6 +71,8 @@
     <string name="assignee_picker_load_failed">Could not load the people to assign.</string>
     <string name="assignee_picker_retry">Retry</string>
     <string name="assignee_picker_unknown">Unnamed volunteer</string>
+    <!-- What screen readers say for someone already on the mission, who can't be unpicked -->
+    <string name="assignee_picker_already_assigned">Already assigned</string>
 
     <!-- The dialog that picks people for an existing mission (AssignDialog) -->
     <string name="assign_dialog_save">Save</string>
