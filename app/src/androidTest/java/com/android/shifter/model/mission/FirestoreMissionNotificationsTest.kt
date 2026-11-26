@@ -25,6 +25,7 @@ import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -124,6 +125,21 @@ class FirestoreMissionNotificationsTest {
   }
 
   @Test
+  fun updateAssignees_addingAndRemovingAtOnce_tellsEachChangeOnce() = emulatorTest {
+    val carol = account()
+    val mission = create(assigneeIds = listOf(alice.uid, carol.uid))
+    val assignees = listOf(carol.uid, bob.uid)
+
+    repository.updateAssignees(eventId, mission.id, assignees)
+    // Made again, as after a retry, it changes nobody's missions, so it tells nobody more.
+    repository.updateAssignees(eventId, mission.id, assignees)
+
+    assertEquals(Value.REMOVED, inboxOf(alice).single().data[Key.CHANGE])
+    assertEquals(Value.ADDED, inboxOf(bob).single().data[Key.CHANGE])
+    assertTrue(inboxOf(carol).isEmpty())
+  }
+
+  @Test
   fun updateAssignees_byOneAssigningThemself_tellsOnlyTheOthers() = emulatorTest {
     val mission = create()
 
@@ -174,6 +190,27 @@ class FirestoreMissionNotificationsTest {
   }
 
   @Test
+  fun updateMission_withANewTimeAndThePlaceRemoved_tellsBothWithoutAnAddress() = emulatorTest {
+    val mission = create(assigneeIds = listOf(alice.uid))
+
+    repository.updateMission(mission.copy(startAt = start + Duration.ofHours(1), location = null))
+
+    val received = inboxOf(alice).single()
+    assertEquals(Value.TIME_AND_PLACE, received.data[Key.WHAT])
+    assertNull(received.data[Key.ADDRESS])
+  }
+
+  @Test
+  fun updateMission_byOneOfItsAssignees_tellsOnlyTheOthers() = emulatorTest {
+    val mission = create(assigneeIds = listOf(organizer.uid, alice.uid))
+
+    repository.updateMission(mission.copy(startAt = start + Duration.ofHours(1)))
+
+    assertTrue(inboxOf(organizer).isEmpty())
+    assertEquals(Value.TIME, inboxOf(alice).single().data[Key.WHAT])
+  }
+
+  @Test
   fun updateMission_withOnlyANewTitle_tellsNobody() = emulatorTest {
     val mission = create(assigneeIds = listOf(alice.uid))
 
@@ -184,7 +221,7 @@ class FirestoreMissionNotificationsTest {
   }
 
   @Test
-  fun updates_signedOut_areRefusedBeforeAnyRequest() = emulatorTest {
+  fun updates_signedOut_areRefused() = emulatorTest {
     val mission = create(assigneeIds = listOf(alice.uid))
     auth.signOut()
 
