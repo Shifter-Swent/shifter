@@ -29,8 +29,8 @@ import org.junit.runner.RunWith
  * the organizer of a scratch event from 09:00 to 23:00 UTC. The slots are taken in UTC, where the
  * even hours of `slotOf` are the same whatever the device's zone.
  *
- * A slot volunteers chose is written as an admin: only #594 lets volunteers write the shifts. A
- * test that needs someone else signs in with a new account, deleted in [tearDown].
+ * A slot volunteers chose is written as an admin, without the request that puts them in it. A test
+ * that needs someone else signs in with a new account, deleted in [tearDown].
  */
 @RunWith(AndroidJUnit4::class)
 class FirestoreShiftRepositoryTest {
@@ -180,7 +180,7 @@ class FirestoreShiftRepositoryTest {
         repository.openSlot(eventId, TWELVE)
         emissions.receiveUntil { it.map(Shift::id) == listOf(TEN.shiftId, TWELVE.shiftId) }
 
-        // A volunteer chooses the slot, written as an admin until #594 lets them.
+        // A volunteer chooses the slot, written as an admin without their request.
         FirestoreEmulatorAdmin.deleteDocument(shiftPath(TEN))
         writeChosenSlot(TEN, listOf("user-volunteer"))
         emissions.receiveUntil { shifts ->
@@ -202,7 +202,7 @@ class FirestoreShiftRepositoryTest {
     auth.signInForFirestore { auth.createUserWithEmailAndPassword(email, PASSWORD).await() }
   }
 
-  /** Stores the shift of [slot] with [volunteerIds], as #594 will once they apply. */
+  /** Stores the shift of [slot] with [volunteerIds], as their applications would. */
   private suspend fun writeChosenSlot(slot: ShiftSlot, volunteerIds: List<String>) {
     step("write a chosen slot") {
       FirestoreEmulatorAdmin.createDocument(
