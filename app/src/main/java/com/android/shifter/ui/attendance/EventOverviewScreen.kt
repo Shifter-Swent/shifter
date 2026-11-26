@@ -42,6 +42,8 @@ import com.swent.shifter.ui.components.time.rememberNow
  * @param onAddMission opens the mission creation form, offered to a manager only.
  * @param onEditMission opens the edit form of a mission, offered to a manager only, and none when
  *   null.
+ * @param initialTeamId the team whose missions a manager's Overview lists at first, as a
+ *   notification about that team asks; all of them when null. A volunteer's has no team filter.
  */
 @Composable
 fun EventOverviewScreen(
@@ -52,6 +54,7 @@ fun EventOverviewScreen(
     onViewOnMap: () -> Unit = {},
     onAddMission: () -> Unit = {},
     onEditMission: ((String) -> Unit)? = null,
+    initialTeamId: String? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
   // A check-in still in its undo window is sent when the screen is left or the app goes to the
@@ -79,6 +82,7 @@ fun EventOverviewScreen(
             onCompletionFailureShown = viewModel::onCompletionFailureShown,
             onAddMission = onAddMission,
             onEditMission = onEditMission,
+            initialTeamId = initialTeamId,
         )
     false -> volunteerOverview()
     // Not known yet, which a first load that failed also leaves it at: neither screen is shown,

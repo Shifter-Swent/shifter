@@ -106,6 +106,7 @@ import com.swent.shifter.ui.sharing.SharingScreen
 import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
+import java.time.LocalDate
 import kotlinx.coroutines.flow.filter
 
 /**
@@ -370,6 +371,17 @@ private fun ShifterNavGraph(
             content = { entry, event ->
               val eventId = event.eventId
               val userId = currentUserId()
+              // Asked by a notification, read once as OPEN_REQUESTS_KEY is: the screens then keep
+              // the day and the team picked through a rotation.
+              val dayToOpen =
+                  remember(entry) {
+                    eventRequest<VolunteerEvent, String>(navController, OPEN_DAY_KEY)
+                        ?.let(LocalDate::parse)
+                  }
+              val teamToOpen =
+                  remember(entry) {
+                    eventRequest<VolunteerEvent, String>(navController, OPEN_TEAM_KEY)
+                  }
               // No session: authState above is already on its way back to sign-in, and nobody is
               // the manager of anything, so no event is loaded on behalf of an empty user.
               if (userId != null) {
@@ -403,6 +415,7 @@ private fun ShifterNavGraph(
                         nav.navigateTo(VolunteerEventScreen.EditMission(it))
                       }
                     },
+                    initialTeamId = teamToOpen,
                     volunteerOverview = {
                       VolunteerOverview(
                           planning =
@@ -443,6 +456,7 @@ private fun ShifterNavGraph(
                               )
                             }
                           },
+                          initialDay = dayToOpen,
                       )
                     },
                 )
@@ -598,6 +612,13 @@ private fun ShifterNavGraph(
                   )
               // Shows the missions added while the creation form was on top.
               RefreshOnReturn(viewModel::refresh)
+              // Asked by a notification about a team, read once as OPEN_REQUESTS_KEY is: the
+              // ViewModel then keeps the team picked.
+              val teamToOpen =
+                  remember(entry) {
+                    eventRequest<OrganizerEvent, String>(navController, OPEN_TEAM_KEY)
+                  }
+              LaunchedEffect(teamToOpen) { teamToOpen?.let(viewModel::openTeam) }
               OrganizerOverviewScreen(
                   viewModel = viewModel,
                   clock = repositories.minuteClock,
@@ -789,6 +810,15 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
  * tabs share no ViewModel, and the Map's route takes no argument as the home of its tab.
  */
 private const val OPEN_MISSION_KEY = "openMission"
+
+/**
+ * What a notification asks the screens of the event graph [E] under [key], such as [OPEN_DAY_KEY],
+ * taken out as it is read so it is shown once: the screen keeps it from then on.
+ */
+private inline fun <reified E : Any, T> eventRequest(
+    navController: NavHostController,
+    key: String,
+): T? = navController.getBackStackEntry<E>().savedStateHandle.remove<T>(key)
 
 /**
  * Registers the Map [tab] of the event open in the graph [E], showing its missions on a map, the

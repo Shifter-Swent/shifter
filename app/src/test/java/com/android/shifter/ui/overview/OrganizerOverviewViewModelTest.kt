@@ -135,6 +135,12 @@ class OrganizerOverviewViewModelTest {
     get() = viewModel.uiState.value.assigning
 
   private fun TestScope.open() {
+    create()
+    advanceUntilIdle()
+  }
+
+  /** Creates the ViewModel, its load still running. */
+  private fun create() {
     viewModel =
         OrganizerOverviewViewModel(
             eventId,
@@ -144,7 +150,6 @@ class OrganizerOverviewViewModelTest {
             eventReads,
             now = { clock },
         )
-    advanceUntilIdle()
   }
 
   @Test
@@ -223,6 +228,54 @@ class OrganizerOverviewViewModelTest {
     viewModel.selectTeam("other")
 
     assertEquals("bar", viewModel.uiState.value.selectedTeamId)
+  }
+
+  @Test
+  fun openTeam_whileTheTeamsLoad_isKeptOnceTheyAreRead() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    addMission("Serve drinks", "bar", hour = 2)
+    create()
+
+    // As a notification about the Bar team asks, before the teams are read.
+    viewModel.openTeam("bar")
+    advanceUntilIdle()
+
+    assertEquals(listOf("Serve drinks"), viewModel.uiState.value.visibleMissions.map { it.title })
+  }
+
+  @Test
+  fun openTeam_ofATeamNotInTheEvent_isDroppedByTheLoad() = runTest {
+    create()
+
+    viewModel.openTeam("deleted")
+    advanceUntilIdle()
+
+    assertNull(viewModel.uiState.value.selectedTeamId)
+  }
+
+  @Test
+  fun openTeam_afterAFailedLoad_isKeptForTheRetry() = runTest {
+    addMission("Set up", "logistics", hour = 1)
+    addMission("Serve drinks", "bar", hour = 2)
+    missions.failure = IllegalStateException("offline")
+    open()
+
+    // The notification's team arrives once the first load has failed.
+    viewModel.openTeam("bar")
+    missions.failure = null
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(listOf("Serve drinks"), viewModel.uiState.value.visibleMissions.map { it.title })
+  }
+
+  @Test
+  fun openTeam_onceTheTeamsAreRead_ignoresAnUnknownOne() = runTest {
+    open()
+
+    viewModel.openTeam("deleted")
+
+    assertNull(viewModel.uiState.value.selectedTeamId)
   }
 
   @Test

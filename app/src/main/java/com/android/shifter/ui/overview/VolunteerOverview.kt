@@ -41,6 +41,7 @@ import com.swent.shifter.ui.planning.PlanningUiState
 import com.swent.shifter.ui.planning.PlanningViewModel
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 
 object VolunteerOverviewTestTags {
@@ -73,6 +74,7 @@ fun VolunteerOverview(
     onOpenOnMap: (Mission) -> Unit,
     onContact: (Mission) -> Unit,
     modifier: Modifier = Modifier,
+    initialDay: LocalDate? = null,
 ) {
   val planningState by planning.uiState.collectAsStateWithLifecycle()
   val checkInState by autoCheckIn.uiState.collectAsStateWithLifecycle()
@@ -98,6 +100,7 @@ fun VolunteerOverview(
       onRetryCheckIn = autoCheckIn::retry,
       onRetry = planning::load,
       modifier = modifier,
+      initialDay = initialDay,
   )
 }
 
@@ -130,6 +133,7 @@ fun VolunteerOverviewContent(
     onRetryCheckIn: () -> Unit = {},
     revealRequest: Int = 0,
     modifier: Modifier = Modifier,
+    initialDay: LocalDate? = null,
 ) {
   Column(
       modifier =
@@ -169,6 +173,7 @@ fun VolunteerOverviewContent(
         expandedMissionId = expandedMissionId,
         onMissionClick = onMissionClick,
         revealRequest = revealRequest,
+        initialDay = initialDay,
     )
   }
 }

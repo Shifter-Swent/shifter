@@ -161,6 +161,8 @@ private val ExpandedIdsSaver: Saver<Set<String>, ArrayList<String>> =
  * @param onEditMission opens the edit form of a mission. Its pencil is shown only when it is given,
  *   to a manager, on a mission they can still change: the organizer edits missions from their own
  *   Overview.
+ * @param initialTeamId the team picked at first, as a notification about that team asks; all the
+ *   teams when null. It filters only while the menu offers it, as a team picked there does.
  */
 @Composable
 fun ManagerOverviewContent(
@@ -178,6 +180,7 @@ fun ManagerOverviewContent(
     onCompletionFailureShown: () -> Unit = {},
     onAddMission: (() -> Unit)? = null,
     onEditMission: ((String) -> Unit)? = null,
+    initialTeamId: String? = null,
 ) {
   // The teams of the missions the user may watch: no query of its own, and none invented.
   val teams =
@@ -199,7 +202,7 @@ fun ManagerOverviewContent(
             .takeIf { it.isNotEmpty() && !state.isOrganizer }
             ?.let { teamNowState(it.onEventDayOf(now, zone), now) }
       }
-  var pickedTeamId by rememberSaveable { mutableStateOf<String?>(null) }
+  var pickedTeamId by rememberSaveable { mutableStateOf(initialTeamId) }
   // By id, so filtering a team out and back leaves the cards opened as they were.
   var expandedMissionIds by
       rememberSaveable(stateSaver = ExpandedIdsSaver) { mutableStateOf(emptySet<String>()) }

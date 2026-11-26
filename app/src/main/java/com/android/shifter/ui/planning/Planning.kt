@@ -131,6 +131,8 @@ object PlanningTestTags {
  * @param revealRequest a new value brings the expanded row into view again, even when it was
  *   already expanded, as the now card's "View details" does; on another day than the one shown, the
  *   Planning moves to the row's day first.
+ * @param initialDay the day shown at first rather than today, as a notification about a mission
+ *   asks; today when null or not a day of the event.
  */
 @Composable
 fun Planning(
@@ -142,13 +144,14 @@ fun Planning(
     expandedMissionId: String? = null,
     onMissionClick: ((String) -> Unit)? = null,
     revealRequest: Int = 0,
+    initialDay: LocalDate? = null,
 ) {
   val byDay =
       remember(missions, zone) {
         groupByDay(missions.chronological(), { it.startAt }, zone).toMap()
       }
   val days = remember(byDay, eventPeriod, zone) { eventDays(eventPeriod, byDay.keys, zone) }
-  val selection = rememberDaySelection(days, today)
+  val selection = rememberDaySelection(days, today, initialDay)
   val selected = selection.selected
   val showsStrip = missions.isNotEmpty() && days.size > 1
   // The row asked by revealRequest while on another day: shown on its day, then brought into view.
