@@ -246,8 +246,10 @@ service cloud.firestore {
         }
 
         allow read: if isRequester() || isOrganizer(eventId);
+        // The event and the team must exist: get() of a missing document denies. An application
+        // carries no shiftIds yet, since the app would not put the volunteer in those shifts in
+        // the same commit (#594).
         allow create: if isRequester()
-          && exists(/databases/$(database)/documents/events/$(eventId))
           && eventRunning()
           && request.resource.data.keys().hasOnly(
                ['userId', 'teamId', 'availability', 'status', 'createdAt'])
@@ -255,7 +257,6 @@ service cloud.firestore {
           && request.resource.data.status == 'PENDING'
           // A volunteer applies to exactly one team, which must belong to the event.
           && request.resource.data.teamId is string
-          && exists(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
           // Nor to a team being deleted (#398): an application sent after the deletion read the
           // pending ones would outlive the team.
           && get(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
@@ -263,6 +264,19 @@ service cloud.firestore {
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
           && request.resource.data.createdAt is timestamp;
+
+        // A pending volunteer changes the shifts they chose, and so their availability (#601),
+        // while the event runs and their team is not being deleted, as when they applied.
+        allow update: if isRequester()
+          && resource.data.status == 'PENDING'
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['shiftIds', 'availability'])
+          && request.resource.data.get('shiftIds', []) is list
+          && request.resource.data.availability is list
+          && request.resource.data.availability.size() > 0
+          && eventRunning()
+          && get(/databases/$(database)/documents/events/$(eventId)/teams/$(resource.data.teamId))
+               .data.get('deleting', false) != true;
 
         // The organizer moves an accepted volunteer to another team of the event: in the
         // same commit, the volunteer joins the new team and is no longer in the old one, if any,
@@ -655,10 +669,52 @@ service cloud.firestore {
           return length.seconds() in [3600, 7200, 10800] && length.nanos() == 0;
         }
 
+        // An update changes volunteerIds only, never the slot, and leaves no volunteer twice. An
+        // absent list reads as empty, as in the app.
+        function changesOnlyVolunteers() {
+          let after = request.resource.data.get('volunteerIds', null);
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['volunteerIds'])
+            && after is list
+            && after.size() == after.toSet().size();
+        }
+
+        function added() {
+          return request.resource.data.volunteerIds.toSet()
+            .difference(resource.data.get('volunteerIds', []).toSet());
+        }
+
+        // A volunteer adds or removes themself only, as their request says after the same commit,
+        // leaving the others in their order: in it at the end, as arrayUnion writes, before the
+        // slot starts and while the request is pending and lists this shift; out of it, as
+        // arrayRemove writes, once the request no longer lists it or is withdrawn. A rule cannot go
+        // through a request's shiftIds, so the link is checked from the shift's side only. A write
+        // that changes nothing passes, so a withdrawal still commits when the organizer already
+        // took the volunteer out of one of the shifts.
+        function isOwnChoice() {
+          let before = resource.data.get('volunteerIds', []);
+          let after = request.resource.data.volunteerIds;
+          let application =
+            /databases/$(database)/documents/events/$(eventId)/membershipRequests/$(request.auth.uid);
+          return changesOnlyVolunteers()
+            && ((after == before.concat([request.auth.uid])
+                 && request.time < resource.data.startAt
+                 && getAfter(application).data.status == 'PENDING'
+                 && shiftId in getAfter(application).data.get('shiftIds', []))
+              || (after == before.removeAll([request.auth.uid])
+                 && (!existsAfter(application)
+                     || !(shiftId in getAfter(application).data.get('shiftIds', []))))
+              || after == before);
+        }
+
         // Candidates read the shifts too, since a volunteer chooses them before applying.
         allow read: if signedIn();
-        // A slot is never edited, only opened and closed.
+        // The slot itself is never edited, only opened and closed.
         allow create: if isOrganizer(eventId) && isNewSlot();
+        allow update: if signedIn() && isOwnChoice();
+        // The organizer takes volunteers out, when they reject them or delete their team, but never
+        // puts one in. A rule cannot check each of several volunteers removed at once, and the
+        // organizer may reject anyone anyway. The order of those left is theirs to change.
+        allow update: if changesOnlyVolunteers() && added().size() == 0 && isOrganizer(eventId);
         // A slot volunteers chose stays open; an absent one deletes nothing, so closing again
         // succeeds.
         allow delete: if isOrganizer(eventId)

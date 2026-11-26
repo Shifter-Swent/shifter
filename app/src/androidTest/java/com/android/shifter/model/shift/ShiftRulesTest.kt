@@ -34,10 +34,9 @@ import org.junit.runner.RunWith
  * Security rules of the `shifts` subcollection, run against the Firestore emulator: any signed-in
  * user reads them, since a volunteer chooses shifts before applying; only the organizer opens a
  * slot, of the right shape and during the event, and closes it while nobody chose it; nobody edits
- * a slot.
+ * the slot itself. Who may change its `volunteerIds` is [ShiftVolunteerRulesTest]'s concern.
  *
- * The scratch event runs from 09:00 to 23:00 UTC. A slot volunteers chose is written as an admin:
- * only #594 lets volunteers write the shifts.
+ * The scratch event runs from 09:00 to 23:00 UTC. A slot volunteers chose is written as an admin.
  */
 @RunWith(AndroidJUnit4::class)
 class ShiftRulesTest {
@@ -142,14 +141,33 @@ class ShiftRulesTest {
   }
 
   @Test
-  fun update_isDenied() = emulatorTest {
+  fun update_ofTheSlot_isDenied() = emulatorTest {
     val shift = open(slot(10))
+    assertDenied { shift.update(ShiftSchema.END_AT, at(13).ts()).await() }
 
-    // Not even by the organizer: a slot is opened and closed, never edited.
-    assertDenied { shift.update(ShiftSchema.VOLUNTEER_IDS, listOf(volunteer.uid)).await() }
-    assertDenied { shift.update(ShiftSchema.END_AT, at(13).toFirestoreTimestamp()).await() }
-    signIn(volunteer)
-    assertDenied { shift.update(ShiftSchema.VOLUNTEER_IDS, listOf(volunteer.uid)).await() }
+    // Not even by the organizer taking a volunteer out at the same time: a slot is never edited.
+    step("write a chosen slot") {
+      FirestoreEmulatorAdmin.deleteDocument(shift.path)
+      FirestoreEmulatorAdmin.createDocument(
+          shift.path,
+          mapOf(
+              ShiftSchema.VOLUNTEER_IDS to listOf(volunteer.uid),
+              ShiftSchema.START_AT to slot(10).startAt,
+              ShiftSchema.END_AT to slot(10).endAt,
+              ShiftSchema.CREATED_AT to EVENT_START,
+          ),
+      )
+    }
+    assertDenied {
+      shift
+          .update(
+              mapOf(
+                  ShiftSchema.VOLUNTEER_IDS to emptyList<String>(),
+                  ShiftSchema.END_AT to at(13).ts(),
+              )
+          )
+          .await()
+    }
   }
 
   @Test
