@@ -246,8 +246,8 @@ service cloud.firestore {
         }
 
         allow read: if isRequester() || isOrganizer(eventId);
+        // The event and the team must exist: get() of a missing document denies.
         allow create: if isRequester()
-          && exists(/databases/$(database)/documents/events/$(eventId))
           && eventRunning()
           && request.resource.data.keys().hasOnly(
                ['userId', 'teamId', 'availability', 'shiftIds', 'status', 'createdAt'])
@@ -255,7 +255,6 @@ service cloud.firestore {
           && request.resource.data.status == 'PENDING'
           // A volunteer applies to exactly one team, which must belong to the event.
           && request.resource.data.teamId is string
-          && exists(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
           // Nor to a team being deleted (#398): an application sent after the deletion read the
           // pending ones would outlive the team.
           && get(/databases/$(database)/documents/events/$(eventId)/teams/$(request.resource.data.teamId))
