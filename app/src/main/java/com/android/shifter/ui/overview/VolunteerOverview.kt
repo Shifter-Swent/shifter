@@ -28,10 +28,10 @@ import com.swent.shifter.R
 import com.swent.shifter.model.location.LocationStatus
 import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.time.MinuteClock
+import com.swent.shifter.model.time.eventDay
 import com.swent.shifter.ui.checkin.AutoCheckInUiState
 import com.swent.shifter.ui.checkin.AutoCheckInViewModel
 import com.swent.shifter.ui.checkin.whyNotCheckedIn
-import com.swent.shifter.ui.components.days.eventDay
 import com.swent.shifter.ui.components.nowcard.NowCard
 import com.swent.shifter.ui.components.nowcard.NowState
 import com.swent.shifter.ui.components.time.rememberNow

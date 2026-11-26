@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.components.days
 
+import com.swent.shifter.model.time.eventDay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

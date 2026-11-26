@@ -38,8 +38,37 @@
     <!-- TEAM_CHANGED (#599). Prefix: notification_team_changed_ -->
 
     <!-- MISSION_ASSIGNED (#617, #606). Prefix: notification_mission_assigned_ -->
+    <!-- Added to one mission: its title, the short day ("Sat") and the time it starts. -->
+    <string name="notification_mission_assigned_added_one">You\'re on %1$s, %2$s %3$s.</string>
+    <!-- Added to several missions of the event: how many, and the event's title. -->
+    <plurals name="notification_mission_assigned_added_many">
+        <item quantity="one">%1$d new mission at %2$s.</item>
+        <item quantity="other">%1$d new missions at %2$s.</item>
+    </plurals>
+    <!-- Removed from one mission: its title. -->
+    <string name="notification_mission_assigned_removed_one">You were removed from %1$s.</string>
+    <!-- Removed from several missions of the event: how many. -->
+    <plurals name="notification_mission_assigned_removed_many">
+        <item quantity="one">You were removed from %1$d mission.</item>
+        <item quantity="other">You were removed from %1$d missions.</item>
+    </plurals>
 
     <!-- MISSION_CHANGED (#617). Prefix: notification_mission_changed_ -->
+    <!-- New time: the title, the short day ("Sat"), the start and the end. -->
+    <string name="notification_mission_changed_time">%1$s now runs %2$s %3$s–%4$s.</string>
+    <!-- New place: the title and the new address. -->
+    <string name="notification_mission_changed_place">%1$s moved to %2$s.</string>
+    <!-- New time and place: the title, the short day, the start, the end and the new address. -->
+    <string name="notification_mission_changed_time_and_place">%1$s now runs %2$s %3$s–%4$s at %5$s.</string>
+    <!-- Place removed: the title. -->
+    <string name="notification_mission_changed_no_place">%1$s no longer has a place.</string>
+    <!-- New time and place removed: the title, the short day, the start and the end. -->
+    <string name="notification_mission_changed_time_and_no_place">%1$s now runs %2$s %3$s–%4$s and no longer has a place.</string>
+    <!-- Several missions of the event changed: how many. -->
+    <plurals name="notification_mission_changed_many">
+        <item quantity="one">%1$d of your missions changed.</item>
+        <item quantity="other">%1$d of your missions changed.</item>
+    </plurals>
 
     <!-- ANNOUNCEMENT (#618). Prefix: notification_announcement_ -->
 

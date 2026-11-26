@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.swent.shifter.model.time.eventDay
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

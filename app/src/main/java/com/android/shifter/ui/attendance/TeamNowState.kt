@@ -1,8 +1,8 @@
 // Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
 package com.swent.shifter.ui.attendance
 
-import com.swent.shifter.ui.components.days.eventDay
-import com.swent.shifter.ui.components.days.runsOnEventDay
+import com.swent.shifter.model.time.eventDay
+import com.swent.shifter.model.time.runsOnEventDay
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
