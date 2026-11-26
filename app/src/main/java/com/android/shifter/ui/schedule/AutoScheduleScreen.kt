@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.swent.shifter.R
 import com.swent.shifter.model.time.MinuteClock
 import com.swent.shifter.ui.components.LoadErrorRow
@@ -107,8 +109,8 @@ object AutoScheduleTestTags {
  *
  * @param clock moves today on, so the screen opens on the right day and passes 04:00 by itself.
  * @param onCancel called to leave the screen without saving.
- * @param onSaved called once the proposal is saved, with how many people it assigned, to leave the
- *   screen and say so.
+ * @param onSaved called once the proposal is saved and the screen is resumed, with how many people
+ *   it assigned, to leave the screen and say so.
  */
 @Composable
 fun AutoScheduleScreen(
@@ -119,7 +121,12 @@ fun AutoScheduleScreen(
 ) {
   val state by viewModel.uiState.collectAsState()
   val currentOnSaved by rememberUpdatedState(onSaved)
-  LaunchedEffect(state.saved) { if (state.saved) currentOnSaved(state.savedAssignments) }
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(state.saved) {
+    // Waits until the screen is resumed: going back is ignored before, and the organizer would stay
+    // on a proposal already saved, as on the mission form (#467). Gives up if the screen is left.
+    if (state.saved) lifecycle.withResumed { currentOnSaved(state.savedAssignments) }
+  }
   AutoScheduleContent(
       state = state,
       now = rememberNow(clock),
