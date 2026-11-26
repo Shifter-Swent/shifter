@@ -140,7 +140,7 @@ class AutoScheduleViewModel(
         _uiState.update { state ->
           state.copy(
               isLoading = false,
-              missions = shown.map { it.toProposed(proposal, teamNames, names) },
+              missions = shown.map { it.toProposed(proposal, teamNames, names, now) },
           )
         }
       } catch (e: CancellationException) {
@@ -220,12 +220,14 @@ private fun saveErrorOf(e: Exception): ScheduleSaveError =
 
 /**
  * This mission as the proposed schedule shows it, with the [names] of who is on it and who the
- * [proposal] adds. A name that could not be read is null, and still counts.
+ * [proposal] adds. A name that could not be read is null, and still counts. It has started at
+ * [now], the instant the proposal was prepared for, so the two agree on which missions it skips.
  */
 private fun Mission.toProposed(
     proposal: ScheduleProposal,
     teamNames: Map<String, String>,
     names: Map<String, String?>,
+    now: Instant,
 ) =
     ProposedMission(
         id = id,
@@ -238,4 +240,5 @@ private fun Mission.toProposed(
         assigned = assigneeIds.map { names[it] },
         proposed = proposal.proposed[id].orEmpty().map { names[it] },
         missing = proposal.unfilled[id] ?: 0,
+        started = now >= startAt,
     )

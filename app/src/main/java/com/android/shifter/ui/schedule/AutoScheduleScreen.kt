@@ -185,7 +185,10 @@ private fun Proposal(
   if (missions.isEmpty()) {
     DayWithoutMissions(dayPicker.shown, Modifier.testTag(AutoScheduleTestTags.EMPTY_DAY))
   }
-  missions.forEach { MissionCard(it, dayPicker.shown, zone, onAssign) }
+  // Without a strip nothing says which day is shown: the date then goes on the cards of any other
+  // day than today, as on the Overview.
+  val day = if (dayPicker.showsStrip) dayPicker.shown else dayPicker.today
+  missions.forEach { MissionCard(it, day, zone, canAssign = !state.isSaving, onAssign) }
 }
 
 /** What the proposal adds over the whole event, what stays to do by hand, and the legend. */
@@ -276,6 +279,7 @@ private fun MissionCard(
     mission: ProposedMission,
     day: LocalDate,
     zone: ZoneId,
+    canAssign: Boolean,
     onAssign: (String) -> Unit,
 ) {
   val short = mission.missing > 0
@@ -352,17 +356,25 @@ private fun MissionCard(
           }
         }
       }
-      if (short) ToFillByHand(mission, slot, onAssign)
+      if (short) ToFillByHand(mission, slot, canAssign, onAssign)
     }
   }
 }
 
 /**
  * What a short mission still needs, "2 spots to fill by hand", with Assign to finish it, then why
- * nobody fills it: a General mission never is, and a team mission had nobody else free.
+ * nobody fills it: a General mission never is, nor one already started, and a team mission had
+ * nobody else free. A mission whose team no longer exists has no Assign: there is nobody to pick.
+ * Assign is off while the proposal is saved, so a hand pick can't make that save outdated.
  */
 @Composable
-private fun ToFillByHand(mission: ProposedMission, slot: String, onAssign: (String) -> Unit) {
+private fun ToFillByHand(
+    mission: ProposedMission,
+    slot: String,
+    canAssign: Boolean,
+    onAssign: (String) -> Unit,
+) {
+  val teamGone = !mission.isGeneral && mission.teamName == null
   val assignDescription = stringResource(R.string.schedule_assign_description, mission.title)
   Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
     Row(
@@ -381,26 +393,29 @@ private fun ToFillByHand(mission: ProposedMission, slot: String, onAssign: (Stri
           color = shifter_warning,
           modifier = Modifier.weight(1f),
       )
-      TextButton(
-          onClick = { onAssign(mission.id) },
-          modifier =
-              Modifier.semantics { contentDescription = assignDescription }
-                  .testTag(AutoScheduleTestTags.assign(mission.id)),
-      ) {
-        Text(stringResource(R.string.schedule_assign), fontWeight = FontWeight.SemiBold)
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-        )
+      if (!teamGone) {
+        TextButton(
+            onClick = { onAssign(mission.id) },
+            enabled = canAssign,
+            modifier =
+                Modifier.semantics { contentDescription = assignDescription }
+                    .testTag(AutoScheduleTestTags.assign(mission.id)),
+        ) {
+          Text(stringResource(R.string.schedule_assign), fontWeight = FontWeight.SemiBold)
+          Icon(
+              Icons.AutoMirrored.Filled.KeyboardArrowRight,
+              contentDescription = null,
+              modifier = Modifier.size(18.dp),
+          )
+        }
       }
     }
     Text(
         text =
             when {
               mission.isGeneral -> stringResource(R.string.schedule_to_fill_general)
-              mission.teamName == null ->
-                  stringResource(R.string.schedule_to_fill_unknown_team, slot)
+              mission.started -> stringResource(R.string.schedule_to_fill_started)
+              mission.teamName == null -> stringResource(R.string.schedule_to_fill_team_gone)
               else -> stringResource(R.string.schedule_to_fill_team, mission.teamName, slot)
             },
         style = MaterialTheme.typography.labelSmall,

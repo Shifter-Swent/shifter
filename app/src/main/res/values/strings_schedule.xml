@@ -43,7 +43,8 @@
     <string name="schedule_assign_description">Assign people to %1$s</string>
     <!-- Why nobody fills the spots left, e.g. "Nobody else in Logistics is free for 08:00–11:00." -->
     <string name="schedule_to_fill_team">Nobody else in %1$s is free for %2$s.</string>
-    <string name="schedule_to_fill_unknown_team">Nobody else in this team is free for %1$s.</string>
+    <string name="schedule_to_fill_started">This mission has already started.</string>
+    <string name="schedule_to_fill_team_gone">Its team no longer exists.</string>
     <string name="schedule_to_fill_general">General missions are never filled automatically.</string>
     <string name="schedule_nothing_title">Nothing to propose</string>
     <string name="schedule_nothing_text">Every mission already has its people, or no volunteer\'s team and shifts fit the missions left.</string>

@@ -90,8 +90,11 @@ class AutoScheduleScreenTest {
           missions = listOf(stands, bar, park),
       )
 
-  /** Shows [state] on Saturday 10:00, the second day of the festival. */
-  private fun showSchedule(state: AutoScheduleUiState, now: Instant = at(1, "10:00")) {
+  /**
+   * Shows [state] on Saturday 07:00, the second day of the festival, before its first mission: the
+   * proposal fills only missions to come.
+   */
+  private fun showSchedule(state: AutoScheduleUiState, now: Instant = at(1, "07:00")) {
     compose.setContent {
       ShifterTheme {
         AutoScheduleContent(
@@ -200,17 +203,39 @@ class AutoScheduleScreenTest {
   }
 
   @Test
-  fun shortMission_ofGeneralOrOfAnUnknownTeam_saysWhyNobodyFillsIt() {
+  fun shortMission_ofGeneral_saysItIsNeverFilledAutomatically() {
     val general = stands.copy(id = "general", isGeneral = true, teamName = null, missing = 1)
-    val unknown = stands.copy(id = "unknown", teamName = null)
-    showSchedule(proposal.copy(missions = listOf(general, unknown)))
+    showSchedule(proposal.copy(missions = listOf(general)))
 
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFill("general"), useUnmergedTree = true)
+        .assert(hasAnyDescendant(hasText("1 spot to fill by hand")))
     compose
         .onNodeWithTag(AutoScheduleTestTags.toFillReason("general"))
         .assertTextEquals("General missions are never filled automatically.")
+  }
+
+  @Test
+  fun shortMission_alreadyStarted_saysSoRatherThanThatNobodyIsFree() {
+    // The proposal skips a started mission, even with members free: its spots stay to fill.
+    val started = stands.copy(proposed = emptyList(), missing = 4, started = true)
+    showSchedule(proposal.copy(missions = listOf(started)), now = at(1, "09:00"))
+
     compose
-        .onNodeWithTag(AutoScheduleTestTags.toFillReason("unknown"))
-        .assertTextEquals("Nobody else in this team is free for 08:00–11:00.")
+        .onNodeWithTag(AutoScheduleTestTags.toFillReason("stands"))
+        .assertTextEquals("This mission has already started.")
+    compose.onNodeWithTag(AutoScheduleTestTags.assign("stands")).assertIsEnabled()
+  }
+
+  @Test
+  fun shortMission_ofADeletedTeam_saysSoWithoutAssign() {
+    showSchedule(proposal.copy(missions = listOf(stands.copy(teamName = null))))
+
+    compose
+        .onNodeWithTag(AutoScheduleTestTags.toFillReason("stands"))
+        .assertTextEquals("Its team no longer exists.")
+    // Nobody could be picked: the team's members can't be read.
+    compose.onNodeWithTag(AutoScheduleTestTags.assign("stands")).assertDoesNotExist()
   }
 
   @Test
@@ -353,6 +378,8 @@ class AutoScheduleScreenTest {
     compose.onNodeWithTag(AutoScheduleTestTags.SAVING, useUnmergedTree = true).assertExists()
     compose.onNodeWithTag(AutoScheduleTestTags.ACCEPT).assertIsNotEnabled()
     compose.onNodeWithTag(AutoScheduleTestTags.CANCEL).assertIsNotEnabled()
+    // A hand pick saved meanwhile would make the proposal's save outdated.
+    compose.onNodeWithTag(AutoScheduleTestTags.assign("stands")).assertIsNotEnabled()
   }
 
   @Test
@@ -440,5 +467,18 @@ class AutoScheduleScreenTest {
     compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
     compose.onNodeWithText("new assignments, its only day").assertExists()
     compose.onNodeWithTag(AutoScheduleTestTags.ACCEPT).assert(hasText("Accept"))
+  }
+
+  @Test
+  fun eventOfOneDay_reviewedTheDayBefore_datesItsMissions() {
+    // Without a strip nothing says which day is shown: as on the Overview, the cards of another
+    // day than today carry their date.
+    val saturday = at(1, "08:00")..at(1, "23:00")
+    showSchedule(
+        proposal.copy(eventPeriod = saturday, missions = listOf(stands)),
+        now = at(0, "18:00"),
+    )
+
+    compose.onNodeWithText("Sat 21 Nov, 08:00–11:00 · Logistics").assertExists()
   }
 }

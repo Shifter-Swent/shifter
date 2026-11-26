@@ -19,6 +19,8 @@ import java.time.Instant
  *   mission's count in `ScheduleProposal.unfilled`, 0 when it has none. It is the one figure the
  *   screen does not derive, so it has no default: a mission short of people is shown so only when
  *   this says so, whatever [assigned] and [proposed] hold.
+ * @property started whether the mission had started when the proposal was prepared: the proposal
+ *   fills only missions to come, so a started one keeps its empty spots, to fill by hand.
  */
 data class ProposedMission(
     val id: String,
@@ -31,6 +33,7 @@ data class ProposedMission(
     val assigned: List<String?> = emptyList(),
     val proposed: List<String?> = emptyList(),
     val missing: Int,
+    val started: Boolean = false,
 )
 
 /** Why saving the proposal failed, which decides what the organizer can do next. */
