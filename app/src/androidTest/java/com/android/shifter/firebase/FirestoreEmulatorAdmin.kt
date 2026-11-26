@@ -19,7 +19,7 @@ import org.json.JSONObject
  */
 object FirestoreEmulatorAdmin {
   suspend fun deleteDocument(path: String) =
-      request("DELETE", path) { status ->
+      request("DELETE", "/$path") { status ->
         check(status in 200..299 || status == 404) { "Emulator cleanup failed for $path: $status" }
       }
 
@@ -29,7 +29,7 @@ object FirestoreEmulatorAdmin {
    */
   suspend fun documentExists(path: String): Boolean {
     var status = 0
-    request("GET", path) { status = it }
+    request("GET", "/$path") { status = it }
     check(status == 200 || status == 404) { "Emulator read failed for $path: $status" }
     return status == 200
   }
@@ -53,10 +53,40 @@ object FirestoreEmulatorAdmin {
                 },
             )
             .toString()
-    request("POST", "$parent?documentId=$id", body) { status ->
+    request("POST", "/$parent?documentId=$id", body) { status ->
       check(status in 200..299) { "Emulator setup failed for $path: $status" }
     }
   }
+
+  /**
+   * Creates the documents of [documents], keyed by path, as [createDocument] does, in a single
+   * commit: one round trip however many there are, at most 500.
+   */
+  suspend fun createDocuments(documents: Map<String, Map<String, Any?>>) =
+      commit(
+          documents.map { (path, fields) ->
+            JSONObject()
+                .put(
+                    "update",
+                    JSONObject()
+                        .put("name", name(path))
+                        .put(
+                            "fields",
+                            JSONObject().apply {
+                              fields.forEach { (field, value) -> put(field, toValue(value)) }
+                            },
+                        ),
+                )
+                .put("currentDocument", JSONObject().put("exists", false))
+          }
+      )
+
+  /**
+   * Deletes the documents at [paths], as [deleteDocument] does, in a single commit: one round trip
+   * however many there are, at most 500.
+   */
+  suspend fun deleteDocuments(paths: List<String>) =
+      commit(paths.map { JSONObject().put("delete", name(it)) })
 
   /**
    * Makes [userIds] the participants of the event [eventId], which only the backend writes.
@@ -68,6 +98,19 @@ object FirestoreEmulatorAdmin {
     createDocument(path, mapOf("participantIds" to userIds))
     return path
   }
+
+  private suspend fun commit(writes: List<JSONObject>) {
+    val body = JSONObject().put("writes", JSONArray(writes)).toString()
+    request("POST", ":commit", body) { status ->
+      check(status in 200..299) { "Emulator commit failed: $status" }
+    }
+  }
+
+  /** The full name the REST API gives the document at [path]. */
+  private fun name(path: String): String =
+      "projects/${projectId()}/databases/(default)/documents/$path"
+
+  private fun projectId(): String = checkNotNull(FirebaseApp.getInstance().options.projectId)
 
   private fun toValue(value: Any?): JSONObject =
       when (value) {
@@ -119,18 +162,18 @@ object FirestoreEmulatorAdmin {
         else -> throw IllegalArgumentException("Unsupported field value: $value")
       }
 
+  /** Sends [method] to the documents' URL followed by [suffix]: "/" and a path, or ":commit". */
   private suspend fun request(
       method: String,
-      path: String,
+      suffix: String,
       body: String? = null,
       checkStatus: (Int) -> Unit,
   ) =
       withContext(Dispatchers.IO) {
-        val projectId = checkNotNull(FirebaseApp.getInstance().options.projectId)
         val url =
             URL(
                 "http://${FirestoreEmulator.HOST}:${FirestoreEmulator.PORT}" +
-                    "/v1/projects/$projectId/databases/(default)/documents/$path"
+                    "/v1/projects/${projectId()}/databases/(default)/documents$suffix"
             )
         val connection = url.openConnection() as HttpURLConnection
         try {

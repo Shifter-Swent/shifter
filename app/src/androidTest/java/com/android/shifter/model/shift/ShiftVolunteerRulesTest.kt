@@ -34,8 +34,9 @@ import org.junit.runner.RunWith
 /**
  * Security rules that keep the `volunteerIds` of the shifts in step with the requests (#594), run
  * against the Firestore emulator: a volunteer puts themself in the shifts their pending request
- * lists, in the same commit, and out of those it no longer lists or once withdrawn; the organizer
- * takes volunteers out but never puts one in.
+ * lists before they start, and out of those it no longer lists or once withdrawn, leaving the
+ * others in their order; the organizer takes volunteers out but never puts one in. An application
+ * carries no shifts yet.
  *
  * The scratch event runs for a week from midnight UTC. Its shifts, and the requests a test starts
  * from, are written as an admin.
@@ -73,73 +74,88 @@ class ShiftVolunteerRulesTest {
     createTeam(TEAM, mapOf(TeamSchema.NAME to "Bar"))
   }
 
-  /** Long enough to delete the 84 shifts of [apply_withEveryShiftOfAWeek_isAllowed] one by one. */
   @After
-  fun cleanUp() =
-      emulatorTest(timeoutMillis = WEEK_OF_SHIFTS_TIMEOUT_MILLIS) {
-        try {
-          step("cleanup") {
-            (paths + event.path).forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
-          }
-        } finally {
-          try {
-            accounts.forEach { account ->
-              signIn(account)
-              checkNotNull(auth.currentUser).delete().await()
-            }
-          } finally {
-            auth.signOut()
-          }
+  fun cleanUp() = emulatorTest {
+    try {
+      step("cleanup") { FirestoreEmulatorAdmin.deleteDocuments((paths + event.path).distinct()) }
+    } finally {
+      try {
+        accounts.forEach { account ->
+          signIn(account)
+          checkNotNull(auth.currentUser).delete().await()
         }
+      } finally {
+        auth.signOut()
       }
+    }
+  }
 
+  /**
+   * Until the app puts the volunteer in their shifts in the same commit (#594), an application with
+   * shifts would leave them out of those shifts: it is refused, the same one without them is not.
+   */
   @Test
-  fun apply_withShifts_listsTheVolunteerInThem() = emulatorTest {
-    openShifts(10, 12)
+  fun apply_withShiftIds_isDenied() = emulatorTest {
+    openShifts(10)
     signIn(volunteer)
+    paths.add(0, request(volunteer).path)
+    val application = application(volunteer, 10) + (CREATED_AT to FieldValue.serverTimestamp())
 
-    commit { applyTo(it, 10, 12) }
-
-    assertEquals(listOf(volunteer.uid), volunteersOf(10))
-    assertEquals(listOf(volunteer.uid), volunteersOf(12))
+    assertDenied { request(volunteer).set(application).await() }
+    request(volunteer).set(application - SHIFT_IDS).await()
   }
 
   /**
    * A volunteer chooses as many shifts as they like, here every 2 h slot of a week, although each
-   * shift reads the request after the commit: the rules' limit on reads must not stop them. With a
-   * longer timeout than the default, since the 84 shifts are opened one by one.
+   * shift reads the request after the commit. As every shift reads the same request, this shows
+   * that the emulator does not stop it, not that production counts that read once against its limit
+   * on reads.
    */
   @Test
-  fun apply_withEveryShiftOfAWeek_isAllowed() =
-      emulatorTest(timeoutMillis = WEEK_OF_SHIFTS_TIMEOUT_MILLIS) {
-        val hours = (0 until 7 * 12).map { it * 2 }
-        openShifts(*hours.toIntArray())
-        signIn(volunteer)
-
-        commit { applyTo(it, *hours.toIntArray()) }
-
-        assertEquals(listOf(volunteer.uid), volunteersOf(hours.last()))
-      }
-
-  @Test
-  fun apply_withShiftIdsNotAList_isDenied() = emulatorTest {
+  fun changeShifts_toEveryShiftOfAWeek_isAllowed() = emulatorTest {
+    val hours = (0 until 7 * 12).map { it * 2 }
+    openShifts(*hours.toIntArray())
+    storeRequest(volunteer)
     signIn(volunteer)
 
-    assertDenied {
-      request(volunteer).set(application(volunteer, 10) + (SHIFT_IDS to shiftId(10))).await()
-    }
+    commit { changeShifts(it, from = emptyList(), to = hours) }
+
+    assertEquals(listOf(volunteer.uid), volunteersOf(hours.first()))
+    assertEquals(listOf(volunteer.uid), volunteersOf(hours.last()))
+  }
+
+  /**
+   * The known gap: a pending request listing a shift lets the volunteer put themself in it without
+   * writing the request, e.g. back in once the organizer took them out of it.
+   */
+  @Test
+  fun join_aShiftThePendingRequestLists_putsTheVolunteerIn() = emulatorTest {
+    openShifts(10)
+    storeRequest(volunteer, 10)
+    signIn(volunteer)
+
+    shift(10).update(VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)).await()
+
+    assertEquals(listOf(volunteer.uid), volunteersOf(10))
   }
 
   @Test
   fun join_aShiftTheRequestDoesNotList_isDenied() = emulatorTest {
     openShifts(10, 12)
+    storeRequest(volunteer, 10)
+    signIn(volunteer)
+
+    assertDenied { shift(12).update(VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)).await() }
+  }
+
+  @Test
+  fun join_aShiftThatStarted_isDenied() = emulatorTest {
+    openShifts(LONG_AGO)
+    storeRequest(volunteer, LONG_AGO)
     signIn(volunteer)
 
     assertDenied {
-      commit {
-        applyTo(it, 10)
-        it.update(shift(12), VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid))
-      }
+      shift(LONG_AGO).update(VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)).await()
     }
   }
 
@@ -161,26 +177,32 @@ class ShiftVolunteerRulesTest {
   @Test
   fun join_withSomeoneElse_isDenied() = emulatorTest {
     openShifts(10)
+    openShifts(12, volunteers = listOf(other.uid))
+    storeRequest(volunteer, 10, 12)
     signIn(volunteer)
 
-    assertDenied {
-      commit {
-        applyTo(it, 10, join = false)
-        it.update(shift(10), VOLUNTEER_IDS, listOf(other.uid))
-      }
-    }
-    assertDenied {
-      commit {
-        applyTo(it, 10, join = false)
-        it.update(shift(10), VOLUNTEER_IDS, listOf(volunteer.uid, other.uid))
-      }
-    }
-    assertDenied {
-      commit {
-        applyTo(it, 10, join = false)
-        it.update(shift(10), VOLUNTEER_IDS, listOf(volunteer.uid, volunteer.uid))
-      }
-    }
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(other.uid)).await() }
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(volunteer.uid, other.uid)).await() }
+    // In place of someone else.
+    assertDenied { shift(12).update(VOLUNTEER_IDS, listOf(volunteer.uid)).await() }
+  }
+
+  @Test
+  fun join_twice_isDenied() = emulatorTest {
+    openShifts(10)
+    storeRequest(volunteer, 10)
+    signIn(volunteer)
+
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(volunteer.uid, volunteer.uid)).await() }
+  }
+
+  @Test
+  fun join_reorderingTheOthers_isDenied() = emulatorTest {
+    openShifts(10, volunteers = OTHERS)
+    storeRequest(volunteer, 10)
+    signIn(volunteer)
+
+    assertDenied { shift(10).update(VOLUNTEER_IDS, OTHERS.reversed() + volunteer.uid).await() }
   }
 
   @Test
@@ -189,7 +211,7 @@ class ShiftVolunteerRulesTest {
     sendRequest(volunteer, 10)
     signIn(volunteer)
 
-    commit { changeShifts(it, from = 10, to = 12) }
+    commit { changeShifts(it, from = listOf(10), to = listOf(12)) }
 
     assertEquals(emptyList<String>(), volunteersOf(10))
     assertEquals(listOf(volunteer.uid), volunteersOf(12))
@@ -201,7 +223,7 @@ class ShiftVolunteerRulesTest {
     sendRequest(volunteer, 10, status = "ACCEPTED")
     sendRequest(other, 14, status = "REJECTED")
     signIn(volunteer)
-    assertDenied { commit { changeShifts(it, from = 10, to = 12) } }
+    assertDenied { commit { changeShifts(it, from = listOf(10), to = listOf(12)) } }
 
     signIn(other)
     assertDenied { request(other).update(SHIFT_IDS, listOf(shiftId(12))).await() }
@@ -219,6 +241,20 @@ class ShiftVolunteerRulesTest {
     }
     assertDenied {
       request(volunteer).update(MembershipRequestSchema.AVAILABILITY, emptyList<Any>()).await()
+    }
+  }
+
+  /** An absent shiftIds reads as empty, so only availability may not be deleted. */
+  @Test
+  fun changeShifts_withShiftsOrSlotsNotAList_isDenied() = emulatorTest {
+    sendRequest(volunteer, 10)
+    signIn(volunteer)
+
+    assertDenied { request(volunteer).update(SHIFT_IDS, shiftId(10)).await() }
+    for (slots in listOf(slots(10).first(), FieldValue.delete())) {
+      assertDenied {
+        request(volunteer).update(MembershipRequestSchema.AVAILABILITY, slots).await()
+      }
     }
   }
 
@@ -269,6 +305,24 @@ class ShiftVolunteerRulesTest {
   }
 
   @Test
+  fun leave_withSomeoneElse_isDenied() = emulatorTest {
+    openShifts(10, volunteers = listOf(volunteer.uid))
+    storeRequest(volunteer, 12)
+    signIn(volunteer)
+
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(other.uid)).await() }
+  }
+
+  @Test
+  fun leave_reorderingTheOthers_isDenied() = emulatorTest {
+    openShifts(10, volunteers = OTHERS + volunteer.uid)
+    storeRequest(volunteer, 12)
+    signIn(volunteer)
+
+    assertDenied { shift(10).update(VOLUNTEER_IDS, OTHERS.reversed()).await() }
+  }
+
+  @Test
   fun withdraw_fromAShiftTheOrganizerTookThemOutOf_isAllowed() = emulatorTest {
     sendRequest(volunteer, 10)
     signIn(organizer)
@@ -314,6 +368,38 @@ class ShiftVolunteerRulesTest {
   }
 
   @Test
+  fun organizer_reorderingTheVolunteers_isAllowed() = emulatorTest {
+    openShifts(10, volunteers = OTHERS)
+    signIn(organizer)
+
+    shift(10).update(VOLUNTEER_IDS, OTHERS.reversed()).await()
+
+    assertEquals(OTHERS.reversed(), volunteersOf(10))
+  }
+
+  @Test
+  fun organizer_listingAVolunteerTwice_isDenied() = emulatorTest {
+    openShifts(10, volunteers = OTHERS)
+    signIn(organizer)
+
+    assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(OTHERS[0], OTHERS[0])).await() }
+  }
+
+  /** Neither the volunteer leaving it nor the organizer makes volunteerIds anything but a list. */
+  @Test
+  fun volunteers_notAList_isDenied() = emulatorTest {
+    openShifts(10, volunteers = listOf(volunteer.uid))
+    storeRequest(volunteer, 12)
+
+    for (user in listOf(volunteer, organizer)) {
+      signIn(user)
+      for (volunteers in listOf(null, volunteer.uid, FieldValue.delete())) {
+        assertDenied { shift(10).update(VOLUNTEER_IDS, volunteers).await() }
+      }
+    }
+  }
+
+  @Test
   fun someoneElse_takingAVolunteerOut_isDenied() = emulatorTest {
     sendRequest(volunteer, 10)
     signIn(other)
@@ -330,23 +416,19 @@ class ShiftVolunteerRulesTest {
     assertDenied { shift(10).update(VOLUNTEER_IDS, listOf(other.uid, volunteer.uid)).await() }
   }
 
-  /** Opens the shifts starting at [hours], listing [volunteers], as an admin. */
+  /** Opens the shifts starting at [hours], listing [volunteers], as an admin, in one commit. */
   private suspend fun openShifts(vararg hours: Int, volunteers: List<String> = emptyList()) {
-    admin("open shifts") {
-      hours.forEach { hour ->
-        val path = shift(hour).path
-        createDocument(
-            path,
-            mapOf(
-                VOLUNTEER_IDS to volunteers,
-                ShiftSchema.START_AT to at(hour),
-                ShiftSchema.END_AT to at(hour + 2),
-                ShiftSchema.CREATED_AT to EVENT_START,
-            ),
-        )
-        paths.add(0, path)
-      }
+    val shifts = hours.associate { hour ->
+      shift(hour).path to
+          mapOf(
+              VOLUNTEER_IDS to volunteers,
+              ShiftSchema.START_AT to at(hour),
+              ShiftSchema.END_AT to at(hour + 2),
+              ShiftSchema.CREATED_AT to EVENT_START,
+          )
     }
+    admin("open shifts") { createDocuments(shifts) }
+    paths.addAll(0, shifts.keys)
   }
 
   /**
@@ -378,33 +460,29 @@ class ShiftVolunteerRulesTest {
               mapOf(
                   STATUS to status,
                   MembershipRequestSchema.TEAM_ID to team,
-                  MembershipRequestSchema.CREATED_AT to EVENT_START,
+                  CREATED_AT to EVENT_START,
               ),
       )
       paths.add(0, path)
     }
   }
 
-  /** Adds to [batch] the application of [volunteer] to the shifts at [hours], putting them in. */
-  private fun applyTo(batch: WriteBatch, vararg hours: Int, join: Boolean = true) {
-    paths.add(0, request(volunteer).path)
-    batch.set(request(volunteer), application(volunteer, *hours))
-    if (join) {
-      hours.forEach { batch.update(shift(it), VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)) }
-    }
-  }
-
-  /** Adds to [batch] the move of [volunteer]'s pending request from the shift at [from] to [to]. */
-  private fun changeShifts(batch: WriteBatch, from: Int, to: Int) {
+  /**
+   * Adds to [batch] the move of [volunteer]'s pending request from the shifts at [from] to [to].
+   */
+  private fun changeShifts(batch: WriteBatch, from: List<Int>, to: List<Int>) {
     batch.update(
         request(volunteer),
-        mapOf(SHIFT_IDS to listOf(shiftId(to)), MembershipRequestSchema.AVAILABILITY to slots(to)),
+        mapOf(
+            SHIFT_IDS to to.map { shiftId(it) },
+            MembershipRequestSchema.AVAILABILITY to slots(*to.toIntArray()),
+        ),
     )
-    batch.update(shift(from), VOLUNTEER_IDS, FieldValue.arrayRemove(volunteer.uid))
-    batch.update(shift(to), VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid))
+    from.forEach { batch.update(shift(it), VOLUNTEER_IDS, FieldValue.arrayRemove(volunteer.uid)) }
+    to.forEach { batch.update(shift(it), VOLUNTEER_IDS, FieldValue.arrayUnion(volunteer.uid)) }
   }
 
-  /** The fields of a new request from [user] choosing the shifts at [hours]. */
+  /** The fields of a pending request from [user] choosing the shifts at [hours], but its date. */
   private fun application(user: Account, vararg hours: Int): Map<String, Any> =
       mapOf(
           MembershipRequestSchema.USER_ID to user.uid,
@@ -412,7 +490,6 @@ class ShiftVolunteerRulesTest {
           MembershipRequestSchema.AVAILABILITY to slots(*hours),
           SHIFT_IDS to hours.map { shiftId(it) },
           STATUS to "PENDING",
-          MembershipRequestSchema.CREATED_AT to FieldValue.serverTimestamp(),
       )
 
   private fun slots(vararg hours: Int): List<Map<String, Timestamp>> = hours.map {
@@ -478,14 +555,18 @@ class ShiftVolunteerRulesTest {
   private fun Instant.ts(): Timestamp = toFirestoreTimestamp()
 
   private companion object {
-    /** Some 90 round trips to the emulator, each of which can take 300 ms on the CI. */
-    const val WEEK_OF_SHIFTS_TIMEOUT_MILLIS = 120_000L
-
     const val TEAM = "team-bar"
     const val CLOSING_TEAM = "team-closing"
     const val VOLUNTEER_IDS = ShiftSchema.VOLUNTEER_IDS
     const val SHIFT_IDS = MembershipRequestSchema.SHIFT_IDS
     const val STATUS = MembershipRequestSchema.STATUS
+    const val CREATED_AT = MembershipRequestSchema.CREATED_AT
+
+    /** An hour some twenty years before the event's start: a shift then has long started. */
+    const val LONG_AGO = -24 * 365 * 20
+
+    /** Two volunteers already in a shift, in this order. */
+    val OTHERS = listOf("volunteer-a", "volunteer-b")
 
     val EVENT_START: Instant = Instant.parse("2036-07-18T00:00:00Z")
     val ENDED_EVENT_START: Instant = Instant.parse("2020-07-18T00:00:00Z")
