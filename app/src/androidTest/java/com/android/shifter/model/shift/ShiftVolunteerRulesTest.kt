@@ -73,21 +73,25 @@ class ShiftVolunteerRulesTest {
     createTeam(TEAM, mapOf(TeamSchema.NAME to "Bar"))
   }
 
+  /** Long enough to delete the 84 shifts of [apply_withEveryShiftOfAWeek_isAllowed] one by one. */
   @After
-  fun cleanUp() = emulatorTest {
-    try {
-      step("cleanup") { (paths + event.path).forEach { FirestoreEmulatorAdmin.deleteDocument(it) } }
-    } finally {
-      try {
-        accounts.forEach { account ->
-          signIn(account)
-          checkNotNull(auth.currentUser).delete().await()
+  fun cleanUp() =
+      emulatorTest(timeoutMillis = WEEK_OF_SHIFTS_TIMEOUT_MILLIS) {
+        try {
+          step("cleanup") {
+            (paths + event.path).forEach { FirestoreEmulatorAdmin.deleteDocument(it) }
+          }
+        } finally {
+          try {
+            accounts.forEach { account ->
+              signIn(account)
+              checkNotNull(auth.currentUser).delete().await()
+            }
+          } finally {
+            auth.signOut()
+          }
         }
-      } finally {
-        auth.signOut()
       }
-    }
-  }
 
   @Test
   fun apply_withShifts_listsTheVolunteerInThem() = emulatorTest {
@@ -100,18 +104,22 @@ class ShiftVolunteerRulesTest {
     assertEquals(listOf(volunteer.uid), volunteersOf(12))
   }
 
+  /**
+   * A volunteer chooses as many shifts as they like, here every 2 h slot of a week, although each
+   * shift reads the request after the commit: the rules' limit on reads must not stop them. With a
+   * longer timeout than the default, since the 84 shifts are opened one by one.
+   */
   @Test
-  fun apply_withEveryShiftOfAWeek_isAllowed() = emulatorTest {
-    // A volunteer chooses as many shifts as they like, here every 2 h slot of a week, although
-    // each shift reads the request after the commit: the rules' limit on reads must not stop them.
-    val hours = (0 until 7 * 12).map { it * 2 }
-    openShifts(*hours.toIntArray())
-    signIn(volunteer)
+  fun apply_withEveryShiftOfAWeek_isAllowed() =
+      emulatorTest(timeoutMillis = WEEK_OF_SHIFTS_TIMEOUT_MILLIS) {
+        val hours = (0 until 7 * 12).map { it * 2 }
+        openShifts(*hours.toIntArray())
+        signIn(volunteer)
 
-    commit { applyTo(it, *hours.toIntArray()) }
+        commit { applyTo(it, *hours.toIntArray()) }
 
-    assertEquals(listOf(volunteer.uid), volunteersOf(hours.last()))
-  }
+        assertEquals(listOf(volunteer.uid), volunteersOf(hours.last()))
+      }
 
   @Test
   fun apply_withShiftIdsNotAList_isDenied() = emulatorTest {
@@ -470,6 +478,9 @@ class ShiftVolunteerRulesTest {
   private fun Instant.ts(): Timestamp = toFirestoreTimestamp()
 
   private companion object {
+    /** Some 90 round trips to the emulator, each of which can take 300 ms on the CI. */
+    const val WEEK_OF_SHIFTS_TIMEOUT_MILLIS = 120_000L
+
     const val TEAM = "team-bar"
     const val CLOSING_TEAM = "team-closing"
     const val VOLUNTEER_IDS = ShiftSchema.VOLUNTEER_IDS
