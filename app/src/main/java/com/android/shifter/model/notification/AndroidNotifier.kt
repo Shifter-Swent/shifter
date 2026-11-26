@@ -53,11 +53,35 @@ class AndroidNotifier(private val context: Context) : Notifier {
   @SuppressLint("MissingPermission")
   override fun show(notifications: List<AppNotification>) {
     notifications.forEach { manager.notify(it.identity, NOTIFICATION_ID, build(it)) }
-    notifications
-        .mapNotNull { notification -> notification.target.event()?.let { it to notification } }
-        .associate { it }
-        .forEach { (event, last) -> manager.notify(event.id, SUMMARY_ID, summary(event, last)) }
+    val summarized =
+        manager.activeNotifications
+            .filter { it.id == SUMMARY_ID }
+            .mapNotNullTo(mutableSetOf()) { it.tag }
+    summaryChannels(notifications)
+        .filterKeys { it.id !in summarized }
+        .forEach { (event, channelId) ->
+          manager.notify(event.id, SUMMARY_ID, summary(event, channelId))
+        }
   }
+
+  /**
+   * The channel of the summary of each event of [notifications]: the channel of its latest
+   * notification among those on a channel the user did not turn off, since Android drops a summary
+   * on a channel turned off. An event whose notifications are all on channels turned off has none,
+   * and its notifications are not shown either.
+   */
+  private fun summaryChannels(notifications: List<AppNotification>): Map<EventRef, String> =
+      notifications
+          .filter { isOn(it.kind.channelId) }
+          .mapNotNull { notification ->
+            notification.target.event()?.let { it to notification.kind.channelId }
+          }
+          .toMap()
+
+  /** Whether the user left the channel [channelId] on in the phone's settings. */
+  private fun isOn(channelId: String) =
+      manager.getNotificationChannelCompat(channelId)?.importance !=
+          NotificationManagerCompat.IMPORTANCE_NONE
 
   override fun activeIdentities(): Set<String> =
       manager.activeNotifications
@@ -78,15 +102,16 @@ class AndroidNotifier(private val context: Context) : Notifier {
           .build()
 
   /**
-   * The summary of [event]'s group, which Android shows in place of its notifications once they
-   * fold, and on its own before Android 7. Silent, so a notification sounds once, not twice. On the
-   * channel of [last], the latest shown in the group: a summary needs one, and that one is on.
+   * The summary of [event]'s group, which Android shows as the header of its notifications once
+   * they fold. Silent, so a notification sounds once, not twice. Posted once, when the group
+   * starts: Android drops the updates of a notification beyond a few per second, and the engine
+   * shows each kind in its own call, so posting it at each call could cost the update of a
+   * notification.
    */
-  private fun summary(event: EventRef, last: AppNotification) =
-      NotificationCompat.Builder(context, last.kind.channelId)
+  private fun summary(event: EventRef, channelId: String) =
+      NotificationCompat.Builder(context, channelId)
           .setSmallIcon(R.drawable.ic_notification)
           .setContentTitle(event.title)
-          .setContentText(last.text)
           .setGroup(event.id)
           .setGroupSummary(true)
           .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)

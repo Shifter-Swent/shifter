@@ -2,6 +2,7 @@
 package com.swent.shifter.model.notification
 
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
@@ -92,6 +93,43 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun show_aGroupAlreadySummarized_keepsItsSummaryAsItIs() {
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
+    notifier.show(
+        listOf(notification(NotificationKind.OPEN_SPOTS, "m2", target = mission("m2", "Fest 2026")))
+    )
+
+    val summary = shadowOf(manager).getNotification("e1", SUMMARY_ID)
+    assertEquals("Fest", summary.extras.getString(Notification.EXTRA_TITLE))
+  }
+
+  @Test
+  fun show_theSummary_isOnTheChannelOfTheLatestNotificationOnAChannelThatIsOn() {
+    turnOff(NotificationKind.OPEN_SPOTS)
+
+    notifier.show(
+        listOf(
+            notification(NotificationKind.MISSION_CHANGED, "m1"),
+            notification(NotificationKind.OPEN_SPOTS, "m2"),
+        )
+    )
+
+    assertEquals(
+        NotificationKind.MISSION_CHANGED.channelId,
+        shadowOf(manager).getNotification("e1", SUMMARY_ID).channelId,
+    )
+  }
+
+  @Test
+  fun show_onlyOnChannelsTurnedOff_postsNoSummary() {
+    turnOff(NotificationKind.OPEN_SPOTS)
+
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
+
+    assertNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+  }
+
+  @Test
   fun show_myEvents_hasNoGroupNorSummary() {
     notifier.show(
         listOf(
@@ -154,6 +192,16 @@ class AndroidNotifierTest {
 
     assertFalse(notifier.canShow())
   }
+
+  /** Turns the channel of [kind] off, as the user does in the phone's settings. */
+  private fun turnOff(kind: NotificationKind) {
+    manager.createNotificationChannel(
+        NotificationChannel(kind.channelId, "Off", NotificationManager.IMPORTANCE_NONE)
+    )
+  }
+
+  private fun mission(key: String, eventTitle: String = "Fest") =
+      NotificationTarget.Mission("e1", eventTitle, UserMode.ORGANIZER, key)
 
   private fun tappedTarget(identity: String): NotificationTarget? {
     val tap = shadowOf(manager).getNotification(identity, NOTIFICATION_ID).contentIntent
