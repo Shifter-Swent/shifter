@@ -126,7 +126,9 @@ interface MembershipRequestRepository {
   suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest?
 
   /**
-   * Returns all requests for [eventId], or an empty list if there are none.
+   * Returns all requests for [eventId], or an empty list if there are none. A request that cannot
+   * be read is left out, so one malformed document, e.g. with a `shiftIds` that is not a list of
+   * strings, does not hide the others from the organizer.
    *
    * With Firestore's default persistent cache, an offline query may return cached data, including
    * an empty or stale list, rather than throwing

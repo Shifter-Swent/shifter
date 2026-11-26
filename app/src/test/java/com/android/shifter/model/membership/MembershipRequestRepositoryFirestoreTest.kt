@@ -438,13 +438,20 @@ class MembershipRequestRepositoryFirestoreTest {
             is MembershipRequestRepositoryException.Unknown
     )
     assertTrue(
-        runCatching { repository.getMembershipRequestsByEId("event") }.exceptionOrNull()
-            is MembershipRequestRepositoryException.Unknown
-    )
-    assertTrue(
         runCatching { repository.getMembershipRequestsByUId(request.userId) }.exceptionOrNull()
             is MembershipRequestRepositoryException.Unknown
     )
+  }
+
+  @Test
+  fun getMembershipRequestsByEId_leavesOutAMalformedRequest() = runTest {
+    val stored = request.copy(id = request.userId)
+    // The rules only check that shiftIds is a list, so a volunteer may store numbers in it.
+    val malformed = snapshot(request.copy(id = "other", userId = "other"))
+    every { malformed.get("shiftIds") } returns listOf(1)
+    every { result.documents } returns listOf(malformed, snapshot(stored))
+
+    assertEquals(listOf(stored), repository.getMembershipRequestsByEId("event"))
   }
 
   @Test

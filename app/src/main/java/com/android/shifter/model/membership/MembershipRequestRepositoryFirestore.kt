@@ -426,7 +426,10 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
       translatingErrors {
-        requests(eventId).get().await().documents.map { it.toRequestOrThrow() }
+        requests(eventId).get().await().documents.mapNotNull {
+          runCatching { it.toMembershipRequest() }
+              .getOrElse { e -> if (e is IllegalStateException) null else throw e }
+        }
       }
 
   override suspend fun getMembershipRequestsByUId(userId: String): Map<String, MembershipRequest> =
