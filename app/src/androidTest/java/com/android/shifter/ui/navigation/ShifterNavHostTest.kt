@@ -1710,7 +1710,11 @@ class ShifterNavHostTest {
     val volunteer = signIn(volunteerAccount)
     signIn(organizerAccount)
     val bar = createTeam(event, "Bar")
-    runBlocking { repositories.teamRepository.setManager(event.id, bar.id, volunteer.uid) }
+    runBlocking {
+      // Only a member of a team can be appointed its manager.
+      repositories.teamRepository.addMember(event.id, bar.id, volunteer.uid)
+      repositories.teamRepository.setManager(event.id, bar.id, volunteer.uid)
+    }
     createMission(event, "Serve drinks", bar.id)
     createMission(event, "Set up the stands", teamIds.getValue(event.id))
     signIn(volunteerAccount)
