@@ -265,6 +265,20 @@ class ShiftsScreenTest {
     compose.onNodeWithTag(ShiftGridTestTags.GRID).assertIsDisplayed()
   }
 
+  @Test
+  fun error_whenASaveFails_saysTheSlotCouldNotBeSaved() {
+    show(loaded(error = ShiftsError.SAVE_FAILED))
+
+    compose.onNodeWithText(SAVE_FAILED).assertIsDisplayed()
+  }
+
+  @Test
+  fun error_whenAReadFails_saysTheShiftsCouldNotBeRead() {
+    show(loaded(error = ShiftsError.LOAD_FAILED))
+
+    compose.onNodeWithText(LOAD_FAILED).assertIsDisplayed()
+  }
+
   // -------------------------------------------------------- A follow that died
 
   @Test
@@ -347,6 +361,8 @@ class ShiftsScreenTest {
     const val SHORT_SNACKBAR_MILLIS = 4_000L
 
     const val OFFLINE = "You are offline. Open a slot once you are back online."
+    const val SAVE_FAILED = "The slot could not be saved."
+    const val LOAD_FAILED = "The shifts could not be read."
 
     val ZONE: ZoneId = ZoneId.of("Europe/Zurich")
     val sat: LocalDate = LocalDate.parse("2026-06-20")
