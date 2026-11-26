@@ -62,7 +62,6 @@ import com.swent.shifter.model.mission.Mission
 import com.swent.shifter.model.mission.MissionLocation
 import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.scan.TestQrScanner
-import com.swent.shifter.model.shift.SLOT_HOURS
 import com.swent.shifter.model.shift.slotOf
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.TeamRepository
@@ -584,26 +583,29 @@ class ShifterNavHostTest {
     waitForNode(ShiftsScreenTestTags.EMPTY)
     composeTestRule.onNodeWithTag(ShiftsScreenTestTags.EDIT).performClick()
 
-    // The slot the event starts in: the rules accept it, and the grid draws its day first.
-    val start = event.startAt.atZone(ZoneId.systemDefault())
-    val day = start.toLocalDate()
-    val hour = start.hour - start.hour % SLOT_HOURS
-    val slot = ShiftGridTestTags.slot(day, hour)
+    // Midnight of the last day the grid draws: the event ends on that day and lasts a day, so
+    // that slot always runs during it and the rules accept it, even on a night the clocks go
+    // back, when a day of event does not reach the next midnight. It is also the first row, on
+    // screen whatever the phone's height, unlike the row of the hour the event starts at: a cell
+    // clipped away cannot be tapped, and performScrollTo moves the grid's own sideways scroll
+    // rather than the screen's vertical one.
+    val day = event.endAt.minusNanos(1).atZone(ZoneId.systemDefault()).toLocalDate()
+    val slot = ShiftGridTestTags.slot(day, 0)
 
     waitForNode(slot)
     val openSlots = {
       runBlocking { repositories.shiftRepository.getShifts(event.id) }.map { it.id }
     }
 
-    composeTestRule.onNodeWithTag(slot).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(slot).performClick()
 
     // Opened in Firestore, and the cell follows the listener without being asked again.
     composeTestRule.waitUntil(TIMEOUT_MILLIS) {
-      openSlots() == listOf(slotOf(day, hour, ZoneId.systemDefault()).shiftId)
+      openSlots() == listOf(slotOf(day, 0, ZoneId.systemDefault()).shiftId)
     }
     composeTestRule.onNodeWithTag(slot).assert(hasContentDescription(", open", substring = true))
 
-    composeTestRule.onNodeWithTag(slot).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(slot).performClick()
 
     // Closed again, in Firestore and in the grid.
     composeTestRule.waitUntil(TIMEOUT_MILLIS) { openSlots().isEmpty() }
