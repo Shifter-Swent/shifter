@@ -18,16 +18,20 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.navigation.compose.rememberNavController
 import com.swent.shifter.model.RepositoryProviderFactory
+import com.swent.shifter.model.notification.DeviceNotifications
 import com.swent.shifter.model.notification.NotificationTarget
 import com.swent.shifter.model.notification.notificationTarget
 import com.swent.shifter.model.notification.notificationTargetToOpen
 import com.swent.shifter.model.notification.putNotificationTargetToOpen
+import com.swent.shifter.model.notification.scheduleNotificationWork
 import com.swent.shifter.resources.C
 import com.swent.shifter.ui.navigation.ShifterNavHost
 import com.swent.shifter.ui.navigation.isInEventsApp
+import com.swent.shifter.ui.notification.NotificationsWhileOpen
 import com.swent.shifter.ui.permission.NotificationPermissionRequest
 import com.swent.shifter.ui.theme.ShifterTheme
 import com.swent.shifter.ui.theme.enableShifterEdgeToEdge
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
@@ -43,6 +47,7 @@ class MainActivity : ComponentActivity() {
     enableShifterEdgeToEdge()
     notificationTarget = notificationTargetToOpen(intent, savedInstanceState)
     val repositories = RepositoryProviderFactory.production
+    scheduleNotificationWork(this)
     // Firebase restores the previous session synchronously, so a returning user skips sign-in.
     val isSignedIn = repositories.authRepository.currentUser() != null
     setContent {
@@ -61,12 +66,14 @@ class MainActivity : ComponentActivity() {
               onNotificationTargetOpened = { notificationTarget = null },
           )
           // Here rather than in ShifterNavHost, so the tests that build the graph never open the
-          // system dialog.
+          // system dialog, nor run the notifications.
           val inApp =
               remember(navController) {
                 navController.currentBackStackEntryFlow.map { it.isInEventsApp() }
               }
           NotificationPermissionRequest(inApp)
+          val notifications = DeviceNotifications.of(this@MainActivity)
+          NotificationsWhileOpen(repositories, notifications, Dispatchers.IO)
         }
       }
     }

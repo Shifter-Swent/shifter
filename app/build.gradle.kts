@@ -249,6 +249,9 @@ dependencies {
   testImplementation(libs.mockk)
   // The target of a notification, written as JSON in the intent its tap opens (#612)
   implementation(libs.kotlinx.serialization.json)
+  // Runs the notifications every 15 min with the app closed (#614)
+  implementation(libs.work.runtime.ktx)
+  testImplementation(libs.work.testing)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 

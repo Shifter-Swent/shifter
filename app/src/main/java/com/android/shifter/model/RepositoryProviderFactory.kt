@@ -36,7 +36,10 @@ object RepositoryProviderFactory {
    * AuthEmulator.auth)` and cannot reach production by forgetting it. Tests that launch
    * `MainActivity` itself must initialize the emulator instances before the activity starts.
    * Otherwise this one initializes the shared Firestore instance against the production backend,
-   * and every later `useEmulator` call in the same process throws.
+   * and every later `useEmulator` call in the same process throws. The notification worker reads it
+   * too, every 15 minutes once `MainActivity` has scheduled it: on an AVD kept between two local
+   * runs, a run due at the start of the process can read it before the tests point it at the
+   * emulators.
    */
   val production: RepositoryProvider by lazy { create(Firebase.firestore, Firebase.auth) }
 
