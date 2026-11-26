@@ -18,6 +18,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,6 +62,8 @@ class WorkManagerNotificationSchedulerTest {
     val run = runsAt(IN_10_MINUTES).single()
     assertEquals(WorkInfo.State.ENQUEUED, run.state)
     assertEquals(Duration.ofMinutes(10).toMillis(), run.initialDelayMillis)
+    // WorkManager tags each run with its worker's class: the factory above runs none of them.
+    assertTrue(NotificationWorker::class.java.name in run.tags)
   }
 
   @Test
