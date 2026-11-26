@@ -45,6 +45,23 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun build_writesTheDelaysTheNotificationsUseInTheirChannels() {
+    // Read from MISSED_CHECK_IN_DELAY and OPEN_SPOTS_WINDOW, so the text follows the code.
+    assertEquals(
+        "10 min after a mission starts, for each volunteer of your team who is not checked in.",
+        manager
+            .getNotificationChannel(CHANNEL_IDS.getValue(NotificationKind.MISSED_CHECK_IN))
+            .description,
+    )
+    assertEquals(
+        "Missions starting in the next 24 h that still have open spots.",
+        manager
+            .getNotificationChannel(CHANNEL_IDS.getValue(NotificationKind.OPEN_SPOTS))
+            .description,
+    )
+  }
+
+  @Test
   fun build_keepsEachChannelsId_soAUsersSettingsSurviveARename() {
     assertEquals(CHANNEL_IDS.values.toSet(), manager.notificationChannels.map { it.id }.toSet())
   }

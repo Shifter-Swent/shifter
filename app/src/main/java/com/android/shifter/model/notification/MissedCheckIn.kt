@@ -20,8 +20,11 @@ import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.flow.first
 
-/** How long after its start a volunteer still not checked in to their mission is told. */
-private val MISSED_CHECK_IN_DELAY: Duration = Duration.ofMinutes(10)
+/**
+ * How long after its start a volunteer still not checked in to their mission is told. Also written
+ * in the text of its switch in Settings (see [channelDescriptionArgs]), so the text follows it.
+ */
+internal val MISSED_CHECK_IN_DELAY: Duration = Duration.ofMinutes(10)
 
 /** When a volunteer of this mission not checked in yet is told to its manager. */
 private val Mission.missedCheckInAt: Instant
