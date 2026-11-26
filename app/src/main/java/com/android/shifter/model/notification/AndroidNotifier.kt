@@ -45,7 +45,11 @@ class AndroidNotifier(private val context: Context) : Notifier {
     )
   }
 
-  /** False without `POST_NOTIFICATIONS` on Android 13+, or with every notification turned off. */
+  /**
+   * False without `POST_NOTIFICATIONS` on Android 13+, or with every notification turned off. True
+   * with only some channels turned off in the phone's settings: Android drops what [show] posts on
+   * them, and the engine consumes it as shown, as for a kind turned off in Settings.
+   */
   override fun canShow() = manager.areNotificationsEnabled()
 
   // Checked by canShow, which the engine calls before showing anything: without the permission,
@@ -110,7 +114,6 @@ class AndroidNotifier(private val context: Context) : Notifier {
           .setContentText(notification.text)
           .setStyle(NotificationCompat.BigTextStyle().bigText(notification.text))
           .setWhen(notification.at.toEpochMilli())
-          .setShowWhen(true)
           .setContentIntent(tapPendingIntent(notification))
           .setAutoCancel(true)
           .apply { notification.target.event()?.let { setGroup(it.id) } }
@@ -130,7 +133,6 @@ class AndroidNotifier(private val context: Context) : Notifier {
           .setGroup(event.id)
           .setGroupSummary(true)
           .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-          .setAutoCancel(true)
           .build()
 
   /**

@@ -174,6 +174,26 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun show_myEventsWithAnEventsNotifications_postsOnlyTheEventsSummary() {
+    notifier.show(
+        listOf(
+            notification(NotificationKind.OPEN_SPOTS, "m1"),
+            notification(
+                NotificationKind.APPLICATION_DECIDED,
+                "e2",
+                target = NotificationTarget.MyEvents(UserMode.VOLUNTEER),
+            ),
+        )
+    )
+
+    val summaries =
+        shadowOf(manager).allNotifications.filter {
+          it.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        }
+    assertEquals(listOf("e1"), summaries.map { it.group })
+  }
+
+  @Test
   fun activeIdentities_leavesOutTheSummaries_andWhatTheUserDismissed() {
     notifier.show(
         listOf(
