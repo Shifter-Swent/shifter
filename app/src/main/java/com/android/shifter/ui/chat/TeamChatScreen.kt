@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.chat
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
+import com.swent.shifter.ui.theme.shifter_chatBackground
 import com.swent.shifter.ui.theme.shifter_mutedText
 import java.time.LocalDate
 import java.time.ZoneId
@@ -83,7 +85,7 @@ fun TeamChatContent(
   // Messages the ViewModel still has stay shown through a reload or an error, so a message sent
   // meanwhile is seen as pending rather than typed, and posted, again. Lost access hides them.
   val keepsMessages = state.messages.isNotEmpty() && state.error != ChatError.NOT_ALLOWED
-  Column(modifier = modifier.fillMaxSize().imePadding()) {
+  Column(modifier = modifier.fillMaxSize().background(shifter_chatBackground).imePadding()) {
     Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
       when {
         keepsMessages -> ChatMessageList(state.messages, zone, today)

@@ -72,6 +72,10 @@ val shifter_onShiftLocked = Color(0xFFCFE0FF)
 val shifter_qrDark = Color(0xFF000000)
 val shifter_qrLight = Color(0xFFFFFFFF)
 
+// The background of a channel, a shade darker than the surface so its bubbles and cards stand
+// out.
+val shifter_chatBackground = Color(0xFF10171F)
+
 // Announcements: the warning amber for the tag, and a bubble of it mixed into the surface, dark
 // enough for the usual text to stay readable on it.
 val shifter_announcement = shifter_warning
