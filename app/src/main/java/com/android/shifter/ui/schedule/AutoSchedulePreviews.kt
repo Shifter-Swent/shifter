@@ -7,6 +7,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import com.swent.shifter.ui.mission.AssignState
+import com.swent.shifter.ui.mission.AssigneeOption
+import com.swent.shifter.ui.mission.AssigneeSelection
 import com.swent.shifter.ui.theme.ShifterTheme
 import java.time.Instant
 import java.time.LocalDate
@@ -40,8 +43,9 @@ private val PROPOSAL =
                     isGeneral = false,
                     teamName = "Logistics",
                     volunteersNeeded = 4,
+                    assigned = listOf("Léa Petit"),
                     proposed = listOf("Maya Bernard", "Sam Keller"),
-                    missing = 2,
+                    missing = 1,
                 ),
                 ProposedMission(
                     id = "bar",
@@ -92,6 +96,35 @@ private fun PreviewHost(state: AutoScheduleUiState) {
 @Preview(name = "Saturday", widthDp = 390, heightDp = 988)
 @Composable
 private fun SaturdayPreview() = PreviewHost(PROPOSAL)
+
+/**
+ * The Figma frame "fill by hand": the assign dialog over Saturday, for the stands. Léa, already on
+ * them, is locked; the limit is her and the one spot left, so the two people proposed keep theirs.
+ */
+@Preview(name = "Fill by hand", widthDp = 390, heightDp = 988)
+@Composable
+private fun FillByHandPreview() =
+    PreviewHost(
+        PROPOSAL.copy(
+            assigning =
+                AssignState(
+                    missionId = "stands",
+                    title = "Set up the stands",
+                    limit = 2,
+                    selection =
+                        AssigneeSelection(
+                            candidates =
+                                listOf(
+                                    AssigneeOption("lea", "Léa Petit"),
+                                    AssigneeOption("noah", "Noah Martin"),
+                                    AssigneeOption("zoe", "Zoé Blanc"),
+                                ),
+                            selectedIds = listOf("lea", "noah"),
+                            lockedIds = setOf("lea"),
+                        ),
+                )
+        )
+    )
 
 @Preview(name = "Nothing to propose", widthDp = 390, heightDp = 844)
 @Composable

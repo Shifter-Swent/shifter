@@ -61,14 +61,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.swent.shifter.R
 import com.swent.shifter.model.checkin.CheckInRules
-import com.swent.shifter.model.time.formatDay
-import com.swent.shifter.model.time.formatTime
 import com.swent.shifter.ui.components.FormPrimaryButton
+import com.swent.shifter.ui.components.LoadErrorRow
 import com.swent.shifter.ui.components.RefreshableList
 import com.swent.shifter.ui.components.TeamFilterMenu
 import com.swent.shifter.ui.components.days.DayHeader
 import com.swent.shifter.ui.components.days.DayWithoutMissions
 import com.swent.shifter.ui.components.days.EventDayStrip
+import com.swent.shifter.ui.components.days.missionSlot
 import com.swent.shifter.ui.components.days.rememberEventDayPicker
 import com.swent.shifter.ui.components.refreshAction
 import com.swent.shifter.ui.components.time.formatDuration
@@ -525,19 +525,14 @@ private fun EmptyMessage(text: Int) {
 }
 
 @Composable
-private fun LoadError(onRetry: () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    Text(
-        text = stringResource(R.string.attendance_load_failed),
-        color = MaterialTheme.colorScheme.error,
-        style = MaterialTheme.typography.bodySmall,
-        modifier = Modifier.weight(1f).testTag(ManagerOverviewTestTags.LOAD_ERROR),
+private fun LoadError(onRetry: () -> Unit) =
+    LoadErrorRow(
+        message = stringResource(R.string.attendance_load_failed),
+        retryLabel = stringResource(R.string.attendance_retry),
+        onRetry = onRetry,
+        messageTag = ManagerOverviewTestTags.LOAD_ERROR,
+        retryTag = ManagerOverviewTestTags.RETRY,
     )
-    TextButton(onClick = onRetry, modifier = Modifier.testTag(ManagerOverviewTestTags.RETRY)) {
-      Text(stringResource(R.string.attendance_retry))
-    }
-  }
-}
 
 /**
  * One mission and its live attendance. Only the header is tappable, so the counter and the lists
@@ -612,7 +607,7 @@ private fun MissionCard(
                       mission.teamId == null -> stringResource(R.string.attendance_team_general)
                       else -> mission.teamName ?: stringResource(R.string.attendance_team_unknown)
                     },
-                    schedule(mission, day, zone),
+                    missionSlot(mission.startAt, mission.endAt, day, zone),
                 ),
             style = MaterialTheme.typography.labelSmall,
             color = shifter_mutedText,
@@ -842,39 +837,5 @@ private fun People(
         )
       }
     }
-  }
-}
-
-/**
- * When the mission runs: its times alone on the [day] shown, as in the Planning. The date is added
- * for one starting after midnight, which belongs to the evening before, and both dates for one
- * crossing midnight, rather than "22:00–02:00".
- */
-@Composable
-private fun schedule(mission: AttendanceMission, day: LocalDate, zone: ZoneId): String {
-  val startDay = mission.startAt.atZone(zone).toLocalDate()
-  val endDay = mission.endAt.atZone(zone).toLocalDate()
-  return when {
-    startDay != endDay ->
-        stringResource(
-            R.string.attendance_schedule_across_days,
-            startDay.formatDay(),
-            mission.startAt.formatTime(zone),
-            endDay.formatDay(),
-            mission.endAt.formatTime(zone),
-        )
-    startDay != day ->
-        stringResource(
-            R.string.attendance_schedule_on_day,
-            startDay.formatDay(),
-            mission.startAt.formatTime(zone),
-            mission.endAt.formatTime(zone),
-        )
-    else ->
-        stringResource(
-            R.string.attendance_schedule,
-            mission.startAt.formatTime(zone),
-            mission.endAt.formatTime(zone),
-        )
   }
 }

@@ -320,7 +320,7 @@ private fun teamNowCardBody(
             detail =
                 mission.andPlace(
                     stringResource(
-                        R.string.attendance_schedule,
+                        R.string.mission_slot,
                         mission.startAt.formatTime(zone),
                         mission.endAt.formatTime(zone),
                     )

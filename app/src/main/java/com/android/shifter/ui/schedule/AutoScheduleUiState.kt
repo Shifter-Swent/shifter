@@ -1,6 +1,7 @@
 // Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
 package com.swent.shifter.ui.schedule
 
+import com.swent.shifter.ui.mission.AssignState
 import java.time.Instant
 
 /**
@@ -18,6 +19,8 @@ import java.time.Instant
  *   mission's count in `ScheduleProposal.unfilled`, 0 when it has none. It is the one figure the
  *   screen does not derive, so it has no default: a mission short of people is shown so only when
  *   this says so, whatever [assigned] and [proposed] hold.
+ * @property started whether the mission had started when the proposal was prepared: the proposal
+ *   fills only missions to come, so a started one keeps its empty spots, to fill by hand.
  */
 data class ProposedMission(
     val id: String,
@@ -30,6 +33,7 @@ data class ProposedMission(
     val assigned: List<String?> = emptyList(),
     val proposed: List<String?> = emptyList(),
     val missing: Int,
+    val started: Boolean = false,
 )
 
 /** Why saving the proposal failed, which decides what the organizer can do next. */
@@ -65,6 +69,15 @@ enum class ScheduleSaveError {
  *   cleared when the proposal is prepared or accepted again.
  * @property saved whether the proposal was saved: the caller then leaves the screen or says so, and
  *   it cannot be accepted again.
+ * @property assigning the mission being finished by hand in the assign dialog, or null when the
+ *   dialog is closed. Its selection holds the people already assigned, locked
+ *   ([com.swent.shifter.ui.mission.AssigneeSelection.lockedIds]); the people proposed are not in
+ *   it, since they come with Accept. Its limit is what the card says is left: the people already
+ *   assigned plus [ProposedMission.missing], so picking never takes the spots of the people
+ *   proposed. Saving it adds only the people picked beyond the locked ones, with
+ *   `MissionRepository.addAssignees`, which never removes anyone, even someone assigned from the
+ *   Overview meanwhile, and refuses a mission that filled up meanwhile; the proposal is then
+ *   prepared again.
  */
 data class AutoScheduleUiState(
     val isLoading: Boolean = true,
@@ -74,6 +87,7 @@ data class AutoScheduleUiState(
     val isSaving: Boolean = false,
     val saveError: ScheduleSaveError? = null,
     val saved: Boolean = false,
+    val assigning: AssignState? = null,
 ) {
   /** How many people the proposal assigns, over the whole event. */
   val newAssignments: Int
@@ -109,9 +123,19 @@ data class AutoScheduleUiState(
  * Every interaction of the proposed schedule, grouped so it takes a single parameter.
  *
  * @property onRetry prepares the proposal again, after a failed load or an outdated save.
+ * @property onAssign opens the assign dialog for the mission of this id, still short of people.
+ * @property onToggleAssignee picks or unpicks the candidate of this id in the dialog.
+ * @property onRetryAssignees loads the dialog's candidates again, after they failed.
+ * @property onSaveAssignees saves the people picked in the dialog.
+ * @property onDismissAssign closes the dialog without saving.
  */
 data class AutoScheduleActions(
     val onAccept: () -> Unit = {},
     val onCancel: () -> Unit = {},
     val onRetry: () -> Unit = {},
+    val onAssign: (missionId: String) -> Unit = {},
+    val onToggleAssignee: (candidateId: String) -> Unit = {},
+    val onRetryAssignees: () -> Unit = {},
+    val onSaveAssignees: () -> Unit = {},
+    val onDismissAssign: () -> Unit = {},
 )

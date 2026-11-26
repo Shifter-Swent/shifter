@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.swent.shifter.R
 import com.swent.shifter.ui.components.FieldLabel
@@ -34,7 +36,8 @@ object AssigneePickerTestTags {
 }
 
 /**
- * Lets the organizer or a manager pick who is assigned to a mission, at most [limit] people.
+ * Lets the organizer or a manager pick who is assigned to a mission, at most [limit] people. The
+ * people locked in [selection] are shown picked, and cannot be unpicked.
  *
  * Stateless: it shows [selection] and reports each tap on a candidate through [onToggle], with the
  * candidate's id.
@@ -91,11 +94,14 @@ fun AssigneePicker(
       else ->
           selection.candidates.forEach { candidate ->
             val selected = candidate.id in selection.selectedIds
+            val locked = candidate.id in selection.lockedIds
             CandidateRow(
                 name = candidate.name ?: stringResource(R.string.assignee_picker_unknown),
                 selected = selected,
-                // Once full, only the people already picked can be tapped, to unpick them.
-                enabled = enabled && (selected || selection.selectedIds.size < limit),
+                locked = locked,
+                // Once full, only the people already picked can be tapped, to unpick them; the
+                // locked ones never.
+                enabled = enabled && !locked && (selected || selection.selectedIds.size < limit),
                 onToggle = { onToggle(candidate.id) },
                 testTag = AssigneePickerTestTags.option(candidate.id),
             )
@@ -108,10 +114,12 @@ fun AssigneePicker(
 private fun CandidateRow(
     name: String,
     selected: Boolean,
+    locked: Boolean,
     enabled: Boolean,
     onToggle: () -> Unit,
     testTag: String,
 ) {
+  val alreadyAssigned = stringResource(R.string.assignee_picker_already_assigned)
   Row(
       modifier =
           Modifier.fillMaxWidth()
@@ -120,6 +128,11 @@ private fun CandidateRow(
                   enabled = enabled,
                   role = Role.Checkbox,
                   onValueChange = { onToggle() },
+              )
+              // A locked row reads as off like a row blocked by the limit: say why.
+              .then(
+                  if (locked) Modifier.semantics { stateDescription = alreadyAssigned }
+                  else Modifier
               )
               .testTag(testTag),
       verticalAlignment = Alignment.CenterVertically,

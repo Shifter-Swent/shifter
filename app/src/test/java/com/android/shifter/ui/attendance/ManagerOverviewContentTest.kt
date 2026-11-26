@@ -203,8 +203,8 @@ class ManagerOverviewContentTest {
 
     // Crossing midnight reads as the two days it spans rather than "22:00–02:00", and after
     // midnight names its date.
-    compose.onNodeWithText("Logistics · 20 Jun 22:00 – 21 Jun 02:00").assertIsDisplayed()
-    compose.onNodeWithText("Logistics · 21 Jun, 02:00–03:00").assertIsDisplayed()
+    compose.onNodeWithText("Logistics · Sun 20 Jun 22:00 – Mon 21 Jun 02:00").assertIsDisplayed()
+    compose.onNodeWithText("Logistics · Mon 21 Jun, 02:00–03:00").assertIsDisplayed()
     // On its own day, a mission needs no date: the strip says which day it is.
     pick(LocalDate.of(2027, 6, 21))
     compose.onNodeWithText("Logistics · 09:05–11:05").assertIsDisplayed()
@@ -1233,7 +1233,7 @@ class ManagerOverviewContentTest {
     )
 
     compose.onNodeWithTag(DayStripTestTags.STRIP).assertDoesNotExist()
-    compose.onNodeWithText("Logistics · 22 Jun, 09:05–11:05").assertIsDisplayed()
+    compose.onNodeWithText("Logistics · Tue 22 Jun, 09:05–11:05").assertIsDisplayed()
   }
 
   @Test

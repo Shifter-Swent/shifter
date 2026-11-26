@@ -155,6 +155,22 @@ class AutoScheduleViewModelTest {
   }
 
   @Test
+  fun load_afterAMissionStarted_marksItStartedWithItsSpotsToFill() = runTest {
+    festival()
+    // 10:00: "Bar" and "Gate" have started, "General" not yet.
+    at = start.plus(Duration.ofHours(2))
+
+    open()
+
+    val bar = state.missions.single { it.title == "Bar" }
+    assertTrue(bar.started)
+    // Ben is free, but the proposal skips a started mission: its spot stays to fill by hand.
+    assertEquals(emptyList<String?>(), bar.proposed)
+    assertEquals(1, bar.missing)
+    assertFalse(state.missions.single { it.title == "General" }.started)
+  }
+
+  @Test
   fun retry_afterAFailedLoad_keepsThenReloads() = runTest {
     festival()
     open()

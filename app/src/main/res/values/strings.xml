@@ -6,4 +6,9 @@
     <string name="dialog_cancel">Cancel</string>
     <!-- The accessibility action of a list that is reloaded by pulling it down. -->
     <string name="refresh">Refresh</string>
+    <!-- When a mission runs (missionSlot): times only within a day, the day added when the mission
+         is not on the day being read, and both days when it crosses midnight. -->
+    <string name="mission_slot">%1$s–%2$s</string>
+    <string name="mission_slot_on_day">%1$s, %2$s–%3$s</string>
+    <string name="mission_slot_across_days">%1$s %2$s – %3$s %4$s</string>
 </resources>
