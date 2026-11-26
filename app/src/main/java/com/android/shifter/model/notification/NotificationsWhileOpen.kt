@@ -38,6 +38,14 @@ suspend fun runNotificationsWhileOpen(
 }
 
 /**
+ * Clears [notifier] each time [userIds], the signed-in user's id over time, is null: signed out, or
+ * between two accounts. Returns only when cancelled.
+ */
+suspend fun clearWhenSignedOut(userIds: Flow<String?>, notifier: Notifier) = userIds.collect {
+  if (it == null) notifier.clear()
+}
+
+/**
  * This flow, collected again [NOTIFICATIONS_RETRY_DELAY] after each failure, rather than ended: the
  * notifications must go on while the app is open.
  */

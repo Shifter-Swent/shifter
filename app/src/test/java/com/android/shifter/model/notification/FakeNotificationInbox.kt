@@ -228,6 +228,8 @@ class FakeNotifier : Notifier {
 
   override fun activeIdentities(): Set<String> = active.keys.toSet()
 
+  override fun clear() = active.clear()
+
   fun dismiss(identity: String) {
     active -= identity
   }

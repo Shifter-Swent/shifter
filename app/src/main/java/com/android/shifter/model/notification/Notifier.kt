@@ -24,6 +24,12 @@ interface Notifier {
    * Android drops every notification without a word, so the engine consumes nothing until then.
    */
   fun canShow(): Boolean
+
+  /**
+   * Removes every notification shown, once nobody is signed in: a tap must never open the screens
+   * of an account signed out.
+   */
+  fun clear()
 }
 
 /**

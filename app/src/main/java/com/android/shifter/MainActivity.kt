@@ -71,7 +71,8 @@ class MainActivity : ComponentActivity() {
                 navController.currentBackStackEntryFlow.map { it.isInEventsApp() }
               }
           NotificationPermissionRequest(inApp)
-          NotificationsWhileOpen(repositories, DeviceNotifications.of(this@MainActivity).engine)
+          val notifications = DeviceNotifications.of(this@MainActivity)
+          NotificationsWhileOpen(repositories, notifications.engine, notifications.notifier)
         }
       }
     }

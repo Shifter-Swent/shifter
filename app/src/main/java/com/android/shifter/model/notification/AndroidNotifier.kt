@@ -116,6 +116,8 @@ class AndroidNotifier(context: Context) : Notifier {
       manager.getNotificationChannelCompat(channelId)?.importance !=
           NotificationManagerCompat.IMPORTANCE_NONE
 
+  override fun clear() = manager.cancelAll()
+
   override fun activeIdentities(): Set<String> =
       manager.activeNotifications
           .filter { it.id == NOTIFICATION_ID && it.tag != null }

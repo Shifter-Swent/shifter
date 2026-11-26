@@ -269,6 +269,15 @@ class AndroidNotifierTest {
     assertTrue(notifier.canShow())
   }
 
+  @Test
+  fun clear_removesEveryNotification_summariesIncluded() {
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1"), myEvents("e2")))
+
+    notifier.clear()
+
+    assertEquals(emptyList<Notification>(), manager.activeNotifications.map { it.notification })
+  }
+
   /** Turns the channel of [kind] off, as the user does in the phone's settings. */
   private fun turnOff(kind: NotificationKind) {
     manager.createNotificationChannel(

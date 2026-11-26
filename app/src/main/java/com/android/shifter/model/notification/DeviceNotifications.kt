@@ -17,6 +17,9 @@ class DeviceNotifications(context: Context, repositories: RepositoryProvider) {
 
   private val texts = AndroidNotificationTexts(this.context)
 
+  /** What the [engine] shows with, cleared on sign-out. */
+  val notifier: Notifier = AndroidNotifier(this.context)
+
   val engine =
       NotificationEngine(
           inbox = repositories.notificationInbox,
@@ -28,7 +31,7 @@ class DeviceNotifications(context: Context, repositories: RepositoryProvider) {
               listOf(
                   OpenSpots(repositories.eventRepository, repositories.missionRepository, texts)
               ),
-          notifier = AndroidNotifier(this.context),
+          notifier = notifier,
           shownItems = { userId -> SharedPreferencesShownItems(this.context, userId) },
           seenStore = { userId, kind -> SharedPreferencesSeenStore(this.context, userId, kind) },
           texts = texts,
