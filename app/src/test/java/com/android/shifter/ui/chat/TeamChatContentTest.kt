@@ -2,6 +2,7 @@
 package com.swent.shifter.ui.chat
 
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -12,11 +13,13 @@ import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyChild
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -118,10 +121,16 @@ class TeamChatContentTest {
         )
     )
 
-    tag(TeamChatTestTags.day(TODAY)).assert(hasText("Today"))
-    tag(TeamChatTestTags.day(TODAY.minusDays(1))).assert(hasText("Yesterday"))
-    tag(TeamChatTestTags.day(TODAY.minusDays(3))).assert(hasText("17 Jun"))
-    tag(TeamChatTestTags.day(TODAY.minusDays(400))).assert(hasText("16 May 2026"))
+    // Scrolled to first, since the list composes only the rows on screen.
+    fun chip(day: LocalDate): SemanticsNodeInteraction {
+      tag(TeamChatTestTags.MESSAGES).performScrollToNode(hasTestTag(TeamChatTestTags.day(day)))
+      return tag(TeamChatTestTags.day(day))
+    }
+
+    chip(TODAY).assert(hasText("Today"))
+    chip(TODAY.minusDays(1)).assert(hasText("Yesterday"))
+    chip(TODAY.minusDays(3)).assert(hasText("17 Jun"))
+    chip(TODAY.minusDays(400)).assert(hasText("16 May 2026"))
   }
 
   @Test
