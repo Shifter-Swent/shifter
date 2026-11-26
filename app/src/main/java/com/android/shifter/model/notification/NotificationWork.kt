@@ -65,7 +65,7 @@ class NotificationWorker(context: Context, params: WorkerParameters) :
  * Runs [run] for [userId], nothing when nobody is signed in, and gives what it throws to
  * [onFailure], a cancellation excepted.
  */
-suspend fun runNotificationWork(
+internal suspend fun runNotificationWork(
     userId: String?,
     run: suspend (userId: String) -> Unit,
     onFailure: (Exception) -> Unit,

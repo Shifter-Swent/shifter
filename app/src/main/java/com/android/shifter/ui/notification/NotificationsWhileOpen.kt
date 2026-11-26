@@ -60,7 +60,7 @@ fun NotificationsWhileOpen(
  * notification the run was showing never stays after the clear, to open the screens of the account
  * signed out. Runs on [dispatcher]. Returns only when cancelled.
  */
-suspend fun runAppNotifications(
+internal suspend fun runAppNotifications(
     lifecycle: Lifecycle,
     userIds: Flow<String?>,
     notifier: Notifier,
