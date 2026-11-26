@@ -50,6 +50,16 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun build_letsOnlyAMissedCheckInPopUp() {
+    NotificationKind.entries.forEach { kind ->
+      val expected =
+          if (kind == NotificationKind.MISSED_CHECK_IN) NotificationManager.IMPORTANCE_HIGH
+          else NotificationManager.IMPORTANCE_DEFAULT
+      assertEquals(kind.name, expected, channel(kind).importance)
+    }
+  }
+
+  @Test
   fun show_postsEachUnderItsIdentity_onItsKindsChannel() {
     notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1", text = "Needs 2")))
 
@@ -265,6 +275,9 @@ class AndroidNotifierTest {
         NotificationChannel(CHANNEL_IDS.getValue(kind), "Off", NotificationManager.IMPORTANCE_NONE)
     )
   }
+
+  private fun channel(kind: NotificationKind) =
+      manager.getNotificationChannel(CHANNEL_IDS.getValue(kind))
 
   private fun postedOrNull(tag: String): Notification? =
       manager.activeNotifications.singleOrNull { it.tag == tag }?.notification

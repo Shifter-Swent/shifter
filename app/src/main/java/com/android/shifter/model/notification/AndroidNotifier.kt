@@ -41,7 +41,7 @@ class AndroidNotifier(context: Context) : Notifier {
         NotificationKind.entries.map { kind ->
           NotificationChannelCompat.Builder(
                   kind.channelId,
-                  NotificationManagerCompat.IMPORTANCE_DEFAULT,
+                  kind.importance,
               )
               .setName(context.getString(kind.channelName))
               .setDescription(
@@ -166,6 +166,15 @@ class AndroidNotifier(context: Context) : Notifier {
 /** The id of this kind's Android channel. Never change it: a user's settings are kept under it. */
 private val NotificationKind.channelId: String
   get() = "notification_${name.lowercase()}"
+
+/**
+ * How this kind's channel interrupts: a missed check-in pops up, since its manager must react at
+ * once. Fixed when the channel is first created on a phone: only the user can change it after.
+ */
+private val NotificationKind.importance: Int
+  get() =
+      if (this == NotificationKind.MISSED_CHECK_IN) NotificationManagerCompat.IMPORTANCE_HIGH
+      else NotificationManagerCompat.IMPORTANCE_DEFAULT
 
 /** The event a notification is grouped under. */
 private data class EventRef(val id: String, val title: String)
