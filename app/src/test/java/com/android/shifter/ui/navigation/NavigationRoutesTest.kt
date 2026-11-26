@@ -6,7 +6,6 @@ import com.swent.shifter.model.mission.Mission
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,17 +46,14 @@ class NavigationRoutesTest {
   }
 
   @Test
-  fun screensOutsideEventMode_haveATitleAndNoTab() {
-    screensOutsideEventMode.forEach {
-      assertTrue(it.title.isNotBlank())
-      assertNull(it.tab)
-    }
+  fun screensOutsideEventMode_haveATitle() {
+    screensOutsideEventMode.forEach { assertTrue(it.title.isNotBlank()) }
   }
 
   @Test
   fun tabSets_listTheirTabsInOrder() {
     assertEquals(
-        listOf(VolunteerTabs.Overview, VolunteerTabs.Map, VolunteerTabs.Discussions),
+        listOf(VolunteerTabs.Overview, VolunteerTabs.Map, VolunteerTabs.Chat),
         VolunteerTabs.all,
     )
     assertEquals(
@@ -65,7 +61,7 @@ class NavigationRoutesTest {
             OrganizerTabs.Overview,
             OrganizerTabs.People,
             OrganizerTabs.Map,
-            OrganizerTabs.Discussions,
+            OrganizerTabs.Chat,
             OrganizerTabs.Sharing,
         ),
         OrganizerTabs.all,
@@ -79,7 +75,6 @@ class NavigationRoutesTest {
     tabSets.forEach { set ->
       set.all.forEach { tab ->
         assertSame(set, tab.set)
-        assertEquals(tab, tab.home.tab)
         assertTrue(tab.home.title.isNotBlank())
         assertTrue(tab.label.isNotBlank())
         assertTrue(tab.testTag.isNotBlank())

@@ -11,7 +11,7 @@ import com.swent.shifter.ui.theme.shifter_chatTintPink
 import com.swent.shifter.ui.theme.shifter_chatTintPurple
 import com.swent.shifter.ui.theme.shifter_chatTintTeal
 
-/** The tints of the Discussions: a team's channel tile, and the name and avatar of a member. */
+/** The tints of the chat: a team's channel tile, and the name and avatar of a member. */
 internal val CHAT_TINTS =
     listOf(
         shifter_chatTintPink,

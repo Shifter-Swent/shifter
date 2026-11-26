@@ -72,7 +72,7 @@ class ChatChannelsContentTest {
   fun list_asVolunteer_groupsTheEventChannelsAboveTheirTeam() {
     setContent(ChatChannelsUiState(channels = CHANNELS.take(1), isLoading = false))
 
-    composeTestRule.onNodeWithText("Discussions").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Chat").assertIsDisplayed()
     composeTestRule.onNodeWithText("Event").assertIsDisplayed()
     composeTestRule.onNodeWithText("Your team").assertIsDisplayed()
     assertEquals(

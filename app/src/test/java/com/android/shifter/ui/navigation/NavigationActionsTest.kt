@@ -139,11 +139,11 @@ class NavigationActionsTest {
   fun openChannel_dropsTheChannelLeftOpenThenOpensTheOneAsked() {
     val channel = VolunteerEventScreen.Channel(ChannelKind.TEAM, "team", name = null)
 
-    nav.openChannel(VolunteerTabs.Discussions, channel)
+    nav.openChannel(VolunteerTabs.Chat, channel)
 
     verifyOrder {
-      navController.clearBackStack(VolunteerTabs.Discussions::class)
-      navController.navigate(VolunteerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.clearBackStack(VolunteerTabs.Chat::class)
+      navController.navigate(VolunteerTabs.Chat, any<NavOptionsBuilder.() -> Unit>())
       navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
     }
   }
@@ -322,7 +322,7 @@ class NavigationActionsTest {
     val channel = VolunteerEventScreen.Channel(ChannelKind.TEAM, "bar", name = null)
     verifyOrder {
       navController.navigate(VolunteerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
-      navController.navigate(VolunteerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(VolunteerTabs.Chat, any<NavOptionsBuilder.() -> Unit>())
       navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
     }
   }
@@ -337,7 +337,7 @@ class NavigationActionsTest {
     val channel = OrganizerEventScreen.Channel(ChannelKind.GENERAL, null, "General")
     verifyOrder {
       navController.navigate(OrganizerEvent("e1", "Fest"), any<NavOptionsBuilder.() -> Unit>())
-      navController.navigate(OrganizerTabs.Discussions, any<NavOptionsBuilder.() -> Unit>())
+      navController.navigate(OrganizerTabs.Chat, any<NavOptionsBuilder.() -> Unit>())
       navController.navigate(channel, any<NavOptionsBuilder.() -> Unit>())
     }
   }

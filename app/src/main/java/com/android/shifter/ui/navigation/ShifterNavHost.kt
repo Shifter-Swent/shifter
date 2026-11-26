@@ -438,7 +438,7 @@ private fun ShifterNavGraph(
                             // As for the pencil, a second tap before the channel opens is ignored.
                             if (entry.lifecycle.currentState == Lifecycle.State.RESUMED) {
                               nav.openChannel(
-                                  VolunteerTabs.Discussions,
+                                  VolunteerTabs.Chat,
                                   contactChannel(mission, generalChannel),
                               )
                             }
@@ -485,13 +485,13 @@ private fun ShifterNavGraph(
               repositories.teamRepository.getTeamsManagedBy(eventId, userId)
             },
         )
-        discussionsTab<
-            VolunteerTabs.Discussions,
-            VolunteerEventScreen.Discussions,
+        chatTab<
+            VolunteerTabs.Chat,
+            VolunteerEventScreen.Chat,
             VolunteerEventScreen.Channel,
             VolunteerEvent,
         >(
-            VolunteerTabs.Discussions,
+            VolunteerTabs.Chat,
             asOrganizer = false,
             nav,
             navController,
@@ -718,13 +718,13 @@ private fun ShifterNavGraph(
             // Shows the organizer where they are, to them alone: the map shares nothing.
             locationProvider,
         )
-        discussionsTab<
-            OrganizerTabs.Discussions,
-            OrganizerEventScreen.Discussions,
+        chatTab<
+            OrganizerTabs.Chat,
+            OrganizerEventScreen.Chat,
             OrganizerEventScreen.Channel,
             OrganizerEvent,
         >(
-            OrganizerTabs.Discussions,
+            OrganizerTabs.Chat,
             asOrganizer = true,
             nav,
             navController,
@@ -841,18 +841,17 @@ private inline fun <reified T : Tab, reified S : Destination, reified E : EventM
 }
 
 /**
- * Registers the Discussions [tab] of the event open in the graph [E]: the event's channels and the
- * team channels the user can open, every team's for its organizer ([asOrganizer]), and on top of it
- * the channel picked, as the destination [channel] makes of its kind, team id (for a team's
- * channel) and name, under a bar with that name, where the organizer may announce in the event's
- * channels.
+ * Registers the Chat [tab] of the event open in the graph [E]: the event's channels and the team
+ * channels the user can open, every team's for its organizer ([asOrganizer]), and on top of it the
+ * channel picked, as the destination [channel] makes of its kind, team id (for a team's channel)
+ * and name, under a bar with that name, where the organizer may announce in the event's channels.
  */
 private inline fun <
     reified T : Tab,
     reified S : Destination,
     reified C : ChannelScreen,
     reified E : EventMode,
-> NavGraphBuilder.discussionsTab(
+> NavGraphBuilder.chatTab(
     tab: Tab,
     asOrganizer: Boolean,
     nav: NavigationActions,

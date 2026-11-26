@@ -71,11 +71,11 @@ fun ChatChannelsScreen(
 }
 
 /**
- * The "Discussions" title, then the event's channels under "Event": the general one, and the admin
- * one for those who may open it. Then the team channels the user can open, under their own header.
- * With no team channel, a card says why there: a volunteer is in no team yet, or the organizer has
- * not created any. The list is always shown, even with a single team channel, as the general
- * channel is always there too.
+ * The "Chat" title, then the event's channels under "Event": the general one, and the admin one for
+ * those who may open it. Then the team channels the user can open, under their own header. With no
+ * team channel, a card says why there: a volunteer is in no team yet, or the organizer has not
+ * created any. The list is always shown, even with a single team channel, as the general channel is
+ * always there too.
  */
 @Composable
 fun ChatChannelsContent(

@@ -16,7 +16,7 @@
     <string name="chat_channel_general">General</string>
     <string name="chat_channel_admin">Admin</string>
     <string name="chat_channel_team">Team channel</string>
-    <string name="chat_channels_title">Discussions</string>
+    <string name="chat_channels_title">Chat</string>
     <string name="chat_channels_event">Event</string>
     <plurals name="chat_channels_your_teams">
         <item quantity="one">Your team</item>

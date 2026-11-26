@@ -31,11 +31,11 @@ import kotlinx.serialization.Serializable
  * Volunteer
  *   ├── Events (VM-00), ProfileSettings, QrApply (+ Scan)
  *   └── VolunteerEvent(eventId, eventTitle): Overview (VM-01) (+ AddMission, EditMission),
- *       Map, Discussions (+ Channel)
+ *       Map, Chat (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
  *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
- *       Discussions (+ Channel), Sharing
+ *       Chat (+ Channel), Sharing
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -46,8 +46,6 @@ sealed interface App {
 
 sealed interface Destination {
   val title: String
-  val tab: Tab?
-    get() = null
 }
 
 sealed interface Tab {
@@ -65,10 +63,10 @@ sealed interface TabSet {
 }
 
 /**
- * A chat channel opened on top of the Discussions tab of either mode: the channel of the team
- * [teamId] for [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its
- * [name] is in the route, so the bar shows it without loading the team; a team's channel opened
- * without it, as from the now card, shows the name of the team once read.
+ * A chat channel opened on top of the Chat tab of either mode: the channel of the team [teamId] for
+ * [ChannelKind.TEAM], or one of the event's for the other kinds, with no [teamId]. Its [name] is in
+ * the route, so the bar shows it without loading the team; a team's channel opened without it, as
+ * from the now card, shows the name of the team once read.
  */
 sealed interface ChannelScreen : Destination {
   val kind: ChannelKind
@@ -194,7 +192,7 @@ data class VolunteerEvent(override val eventId: String, override val eventTitle:
 
 object VolunteerTabs : TabSet {
   override val all
-    get() = listOf(Overview, Map, Discussions)
+    get() = listOf(Overview, Map, Chat)
 
   override val home
     get() = Overview
@@ -224,13 +222,13 @@ object VolunteerTabs : TabSet {
   }
 
   @Serializable
-  data object Discussions : Tab {
+  data object Chat : Tab {
     override val home
-      get() = VolunteerEventScreen.Discussions
+      get() = VolunteerEventScreen.Chat
 
-    override val label = "Discussions"
+    override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
-    override val testTag = NavigationTestTags.DISCUSSIONS_TAB
+    override val testTag = NavigationTestTags.CHAT_TAB
     override val set
       get() = VolunteerTabs
   }
@@ -240,16 +238,12 @@ sealed interface VolunteerEventScreen : Destination {
   @Serializable
   data object Overview : VolunteerEventScreen {
     override val title = "Overview"
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   /** Mission creation form of a manager, opened on top of the event's Overview. */
   @Serializable
   data object AddMission : VolunteerEventScreen {
     override val title = "Add mission"
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   /** The same form editing [missionId], a mission of a team the manager leads. */
@@ -257,35 +251,25 @@ sealed interface VolunteerEventScreen : Destination {
   data class EditMission(val missionId: String) : VolunteerEventScreen {
     override val title
       get() = "Edit mission"
-
-    override val tab
-      get() = VolunteerTabs.Overview
   }
 
   @Serializable
   data object Map : VolunteerEventScreen {
     override val title = "Map"
-    override val tab
-      get() = VolunteerTabs.Map
   }
 
   @Serializable
-  data object Discussions : VolunteerEventScreen {
-    override val title = "Discussions"
-    override val tab
-      get() = VolunteerTabs.Discussions
+  data object Chat : VolunteerEventScreen {
+    override val title = "Chat"
   }
 
-  /** A chat channel, opened from Discussions. */
+  /** A chat channel, opened from the Chat tab. */
   @Serializable
   data class Channel(
       override val kind: ChannelKind,
       override val teamId: String?,
       override val name: String?,
-  ) : VolunteerEventScreen, ChannelScreen {
-    override val tab
-      get() = VolunteerTabs.Discussions
-  }
+  ) : VolunteerEventScreen, ChannelScreen
 }
 
 // ── Organizer ───────────────────────────────────────────────────────────────
@@ -341,7 +325,7 @@ data class OrganizerEvent(override val eventId: String, override val eventTitle:
 
 object OrganizerTabs : TabSet {
   override val all
-    get() = listOf(Overview, People, Map, Discussions, Sharing)
+    get() = listOf(Overview, People, Map, Chat, Sharing)
 
   override val home
     get() = Overview
@@ -383,13 +367,13 @@ object OrganizerTabs : TabSet {
   }
 
   @Serializable
-  data object Discussions : Tab {
+  data object Chat : Tab {
     override val home
-      get() = OrganizerEventScreen.Discussions
+      get() = OrganizerEventScreen.Chat
 
-    override val label = "Discussions"
+    override val label = "Chat"
     override val icon = Icons.AutoMirrored.Filled.Chat
-    override val testTag = NavigationTestTags.DISCUSSIONS_TAB
+    override val testTag = NavigationTestTags.CHAT_TAB
     override val set
       get() = OrganizerTabs
   }
@@ -411,16 +395,12 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object Overview : OrganizerEventScreen {
     override val title = "Overview"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Mission creation form, opened on top of the event's Overview. */
   @Serializable
   data object AddMission : OrganizerEventScreen {
     override val title = "Add mission"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Edit form of the mission [missionId], opened on top of the event's Overview. */
@@ -428,58 +408,42 @@ sealed interface OrganizerEventScreen : Destination {
   data class EditMission(val missionId: String) : OrganizerEventScreen {
     override val title
       get() = "Edit mission"
-
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   /** Teams of an event that already exists, opened on top of its Overview. */
   @Serializable
   data object ManageTeams : OrganizerEventScreen {
     override val title = "Manage teams"
-    override val tab
-      get() = OrganizerTabs.Overview
   }
 
   @Serializable
   data object People : OrganizerEventScreen {
     override val title = "People"
-    override val tab
-      get() = OrganizerTabs.People
   }
 
   @Serializable
   data object Map : OrganizerEventScreen {
     override val title = "Map"
-    override val tab
-      get() = OrganizerTabs.Map
   }
 
   @Serializable
-  data object Discussions : OrganizerEventScreen {
-    override val title = "Discussions"
-    override val tab
-      get() = OrganizerTabs.Discussions
+  data object Chat : OrganizerEventScreen {
+    override val title = "Chat"
   }
 
   /** The event's join code and its QR code, to share with volunteers. */
   @Serializable
   data object Sharing : OrganizerEventScreen {
     override val title = "Share"
-    override val tab
-      get() = OrganizerTabs.Sharing
   }
 
-  /** A chat channel, opened from Discussions. */
+  /** A chat channel, opened from the Chat tab. */
   @Serializable
   data class Channel(
       override val kind: ChannelKind,
       override val teamId: String?,
       override val name: String?,
-  ) : OrganizerEventScreen, ChannelScreen {
-    override val tab
-      get() = OrganizerTabs.Discussions
-  }
+  ) : OrganizerEventScreen, ChannelScreen
 }
 
 /**
@@ -566,8 +530,8 @@ open class NavigationActions(private val navController: NavHostController) {
   }
 
   /**
-   * Opens [channel] on top of the root of the Discussions [tab] of the mode, wherever the user is:
-   * a channel left open there is dropped, so the one asked for gets its own screen rather than
+   * Opens [channel] on top of the root of the Chat [tab] of the mode, wherever the user is: a
+   * channel left open there is dropped, so the one asked for gets its own screen rather than
    * reusing that channel's.
    */
   open fun openChannel(tab: Tab, channel: ChannelScreen) {
@@ -603,12 +567,12 @@ open class NavigationActions(private val navController: NavHostController) {
         when (event) {
           is VolunteerEvent ->
               openChannel(
-                  VolunteerTabs.Discussions,
+                  VolunteerTabs.Chat,
                   VolunteerEventScreen.Channel(target.kind, target.teamId, name),
               )
           is OrganizerEvent ->
               openChannel(
-                  OrganizerTabs.Discussions,
+                  OrganizerTabs.Chat,
                   OrganizerEventScreen.Channel(target.kind, target.teamId, name),
               )
         }
