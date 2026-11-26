@@ -44,8 +44,10 @@ private val SENDER_NAME_KEYS =
  *
  * Every inbox notification it handles leaves the inbox: shown, turned off, too old or unreadable by
  * its format. One of a kind with no format in this version of the app stays, until it is older than
- * [MAX_INBOX_AGE]. While the [Notifier] cannot show anything, as without the permission, it
- * consumes nothing: neither the inbox nor the checks' [SeenStore]s change until it can.
+ * [MAX_INBOX_AGE]. While the [Notifier] cannot show anything, as without the permission, it only
+ * removes what it would never show, turned off or too old, so the inbox of a user who declined the
+ * permission does not grow for good: the rest waits until it can be shown, or until it is too old.
+ * The checks' [SeenStore]s do not change until it can show.
  *
  * Its runs never overlap, even when the app and a background run call it at once, so two runs never
  * both add to the same notification and lose one's items: the app holds one engine per process.
@@ -116,11 +118,14 @@ class NotificationEngine(
 
   /** [handleInbox], with the [mutex] held. */
   private suspend fun inboxNow(userId: String, now: Instant) {
-    if (!notifier.canShow()) return
     val items = inbox.pending(userId)
     val disabled = disabledKinds(userId)
     val (wanted, unwanted) =
         items.partition { it.kind !in disabled && !it.createdAt.isBefore(now - MAX_INBOX_AGE) }
+    if (!notifier.canShow()) {
+      if (unwanted.isNotEmpty()) inbox.remove(userId, unwanted.map { it.id })
+      return
+    }
     val readable = wanted.filter { it.kind in formats }
     val shown = shownItems(userId).apply { retainOnly(notifier.activeIdentities()) }
     var failure: Exception? = null

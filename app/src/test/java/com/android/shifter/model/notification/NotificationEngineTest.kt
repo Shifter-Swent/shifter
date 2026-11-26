@@ -432,8 +432,13 @@ class NotificationEngineTest {
   }
 
   @Test
-  fun run_whileItCannotShow_consumesNothing() = runTest {
+  fun run_whileItCannotShow_removesOnlyWhatItWouldNeverShow() = runTest {
     notifier.permitted = false
+    preferences.disable(user, NotificationKind.ANNOUNCEMENT)
+    deliveredAt = now - Duration.ofHours(48) - Duration.ofSeconds(1)
+    deliver(eventId = "too-old")
+    deliveredAt = now
+    deliver(NotificationKind.ANNOUNCEMENT)
     val item = deliver()
     val check = StubCheck(NotificationKind.OPEN_SPOTS, listOf(openSpots("mission-1")))
 
