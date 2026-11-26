@@ -130,6 +130,34 @@ class AndroidNotifierTest {
   }
 
   @Test
+  fun show_removesASummaryWhoseNotificationsWereAllDismissed() {
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
+    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+
+    notifier.show(
+        listOf(
+            notification(
+                NotificationKind.APPLICATION_DECIDED,
+                "e2",
+                target = NotificationTarget.MyEvents(UserMode.VOLUNTEER),
+            )
+        )
+    )
+
+    assertNull(shadowOf(manager).getNotification("e1", SUMMARY_ID))
+  }
+
+  @Test
+  fun show_nothing_changesNothing() {
+    notifier.show(listOf(notification(NotificationKind.OPEN_SPOTS, "m1")))
+    manager.cancel("OPEN_SPOTS:m1", NOTIFICATION_ID)
+
+    notifier.show(emptyList())
+
+    assertEquals(1, shadowOf(manager).allNotifications.size)
+  }
+
+  @Test
   fun show_myEvents_hasNoGroupNorSummary() {
     notifier.show(
         listOf(

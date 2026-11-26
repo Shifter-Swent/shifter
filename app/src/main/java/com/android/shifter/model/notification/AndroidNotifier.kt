@@ -52,16 +52,31 @@ class AndroidNotifier(private val context: Context) : Notifier {
   // Android drops the notification without a word rather than throwing.
   @SuppressLint("MissingPermission")
   override fun show(notifications: List<AppNotification>) {
+    if (notifications.isEmpty()) return
     notifications.forEach { manager.notify(it.identity, NOTIFICATION_ID, build(it)) }
-    val summarized =
-        manager.activeNotifications
-            .filter { it.id == SUMMARY_ID }
-            .mapNotNullTo(mutableSetOf()) { it.tag }
+    val summarized = summariesKept()
     summaryChannels(notifications)
         .filterKeys { it.id !in summarized }
         .forEach { (event, channelId) ->
           manager.notify(event.id, SUMMARY_ID, summary(event, channelId))
         }
+  }
+
+  /**
+   * The events whose summary is shown, once the summaries left without a notification are removed:
+   * one the user dismissed every notification of would otherwise stay alone, and a tap on it does
+   * nothing.
+   */
+  private fun summariesKept(): Set<String> {
+    val active = manager.activeNotifications
+    val groups =
+        active
+            .filter { it.id == NOTIFICATION_ID }
+            .mapNotNullTo(mutableSetOf()) { it.notification.group }
+    val (kept, alone) =
+        active.filter { it.id == SUMMARY_ID && it.tag != null }.partition { it.tag in groups }
+    alone.forEach { manager.cancel(it.tag, SUMMARY_ID) }
+    return kept.mapTo(mutableSetOf()) { it.tag }
   }
 
   /**
