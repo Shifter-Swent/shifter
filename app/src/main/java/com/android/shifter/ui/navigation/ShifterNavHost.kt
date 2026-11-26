@@ -103,6 +103,8 @@ import com.swent.shifter.ui.settings.SettingsViewModel
 import com.swent.shifter.ui.sharing.AndroidEventSharer
 import com.swent.shifter.ui.sharing.EventSharer
 import com.swent.shifter.ui.sharing.SharingScreen
+import com.swent.shifter.ui.shifts.ShiftsScreen
+import com.swent.shifter.ui.shifts.ShiftsViewModel
 import com.swent.shifter.ui.team.TeamSetupMode
 import com.swent.shifter.ui.team.TeamSetupScreen
 import com.swent.shifter.ui.team.TeamSetupViewModel
@@ -624,6 +626,7 @@ private fun ShifterNavGraph(
                   clock = repositories.minuteClock,
                   onAddMission = { nav.navigateTo(OrganizerEventScreen.AddMission) },
                   onManageTeams = { nav.navigateTo(OrganizerEventScreen.ManageTeams) },
+                  onManageShifts = { nav.navigateTo(OrganizerEventScreen.ManageShifts) },
                   onEditMission = {
                     // A second row tapped before the form opens would reuse its entry, with the
                     // first mission's ViewModel: only the Overview still on top may open one.
@@ -650,6 +653,22 @@ private fun ShifterNavGraph(
             val missionId =
                 remember(entry) { entry.toRoute<OrganizerEventScreen.EditMission>().missionId }
             AddMissionRoute(eventId, repositories, currentUserId, nav::goBack, missionId)
+          }
+          composable<OrganizerEventScreen.ManageShifts> { entry ->
+            // The event's id is in the route of the event graph this screen belongs to.
+            val eventId = eventRoute<OrganizerEvent>(navController, entry).eventId
+            ShiftsScreen(
+                viewModel =
+                    viewModel(
+                        factory =
+                            ShiftsViewModel.factory(
+                                eventId,
+                                repositories.shiftRepository,
+                                repositories.eventRepository,
+                            )
+                    ),
+                onBack = nav::goBack,
+            )
           }
           composable<OrganizerEventScreen.ManageTeams> { entry ->
             // The event's id is in the route of the event graph this screen belongs to.

@@ -52,7 +52,9 @@ class ShiftGridTest {
       days: List<LocalDate> = weekend,
       shifts: List<Shift> = emptyList(),
       picked: Set<String> = emptySet(),
-  ) = showChanging(days, { mode }, { shifts }, { picked })
+      period: ClosedRange<Instant>? = null,
+      saving: Set<String> = emptySet(),
+  ) = showChanging(days, { mode }, { shifts }, { picked }, period, saving)
 
   /**
    * Shows the grid reading its inputs through lambdas, so a test can change one afterwards and
@@ -63,6 +65,8 @@ class ShiftGridTest {
       mode: () -> ShiftGridMode = { ShiftGridMode.EDIT },
       shifts: () -> List<Shift> = { emptyList() },
       picked: () -> Set<String> = { emptySet() },
+      period: ClosedRange<Instant>? = null,
+      saving: Set<String> = emptySet(),
   ) {
     compose.setContent {
       ShifterTheme {
@@ -72,6 +76,8 @@ class ShiftGridTest {
             mode = mode(),
             zone = ZONE,
             modifier = Modifier.requiredWidth(GRID_WIDTH),
+            period = period,
+            savingShiftIds = saving,
             pickedShiftIds = picked(),
             onSlot = { tapped += it },
         )
@@ -137,16 +143,48 @@ class ShiftGridTest {
   }
 
   @Test
-  fun edit_aSlotVolunteersChose_showsItsLockAndCannotBeClosed() {
+  fun edit_aSlotVolunteersChose_showsItsLockAndOffersNoClose() {
     show(ShiftGridMode.EDIT, shifts = listOf(shiftOf(sat, 10, volunteers = 3)))
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
     mark(ShiftGridTestTags.CLOSE_ACTION, sat, 10).assertDoesNotExist()
     cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
+    // It reports the tap, for the caller to say why the slot stays; closing it is the caller's to
+    // refuse, as ShiftsViewModel does.
+    cell(sat, 10).performClick()
+
+    assertEquals(listOf(slotOf(sat, 10, ZONE)), tapped)
+  }
+
+  @Test
+  fun edit_aSlotOutsideTheEvent_isNotOfferedAndReportsNothing() {
+    // The event runs from Saturday 08:00: the rules refuse 00-02, so the grid offers nothing.
+    show(
+        ShiftGridMode.EDIT,
+        period = slotOf(sat, 8, ZONE).startAt..slotOf(sun, 22, ZONE).startAt,
+    )
+
+    mark(ShiftGridTestTags.OPEN_ACTION, sat, 0).assertDoesNotExist()
+    cell(sat, 0).assertHasNoClickAction()
+    cell(sat, 0).performClick()
+    assertTrue(
+        "a slot outside the event must report nothing, but reported $tapped",
+        tapped.isEmpty(),
+    )
+    // The slots it does run through are still offered.
+    mark(ShiftGridTestTags.OPEN_ACTION, sat, 8).assertExists()
+  }
+
+  @Test
+  fun edit_aSlotBeingSaved_reportsNothingUntilItIsAnswered() {
+    show(ShiftGridMode.EDIT, saving = setOf(slotOf(sat, 10, ZONE).shiftId))
+
     cell(sat, 10).assertHasNoClickAction()
     cell(sat, 10).performClick()
 
-    assertTrue("a locked slot must report nothing, but reported $tapped", tapped.isEmpty())
+    assertTrue("a slot being saved must report nothing, but reported $tapped", tapped.isEmpty())
+    cell(sat, 12).performClick()
+    assertEquals("another slot stays tappable", listOf(slotOf(sat, 12, ZONE)), tapped)
   }
 
   // ---------------------------------------------------------------- Pick
@@ -373,7 +411,7 @@ class ShiftGridTest {
 
     mark(ShiftGridTestTags.LOCK, sat, 10).assertExists()
     cell(sat, 10).assert(hasContentDescription(LOCKED_WITH_THREE, substring = true))
-    cell(sat, 10).assertHasNoClickAction()
+    mark(ShiftGridTestTags.CLOSE_ACTION, sat, 10).assertDoesNotExist()
   }
 
   @Test

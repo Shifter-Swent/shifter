@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -57,6 +58,7 @@ import com.swent.shifter.R
 import com.swent.shifter.model.shift.SLOT_START_HOURS
 import com.swent.shifter.model.shift.Shift
 import com.swent.shifter.model.shift.ShiftSlot
+import com.swent.shifter.model.shift.overlaps
 import com.swent.shifter.model.shift.slotOf
 import com.swent.shifter.model.time.formatDayOfWeek
 import com.swent.shifter.model.time.formatFullDate
@@ -70,6 +72,7 @@ import com.swent.shifter.ui.theme.shifter_shiftJoin
 import com.swent.shifter.ui.theme.shifter_shiftOpen
 import com.swent.shifter.ui.theme.shifter_shiftOpenable
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.launch
@@ -120,6 +123,9 @@ private val ROW_HEIGHT = 48.dp
 /** The chip of a cell where the slots stand apart, drawn inside the cell's 48 dp touch target. */
 private val CHIP_HEIGHT = 44.dp
 
+/** How much a slot fades while its open or close is in flight. */
+private const val SAVING_ALPHA = 0.4f
+
 /** The corners of a block of slots: round at its ends, square or nearly so between two of them. */
 private val VIEW_END_CORNER = 8.dp
 private val CHIP_END_CORNER = 6.dp
@@ -147,12 +153,17 @@ private val CHIP_JOINED_CORNER = 3.dp
  *   not a slot of [days] is simply not drawn.
  * @param mode what the reader does with the slots.
  * @param zone the zone the event's days are read in, the one `eventDays` already used.
+ * @param period when the event runs, its end excluded, or null to leave every slot open to the
+ *   organizer. A slot it does not run through is drawn closed and refuses a tap in
+ *   [ShiftGridMode.EDIT]: the security rules refuse it too (`ShiftSlot.overlaps`, #593).
+ * @param savingShiftIds the slots whose open or close is in flight: they are dimmed and ignore a
+ *   further tap until the backend answers.
  * @param pickedShiftIds in [ShiftGridMode.PICK], the ids of the shifts the volunteer has picked:
  *   the caller owns them, the grid only shows them.
  * @param onSlot the slot whose cell was tapped: in [ShiftGridMode.EDIT] one to open when it is
- *   closed and to close when it is open, in [ShiftGridMode.PICK] one to pick or to let go. Never
- *   called in [ShiftGridMode.VIEW], nor for a closed slot in [ShiftGridMode.PICK] or a slot
- *   volunteers already chose in [ShiftGridMode.EDIT].
+ *   closed, to close when it is open, and one volunteers chose for the caller to say why it stays;
+ *   in [ShiftGridMode.PICK] one to pick or to let go. Never called in [ShiftGridMode.VIEW], for a
+ *   closed slot in [ShiftGridMode.PICK], nor for a slot outside [period] or being saved.
  */
 @Composable
 fun ShiftGrid(
@@ -161,6 +172,8 @@ fun ShiftGrid(
     mode: ShiftGridMode,
     zone: ZoneId,
     modifier: Modifier = Modifier,
+    period: ClosedRange<Instant>? = null,
+    savingShiftIds: Set<String> = emptySet(),
     pickedShiftIds: Set<String> = emptySet(),
     onSlot: (ShiftSlot) -> Unit = {},
 ) {
@@ -204,6 +217,8 @@ fun ShiftGrid(
                   shift = shift,
                   mode = mode,
                   picked = pickedShiftIds.contains(slot.shiftId),
+                  outside = period != null && !slot.overlaps(period.start, period.endInclusive),
+                  saving = savingShiftIds.contains(slot.shiftId),
                   joinedAbove = joins && row > 0 && shiftAt(day, hours[row - 1]) != null,
                   joinedBelow =
                       joins && row < hours.lastIndex && shiftAt(day, hours[row + 1]) != null,
@@ -348,7 +363,8 @@ private fun DayColumnHeader(day: LocalDate, openHours: Long?, width: Dp) {
  * One slot of the grid, 48 dp tall whatever it draws, so every cell can be tapped and read out.
  *
  * Only a cell the mode acts on carries an action: a volunteer never taps a closed slot, and an
- * organizer never closes one volunteers chose, which its lock shows.
+ * organizer taps none [outside] the event or already being [saving]. A locked slot does report its
+ * tap, for the caller to say why it stays; closing it is the caller's to refuse.
  */
 @Composable
 private fun SlotCell(
@@ -358,6 +374,8 @@ private fun SlotCell(
     shift: Shift?,
     mode: ShiftGridMode,
     picked: Boolean,
+    outside: Boolean,
+    saving: Boolean,
     joinedAbove: Boolean,
     joinedBelow: Boolean,
     width: Dp,
@@ -366,10 +384,11 @@ private fun SlotCell(
 ) {
   val volunteers = shift?.volunteerIds?.size ?: 0
   val locked = mode == ShiftGridMode.EDIT && volunteers > 0
-  val description = slotDescription(day, slot, shift, mode, picked, zone)
+  val description = slotDescription(day, slot, shift, mode, picked, outside, zone)
   val action =
       when {
-        mode == ShiftGridMode.EDIT && !locked ->
+        saving -> Modifier
+        mode == ShiftGridMode.EDIT && !outside ->
             Modifier.clickable(role = Role.Button) { onSlot(slot) }
         mode == ShiftGridMode.PICK && shift != null ->
             Modifier.toggleable(value = picked, role = Role.Checkbox) { onSlot(slot) }
@@ -386,7 +405,8 @@ private fun SlotCell(
   ) {
     when (mode) {
       ShiftGridMode.VIEW -> ViewChip(shift != null, volunteers, joinedAbove, joinedBelow)
-      ShiftGridMode.EDIT -> EditChip(shift != null, locked, volunteers, joinedAbove, joinedBelow)
+      ShiftGridMode.EDIT ->
+          EditChip(shift != null, locked, outside, saving, volunteers, joinedAbove, joinedBelow)
       ShiftGridMode.PICK -> PickChip(shift != null, picked)
     }
   }
@@ -432,11 +452,17 @@ private fun ViewChip(open: Boolean, volunteers: Int, joinedAbove: Boolean, joine
   }
 }
 
-/** A slot to open ("+"), to close ("×"), or locked by the volunteers who chose it. */
+/**
+ * A slot to open ("+"), to close ("×"), or locked by the volunteers who chose it. One the event
+ * does not run through reads as the bare grid, with nothing to tap, and one being saved dims until
+ * the backend answers.
+ */
 @Composable
 private fun EditChip(
     open: Boolean,
     locked: Boolean,
+    outside: Boolean,
+    saving: Boolean,
     volunteers: Int,
     joinedAbove: Boolean,
     joinedBelow: Boolean,
@@ -449,10 +475,12 @@ private fun EditChip(
       modifier =
           Modifier.fillMaxWidth()
               .height(CHIP_HEIGHT)
+              .alpha(if (saving) SAVING_ALPHA else 1f)
               .slotChip(
                   shape = shape,
                   fill =
                       when {
+                        outside -> shifter_shiftClosed
                         locked -> colors.primaryContainer
                         open -> shifter_shiftOpen
                         else -> shifter_shiftOpenable
@@ -463,6 +491,7 @@ private fun EditChip(
       contentAlignment = Alignment.Center,
   ) {
     when {
+      outside -> Unit
       locked ->
           Row(
               horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -558,11 +587,13 @@ private fun slotDescription(
     shift: Shift?,
     mode: ShiftGridMode,
     picked: Boolean,
+    outside: Boolean,
     zone: ZoneId,
 ): String {
   val volunteers = shift?.volunteerIds?.size ?: 0
   val state =
       when {
+        outside -> stringResource(R.string.shift_grid_slot_outside_event)
         shift == null -> stringResource(R.string.shift_grid_slot_closed)
         mode == ShiftGridMode.PICK && picked -> stringResource(R.string.shift_grid_slot_picked)
         mode == ShiftGridMode.EDIT && volunteers > 0 ->

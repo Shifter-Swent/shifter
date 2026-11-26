@@ -34,8 +34,8 @@ import kotlinx.serialization.Serializable
  *       Map, Chat (+ Channel)
  * Organizer
  *   ├── Events (OR-00), ProfileSettings, CreateEvent → TeamSetup(eventId) → EventCreated(eventId)
- *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams), People, Map,
- *       Chat (+ Channel), Sharing
+ *   └── OrganizerEvent(eventId, eventTitle): Overview (+ AddMission, ManageTeams, ManageShifts),
+ *       People, Map, Chat (+ Channel), Sharing
  *
  * Links between types are getters, not vals, to avoid initialization cycles.
  */
@@ -414,6 +414,12 @@ sealed interface OrganizerEventScreen : Destination {
   @Serializable
   data object ManageTeams : OrganizerEventScreen {
     override val title = "Manage teams"
+  }
+
+  /** The 2 h slots of the event in a week grid, opened on top of its Overview. */
+  @Serializable
+  data object ManageShifts : OrganizerEventScreen {
+    override val title = "Shifts"
   }
 
   @Serializable
