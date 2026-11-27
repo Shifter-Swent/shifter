@@ -19,6 +19,7 @@ import com.swent.shifter.model.membership.MembershipRequest
 import com.swent.shifter.model.membership.MembershipRequestRepositoryFirestore
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.membership.toFirestoreMap
+import com.swent.shifter.model.shift.ShiftSchema
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -219,6 +220,45 @@ class TeamDeletionTest {
 
         team.forEach { assertTrue("$it must stay", exists(it)) }
         assertTrue(exists(requestRef(applicant)))
+      }
+
+  /**
+   * #594: the applicants whose pending applications go with the team leave the shifts they chose,
+   * while an accepted member, whose request stays, keeps theirs.
+   */
+  @Test
+  fun deleteTeam_takesItsApplicantsOutOfTheirShifts() =
+      emulatorTest(TEST_TIMEOUT_MILLIS) {
+        val chooser = account()
+        val other = account()
+        val shift = db.document("events/$eventId/${ShiftSchema.COLLECTION}/$SHIFT_ID")
+        paths += shift.path
+        val startAt = Instant.ofEpochMilli(SHIFT_ID.toLong())
+        step("open shift") {
+          FirestoreEmulatorAdmin.createDocument(
+              shift.path,
+              mapOf(
+                  ShiftSchema.VOLUNTEER_IDS to listOf(volunteer.uid),
+                  ShiftSchema.START_AT to startAt,
+                  ShiftSchema.END_AT to startAt.plusSeconds(7200),
+                  ShiftSchema.CREATED_AT to Instant.EPOCH,
+              ),
+          )
+        }
+        apply(chooser, shiftIds = listOf(SHIFT_ID))
+        apply(other, shiftIds = listOf(SHIFT_ID))
+        assertEquals(
+            listOf(volunteer.uid, chooser.uid, other.uid),
+            shift.get(Source.SERVER).await().get(ShiftSchema.VOLUNTEER_IDS),
+        )
+
+        signIn(organizer)
+        teams.deleteTeam(eventId, TEAM_ID)
+
+        assertEquals(
+            listOf(volunteer.uid),
+            shift.get(Source.SERVER).await().get(ShiftSchema.VOLUNTEER_IDS),
+        )
       }
 
   /** The rules only let a pending application go with its team, never on its own. */
@@ -443,8 +483,12 @@ class TeamDeletionTest {
           )
           .toFirestoreMap()
 
-  /** [user] applies to [teamId], and stays pending. */
-  private suspend fun apply(user: Account, teamId: String = TEAM_ID) {
+  /** [user] applies to [teamId], choosing [shiftIds], and stays pending. */
+  private suspend fun apply(
+      user: Account,
+      teamId: String = TEAM_ID,
+      shiftIds: List<String> = emptyList(),
+  ) {
     signIn(user)
     paths += requestRef(user).path
     step("apply") {
@@ -454,6 +498,7 @@ class TeamDeletionTest {
               userId = user.uid,
               teamId = teamId,
               availability = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(60))),
+              shiftIds = shiftIds,
               createdAt = Instant.EPOCH,
           ),
       )
@@ -582,6 +627,9 @@ class TeamDeletionTest {
     const val LOCATION_SHARING_ENABLED = "locationSharingEnabled"
     const val TEAM_ID = "team-bar"
     const val OTHER_TEAM_ID = "team-logistics"
+
+    /** 10:00 UTC on 1 January 2100. */
+    const val SHIFT_ID = "4102480800000"
     const val MISSION_ID = "mission"
     const val GENEVA_LATITUDE = 46.2044
     const val GENEVA_LONGITUDE = 6.1432

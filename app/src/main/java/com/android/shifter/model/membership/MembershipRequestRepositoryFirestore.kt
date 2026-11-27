@@ -10,14 +10,19 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.swent.shifter.model.event.EventSchema
 import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.mission.MissionSchema
 import com.swent.shifter.model.mission.isCompleted
+import com.swent.shifter.model.shift.ShiftSchema
 import com.swent.shifter.model.team.TeamSchema
 import com.swent.shifter.model.team.indexManagerChange
 import java.time.Instant
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -29,18 +34,38 @@ import kotlinx.coroutines.tasks.await
 class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     MembershipRequestRepository {
 
+  /**
+   * The chosen shifts are checked before the transaction and written in it without being read, so
+   * volunteers applying to the same shifts at once do not make each other's transaction run again.
+   * One closed in between fails the commit, which is then reported as
+   * [MembershipRequestRepositoryException.ShiftClosed].
+   */
   override suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest =
       translatingErrors {
         val ref = requests(eventId).document(request.userId)
-        val pending = request.copy(id = request.userId, status = MembershipRequestStatus.PENDING)
+        val pending =
+            request.copy(
+                id = request.userId,
+                status = MembershipRequestStatus.PENDING,
+                shiftIds = request.shiftIds.distinct(),
+            )
+        requireShiftsWithinLimit(pending.shiftIds)
+        val shifts = pending.shiftIds.map { shift(eventId, it) }
+        failIfClosed(shifts)
         // A transaction makes check-then-create atomic, so a double tap cannot overwrite a
-        // decision. It returns the existing document, or null once it wrote the pending request.
+        // decision, and writes the request with its shifts, so neither lists the other alone. It
+        // returns the existing document, or null once it wrote the pending request.
         val existing =
-            db.runTransaction { transaction ->
-                  transaction.get(ref).takeIf { it.exists() }
-                      ?: null.also { transaction.set(ref, pending.toFirestoreMap()) }
-                }
-                .await()
+            reportingClosedShifts(shifts) {
+              db.runTransaction { transaction ->
+                    transaction.get(ref).takeIf { it.exists() }
+                        ?: null.also {
+                          transaction.set(ref, pending.toFirestoreMap())
+                          shifts.forEach { transaction.join(it, pending.userId) }
+                        }
+                  }
+                  .await()
+            }
         existing?.toRequestOrThrow() ?: pending
       }
 
@@ -67,6 +92,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   override suspend fun reject(eventId: String, userId: String) {
     translatingErrors {
       val request = requests(eventId).document(userId)
+      val listing = shiftsListing(eventId, userId)
       // A transaction, so the team is left alone only if it is really gone when the write lands. It
       // returns the request when it cannot be decided, or null once the decision is written.
       val undecided =
@@ -79,11 +105,13 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                 if (!snapshot.exists() || teamId == null) return@runTransaction snapshot
                 val team = team(eventId, teamId)
                 val teamSnapshot = transaction.get(team)
+                val shifts = transaction.shiftsToLeave(eventId, snapshot, listing)
                 transaction.update(
                     request,
                     MembershipRequestSchema.STATUS,
                     MembershipRequestStatus.REJECTED.name,
                 )
+                shifts.forEach { transaction.leave(it, userId) }
                 // Merge also handles rejection before a participants document exists.
                 transaction.set(
                     participants(eventId),
@@ -103,6 +131,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   override suspend fun withdraw(eventId: String, userId: String) {
     translatingErrors {
       val request = requests(eventId).document(userId)
+      val listing = shiftsListing(eventId, userId)
       // The rules keep an ACCEPTED request and participation in step, so the volunteer's own
       // request says whether they are a participant: they need not read the participants document.
       // A pending request may have no participants document yet, and a volunteer may not create it.
@@ -118,6 +147,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
                     ?.let { team(eventId, it) }
             // Read before any write, as a transaction requires.
             val teamSnapshot = team?.let { transaction.get(it) }
+            val shifts = transaction.shiftsToLeave(eventId, snapshot, listing)
             if (accepted) {
               transaction.update(
                   participants(eventId),
@@ -129,6 +159,7 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
               transaction.leaveTeam(team, teamSnapshot, userId)
             }
             transaction.delete(request)
+            shifts.forEach { transaction.leave(it, userId) }
             null
           }
           .await()
@@ -228,17 +259,170 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     return null
   }
 
-  /** Written by #594, with the rules that let a volunteer change their own pending request. */
+  /**
+   * A transaction, so the shifts the volunteer leaves are those their request lists when it
+   * changes, and those whose volunteers list them. The chosen shifts are checked before it and
+   * joined without being read, as in [apply]. A refusal is returned by the transaction and thrown
+   * after it, as in [moveToTeam].
+   */
   override suspend fun updateShifts(
       eventId: String,
       userId: String,
       shiftIds: List<String>,
       availability: List<AvailabilitySlot>,
   ) {
-    throw MembershipRequestRepositoryException.Unknown(
-        UnsupportedOperationException("Changing the shifts of a request comes with #594")
-    )
+    require(availability.isNotEmpty()) { "The availability of '$userId' is empty" }
+    val chosen = shiftIds.distinct()
+    requireShiftsWithinLimit(chosen)
+    translatingErrors {
+      val shifts = chosen.map { shift(eventId, it) }
+      failIfClosed(shifts)
+      val listing = shiftsListing(eventId, userId)
+      val refusal =
+          reportingClosedShifts(shifts) {
+            db.runTransaction { transaction ->
+                  transaction.changeShifts(eventId, userId, chosen, availability, listing)
+                }
+                .await()
+          }
+      refusal?.let { throw it }
+    }
   }
+
+  /**
+   * Replaces the shifts of [userId]'s pending request in this transaction: they leave the shifts it
+   * no longer lists and those [listing] found that are not chosen, unless gone, and join the new
+   * ones. Returns the error that refuses it, or null once written.
+   */
+  private fun Transaction.changeShifts(
+      eventId: String,
+      userId: String,
+      shiftIds: List<String>,
+      availability: List<AvailabilitySlot>,
+      listing: List<DocumentReference>,
+  ): MembershipRequestRepositoryException? {
+    val request = requests(eventId).document(userId)
+    val snapshot = get(request)
+    if (
+        snapshot.getString(MembershipRequestSchema.STATUS) != MembershipRequestStatus.PENDING.name
+    ) {
+      return MembershipRequestRepositoryException.Unknown(
+          IllegalStateException("'$userId' has no pending request for event '$eventId'")
+      )
+    }
+    val before = snapshot.shiftIds()
+    val chosen = shiftIds.map { shift(eventId, it).path }.toSet()
+    val left = shiftsToLeave(eventId, snapshot, listing).filter { it.path !in chosen }
+    update(
+        request,
+        mapOf(
+            MembershipRequestSchema.SHIFT_IDS to shiftIds,
+            MembershipRequestSchema.AVAILABILITY to availability.map { it.toFirestoreMap() },
+        ),
+    )
+    (shiftIds - before.toSet()).forEach { join(shift(eventId, it), userId) }
+    left.forEach { leave(it, userId) }
+    return null
+  }
+
+  /** Refuses more shifts than a request can hold, see [MAX_SHIFTS]. */
+  private fun requireShiftsWithinLimit(shiftIds: List<String>) {
+    require(shiftIds.size <= MAX_SHIFTS) {
+      "A request chooses at most $MAX_SHIFTS shifts, not ${shiftIds.size}"
+    }
+  }
+
+  /**
+   * Throws [MembershipRequestRepositoryException.ShiftClosed] if one of [shifts] no longer exists,
+   * read from the server, all at once.
+   */
+  private suspend fun failIfClosed(shifts: List<DocumentReference>) {
+    val closed = coroutineScope {
+      shifts
+          .map { async { it.takeUnless { shift -> shift.get(Source.SERVER).await().exists() } } }
+          .awaitAll()
+          .firstNotNullOfOrNull { it }
+    }
+    if (closed != null) throw MembershipRequestRepositoryException.ShiftClosed(closed.id)
+  }
+
+  /**
+   * Runs [block], a transaction joining [shifts] without reading them: one closed meanwhile fails
+   * its commit with NOT_FOUND, then reported as [MembershipRequestRepositoryException.ShiftClosed].
+   */
+  private suspend fun <T> reportingClosedShifts(
+      shifts: List<DocumentReference>,
+      block: suspend () -> T,
+  ): T =
+      try {
+        block()
+      } catch (e: FirebaseFirestoreException) {
+        if (e.code == Code.NOT_FOUND) {
+          // Failing itself, e.g. offline, the check must not hide why the commit failed.
+          try {
+            failIfClosed(shifts)
+          } catch (_: FirebaseFirestoreException) {}
+        }
+        throw e
+      }
+
+  /**
+   * The shifts of [eventId] whose volunteers list [userId], found before the transaction, which
+   * cannot run a query. A request may stop listing a shift its volunteer is still in, so its
+   * `shiftIds` alone could leave them there.
+   */
+  private suspend fun shiftsListing(eventId: String, userId: String): List<DocumentReference> =
+      db.collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(ShiftSchema.COLLECTION)
+          .whereArrayContains(ShiftSchema.VOLUNTEER_IDS, userId)
+          .get()
+          .await()
+          .documents
+          .map { it.reference }
+
+  /**
+   * The shifts the volunteer leaves, read in this transaction: those [listing] found, and those the
+   * request in [snapshot] chose, in case one was joined since. A shift that is gone is skipped: the
+   * organizer can close one once they took its volunteers out, which no write can then update.
+   */
+  private fun Transaction.shiftsToLeave(
+      eventId: String,
+      snapshot: DocumentSnapshot,
+      listing: List<DocumentReference>,
+  ): List<DocumentReference> =
+      existing((listing + snapshot.shiftIds().map { shift(eventId, it) }).distinctBy { it.path })
+
+  private fun Transaction.existing(shifts: List<DocumentReference>): List<DocumentReference> =
+      shifts.filter {
+        get(it).exists()
+      }
+
+  private fun Transaction.join(shift: DocumentReference, userId: String) {
+    update(shift, ShiftSchema.VOLUNTEER_IDS, FieldValue.arrayUnion(userId))
+  }
+
+  private fun Transaction.leave(shift: DocumentReference, userId: String) {
+    update(shift, ShiftSchema.VOLUNTEER_IDS, FieldValue.arrayRemove(userId))
+  }
+
+  /**
+   * The shift ids a request lists, at most [MAX_SHIFTS] as the rules allow. Only epoch milliseconds
+   * are kept, as `shiftIdOf` makes them: the rules only check that `shiftIds` is a list, and an id
+   * such as "" or "a/b" would make no document path.
+   */
+  private fun DocumentSnapshot.shiftIds(): List<String> =
+      (get(MembershipRequestSchema.SHIFT_IDS) as? List<*>)
+          .orEmpty()
+          .filterIsInstance<String>()
+          .filter { it.toLongOrNull() != null }
+          .take(MAX_SHIFTS)
+
+  private fun shift(eventId: String, shiftId: String): DocumentReference =
+      db.collection(EventSchema.COLLECTION)
+          .document(eventId)
+          .collection(ShiftSchema.COLLECTION)
+          .document(shiftId)
 
   override suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest? =
       translatingErrors {
@@ -247,7 +431,10 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
 
   override suspend fun getMembershipRequestsByEId(eventId: String): List<MembershipRequest> =
       translatingErrors {
-        requests(eventId).get().await().documents.map { it.toRequestOrThrow() }
+        requests(eventId).get().await().documents.mapNotNull {
+          runCatching { it.toMembershipRequest() }
+              .getOrElse { e -> if (e is IllegalStateException) null else throw e }
+        }
       }
 
   override suspend fun getMembershipRequestsByUId(userId: String): Map<String, MembershipRequest> =
@@ -360,6 +547,13 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   companion object {
     private const val PARTICIPANTS_COLLECTION = "eventParticipants"
     private const val PARTICIPANT_IDS = "participantIds"
+
+    /**
+     * The most shifts a request chooses, as the rules allow: a product bound, more than 40 days of
+     * 2 h slots, that keeps the commits leaving them all well within Firestore's limits per
+     * request.
+     */
+    private const val MAX_SHIFTS = 490
 
     /**
      * Translates a Firestore error into the [MembershipRequestRepositoryException] callers handle.

@@ -19,6 +19,13 @@ sealed class MembershipRequestRepositoryException(message: String, cause: Throwa
   class Unavailable(cause: Throwable? = null) :
       MembershipRequestRepositoryException("The membership service is unavailable", cause)
 
+  /**
+   * The shift [shiftId], which the volunteer chose, was closed by the organizer since the shifts
+   * were read: nothing is written. Reading the shifts again shows the ones still open.
+   */
+  class ShiftClosed(val shiftId: String) :
+      MembershipRequestRepositoryException("The shift $shiftId was closed")
+
   /** Any other failure, including a stored request that cannot be read. */
   class Unknown(cause: Throwable? = null) :
       MembershipRequestRepositoryException(

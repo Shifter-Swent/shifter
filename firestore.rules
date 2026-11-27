@@ -246,13 +246,11 @@ service cloud.firestore {
         }
 
         allow read: if isRequester() || isOrganizer(eventId);
-        // The event and the team must exist: get() of a missing document denies. An application
-        // carries no shiftIds yet, since the app would not put the volunteer in those shifts in
-        // the same commit (#594).
+        // The event and the team must exist: get() of a missing document denies.
         allow create: if isRequester()
           && eventRunning()
           && request.resource.data.keys().hasOnly(
-               ['userId', 'teamId', 'availability', 'status', 'createdAt'])
+               ['userId', 'teamId', 'availability', 'shiftIds', 'status', 'createdAt'])
           && request.resource.data.userId == uid
           && request.resource.data.status == 'PENDING'
           // A volunteer applies to exactly one team, which must belong to the event.
@@ -263,6 +261,11 @@ service cloud.firestore {
                .data.get('deleting', false) != true
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
+          // The shifts the volunteer chose, which the app puts them in within the same commit; the
+          // shifts check the link from their side (see shifts). At most 490, a product bound of
+          // more than 40 days of 2 h slots, which keeps leaving them all in one commit reasonable.
+          && request.resource.data.get('shiftIds', []) is list
+          && request.resource.data.get('shiftIds', []).size() <= 490
           && request.resource.data.createdAt is timestamp;
 
         // A pending volunteer changes the shifts they chose, and so their availability (#601),
@@ -272,6 +275,7 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['shiftIds', 'availability'])
           && request.resource.data.get('shiftIds', []) is list
+          && request.resource.data.get('shiftIds', []).size() <= 490
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
           && eventRunning()

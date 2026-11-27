@@ -18,6 +18,7 @@ import com.swent.shifter.model.event.Event
 import com.swent.shifter.model.event.EventLocation
 import com.swent.shifter.model.event.EventType
 import com.swent.shifter.model.event.FirestoreEventRepository
+import com.swent.shifter.model.shift.ShiftSchema
 import com.swent.shifter.model.team.FirestoreTeamRepository
 import com.swent.shifter.model.team.Team
 import com.swent.shifter.model.team.toFirestoreMap
@@ -739,6 +740,174 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     )
   }
 
+  @Test
+  fun apply_withShifts_putsTheVolunteerInThem() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10, SHIFT_12)
+
+    applyWithShifts(eventId, SHIFT_10, SHIFT_12)
+
+    assertEquals(listOf(volunteer.uid), volunteerIds(eventId, SHIFT_10))
+    assertEquals(listOf(volunteer.uid), volunteerIds(eventId, SHIFT_12))
+  }
+
+  @Test
+  fun apply_withAShiftClosedMeanwhile_failsAndSendsNothing() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+
+    assertShiftClosed(SHIFT_12) { applyWithShifts(eventId, SHIFT_10, SHIFT_12) }
+
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun updateShifts_whilePending_movesTheVolunteer() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10, SHIFT_12)
+    applyWithShifts(eventId, SHIFT_10)
+
+    repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_12), slotOf(SHIFT_12))
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+    assertEquals(listOf(volunteer.uid), volunteerIds(eventId, SHIFT_12))
+    val stored = requestRef(eventId, volunteer).get(Source.SERVER).await().toMembershipRequest()
+    assertEquals(listOf(SHIFT_12), stored.shiftIds)
+    assertEquals(slotOf(SHIFT_12), stored.availability)
+  }
+
+  @Test
+  fun updateShifts_withoutAPendingRequest_fails() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    signIn(volunteer)
+    assertUnknown { repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_10), SLOT) }
+
+    applyWithShifts(eventId)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    signIn(volunteer)
+
+    assertUnknown { repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_10), SLOT) }
+
+    signIn(organizer)
+    repository.reject(eventId, volunteer.uid)
+    signIn(volunteer)
+
+    assertUnknown { repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_10), SLOT) }
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun updateShiftsAndWithdraw_skipTheShiftsThatAreGone() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10, SHIFT_12, SHIFT_14)
+    applyWithShifts(eventId, SHIFT_10, SHIFT_12)
+    // The organizer took the volunteer out of a shift and closed it, which no write can update.
+    closeShift(eventId, SHIFT_10)
+    // Choosing it again is refused: it is closed.
+    assertShiftClosed(SHIFT_10) {
+      repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_10), SLOT)
+    }
+
+    repository.updateShifts(eventId, volunteer.uid, listOf(SHIFT_14), slotOf(SHIFT_14))
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_12))
+    assertEquals(listOf(volunteer.uid), volunteerIds(eventId, SHIFT_14))
+
+    closeShift(eventId, SHIFT_14)
+    repository.withdraw(eventId, volunteer.uid)
+    assertFalse(requestRef(eventId, volunteer).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun withdraw_takesTheVolunteerOutOfTheirShifts() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10, SHIFT_12)
+    applyWithShifts(eventId, SHIFT_10, SHIFT_12)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_12))
+  }
+
+  @Test
+  fun withdraw_onceAccepted_takesTheVolunteerOutOfTheirShifts() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    applyWithShifts(eventId, SHIFT_10)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+    signIn(volunteer)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun withdraw_fromAShiftTheirRequestNoLongerLists_takesThemOut() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    applyWithShifts(eventId, SHIFT_10)
+    dropShiftsKeepingThem(eventId)
+
+    repository.withdraw(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun reject_fromAShiftTheirRequestNoLongerLists_takesThemOut() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    applyWithShifts(eventId, SHIFT_10)
+    dropShiftsKeepingThem(eventId)
+    signIn(organizer)
+
+    repository.reject(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun apply_withAnExistingRequest_leavesTheShiftsAlone() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10, SHIFT_12)
+    val first = applyWithShifts(eventId, SHIFT_10)
+
+    assertEquals(first, applyWithShifts(eventId, SHIFT_12))
+
+    assertEquals(listOf(volunteer.uid), volunteerIds(eventId, SHIFT_10))
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_12))
+  }
+
+  @Test
+  fun reject_onceAccepted_takesTheVolunteerOutOfTheirShifts() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    applyWithShifts(eventId, SHIFT_10)
+    signIn(organizer)
+    repository.accept(eventId, volunteer.uid)
+
+    repository.reject(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
+  @Test
+  fun reject_takesTheVolunteerOutOfTheirShifts() = emulatorTest {
+    val eventId = event()
+    openShifts(eventId, SHIFT_10)
+    applyWithShifts(eventId, SHIFT_10)
+    signIn(organizer)
+
+    repository.reject(eventId, volunteer.uid)
+
+    assertEquals(emptyList<String>(), volunteerIds(eventId, SHIFT_10))
+  }
+
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
@@ -833,11 +1002,72 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
           createdAt = Instant.EPOCH,
       )
 
+  /**
+   * Opens the shifts [shiftIds] of [eventId] as an admin, since [event] gives the event no period,
+   * which the rules need to open one.
+   */
+  private suspend fun openShifts(eventId: String, vararg shiftIds: String) {
+    for (shiftId in shiftIds) {
+      val path = shift(eventId, shiftId).path
+      paths += path
+      val startAt = Instant.ofEpochMilli(shiftId.toLong())
+      step("open shift") {
+        FirestoreEmulatorAdmin.createDocument(
+            path,
+            mapOf(
+                ShiftSchema.VOLUNTEER_IDS to emptyList<String>(),
+                ShiftSchema.START_AT to startAt,
+                ShiftSchema.END_AT to startAt.plusSeconds(7200),
+                ShiftSchema.CREATED_AT to Instant.EPOCH,
+            ),
+        )
+      }
+    }
+  }
+
+  /** Empties the volunteer's `shiftIds` without leaving the shifts, which the rules allow. */
+  private suspend fun dropShiftsKeepingThem(eventId: String) {
+    step("drop shifts") {
+      requestRef(eventId, volunteer)
+          .update(MembershipRequestSchema.SHIFT_IDS, emptyList<String>())
+          .await()
+    }
+  }
+
+  private suspend fun closeShift(eventId: String, shiftId: String) {
+    step("close shift") { FirestoreEmulatorAdmin.deleteDocument(shift(eventId, shiftId).path) }
+  }
+
+  /** Applies as the volunteer to the team [TEAM_ID] of [eventId], choosing [shiftIds]. */
+  private suspend fun applyWithShifts(eventId: String, vararg shiftIds: String): MembershipRequest {
+    signIn(volunteer)
+    paths += requestRef(eventId, volunteer).path
+    val request = request(volunteer).copy(shiftIds = shiftIds.toList())
+    return step("apply") { repository.apply(eventId, request) }
+  }
+
+  private fun shift(eventId: String, shiftId: String) =
+      db.collection("events").document(eventId).collection("shifts").document(shiftId)
+
+  private suspend fun volunteerIds(eventId: String, shiftId: String) =
+      shift(eventId, shiftId).get(Source.SERVER).await().get(ShiftSchema.VOLUNTEER_IDS)
+
+  private fun slotOf(shiftId: String): List<AvailabilitySlot> {
+    val startAt = Instant.ofEpochMilli(shiftId.toLong())
+    return listOf(AvailabilitySlot(startAt, startAt.plusSeconds(7200)))
+  }
+
   private data class Account(val uid: String, val credential: AuthCredential)
 
   private companion object {
     const val TEAM_ID = "team-bar"
     const val OTHER_TEAM_ID = "team-logistics"
+
+    // 10:00, 12:00 and 14:00 UTC on 1 January 2100.
+    const val SHIFT_10 = "4102480800000"
+    const val SHIFT_12 = "4102488000000"
+    const val SHIFT_14 = "4102495200000"
+    val SLOT = listOf(AvailabilitySlot(Instant.EPOCH, Instant.EPOCH.plusSeconds(3600)))
   }
 
   /**
@@ -877,6 +1107,15 @@ class MembershipRequestRepositoryFirestoreEmulatorTest {
     assertTrue(
         "Expected an unknown failure, got $failure",
         failure is MembershipRequestRepositoryException.Unknown,
+    )
+  }
+
+  private suspend fun assertShiftClosed(shiftId: String, block: suspend () -> Unit) {
+    val failure = runCatching { block() }.exceptionOrNull()
+    assertEquals(
+        "Expected the shift $shiftId closed, got $failure",
+        shiftId,
+        (failure as? MembershipRequestRepositoryException.ShiftClosed)?.shiftId,
     )
   }
 

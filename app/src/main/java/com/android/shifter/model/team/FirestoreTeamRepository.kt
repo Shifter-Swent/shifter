@@ -2,6 +2,7 @@
 package com.swent.shifter.model.team
 
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -15,6 +16,7 @@ import com.swent.shifter.model.location.LiveLocationSchema
 import com.swent.shifter.model.membership.MembershipRequestSchema
 import com.swent.shifter.model.membership.MembershipRequestStatus
 import com.swent.shifter.model.mission.MissionSchema
+import com.swent.shifter.model.shift.ShiftSchema
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -198,7 +200,12 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    *    read.
    * 2. Its missions, each in one commit with its check-ins, which the rules only let go with it.
    * 3. Its chat messages.
-   * 4. The team itself last, in one batch with its manager's index entry, the positions its members
+   * 4. The shifts its pending applicants are in, freed of them: once the team is marked, the app no
+   *    longer lets them join one, and the rules let the organizer take anyone out of a shift. The
+   *    rules do not stop a request already listing a shift from joining it again meanwhile, nor the
+   *    organizer accepting an applicant, who then loses their shifts and makes the final batch fail
+   *    until the deletion is run again: both need someone to act in a few round trips.
+   * 5. The team itself last, in one batch with its manager's index entry, the positions its members
    *    shared with it and the pending applications to it, all taken from the team as it is then:
    *    the rules read the team to let the organizer list its messages and to delete those
    *    applications, so nothing under it could be found once it is gone.
@@ -228,6 +235,7 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
               .whereEqualTo(MembershipRequestSchema.STATUS, MembershipRequestStatus.PENDING.name)
               .get(Source.SERVER)
               .await()
+      freeShifts(eventId, pendingApplications.documents)
       // Read last, as the manager or the members may have changed since the start: what goes with
       // the team is what it has when it goes. Gone meanwhile: another deletion finished it.
       val current = document.get(Source.SERVER).await()
@@ -238,6 +246,43 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
       // minutes, which the rules refuse only once the team is gone.
       current.teamMemberIds().forEach { batch.delete(liveLocationOf(document, it)) }
       pendingApplications.documents.forEach { batch.delete(it.reference) }
+      batch.commit().await()
+    }
+  }
+
+  /**
+   * Takes the volunteers of [applications] out of the shifts they are in, one write per shift, in
+   * as few batches as Firestore allows. The shifts are found by their volunteers, since a request
+   * may no longer list a shift its volunteer is still in, at most [MAX_ARRAY_CONTAINS_ANY]
+   * volunteers per query.
+   */
+  private suspend fun freeShifts(eventId: String, applications: List<DocumentSnapshot>) {
+    val applicants = applications.map { it.id }.toSet()
+    val shifts = eventDocument(eventId).collection(ShiftSchema.COLLECTION)
+    // By path, as a shift listing volunteers of two queries is found twice but written once.
+    val listing =
+        applicants
+            .chunked(MAX_ARRAY_CONTAINS_ANY)
+            .flatMap {
+              shifts
+                  .whereArrayContainsAny(ShiftSchema.VOLUNTEER_IDS, it)
+                  .get(Source.SERVER)
+                  .await()
+                  .documents
+            }
+            .associateBy { it.reference.path }
+            .values
+    for (chunk in listing.chunked(MAX_BATCH_WRITES)) {
+      val batch = firestore.batch()
+      for (shift in chunk) {
+        val leaving =
+            (shift.get(ShiftSchema.VOLUNTEER_IDS) as? List<*>).orEmpty().filter { it in applicants }
+        batch.update(
+            shift.reference,
+            ShiftSchema.VOLUNTEER_IDS,
+            FieldValue.arrayRemove(*leaving.toTypedArray()),
+        )
+      }
       batch.commit().await()
     }
   }
@@ -284,6 +329,9 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
   companion object {
     /** The most writes Firestore accepts in one batch. */
     private const val MAX_BATCH_WRITES = 500
+
+    /** The most values Firestore accepts in one `whereArrayContainsAny`. */
+    private const val MAX_ARRAY_CONTAINS_ANY = 30
 
     /** Translates a Firestore error into the [TeamRepositoryException] callers handle. */
     internal fun toRepositoryException(e: FirebaseFirestoreException): TeamRepositoryException =

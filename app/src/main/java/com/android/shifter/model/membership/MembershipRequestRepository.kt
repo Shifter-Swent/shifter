@@ -8,9 +8,11 @@ package com.swent.shifter.model.membership
  *
  * A volunteer has at most one request per event, identified by their user id.
  *
- * A pending or accepted request lists its volunteer in the `volunteerIds` of each of its
- * [MembershipRequest.shiftIds]: from #594, a Firestore-backed implementation keeps them in step
- * when it applies, changes the shifts, rejects or withdraws. The in-memory fakes do not model it.
+ * A Firestore-backed implementation puts the volunteer of a request in the `volunteerIds` of each
+ * of its [MembershipRequest.shiftIds] when it applies or changes the shifts, and takes them out
+ * when it rejects or withdraws, finding those shifts by their volunteers as well. The rules cannot
+ * require both sides to be written together, so another client may leave them apart. A request
+ * chooses at most 490 shifts. The in-memory fakes do not model the shifts.
  *
  * Every method throws a [MembershipRequestRepositoryException] when the operation fails.
  */
@@ -22,6 +24,12 @@ interface MembershipRequestRepository {
    *
    * If the volunteer already applied to this event, that request is returned unchanged: a second
    * tap never resets an accepted or rejected request to pending.
+   *
+   * A Firestore-backed implementation puts the volunteer in each of [MembershipRequest.shiftIds] in
+   * the same write. If one of those shifts was closed since the volunteer chose it, nothing is sent
+   * and it fails with [MembershipRequestRepositoryException.ShiftClosed]; one that has started is
+   * denied by the rules with [MembershipRequestRepositoryException.PermissionDenied]. More than 490
+   * shifts are refused with an [IllegalArgumentException].
    */
   suspend fun apply(eventId: String, request: MembershipRequest): MembershipRequest
 
@@ -46,8 +54,9 @@ interface MembershipRequestRepository {
    * [MembershipRequestRepositoryException.PermissionDenied].
    *
    * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
-   * the same transaction (#305), whenever the team is still there to leave. The in-memory fakes do
-   * not model it.
+   * the same transaction (#305), whenever the team is still there to leave, and takes them out of
+   * their shifts, skipping those that are gone. Those shifts are read in the transaction, so a
+   * volunteer joining one at the same time makes it run again. The in-memory fakes do not model it.
    */
   suspend fun reject(eventId: String, userId: String)
 
@@ -62,7 +71,9 @@ interface MembershipRequestRepository {
    *
    * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
    * the same transaction (#305). Only an accepted request names a team to leave: withdrawing a
-   * pending one has no team, and so no position, to take out. The in-memory fakes do not model it.
+   * pending one has no team, and so no position, to take out. It also takes them out of their
+   * shifts, skipping those that are gone, read in the transaction as in [reject]. The in-memory
+   * fakes do not model it.
    */
   suspend fun withdraw(eventId: String, userId: String)
 
@@ -93,8 +104,15 @@ interface MembershipRequestRepository {
    *
    * Only the volunteer themself can change their shifts, and only while the request is
    * [MembershipRequestStatus.PENDING]: a request that is missing, accepted or rejected is refused
-   * with [MembershipRequestRepositoryException.Unknown]. Until #594, the Firestore-backed
-   * implementation refuses every change the same way.
+   * with [MembershipRequestRepositoryException.Unknown], and a chosen shift closed since the
+   * volunteer chose it with [MembershipRequestRepositoryException.ShiftClosed]. Security rules deny
+   * with [MembershipRequestRepositoryException.PermissionDenied] anyone else, a new shift that has
+   * started, and a change once the event has ended or while the team is being deleted. More than
+   * 490 [shiftIds] are refused with an [IllegalArgumentException].
+   *
+   * A Firestore-backed implementation moves the volunteer between the shifts in the same write,
+   * skipping a shift they leave that no longer exists. A shift they keep is not written: if the
+   * organizer took them out of it, they stay out, as it may have started.
    */
   suspend fun updateShifts(
       eventId: String,
@@ -111,7 +129,9 @@ interface MembershipRequestRepository {
   suspend fun getMembershipRequest(eventId: String, userId: String): MembershipRequest?
 
   /**
-   * Returns all requests for [eventId], or an empty list if there are none.
+   * Returns all requests for [eventId], or an empty list if there are none. A request that cannot
+   * be read is left out, so one malformed document, e.g. with a `shiftIds` that is not a list of
+   * strings, does not hide the others from the organizer.
    *
    * With Firestore's default persistent cache, an offline query may return cached data, including
    * an empty or stale list, rather than throwing

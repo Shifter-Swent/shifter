@@ -199,11 +199,10 @@ class MembershipRequestFirestoreMapperTest {
   }
 
   @Test
-  fun toFirestoreMap_withNoShifts_leavesTheFieldOut() {
-    // The rules refuse the field until #594 allows it, so applying must keep working without it.
+  fun toFirestoreMap_withNoShifts_writesAnEmptyList() {
     val body = richRequest().copy(shiftIds = emptyList()).toFirestoreMap()
 
-    assertFalse(MembershipRequestSchema.SHIFT_IDS in body)
+    assertEquals(emptyList<String>(), body[MembershipRequestSchema.SHIFT_IDS])
   }
 
   @Test
