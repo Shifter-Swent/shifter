@@ -535,12 +535,10 @@ can only be deleted once its volunteer is no longer a participant, and never onc
   volunteer out of it, then close it once empty. In the app they only do so by rejecting those
   volunteers, but a pending request could then list a shift that no longer exists: the app skips
   the shifts that are gone when a volunteer withdraws or changes their shifts.
-- **A request chooses at most 490 shifts.** Firestore takes at most 500 writes per commit, and
-  leaving the shifts must fit in one, with the request: a manager's withdrawal also writes the
-  participants, their team, the manager index and their position, and a rejection about as many.
-  Changing one's shifts writes the request, every shift joined and every shift left, so a change of
-  many shifts at once may have to be split in two. 490 shifts are more than 40 days of 2 h slots,
-  every one chosen.
+- **A request chooses at most 490 shifts.** A product bound, more than 40 days of 2 h slots, every
+  one chosen: applying, changing them and leaving them all each write the request and those shifts
+  in one commit, so the bound keeps those commits small. Every shift write reads the request again
+  in the rules, which the emulator counts once; production is to be checked once deployed.
 - **The rules do not check that a slot starts on an even hour.** That depends on the time zone,
   which only the app knows (`slotOf`): the rules accept any start on a quarter of an hour.
 - **`displayName` is in both `users/{uid}` and `publicProfiles/{uid}`.** The rules keep them equal,

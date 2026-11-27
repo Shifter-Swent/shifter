@@ -262,8 +262,8 @@ service cloud.firestore {
           && request.resource.data.availability is list
           && request.resource.data.availability.size() > 0
           // The shifts the volunteer chose, which the app puts them in within the same commit; the
-          // shifts check the link from their side (see shifts). At most 490, so leaving them all,
-          // with the six other writes of a manager's withdrawal, fits in one commit of 500.
+          // shifts check the link from their side (see shifts). At most 490, a product bound of
+          // more than 40 days of 2 h slots, which keeps leaving them all in one commit reasonable.
           && request.resource.data.get('shiftIds', []) is list
           && request.resource.data.get('shiftIds', []).size() <= 490
           && request.resource.data.createdAt is timestamp;

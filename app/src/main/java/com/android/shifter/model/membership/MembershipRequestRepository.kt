@@ -55,7 +55,8 @@ interface MembershipRequestRepository {
    *
    * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
    * the same transaction (#305), whenever the team is still there to leave, and takes them out of
-   * their shifts, skipping those that are gone. The in-memory fakes do not model it.
+   * their shifts, skipping those that are gone. Those shifts are read in the transaction, so a
+   * volunteer joining one at the same time makes it run again. The in-memory fakes do not model it.
    */
   suspend fun reject(eventId: String, userId: String)
 
@@ -71,7 +72,8 @@ interface MembershipRequestRepository {
    * A Firestore-backed implementation also deletes the position [userId] shared with that team, in
    * the same transaction (#305). Only an accepted request names a team to leave: withdrawing a
    * pending one has no team, and so no position, to take out. It also takes them out of their
-   * shifts, skipping those that are gone. The in-memory fakes do not model it.
+   * shifts, skipping those that are gone, read in the transaction as in [reject]. The in-memory
+   * fakes do not model it.
    */
   suspend fun withdraw(eventId: String, userId: String)
 
@@ -109,7 +111,8 @@ interface MembershipRequestRepository {
    * 490 [shiftIds] are refused with an [IllegalArgumentException].
    *
    * A Firestore-backed implementation moves the volunteer between the shifts in the same write,
-   * skipping a shift they leave that no longer exists.
+   * skipping a shift they leave that no longer exists. A shift they keep is not written: if the
+   * organizer took them out of it, they stay out, as it may have started.
    */
   suspend fun updateShifts(
       eventId: String,

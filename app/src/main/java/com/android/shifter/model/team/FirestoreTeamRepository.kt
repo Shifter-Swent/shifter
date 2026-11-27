@@ -200,8 +200,11 @@ class FirestoreTeamRepository(private val firestore: FirebaseFirestore) : TeamRe
    *    read.
    * 2. Its missions, each in one commit with its check-ins, which the rules only let go with it.
    * 3. Its chat messages.
-   * 4. The shifts its pending applicants are in, freed of them: once the team is marked, they can
-   *    no longer join one, and the rules let the organizer take anyone out of a shift.
+   * 4. The shifts its pending applicants are in, freed of them: once the team is marked, the app no
+   *    longer lets them join one, and the rules let the organizer take anyone out of a shift. The
+   *    rules do not stop a request already listing a shift from joining it again meanwhile, nor the
+   *    organizer accepting an applicant, who then loses their shifts and makes the final batch fail
+   *    until the deletion is run again: both need someone to act in a few round trips.
    * 5. The team itself last, in one batch with its manager's index entry, the positions its members
    *    shared with it and the pending applications to it, all taken from the team as it is then:
    *    the rules read the team to let the organizer list its messages and to delete those

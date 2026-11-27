@@ -564,10 +564,6 @@ class MembershipRequestRepositoryFirestoreTest {
       }
 
   /**
-   * The volunteer's request, missing when [status] is null, applying to [teamId] with no shifts:
-   * the emulator tests cover the shifts.
-   */
-  /**
    * The shift [id], which exists on each of its reads from the server as [existsOnEachRead] says.
    */
   private fun shiftOf(id: String, existsOnEachRead: List<Boolean>): DocumentReference {
@@ -581,6 +577,10 @@ class MembershipRequestRepositoryFirestoreTest {
     return shift
   }
 
+  /**
+   * The volunteer's request, missing when [status] is null, applying to [teamId] with no shifts:
+   * the emulator tests cover the shifts.
+   */
   private fun statusSnapshot(status: String?, teamId: String? = null): DocumentSnapshot =
       mockk<DocumentSnapshot>().also {
         every { it.getString("status") } returns status
