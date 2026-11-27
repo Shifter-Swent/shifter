@@ -24,10 +24,10 @@ import io.mockk.slot
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -276,24 +276,54 @@ class FusedLocationProviderUnitTest {
   }
 
   @Test
-  fun positions_whenTheRequestFails_throwsTheError() = runTest {
+  fun positions_afterAFailedRequest_requestsAgainAtTheNextInterval() = runTest {
     grantFinePermission()
-    val failure = SecurityException("Location request rejected")
-    val failedTask = mockk<Task<Void>>()
-    every { failedTask.addOnFailureListener(any<OnFailureListener>()) } answers
-        {
-          firstArg<OnFailureListener>().onFailure(failure)
-          failedTask
-        }
+    every {
+      client.requestLocationUpdates(any<LocationRequest>(), capture(callback), any<Looper>())
+    } returnsMany listOf(failedTask(), Tasks.forResult(null))
+    val provider = FusedLocationProvider(application, intervalMillis = 1_000L)
+    val received = mutableListOf<MeasuredPosition>()
+    val job =
+        launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().toList(received) }
+
+    advanceTimeBy(1_000L)
+    runCurrent()
+    callback.captured.onLocationResult(LocationResult.create(listOf(location(LAUSANNE, 8f))))
+
+    verify(exactly = 2) {
+      client.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>())
+    }
+    assertEquals(listOf(MeasuredPosition(LAUSANNE, 8.0)), received)
+    job.cancel()
+  }
+
+  @Test
+  fun positions_whenLocationTurnedOffAfterAFailedRequest_stopsRequesting() = runTest {
+    grantFinePermission()
     every {
       client.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>())
-    } returns failedTask
-    val provider = FusedLocationProvider(application)
+    } returns failedTask()
+    val provider = FusedLocationProvider(application, intervalMillis = 1_000L)
+    val job = launch(UnconfinedTestDispatcher(testScheduler)) { provider.positions().collect {} }
 
-    val error = runCatching { provider.positions().first() }.exceptionOrNull()
+    setLocationEnabled(false)
+    advanceTimeBy(5_000L)
 
-    assertTrue(error is SecurityException)
-    assertEquals(failure.message, error?.message)
+    verify(exactly = 1) {
+      client.requestLocationUpdates(any<LocationRequest>(), any<LocationCallback>(), any<Looper>())
+    }
+    job.cancel()
+  }
+
+  /** A request rejected at once: the task calls its failure listener as soon as it is added. */
+  private fun failedTask(): Task<Void> {
+    val task = mockk<Task<Void>>()
+    every { task.addOnFailureListener(any<OnFailureListener>()) } answers
+        {
+          firstArg<OnFailureListener>().onFailure(SecurityException("Location request rejected"))
+          task
+        }
+    return task
   }
 
   /** Turns location services on or off and delivers the broadcast Android sends for it. */
