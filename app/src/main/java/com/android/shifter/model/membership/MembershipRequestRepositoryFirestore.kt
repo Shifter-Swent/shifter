@@ -545,8 +545,9 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
   }
 
   companion object {
-    private const val PARTICIPANTS_COLLECTION = "eventParticipants"
-    private const val PARTICIPANT_IDS = "participantIds"
+    /** Also read by the chat, to notify the participants of an announcement. */
+    internal const val PARTICIPANTS_COLLECTION = "eventParticipants"
+    internal const val PARTICIPANT_IDS = "participantIds"
 
     /**
      * The most shifts a request chooses, as the rules allow: a product bound, more than 40 days of

@@ -42,6 +42,10 @@
     <!-- MISSION_CHANGED (#617). Prefix: notification_mission_changed_ -->
 
     <!-- ANNOUNCEMENT (#618). Prefix: notification_announcement_ -->
+    <!-- The title: the event's title, then the channel's name ("General", or the team's name). -->
+    <string name="notification_announcement_title">%1$s · %2$s</string>
+    <!-- One announcement: the name of its sender, then the start of its text. -->
+    <string name="notification_announcement_text">%1$s: %2$s</string>
 
     <!-- MISSED_CHECK_IN (#611). Prefix: notification_missed_check_in_ -->
 

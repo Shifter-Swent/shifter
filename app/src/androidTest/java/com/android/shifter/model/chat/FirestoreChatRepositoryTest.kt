@@ -404,16 +404,18 @@ class FirestoreChatRepositoryTest {
   /**
    * Creates an event of [organizer] with the team [TEAM_ID], led by [manager], of [member], both
    * participants of the event. The manager is in the managers index, as the app writes it with the
-   * team.
+   * team. The event and the team are named, as the notifications of an announcement read them.
    */
   private suspend fun event(): String {
     signIn(organizer)
     val ref = db.collection("events").document()
     paths += ref.path
-    ref.set(mapOf("organizerId" to organizer.uid)).await()
+    ref.set(mapOf("organizerId" to organizer.uid, "title" to "Summer Festival")).await()
     val team = ref.collection("teams").document(TEAM_ID)
     paths += team.path
-    team.set(mapOf("managerId" to manager.uid, "memberIds" to listOf(member.uid))).await()
+    team
+        .set(mapOf("name" to "Bar", "managerId" to manager.uid, "memberIds" to listOf(member.uid)))
+        .await()
     paths += FirestoreEmulatorAdmin.createParticipants(ref.id, listOf(manager.uid, member.uid))
     val entry = "events/${ref.id}/managers/${manager.uid}"
     paths += entry
