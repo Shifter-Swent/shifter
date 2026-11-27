@@ -357,7 +357,12 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
       try {
         block()
       } catch (e: FirebaseFirestoreException) {
-        if (e.code == Code.NOT_FOUND) failIfClosed(shifts)
+        if (e.code == Code.NOT_FOUND) {
+          // Failing itself, e.g. offline, the check must not hide why the commit failed.
+          try {
+            failIfClosed(shifts)
+          } catch (_: FirebaseFirestoreException) {}
+        }
         throw e
       }
 
@@ -544,8 +549,9 @@ class MembershipRequestRepositoryFirestore(private val db: FirebaseFirestore) :
     private const val PARTICIPANT_IDS = "participantIds"
 
     /**
-     * The most shifts a request chooses, as the rules allow: leaving them writes each of them with
-     * up to six other documents (a manager's withdrawal), within Firestore's 500 writes per commit.
+     * The most shifts a request chooses, as the rules allow: a product bound, more than 40 days of
+     * 2 h slots, that keeps the commits leaving them all well within Firestore's limits per
+     * request.
      */
     private const val MAX_SHIFTS = 490
 
